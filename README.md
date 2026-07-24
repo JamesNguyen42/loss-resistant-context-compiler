@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 894 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 895 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -151,7 +151,7 @@ The repository currently includes:
 - an opt-in whole-compile deadline that runs materialized inputs in an isolated
   POSIX process group or Windows Job Object, terminates the owned descendant
   tree on timeout, and reconstructs successful output from bounded strict JSON;
-- a portable JSON artifact, compact prompt renderer, and five JSON Schemas;
+- a portable JSON artifact, compact prompt renderer, and seven JSON Schemas;
 - a machine-readable artifact reader/writer registry with an explicit
   no-silent-migration policy;
 - a fail-closed JSON inspector plus a bounded terminal item view with escaped
@@ -191,7 +191,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 894 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 895 regression tests.
 
 ## In development
 
@@ -785,7 +785,7 @@ python -m ruff check src tests benchmarks
 python -m compileall -q src benchmarks tests
 ```
 
-Build the wheel and verify the five packaged schemas:
+Build the wheel and verify the seven packaged schemas:
 
 ```console
 python -c "
@@ -799,7 +799,7 @@ with tempfile.TemporaryDirectory() as directory:
     wheels = list(pathlib.Path(directory).glob('*.whl'))
     assert len(wheels) == 1, wheels
     names = zipfile.ZipFile(wheels[0]).namelist()
-    assert sum(name.endswith('.schema.json') for name in names) == 5
+    assert sum(name.endswith('.schema.json') for name in names) == 7
 "
 ```
 
@@ -923,7 +923,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 894 tests are collected (889 pass and 5
+Current local snapshot (2026-07-24): 895 tests are collected (890 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
@@ -1013,8 +1013,10 @@ the commands above for the current revision and environment.
   [source event](schemas/source-event.schema.json),
   [model extraction](schemas/model-extraction.schema.json),
   [unique-literal model extraction](schemas/model-extraction-literal.schema.json),
-  [compiled memory](schemas/compiled-memory.schema.json), and
-  [redaction report](schemas/redaction-report.schema.json)
+  [compiled memory](schemas/compiled-memory.schema.json),
+  [redaction report](schemas/redaction-report.schema.json),
+  [source archive entry](schemas/source-archive-entry.schema.json), and
+  [source archive command report](schemas/source-archive-report.schema.json)
 
 ## License
 

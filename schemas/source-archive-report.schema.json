@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/lossless-context-compiler/source-archive-report.schema.json",
+  "title": "Context compiler source archive command report",
+  "description": "Machine-readable output from ctxc archive append or verify. The optional appended field is present only for append.",
+  "type": "object",
+  "required": [
+    "schema",
+    "passed",
+    "records",
+    "source_digest",
+    "archive_schema",
+    "chain_head_sha256",
+    "issues"
+  ],
+  "properties": {
+    "schema": {"const": "ctxc-source-archive-report-0.1"},
+    "passed": {"type": "boolean"},
+    "appended": {"type": "integer", "minimum": 0},
+    "records": {"type": "integer", "minimum": 0},
+    "source_digest": {
+      "anyOf": [
+        {"const": ""},
+        {"$ref": "#/$defs/sha256"}
+      ]
+    },
+    "archive_schema": {
+      "type": ["string", "null"],
+      "enum": [
+        "ctxc-source-archive-entry-0.1",
+        "ctxc-source-archive-legacy-jsonl",
+        null
+      ]
+    },
+    "chain_head_sha256": {
+      "anyOf": [
+        {"$ref": "#/$defs/sha256"},
+        {"type": "null"}
+      ]
+    },
+    "issues": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}

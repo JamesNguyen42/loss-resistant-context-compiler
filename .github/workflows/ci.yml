@@ -52,7 +52,7 @@ jobs:
       - name: Build wheel and verify packaged schemas
         run: |
           python -m pip wheel . --no-deps --wheel-dir dist
-          python -c "import glob, zipfile; p=glob.glob('dist/*.whl')[0]; names=zipfile.ZipFile(p).namelist(); assert sum(name.endswith('.schema.json') for name in names) == 5, names"
+          python -c "import glob, zipfile; p=glob.glob('dist/*.whl')[0]; names=zipfile.ZipFile(p).namelist(); assert sum(name.endswith('.schema.json') for name in names) == 7, names"
       - name: Validate external candidate interchange
         run: python -m benchmarks --self-test
       - name: Verify external protocol readiness artifact

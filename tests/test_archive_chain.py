@@ -17,6 +17,8 @@ from context_compiler import (
 )
 from context_compiler.cli import main
 
+SCHEMA_DIRECTORY = Path(__file__).parents[1] / "schemas"
+
 
 def source(sequence: int) -> SourceRecord:
     return SourceRecord.create(
@@ -93,6 +95,48 @@ def test_archive_entries_form_a_canonical_chain_and_report_the_head(
     assert report.schema == ARCHIVE_REPORT_SCHEMA
     assert report.archive_schema == ARCHIVE_ENTRY_SCHEMA
     assert report.chain_head_sha256 == previous
+
+
+def test_packaged_archive_schemas_track_runtime_and_cli_contracts(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    entry_schema = json.loads(
+        (SCHEMA_DIRECTORY / "source-archive-entry.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    report_schema = json.loads(
+        (SCHEMA_DIRECTORY / "source-archive-report.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    archive = SourceArchive(tmp_path / "archive")
+    assert archive.append([source(0)]) == 1
+    entry = read_entries(archive.events_path)[0]
+
+    assert entry_schema["properties"]["schema"]["const"] == ARCHIVE_ENTRY_SCHEMA
+    assert set(entry_schema["required"]) == set(entry)
+    assert set(
+        entry_schema["$defs"]["canonicalSourceRecord"]["required"]
+    ) == set(entry["source"])
+    assert (
+        entry_schema["$defs"]["canonicalSourceRecord"]["additionalProperties"]
+        is False
+    )
+    assert entry_schema["additionalProperties"] is False
+
+    assert main(["archive", "verify", str(archive.directory)]) == 0
+    cli_report = json.loads(capsys.readouterr().out)
+    assert report_schema["properties"]["schema"]["const"] == ARCHIVE_REPORT_SCHEMA
+    assert set(report_schema["required"]) == set(cli_report)
+    assert set(report_schema["properties"]["archive_schema"]["enum"]) == {
+        ARCHIVE_ENTRY_SCHEMA,
+        LEGACY_ARCHIVE_SCHEMA,
+        None,
+    }
+    assert "appended" in report_schema["properties"]
+    assert report_schema["additionalProperties"] is False
 
 
 def test_archive_chain_rejects_field_hash_link_and_order_tampering(

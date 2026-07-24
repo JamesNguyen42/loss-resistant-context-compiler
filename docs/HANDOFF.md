@@ -27,7 +27,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 894 collected: 889 passing, 5 skipped |
+| Tests at this snapshot | 895 collected: 890 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -289,7 +289,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `benchmarks/qwen_literal_ablation.py` | Model-free frozen-output offset ablation, literal replay, self-hashed report, and strict regeneration |
 | `benchmarks/qwen_paired_eval.py` | Clean-tree paired coordinate/literal capture, alternating order, comparison metrics, and offline replay |
 | `benchmarks/protocols/` | Human-readable and machine-verifiable external comparison protocol; v1 is a valid non-claim-bearing draft with explicit blockers |
-| `schemas/` | Source, coordinate/unique-literal model extraction, compiled artifact, and redaction-report contracts |
+| `schemas/` | Source, coordinate/unique-literal model extraction, compiled artifact, redaction report, and source-archive entry/report contracts |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
 | `.github/workflows/ci.yml` | Cross-version tests, lint, wheel checks, interchange, benchmark |
 
@@ -489,10 +489,10 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 894 tests are collected: 889 pass and 5 platform/optional checks are skipped.
+- 895 tests are collected: 890 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
-- CI builds a wheel and verifies that all five schemas are included.
+- CI builds a wheel and verifies that all seven schemas are included.
 - CI runs the external-candidate interchange self-test.
 - CI enforces `ci-compile-v1` through a self-hashed
   `ctxc-performance-gate-0.1` report: three-trial medians at 128/256 events,
@@ -992,7 +992,7 @@ with tempfile.TemporaryDirectory() as directory:
     wheels = list(pathlib.Path(directory).glob('*.whl'))
     assert len(wheels) == 1, wheels
     names = zipfile.ZipFile(wheels[0]).namelist()
-    assert sum(name.endswith('.schema.json') for name in names) == 5
+    assert sum(name.endswith('.schema.json') for name in names) == 7
 "
 ```
 

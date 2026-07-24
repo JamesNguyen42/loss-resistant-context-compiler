@@ -501,7 +501,9 @@ Draft 2020-12 JSON Schemas document the public interchange shapes:
 - [model extraction envelope](../schemas/model-extraction.schema.json);
 - [unique-literal model extraction envelope](../schemas/model-extraction-literal.schema.json);
 - [compiled memory artifact](../schemas/compiled-memory.schema.json);
-- [content-secret redaction report](../schemas/redaction-report.schema.json).
+- [content-secret redaction report](../schemas/redaction-report.schema.json);
+- [source archive entry](../schemas/source-archive-entry.schema.json);
+- [source archive command report](../schemas/source-archive-report.schema.json).
 
 The standard-library runtime performs its own validation and does not require a
 JSON Schema package. Integrations can use these files for generation,
