@@ -603,7 +603,7 @@ generation config, cases, sources, and evaluator gold. The
 `candidate_payload_sha256`. The runner accepts legacy `0.1` output only as a
 raw adapter boundary, upgrades it using the registered runner identity, and
 cross-checks that identity again during manifest reload. Current runner
-manifest schema `0.10` requires an immutable adapter revision, a retained
+manifest schema `0.11` requires an immutable adapter revision, a retained
 dependency lock whose bytes define the canonical
 `sha256:<dependency-lock-sha256>` environment, exact model/context/tokenizer,
 one inference slot, zero retries/service cost, and bounded retained
@@ -618,6 +618,11 @@ ceiling. External scoring additionally compares all of those fields, the
 lock/entrypoint/source-tree/runtime/command/network-evidence digests, service
 metric/executable digest/ceiling, and retained runner limits, including the
 enforcement polling cadence, with the frozen protocol.
+
+Per-case replay derives each one-case corpus again from the retained parent
+envelope. The manifest must record the exact ordered parent-corpus prefix,
+canonical corpus digest, serialized file digest, and runner-owned temporary
+corpus/candidate path pair for every attempted case.
 
 Every runtime-error path calls one formatter. The default remains
 `ctxc: <message>` on stderr. `--error-format json` instead emits one compact

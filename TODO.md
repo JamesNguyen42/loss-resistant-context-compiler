@@ -341,6 +341,9 @@ Acceptance:
   source-tree, resolved runtime-executable, and portable command-contract
   digests to the preregistration rather than trusting the supplied adapter
   revision alone. Every per-case invocation is checked against that contract.
+- [x] Reconstruct every one-case corpus during manifest replay and require the
+  case audit to be the ordered parent-corpus prefix with exact self/file
+  digests and runner-owned temporary path structure.
 - [x] Count the final rendered output and provenance ledger under the same
   evaluator-owned tokenizer and token budget for every system; external
   candidates receive a canonical typed-claim/provenance sidecar, and tests show

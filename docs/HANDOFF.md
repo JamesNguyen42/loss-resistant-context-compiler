@@ -665,14 +665,16 @@ audited. Any selected superseded item independently fails verification as
   and the benchmark rejects a draft, dataset mismatch, unregistered system, or
   adapter, dependency-environment, model, tokenizer, retry, network-evidence,
   or runner-limit mismatch before scoring. Current runner schema
-  `lrcbench-external-run-manifest-0.10` freezes immutable adapter/environment
+  `lrcbench-external-run-manifest-0.11` freezes immutable adapter/environment
   identity, revalidated dependency-lock, adapter-entrypoint, and bounded
   adapter-source-tree bytes, the resolved runtime executable, and the portable
   per-case-validated command contract, exact 8192-context Qwen, one slot, zero
   retries/service cost, retained network-isolation evidence, sampled service
   process/executable/peak-memory accounting, and bounded runner controls
-  including enforcement polling cadence. The committed v1 protocol is valid
-  but intentionally blocked and not claim-ready.
+  including enforcement polling cadence. It also reconstructs every one-case
+  corpus on reload and verifies ordered-prefix, exact-digest, and
+  runner-temporary-path derivation. The committed v1 protocol is valid but
+  intentionally blocked and not claim-ready.
 - CI runs a 24-history fail-closed benchmark certificate.
 - The performance profile is a broad shared-runner tripwire, not an SLO: it
   excludes source construction, `tracemalloc` is not RSS, and the separate

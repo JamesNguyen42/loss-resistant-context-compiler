@@ -244,6 +244,11 @@ merged output. POSIX enforces `--max-memory-mb` with `RLIMIT_AS`. Windows
 creates the process suspended, assigns and verifies a Job Object with
 per-process and aggregate limits, and only then resumes adapter code.
 
+Manifest replay reconstructs each one-case corpus from the retained parent
+export. Attempted cases must be its exact ordered prefix, and every record must
+match the reconstructed canonical digest, serialized file digest, and
+runner-owned temporary corpus/candidate path layout.
+
 The entrypoint and source-tree digests prevent a free-form adapter revision
 from substituting an unregistered source set or command. The source root must
 be a dedicated immutable directory and cannot contain links or junctions. It
@@ -276,7 +281,7 @@ Whole-corpus isolation, no enforced adapter memory limit, incomplete identity
 metadata, any model other than the exact Qwen Q4 variant, inference concurrency
 other than one, or nonzero model-service cost makes the system a certificate
 non-win. Claim-eligible runner schema
-`lrcbench-external-run-manifest-0.10` also requires an immutable adapter
+`lrcbench-external-run-manifest-0.11` also requires an immutable adapter
 revision, retained dependency-lock bytes matching the canonical `sha256:`
 environment identity, a retained command-referenced adapter entrypoint covered
 by a bounded immutable source tree, a hashed resolved runtime, a portable

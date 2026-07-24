@@ -199,7 +199,7 @@ def test_committed_draft_is_verified_but_not_claim_ready() -> None:
     verified = load_external_protocol(DEFAULT_EXTERNAL_PROTOCOL)
 
     assert verified.protocol_sha256 == (
-        "094b6a708fe070427ad736a1aaad017c763b81ac884a7a9680c48b9e33beeba4"
+        "682d45c26bdc121c3f9c1c1d281ebc1862638a055adfd08b96172dddd6095e6f"
     )
     assert verified.status == "draft"
     assert verified.claim_ready is False

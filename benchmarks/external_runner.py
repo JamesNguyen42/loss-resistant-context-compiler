@@ -48,7 +48,7 @@ from .lrcbench import (
     decode_external_candidate,
 )
 
-RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.10"
+RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.11"
 _SYSTEM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 _REVISION_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 _ENVIRONMENT_ID_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -2218,6 +2218,36 @@ def _load_corpus(path: Path):
         raise ExternalRunnerError(f"invalid corpus: {exc}") from exc
 
 
+def _single_case_corpus_document(
+    corpus_payload: Mapping[str, Any],
+    raw_case: Mapping[str, Any],
+) -> dict[str, Any]:
+    case_config = dict(corpus_payload["config"])
+    case_config["histories"] = 1
+    document: dict[str, Any] = {
+        "schema": corpus_payload["schema"],
+        "benchmark": corpus_payload["benchmark"],
+        "dataset_sha256": corpus_payload["dataset_sha256"],
+        "producer": corpus_payload["producer"],
+        "config": case_config,
+        "cases": [raw_case],
+    }
+    document["corpus_sha256"] = _canonical_sha256(document)
+    return document
+
+
+def _serialized_corpus_document(document: Mapping[str, Any]) -> str:
+    return (
+        json.dumps(
+            document,
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
+
+
 def _claim_controls_complete(
     identity: RunnerIdentity,
     limits: RunnerLimits,
@@ -2720,6 +2750,61 @@ def load_external_run_manifest(
         )
     ):
         raise ExternalRunnerError("manifest corpus changed while its evidence was validated")
+    if isolation_mode == "per_case":
+        raw_cases = corpus_payload["cases"]
+        expected_case_ids = [
+            str(raw_case["case_id"])
+            for raw_case in raw_cases[: len(case_runs)]
+        ]
+        observed_case_ids = [
+            str(record["case_id"]) for record in case_runs
+        ]
+        if observed_case_ids != expected_case_ids:
+            raise ExternalRunnerError(
+                "run manifest case audit is not the ordered corpus prefix"
+            )
+        final_candidate_parent = Path(
+            payload["candidate_path"]
+        ).resolve().parent
+        observed_case_directories: set[Path] = set()
+        for index, (record, raw_case) in enumerate(
+            zip(case_runs, raw_cases, strict=False)
+        ):
+            case_corpus_path = Path(record["corpus_path"]).resolve()
+            case_candidate_path = Path(
+                record["candidate_path"]
+            ).resolve()
+            case_directory = case_corpus_path.parent
+            if (
+                case_corpus_path.name != "corpus.json"
+                or case_candidate_path.name != "candidate.json"
+                or case_candidate_path.parent != case_directory
+                or case_directory.parent != final_candidate_parent
+                or not case_directory.name.startswith(
+                    f".lrcbench-case-{index:06d}-"
+                )
+                or case_directory in observed_case_directories
+            ):
+                raise ExternalRunnerError(
+                    "run manifest case audit paths are inconsistent"
+                )
+            observed_case_directories.add(case_directory)
+            expected_case_document = _single_case_corpus_document(
+                corpus_payload,
+                raw_case,
+            )
+            expected_case_bytes = _serialized_corpus_document(
+                expected_case_document
+            ).encode("utf-8")
+            if (
+                record["corpus_sha256"]
+                != expected_case_document["corpus_sha256"]
+                or record["corpus_file_sha256"]
+                != hashlib.sha256(expected_case_bytes).hexdigest()
+            ):
+                raise ExternalRunnerError(
+                    "run manifest case audit corpus evidence is inconsistent"
+                )
     for name in ("stdout_bytes", "stderr_bytes"):
         value = payload[name]
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -3497,26 +3582,13 @@ def run_external_cases(
             case_directory = case_directory_value
             case_corpus_path = case_directory / "corpus.json"
             case_candidate_path = case_directory / "candidate.json"
-            case_config = dict(corpus_payload["config"])
-            case_config["histories"] = 1
-            case_corpus_document: dict[str, Any] = {
-                "schema": corpus_payload["schema"],
-                "benchmark": corpus_payload["benchmark"],
-                "dataset_sha256": dataset_sha256,
-                "producer": corpus_payload["producer"],
-                "config": case_config,
-                "cases": [raw_case],
-            }
-            case_corpus_document["corpus_sha256"] = _canonical_sha256(case_corpus_document)
+            case_corpus_document = _single_case_corpus_document(
+                corpus_payload,
+                raw_case,
+            )
             atomic_write_text(
                 case_corpus_path,
-                json.dumps(
-                    case_corpus_document,
-                    indent=2,
-                    sort_keys=True,
-                    ensure_ascii=False,
-                )
-                + "\n",
+                _serialized_corpus_document(case_corpus_document),
             )
             case_manifest = run_external_command(
                 resolved_template,

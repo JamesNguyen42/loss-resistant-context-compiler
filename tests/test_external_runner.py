@@ -2043,7 +2043,7 @@ def test_manifest_tampering_is_rejected_before_candidate_scoring(tmp_path) -> No
 
 def test_rehashed_inconsistent_case_audit_record_is_rejected(tmp_path) -> None:
     corpus_path = tmp_path / "corpus.json"
-    _config, document = write_corpus(corpus_path)
+    _config, document = write_corpus(corpus_path, histories=2)
     candidate_path = tmp_path / "candidate.json"
     original_payload = run_external_cases(
         valid_adapter_command(tmp_path),
@@ -2080,7 +2080,7 @@ def test_rehashed_inconsistent_case_audit_record_is_rejected(tmp_path) -> None:
         )
 
     count_payload = json.loads(json.dumps(original_payload))
-    count_payload["case_count"] = 2
+    count_payload["case_count"] = 3
     count_unsigned = dict(count_payload)
     count_unsigned.pop("manifest_sha256")
     count_canonical = json.dumps(
@@ -2097,6 +2097,71 @@ def test_rehashed_inconsistent_case_audit_record_is_rejected(tmp_path) -> None:
     with pytest.raises(ExternalRunnerError, match="case_count.*retained corpus"):
         load_external_run_manifest(
             count_manifest_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
+    corpus_payload = json.loads(json.dumps(original_payload))
+    corpus_payload["case_runs"][0]["corpus_sha256"] = "f" * 64
+    corpus_payload.pop("manifest_sha256")
+    corpus_payload["manifest_sha256"] = _canonical_sha256(
+        corpus_payload
+    )
+    corpus_manifest_path = tmp_path / "corpus-evidence-manifest.json"
+    corpus_manifest_path.write_text(
+        json.dumps(corpus_payload),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="case audit corpus evidence is inconsistent",
+    ):
+        load_external_run_manifest(
+            corpus_manifest_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
+    order_payload = json.loads(json.dumps(original_payload))
+    order_payload["case_runs"].reverse()
+    order_payload.pop("manifest_sha256")
+    order_payload["manifest_sha256"] = _canonical_sha256(order_payload)
+    order_manifest_path = tmp_path / "case-order-manifest.json"
+    order_manifest_path.write_text(
+        json.dumps(order_payload),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="case audit is not the ordered corpus prefix",
+    ):
+        load_external_run_manifest(
+            order_manifest_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
+    path_payload = json.loads(json.dumps(original_payload))
+    first_case = path_payload["case_runs"][0]
+    original_case_corpus = first_case["corpus_path"]
+    forged_case_corpus = str(
+        (tmp_path / "forged-case" / "corpus.json").resolve()
+    )
+    first_case["corpus_path"] = forged_case_corpus
+    first_case["command"] = [
+        part.replace(original_case_corpus, forged_case_corpus)
+        for part in first_case["command"]
+    ]
+    path_payload.pop("manifest_sha256")
+    path_payload["manifest_sha256"] = _canonical_sha256(path_payload)
+    path_manifest_path = tmp_path / "case-path-manifest.json"
+    path_manifest_path.write_text(
+        json.dumps(path_payload),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="case audit paths are inconsistent",
+    ):
+        load_external_run_manifest(
+            path_manifest_path,
             expected_dataset_sha256=document["dataset_sha256"],
         )
 

@@ -840,7 +840,10 @@ that complete set. Missing or failed systems remain non-wins. See
 `python -m benchmarks.external_runner` supplies a shell-free, timeout-, output-,
 and process-tree-memory-bounded adapter wrapper. Its default mode executes every
 case sequentially in a fresh process, records a hashed per-case audit trail,
-and merges only fully validated outputs. Whole-corpus mode is diagnostic-only.
+and merges only fully validated outputs. Manifest replay reconstructs every
+one-case corpus from the retained parent, verifies its exact canonical and file
+digests, and requires executed cases to be the ordered parent-corpus prefix
+with runner-owned temporary paths. Whole-corpus mode is diagnostic-only.
 Current claim-eligible runner manifests retain the dependency lock, adapter
 entrypoint, and a bounded recursive inventory of its immutable source root, and
 identify the environment as `sha256:<dependency-lock-sha256>`. Reload rehashes

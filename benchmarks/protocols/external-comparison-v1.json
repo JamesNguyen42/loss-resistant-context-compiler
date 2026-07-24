@@ -7,7 +7,7 @@
   "freeze_repository_commit": null,
   "protocol_document": {
     "path": "external-comparison-v1.md",
-    "file_sha256": "10fc477ff33ab649b4975d0e60157eac737053ee0998078c80374cc6f18de8c4"
+    "file_sha256": "991a10a4239a2d2c2eb8c3a2626efcb1da7cf62f3d60a9c296007bed4e84f5ad"
   },
   "comparison_candidates": [
     {
@@ -204,5 +204,5 @@
       "description": "Select and pin a materially different public tool-use or research task suite."
     }
   ],
-  "protocol_sha256": "094b6a708fe070427ad736a1aaad017c763b81ac884a7a9680c48b9e33beeba4"
+  "protocol_sha256": "682d45c26bdc121c3f9c1c1d281ebc1862638a055adfd08b96172dddd6095e6f"
 }
