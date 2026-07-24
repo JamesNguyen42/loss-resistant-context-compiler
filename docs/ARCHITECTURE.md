@@ -290,6 +290,14 @@ artifact verification independently reruns
 `RuleBasedExtractor(protected_only=True)` for that obligation. Recovery can be
 disabled explicitly, but doing so removes deterministic fallback coverage.
 
+Recovery and certification share one candidate-coverage predicate. Its normal
+case requires equal kind/text and covering provenance. For an ordinary
+domain-label item only, it also accepts a clean inner value when the built-in
+candidate is exactly the same quoted value wrapped by one bounded ASCII label
+and/or bullet, with no trailing content. Coordinate containment and substring
+reconstruction make the direction explicit. Exact errors and references never
+use wrapper equivalence, so their complete literals cannot be shortened.
+
 Both built-in rule passes are constructed inside every `compile()` and are not
 replaceable through constructor seams. A supplied `safety_extractor` is
 additive. Its exception becomes a verification warning without subtracting
@@ -585,7 +593,12 @@ in scope.
 
 ## Extension points
 
-- Supply any `Extractor` implementation with `name` and `extract(sources)`.
+- Supply any public `Extractor` implementation with a stable `name` and
+  `extract(sources)` returning `ExtractionResult`.
+- Use `DomainLabelExtractor` for immutable, capped, exact label-to-kind aliases
+  without adding caller regexes to the core grammar.
+- Combine uniquely named packs with strict, fail-fast `CompositeExtractor`;
+  built-in recovery already runs separately and need not be a component.
 - Use `ModelExtractor` with any JSON-capable model provider.
 - Use `LmsQwenCompletion` for the exact local Qwen Q4 LM Studio CLI path.
 - Supply an exact tokenizer through `token_counter`; add a stable
@@ -602,4 +615,5 @@ failure policy only when a model result is a hard application requirement.
 
 New extractors should be evaluated against adversarial role injection,
 uncertainty, corrections, duplicate symbols, exact literals, and invalid spans
-before use.
+before use. See [Extending extraction](EXTENDING_EXTRACTION.md) for the full
+authority, composition, replay, isolation, and test contract.

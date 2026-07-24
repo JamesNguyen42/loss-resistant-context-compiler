@@ -633,6 +633,68 @@ class MemoryItem:
         return item
 
 
+_LABELED_WRAPPER_PREFIX = re.compile(
+    r"^\s*(?:(?:[A-Za-z][A-Za-z0-9_ -]{0,127}\s*:\s*)?"
+    r"(?:(?:[-*+]|\d+[.)])\s+)?)$"
+)
+
+
+def memory_item_covers_candidate(
+    candidate: MemoryItem,
+    retained: MemoryItem,
+) -> bool:
+    """Return whether a retained atom satisfies one extracted candidate.
+
+    Besides the historical exact-text/span relation, an explicit ASCII label
+    or bullet may wrap an otherwise identical ordinary atom. This lets a
+    domain-label extractor retain the clean value without a built-in recovery
+    pass reintroducing the label as a second claim.
+    """
+
+    if candidate.kind != retained.kind:
+        return False
+    candidate_spans = {
+        (span.source_id, span.start, span.end)
+        for span in candidate.provenance
+    }
+    retained_spans = {
+        (span.source_id, span.start, span.end)
+        for span in retained.provenance
+    }
+    if (
+        candidate.text.strip() == retained.text.strip()
+        and candidate_spans <= retained_spans
+    ):
+        return True
+    if (
+        candidate.exact
+        or retained.exact
+        or len(candidate.provenance) != 1
+        or len(retained.provenance) != 1
+    ):
+        return False
+    outer = candidate.provenance[0]
+    inner = retained.provenance[0]
+    if (
+        outer.source_id != inner.source_id
+        or outer.start > inner.start
+        or outer.end < inner.end
+        or candidate.text.strip() != outer.quote.strip()
+        or retained.text.strip() != inner.quote.strip()
+    ):
+        return False
+    relative_start = inner.start - outer.start
+    relative_end = relative_start + len(inner.quote)
+    if outer.quote[relative_start:relative_end] != inner.quote:
+        return False
+    prefix = outer.quote[:relative_start]
+    suffix = outer.quote[relative_end:]
+    return (
+        _LABELED_WRAPPER_PREFIX.fullmatch(prefix) is not None
+        and not suffix.strip()
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class VerificationIssue:
     code: str

@@ -30,6 +30,7 @@ from .models import (
     SourceRecord,
     VerificationIssue,
     VerificationReport,
+    memory_item_covers_candidate,
     render_prompt_item,
     render_typed_memory,
     source_digest,
@@ -423,14 +424,8 @@ class ContextCompiler:
 
     @staticmethod
     def _span_kind_present(candidate: MemoryItem, items: list[MemoryItem]) -> bool:
-        candidate_spans = {
-            (span.source_id, span.start, span.end) for span in candidate.provenance
-        }
         return any(
-            item.kind == candidate.kind
-            and item.text.strip() == candidate.text.strip()
-            and candidate_spans
-            <= {(span.source_id, span.start, span.end) for span in item.provenance}
+            memory_item_covers_candidate(candidate, item)
             for item in items
         )
 

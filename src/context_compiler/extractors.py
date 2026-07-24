@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any, Protocol, runtime_checkable
 
 from .models import (
@@ -205,6 +206,8 @@ _TEST_REFERENCE = re.compile(
     r"(?:::[A-Za-z_][\w.\[\]-]*)+)",
     re.IGNORECASE,
 )
+_DOMAIN_LABEL = re.compile(r"[A-Za-z][A-Za-z0-9_ -]{0,127}")
+_EXTRACTOR_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}")
 _AUTHORITATIVE_COMMITMENT_ROLES = frozenset({"user", "system", "developer"})
 _AUTHORITY_GATED_KINDS = frozenset(
     {MemoryKind.GOAL, MemoryKind.CONSTRAINT, MemoryKind.USER_CORRECTION}
@@ -293,6 +296,19 @@ def _source_can_assert_fact(source: SourceRecord) -> bool:
     return source.role.casefold() in _FACT_ROLES or source.metadata.get("trusted_for_state") is True
 
 
+def _source_can_author_kind(source: SourceRecord, kind: MemoryKind) -> bool:
+    role = source.role.casefold()
+    if kind in _AUTHORITY_GATED_KINDS:
+        return role in _AUTHORITATIVE_COMMITMENT_ROLES
+    if kind == MemoryKind.UNRESOLVED:
+        return role in _UNRESOLVED_ROLES
+    if kind == MemoryKind.DECISION:
+        return role in _DECISION_ROLES
+    if kind == MemoryKind.CONFIRMED_FACT:
+        return _source_can_assert_fact(source)
+    return True
+
+
 def _item_from_span(
     source: SourceRecord,
     *,
@@ -331,6 +347,185 @@ def _item_from_span(
             "extractor": extractor,
         },
     )
+
+
+def _normalize_domain_label(value: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError("domain label must be a string")
+    stripped = value.strip()
+    if _DOMAIN_LABEL.fullmatch(stripped) is None:
+        raise ValueError(
+            "domain label must contain 1..128 ASCII letters, digits, "
+            "spaces, underscores, or hyphens and start with a letter"
+        )
+    return " ".join(stripped.replace("_", " ").split()).casefold()
+
+
+def _validate_extractor_name(value: str, *, label: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{label} must be a string")
+    stripped = value.strip()
+    if _EXTRACTOR_NAME.fullmatch(stripped) is None:
+        raise ValueError(
+            f"{label} must contain 1..128 ASCII letters, digits, dots, "
+            "underscores, colons, or hyphens and start with an alphanumeric"
+        )
+    return stripped
+
+
+class DomainLabelExtractor:
+    """Extract explicit domain-specific labels without caller-supplied regexes.
+
+    Labels are exact after case-folding, underscore-to-space normalization, and
+    whitespace collapsing. Values retain exact character provenance and remain
+    subject to the built-in role-authority contract.
+    """
+
+    def __init__(
+        self,
+        labels: Mapping[str, MemoryKind],
+        *,
+        name: str,
+    ) -> None:
+        if not isinstance(labels, Mapping):
+            raise TypeError("domain labels must be a mapping")
+        if not labels:
+            raise ValueError("at least one domain label is required")
+        if len(labels) > 256:
+            raise ValueError("domain label mapping cannot exceed 256 entries")
+        normalized: dict[str, MemoryKind] = {}
+        for raw_label, kind in labels.items():
+            label = _normalize_domain_label(raw_label)
+            if label in normalized:
+                raise ValueError(
+                    f"duplicate normalized domain label: {label!r}"
+                )
+            if not isinstance(kind, MemoryKind):
+                raise TypeError(
+                    "domain label values must be MemoryKind members"
+                )
+            normalized[label] = kind
+        self.name = _validate_extractor_name(
+            name,
+            label="domain extractor name",
+        )
+        self._label_lookup = normalized
+
+    @property
+    def labels(self) -> Mapping[str, MemoryKind]:
+        """Read-only normalized label mapping."""
+
+        return MappingProxyType(self._label_lookup)
+
+    def extract(self, sources: list[SourceRecord]) -> ExtractionResult:
+        items: list[MemoryItem] = []
+        for source in sorted(sources, key=lambda value: value.sequence):
+            items.extend(self._extract_source(source))
+        return ExtractionResult(
+            items=items,
+            metadata={
+                "extractor": self.name,
+                "labels": [
+                    {"label": label, "kind": kind.value}
+                    for label, kind in sorted(self._label_lookup.items())
+                ],
+            },
+        )
+
+    def _extract_source(self, source: SourceRecord) -> list[MemoryItem]:
+        items: list[MemoryItem] = []
+        active_section: MemoryKind | None = None
+        offset = 0
+        for raw_line in source.content.splitlines(keepends=True):
+            line = raw_line.rstrip("\r\n")
+            line_start = offset
+            offset += len(raw_line)
+            if not line.strip():
+                active_section = None
+                continue
+
+            colon = line.find(":")
+            if colon >= 0:
+                raw_label = line[:colon].strip()
+                try:
+                    label = _normalize_domain_label(raw_label)
+                except (TypeError, ValueError):
+                    label = ""
+                kind = self._label_lookup.get(label)
+                if kind is not None:
+                    active_section = (
+                        kind
+                        if _source_can_author_kind(source, kind)
+                        else None
+                    )
+                    if active_section is None:
+                        continue
+                    raw_value = line[colon + 1 :]
+                    value = _clean_value(raw_value)
+                    if value:
+                        local = raw_value.find(value)
+                        if local < 0:
+                            raise RuntimeError(
+                                "domain label value could not be located"
+                            )
+                        start = line_start + colon + 1 + local
+                        self._append_value(
+                            items,
+                            source=source,
+                            kind=kind,
+                            value=value,
+                            start=start,
+                        )
+                    continue
+
+            bullet_match = _BULLET.match(line)
+            if active_section is not None and bullet_match:
+                raw_value = bullet_match.group("value")
+                value = _clean_value(raw_value)
+                if value:
+                    local = (
+                        bullet_match.start("value")
+                        + raw_value.find(value)
+                    )
+                    self._append_value(
+                        items,
+                        source=source,
+                        kind=active_section,
+                        value=value,
+                        start=line_start + local,
+                    )
+                continue
+            active_section = None
+        return items
+
+    def _append_value(
+        self,
+        items: list[MemoryItem],
+        *,
+        source: SourceRecord,
+        kind: MemoryKind,
+        value: str,
+        start: int,
+    ) -> None:
+        atoms = (
+            _constraint_clauses(value, start)
+            if kind == MemoryKind.CONSTRAINT
+            else [(value, start, start + len(value))]
+        )
+        for atom_text, atom_start, atom_end in atoms:
+            item = _item_from_span(
+                source,
+                kind=kind,
+                text=atom_text,
+                start=atom_start,
+                end=atom_end,
+                extractor=self.name,
+            )
+            if kind == MemoryKind.USER_CORRECTION:
+                item.tags = sorted(
+                    set(item.tags) | {"explicit-correction-label"}
+                )
+            items.append(item)
 
 
 class RuleBasedExtractor:
@@ -377,27 +572,11 @@ class RuleBasedExtractor:
                 label = label_match.group("label").replace("_", " ").strip().casefold()
                 kind = LABEL_KIND.get(label)
                 if kind is not None:
-                    if (
-                        (
-                            kind in _AUTHORITY_GATED_KINDS
-                            and source.role.casefold() not in _AUTHORITATIVE_COMMITMENT_ROLES
-                        )
-                        or (
-                            kind == MemoryKind.UNRESOLVED
-                            and source.role.casefold() not in _UNRESOLVED_ROLES
-                        )
-                        or (
-                            kind == MemoryKind.DECISION
-                            and source.role.casefold() not in _DECISION_ROLES
-                        )
-                        or (
-                            kind == MemoryKind.CONFIRMED_FACT
-                            and not _source_can_assert_fact(source)
-                        )
-                    ):
-                        active_section = None
-                    else:
-                        active_section = kind
+                    active_section = (
+                        kind
+                        if _source_can_author_kind(source, kind)
+                        else None
+                    )
                     if active_section is None:
                         # Do not promote instruction-shaped assistant/tool data
                         # into authoritative task commitments. Fall through so
@@ -1037,20 +1216,85 @@ class ModelExtractor:
 
 
 class CompositeExtractor:
-    """Union multiple extractors before compiler-level canonicalization."""
+    """Strictly union named extractors before compiler canonicalization."""
 
-    name = "composite"
-
-    def __init__(self, *extractors: Extractor) -> None:
+    def __init__(
+        self,
+        *extractors: Extractor,
+        name: str = "composite",
+    ) -> None:
         if not extractors:
             raise ValueError("at least one extractor is required")
-        self.extractors = extractors
+        self.name = _validate_extractor_name(
+            name,
+            label="composite extractor name",
+        )
+        component_names: list[str] = []
+        for extractor in extractors:
+            try:
+                extract = extractor.extract
+                component_name = extractor.name
+            except Exception as exc:
+                raise TypeError(
+                    "composite components must expose name and extract"
+                ) from exc
+            if not callable(extract):
+                raise TypeError(
+                    "composite component extract must be callable"
+                )
+            component_names.append(
+                _validate_extractor_name(
+                    component_name,
+                    label="composite component name",
+                )
+            )
+        if len(component_names) != len(set(component_names)):
+            raise ValueError("composite component names must be unique")
+        self.extractors = tuple(extractors)
+        self.component_names = tuple(component_names)
 
     def extract(self, sources: list[SourceRecord]) -> ExtractionResult:
-        result = ExtractionResult(metadata={"extractors": []})
-        for extractor in self.extractors:
+        result = ExtractionResult(
+            metadata={"extractor": self.name, "components": []}
+        )
+        for extractor, component_name in zip(
+            self.extractors,
+            self.component_names,
+            strict=True,
+        ):
             part = extractor.extract(sources)
+            if not isinstance(part, ExtractionResult):
+                raise TypeError(
+                    f"composite component {component_name!r} must return "
+                    "ExtractionResult"
+                )
+            if not isinstance(part.items, list) or not all(
+                isinstance(item, MemoryItem) for item in part.items
+            ):
+                raise TypeError(
+                    f"composite component {component_name!r} returned "
+                    "invalid items"
+                )
+            if not isinstance(part.rejected, list) or not all(
+                isinstance(rejection, dict)
+                for rejection in part.rejected
+            ):
+                raise TypeError(
+                    f"composite component {component_name!r} returned "
+                    "invalid rejections"
+                )
+            if not isinstance(part.metadata, dict):
+                raise TypeError(
+                    f"composite component {component_name!r} returned "
+                    "invalid metadata"
+                )
             result.items.extend(part.items)
             result.rejected.extend(part.rejected)
-            result.metadata["extractors"].append(extractor.name)
+            result.metadata["components"].append(
+                {
+                    "name": component_name,
+                    "item_count": len(part.items),
+                    "rejection_count": len(part.rejected),
+                }
+            )
         return result

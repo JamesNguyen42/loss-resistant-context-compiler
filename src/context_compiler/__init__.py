@@ -8,7 +8,14 @@ from .artifact_inspection import (
     summarize_artifact,
 )
 from .compiler import ContextCompiler
-from .extractors import ModelExtractor, RuleBasedExtractor
+from .extractors import (
+    CompositeExtractor,
+    DomainLabelExtractor,
+    ExtractionResult,
+    Extractor,
+    ModelExtractor,
+    RuleBasedExtractor,
+)
 from .io import validate_artifact_envelope
 from .isolation import CompilationIsolationError
 from .limits import ArtifactLimitError, ArtifactLimits, SourceLimitError, SourceLimits
@@ -42,7 +49,11 @@ __all__ = [
     "CompilationMetrics",
     "CompilationPolicy",
     "CompiledMemory",
+    "CompositeExtractor",
     "ContextCompiler",
+    "DomainLabelExtractor",
+    "ExtractionResult",
+    "Extractor",
     "MemoryItem",
     "MemoryKind",
     "MemoryStatus",

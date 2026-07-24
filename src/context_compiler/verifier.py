@@ -13,6 +13,7 @@ from .models import (
     SourceRecord,
     VerificationIssue,
     VerificationReport,
+    memory_item_covers_candidate,
     provenance_span_is_atomic,
 )
 
@@ -114,16 +115,10 @@ def _span_identity(item: MemoryItem) -> set[tuple[str, int, int]]:
 
 
 def _candidate_retained(candidate: MemoryItem, retained: Iterable[MemoryItem]) -> bool:
-    candidate_spans = _span_identity(candidate)
     for item in retained:
-        if item.kind != candidate.kind:
-            continue
         if item.status == MemoryStatus.DISCARDED:
             continue
-        if (
-            item.text.strip() == candidate.text.strip()
-            and candidate_spans <= _span_identity(item)
-        ):
+        if memory_item_covers_candidate(candidate, item):
             return True
     return False
 

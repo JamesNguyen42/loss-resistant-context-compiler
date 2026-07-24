@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 682 tests (677 passing and 5 skipped locally); CI covers Python
+- [x] Collect 709 tests (704 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -414,8 +414,10 @@ than most related technology” within the exact dated evaluation scope.
   limits on independence and representativeness.
 - [ ] Evaluate non-English and mixed-language histories before claiming
   multilingual support.
-- [ ] Add domain packs or documented extension hooks rather than continually
-  widening one global regular-expression vocabulary.
+- [x] Add bounded domain-label packs and strict extractor composition, with a
+  public protocol, immutable/capped alias configuration, fixed authority
+  gates, exact spans, replay limitations, and a deployment guide, rather than
+  continually widening one global regular-expression vocabulary.
 - [x] Test extremely long lines, huge tool schemas, binary-looking output, and
   high record counts under explicit resource limits.
 

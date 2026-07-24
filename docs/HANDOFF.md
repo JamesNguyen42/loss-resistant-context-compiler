@@ -3,8 +3,9 @@
 This file is the durable restart context for a new chat or contributor. Read it
 with the root [README](../README.md), [TODO](../TODO.md),
 [architecture](ARCHITECTURE.md), [benchmark protocol](BENCHMARKING.md), and
-[threat model](THREAT_MODEL.md) before changing behavior or making comparative
-claims.
+[threat model](THREAT_MODEL.md). Read the
+[extraction extension contract](EXTENDING_EXTRACTION.md) before adding domain
+vocabulary or custom extractors.
 
 ## Snapshot
 
@@ -15,7 +16,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 682 collected: 677 passing, 5 skipped |
+| Tests at this snapshot | 709 collected: 704 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -328,6 +329,10 @@ Primary exported objects:
 - `CompilationPolicy`;
 - `ContextCompiler`;
 - `CompiledMemory`;
+- `Extractor`;
+- `ExtractionResult`;
+- `DomainLabelExtractor`;
+- `CompositeExtractor`;
 - `RuleBasedExtractor`;
 - `ModelExtractor`;
 - `LmsQwenCompletion`;
@@ -430,7 +435,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 682 tests are collected: 677 pass and 5 platform/optional checks are skipped.
+- 709 tests are collected: 704 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -455,6 +460,12 @@ audited. Any selected superseded item independently fails verification as
   with zero compiler-verification failures. Strict report verification replays
   every case. The corpus is local diagnostic evidence, not independent or
   production-representative; see `docs/PHRASE_EVALUATION.md`.
+- Public `DomainLabelExtractor`, `CompositeExtractor`, `Extractor`, and
+  `ExtractionResult` APIs provide bounded exact-label domain packs and strict
+  composition without changing the global regex vocabulary. Configuration is
+  copied, read-only, capped, authority-gated, exact-span, pickle-safe, and
+  artifact-replay tested. Custom-domain completeness remains outside the
+  built-in certificate; see `docs/EXTENDING_EXTRACTION.md`.
 - Source loaders, direct compilation, independent verification, and archives
   share default-on byte, line, JSON-depth, count, per-record, and aggregate
   canonical-size limits. Adversarial tests cover UTF-8 boundaries, oversized
