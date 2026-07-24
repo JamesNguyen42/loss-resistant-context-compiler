@@ -449,7 +449,10 @@ warnings because losing protected state would be worse than exceeding the
 requested size.
 
 `ctxc verify` uses `verify_artifact_dict()` to re-check a serialized artifact
-against a separately supplied source history. It first removes
+against a separately supplied source history. The ordinary positional source
+is JSON/JSONL; `--archive ARCHIVE` instead loads a `SourceArchive` directly,
+and `--archive-expected-chain-head HEAD` enforces the separately retained
+anchor before replay. It first removes
 `artifact_sha256`, canonically JSON-encodes the remaining payload, and checks
 the recomputed SHA-256 against the claimed artifact digest. It then validates
 schema version, source count and digest, ledger completeness, item shape,

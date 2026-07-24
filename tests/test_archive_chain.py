@@ -163,6 +163,8 @@ def test_retained_head_detects_valid_prefix_rollback_and_blocks_append(
 
     rolled_back_bytes = archive.events_path.read_bytes()
     with pytest.raises(ValueError, match="chain head mismatch"):
+        archive.load(expected_chain_head=latest_head)
+    with pytest.raises(ValueError, match="chain head mismatch"):
         archive.append([source(2)], expected_chain_head=latest_head)
     assert archive.events_path.read_bytes() == rolled_back_bytes
 
@@ -337,3 +339,84 @@ def test_compile_rejects_archive_head_without_an_archive(
         == 2
     )
     assert "--archive-expected-chain-head requires --archive" in capsys.readouterr().err
+
+
+def test_artifact_verify_can_load_an_anchored_source_archive(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    record = source(0)
+    source_path = tmp_path / "source.json"
+    artifact_path = tmp_path / "artifact.json"
+    archive_directory = tmp_path / "archive"
+    source_path.write_text(json.dumps([record.to_dict()]), encoding="utf-8")
+
+    assert main(["compile", str(source_path), "--output", str(artifact_path)]) == 0
+    capsys.readouterr()
+    archive = SourceArchive(archive_directory)
+    assert archive.append([record]) == 1
+    head = archive.verify().chain_head_sha256
+    assert head is not None
+
+    assert (
+        main(
+            [
+                "verify",
+                str(artifact_path),
+                "--archive",
+                str(archive_directory),
+                "--archive-expected-chain-head",
+                head,
+            ]
+        )
+        == 0
+    )
+    replay = json.loads(capsys.readouterr().out)
+    assert replay["passed"] is True
+
+    assert (
+        main(
+            [
+                "verify",
+                str(artifact_path),
+                "--archive",
+                str(archive_directory),
+                "--archive-expected-chain-head",
+                "f" * 64,
+                "--error-format",
+                "json",
+            ]
+        )
+        == 2
+    )
+    diagnostic = json.loads(capsys.readouterr().err)
+    assert diagnostic["category"] == "integrity"
+    assert diagnostic["code"] == "integrity_check_failed"
+
+    assert (
+        main(
+            [
+                "verify",
+                str(artifact_path),
+                str(source_path),
+                "--archive-expected-chain-head",
+                head,
+            ]
+        )
+        == 2
+    )
+    assert "--archive-expected-chain-head requires --archive" in capsys.readouterr().err
+
+    assert (
+        main(
+            [
+                "verify",
+                str(artifact_path),
+                str(source_path),
+                "--archive",
+                str(archive_directory),
+            ]
+        )
+        == 2
+    )
+    assert "requires exactly one of SOURCES or --archive" in capsys.readouterr().err

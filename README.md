@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 893 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 894 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -191,7 +191,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 893 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 894 regression tests.
 
 ## In development
 
@@ -473,16 +473,21 @@ ctxc archive verify .context-archive --expected-chain-head HEAD
 ctxc archive append .context-archive next.jsonl --expected-chain-head HEAD
 ctxc compile next.jsonl --archive .context-archive \
   --archive-expected-chain-head HEAD
+ctxc verify compiled-memory.json --archive .context-archive \
+  --archive-expected-chain-head HEAD
 ```
 
 The append response contains the replacement head to retain for the following
 operation. A valid older prefix passes standalone structural verification, but
 fails when checked against a later externally retained head. Raw legacy source
 JSONL remains readable; the first non-idempotent append upgrades the complete
-file atomically. The chain is an integrity and stale-state check, not a
-signature, trusted timestamp, or filesystem access control. Anyone able to
-rewrite the archive can recompute it, so rollback detection depends on keeping
-the expected head in a separately protected location.
+file atomically. Artifact replay can consume the archive directory directly
+through `ctxc verify ARTIFACT --archive ARCHIVE`; the expected-head option
+checks the anchor before any source record enters replay. The chain is an
+integrity and stale-state check, not a signature, trusted timestamp, or
+filesystem access control. Anyone able to rewrite the archive can recompute it,
+so rollback detection depends on keeping the expected head in a separately
+protected location.
 
 `ctxc compile` also accepts `-` for stdin. Inputs may be a JSON list, an object
 containing `sources`, `events`, or `messages`, or JSONL. Each record accepts
@@ -918,7 +923,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 893 tests are collected (888 pass and 5
+Current local snapshot (2026-07-24): 894 tests are collected (889 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

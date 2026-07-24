@@ -27,7 +27,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 893 collected: 888 passing, 5 skipped |
+| Tests at this snapshot | 894 collected: 889 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -300,6 +300,7 @@ counters are deterministic, apart from timestamps and measured duration.
 ```console
 ctxc compile HISTORY [--format json|prompt]
 ctxc verify ARTIFACT HISTORY
+ctxc verify ARTIFACT --archive ARCHIVE [--archive-expected-chain-head HEAD]
 ctxc inspect ARTIFACT
 ctxc inspect ARTIFACT --format text --show-items
 ctxc diff BEFORE_ARTIFACT AFTER_ARTIFACT [--summary-only]
@@ -321,6 +322,8 @@ Important compile options:
 - `--no-recovery`;
 - `--archive` and its optional externally retained
   `--archive-expected-chain-head` precondition;
+- `verify --archive` consumes the chained archive directly instead of the
+  positional JSON/JSONL source path and accepts the same head precondition;
 - `--max-source-bytes`, `--max-source-records`,
   `--max-source-line-chars`, `--max-source-record-bytes`,
   `--max-total-source-bytes`, and `--max-source-json-depth`;
@@ -486,7 +489,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 893 tests are collected: 888 pass and 5 platform/optional checks are skipped.
+- 894 tests are collected: 889 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all five schemas are included.
@@ -580,6 +583,9 @@ audited. Any selected superseded item independently fails verification as
   strict raw/canonical byte, line, depth, item/selection, provenance, and issue
   limits. Tests cover BOM/multibyte boundaries, duplicate keys, non-finite
   values, excessive collections, cyclic direct dictionaries, and CLI refusal.
+- `ctxc verify --archive` loads the bounded chained source archive directly;
+  an optional expected head is enforced before artifact replay, and stale
+  anchors produce the standard integrity diagnostic.
 - `ctxc inspect` additionally rejects malformed or unsupported envelopes,
   duplicate/missing item-selection references, and stale `artifact_sha256`
   values before reporting explicit shape/schema/self-hash health. Python

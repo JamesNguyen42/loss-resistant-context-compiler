@@ -417,10 +417,24 @@ def _archive_verify(args: argparse.Namespace) -> int:
 
 def _verify(args: argparse.Namespace) -> int:
     try:
+        if (args.sources is None) == (args.source_archive is None):
+            raise ValueError("verify requires exactly one of SOURCES or --archive")
+        if (
+            args.archive_expected_chain_head is not None
+            and args.source_archive is None
+        ):
+            raise ValueError("--archive-expected-chain-head requires --archive")
         source_limits = _source_limits(args)
         artifact_limits = _artifact_limits(args)
         artifact = load_artifact_path(args.artifact, limits=artifact_limits)
-        sources = _input_sources(args.sources, source_limits)
+        sources = (
+            SourceArchive(
+                args.source_archive,
+                source_limits=source_limits,
+            ).load(expected_chain_head=args.archive_expected_chain_head)
+            if args.source_archive is not None
+            else _input_sources(args.sources, source_limits)
+        )
         report = verify_artifact_dict(
             artifact,
             sources,
@@ -736,7 +750,19 @@ def build_parser() -> argparse.ArgumentParser:
         "verify", help="re-verify an artifact against immutable source history"
     )
     verify_parser.add_argument("artifact")
-    verify_parser.add_argument("sources")
+    verify_parser.add_argument("sources", nargs="?")
+    verify_parser.add_argument(
+        "--archive",
+        dest="source_archive",
+        help="load immutable source history from this SourceArchive directory",
+    )
+    verify_parser.add_argument(
+        "--archive-expected-chain-head",
+        help=(
+            "require this externally retained archive chain head; "
+            "must be 64 lowercase hexadecimal characters"
+        ),
+    )
     verify_parser.add_argument("-o", "--output")
     _add_source_limit_arguments(verify_parser)
     _add_artifact_limit_arguments(verify_parser)

@@ -221,8 +221,15 @@ class SourceArchive:
         finally:
             close_lock_file(lock_fd, prior_error=archive_error)
 
-    def load(self) -> list[SourceRecord]:
-        return list(self._load_state().records)
+    def load(
+        self,
+        *,
+        expected_chain_head: str | None = None,
+    ) -> list[SourceRecord]:
+        expected_head = _validate_expected_chain_head(expected_chain_head)
+        state = self._load_state()
+        self._require_expected_head(state.chain_head_sha256, expected_head)
+        return list(state.records)
 
     def _load_state(self) -> _ArchiveState:
         if not self.events_path.exists():
