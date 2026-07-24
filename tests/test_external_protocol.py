@@ -141,6 +141,12 @@ def _protocol(
             "isolation_mode": "per_case",
             "timeout_seconds": 300,
             "poll_interval_seconds": 0.02,
+            "network_isolation_mode": (
+                "host-firewall" if frozen else None
+            ),
+            "network_isolation_evidence_sha256": (
+                _sha("9") if frozen else None
+            ),
             "max_stdout_bytes": 1_000_000,
             "max_stderr_bytes": 1_000_000,
             "max_candidate_bytes": 20_000_000,
@@ -185,7 +191,7 @@ def test_committed_draft_is_verified_but_not_claim_ready() -> None:
     verified = load_external_protocol(DEFAULT_EXTERNAL_PROTOCOL)
 
     assert verified.protocol_sha256 == (
-        "4053d6b46ccb1d65cf40e9de7d105d3c696e707e3dfd3a11758f0c5edd698cc8"
+        "42c3482a2586d677cd065335277c74df7ea5cd8cda84984f37616ab2722a7f2e"
     )
     assert verified.status == "draft"
     assert verified.claim_ready is False
@@ -202,6 +208,7 @@ def test_committed_draft_is_verified_but_not_claim_ready() -> None:
         "downstream-samples",
         "inference-service-accounting",
         "natural-history-cohort",
+        "network-isolation-evidence",
         "second-task-suite",
     )
     with pytest.raises(ExternalProtocolError, match="not claim-ready"):
@@ -242,6 +249,8 @@ def test_complete_frozen_protocol_is_claim_ready(tmp_path: Path) -> None:
         "isolation_mode": "per_case",
         "timeout_seconds": 300.0,
         "poll_interval_seconds": 0.02,
+        "network_isolation_mode": "host-firewall",
+        "network_isolation_evidence_sha256": _sha("9"),
         "max_stdout_bytes": 1_000_000,
         "max_stderr_bytes": 1_000_000,
         "max_candidate_bytes": 20_000_000,
@@ -318,6 +327,21 @@ def test_frozen_protocol_fails_closed_on_unresolved_controls(
                 inference_service_accounting=None
             ),
             "memory and inference-service",
+        ),
+        (
+            "missing network isolation evidence",
+            lambda value: value["runner"].update(
+                network_isolation_mode=None,
+                network_isolation_evidence_sha256=None,
+            ),
+            "network-isolation evidence",
+        ),
+        (
+            "unsupported network isolation assertion",
+            lambda value: value["runner"].update(
+                network_isolation_mode="unverified"
+            ),
+            "supported mode and evidence",
         ),
         (
             "remaining blocker",

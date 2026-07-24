@@ -295,6 +295,8 @@ python -m benchmarks.external_runner \
   --max-stderr-bytes 1000000 \
   --max-candidate-bytes 20000000 \
   --max-memory-mb 32768 \
+  --network-isolation-mode host-firewall \
+  --network-isolation-evidence network-policy.txt \
   --adapter-revision REVISION \
   --environment-id sha256:DEPENDENCY_LOCK_SHA256 \
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m \
@@ -323,8 +325,12 @@ full benchmark-side decoding.
 `--max-memory-mb` bounds the adapter process tree with `RLIMIT_AS` on POSIX and
 a Job Object assigned before process resume on Windows. It does not account for
 a pre-existing inference service outside that process tree. The wrapper is not
-a filesystem or network sandbox, so unreviewed adapter code still belongs in a
-separately isolated environment.
+a filesystem sandbox and does not establish its own network sandbox, so
+unreviewed adapter code still belongs in a separately isolated environment.
+Claim controls require a bounded retained host firewall, container, or
+network-namespace policy artifact. The runner hashes it before and after
+execution and manifest reload rechecks it, but this does not independently
+prove that the host enforced the named policy.
 
 The manifest also binds adapter revision, environment id, model identity,
 context length, tokenizer, inference concurrency, retries, and model-service
@@ -332,11 +338,12 @@ cost. Missing per-case isolation, no enforced process-tree memory limit,
 unrecorded identity, a model other than the exact local Qwen Q4 build,
 concurrency other than one, or nonzero model service cost is a
 certificate-invalid non-win even when the candidate interchange itself is
-valid. In current runner schema `lrcbench-external-run-manifest-0.4`, a
+valid. In current runner schema `lrcbench-external-run-manifest-0.5`, a
 claim-eligible identity requires an immutable adapter revision, environment id
 `sha256:<dependency-lock-sha256>`, the exact 8192-context Qwen model, evaluator
-tokenizer, one slot, zero retries, and zero service cost. Scoring also matches
-the manifest's isolation and time/polling/output/candidate/memory limits to the
+tokenizer, one slot, zero retries, zero service cost, and retained
+network-isolation evidence. Scoring also matches the manifest's isolation,
+network-evidence digest, and time/polling/output/candidate/memory limits to the
 frozen protocol.
 
 Run the built-in round-trip and negative checks before preparing an adapter:
@@ -386,7 +393,7 @@ and documentation together.
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 877 tests: 872 passed and 5 platform/optional checks were
+The suite collected 878 tests: 873 passed and 5 platform/optional checks were
 skipped. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |
@@ -435,7 +442,7 @@ The current versioned
 and [self-hashed JSON manifest](../benchmarks/protocols/external-comparison-v1.json)
 form a verified draft. The result-blind screen records observed revisions and
 license evidence for ACON, FoldAgent, and AMA-Agent, plus the unresolved MemIR
-artifact. Eight explicit blockers cover final candidate decisions/adapters,
+artifact. Nine explicit blockers cover final candidate decisions/adapters,
 dependency locks, adapter memory, inference-service accounting, the natural
 cohort, two downstream suites, and frozen downstream samples. The draft
 therefore cannot serve as a preregistration yet. Verify its internal state

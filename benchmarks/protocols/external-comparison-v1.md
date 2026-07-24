@@ -117,6 +117,9 @@ Adapter process-tree memory limit (MB): **unresolved blocker
 Pre-existing inference-service containment or accounting rule: **unresolved
 blocker `inference-service-accounting`**
 
+Network-isolation mode and retained host/container policy evidence:
+**unresolved blocker `network-isolation-evidence`**
+
 ## Datasets and tasks
 
 The claim-bearing study must include all of:
@@ -202,6 +205,8 @@ python -m benchmarks.external_runner \
   --max-stderr-bytes 1000000 \
   --max-candidate-bytes 20000000 \
   --max-memory-mb MEMORY_LIMIT_MB \
+  --network-isolation-mode NETWORK_MODE \
+  --network-isolation-evidence NETWORK_POLICY_EXPORT \
   --adapter-revision REVISION \
   --environment-id sha256:DEPENDENCY_LOCK_SHA256 \
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m \
@@ -224,22 +229,25 @@ per-process and aggregate limits, and only then resumes adapter code.
 
 The memory limit covers the adapter process tree, not a pre-existing inference
 service. The final protocol must freeze how such a service is measured or
-contained before a claim-bearing run. The wrapper is also not a filesystem or
-network sandbox. Retain the corpus at the absolute path recorded in each
-manifest; import revalidates its self-digest, file digest, dataset id, and case
-count.
+contained before a claim-bearing run. The wrapper does not create a filesystem
+or network sandbox. A claim-bearing manifest must instead retain and hash the
+host firewall, container, or network-namespace policy artifact established
+outside the runner; reload verifies that exact file but cannot independently
+prove the host enforced it. Retain the corpus and network evidence at the
+absolute paths recorded in each manifest; import revalidates their byte counts
+and digests.
 
 Whole-corpus isolation, no enforced adapter memory limit, incomplete identity
 metadata, any model other than the exact Qwen Q4 variant, inference concurrency
 other than one, or nonzero model-service cost makes the system a certificate
 non-win. Claim-eligible runner schema
-`lrcbench-external-run-manifest-0.4` also requires an immutable adapter
+`lrcbench-external-run-manifest-0.5` also requires an immutable adapter
 revision, the canonical `sha256:` identity of the dependency lock, context
 length 8192, the evaluator tokenizer, one slot, zero retries, and zero service
-cost. The scorer rejects any identity, isolation mode, timeout, output,
-candidate, memory, or 20 ms enforcement-polling limit that differs from the
-frozen protocol. The candidate may still be retained for interchange
-diagnostics.
+cost, plus bounded retained network-isolation evidence. The scorer rejects any
+identity, isolation mode, network-evidence digest, timeout, output, candidate,
+memory, or 20 ms enforcement-polling limit that differs from the frozen
+protocol. The candidate may still be retained for interchange diagnostics.
 
 Score all intended systems in one explicitly registered invocation:
 

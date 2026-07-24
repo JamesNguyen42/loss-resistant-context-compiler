@@ -27,7 +27,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 877 collected: 872 passing, 5 skipped |
+| Tests at this snapshot | 878 collected: 873 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -38,7 +38,7 @@ claim rules.
 | Post-hoc Qwen offset ablation | 0 calls: 63.1579% literal-only precision, 60% recall, 2 final verification failures; not claim-bearing |
 | Held-out paired Qwen result | 128 sequential calls; literal model-only P/R/F1 74%/92.5%/82.2222%, coordinate 100%/17.5%/29.7872%; literal final verification failures 4 |
 | Common content-secret preprocessing | Opt-in, fixed-detector, offset-preserving, replayable |
-| External protocol | Valid self-hashed draft; 4 screened candidates, 8 explicit blockers, `claim_ready: false` |
+| External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | None |
 | External 50%-better claim | Not established |
 | Downstream task completion evidence | None yet |
@@ -478,7 +478,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 877 tests are collected: 872 pass and 5 platform/optional checks are skipped.
+- 878 tests are collected: 873 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all five schemas are included.
@@ -655,17 +655,18 @@ audited. Any selected superseded item independently fails verification as
 - Claim-bearing runner manifests require per-case isolation, an enforced
   adapter process-tree memory limit, recorded adapter/environment identity, the
   exact local Qwen Q4 model, one inference slot, context and tokenizer ids,
-  retries, and zero model-service cost; incomplete controls are a per-system
-  non-win.
+  retries, zero model-service cost, and bounded retained network-isolation
+  evidence; incomplete controls are a per-system non-win.
 - External scoring requires a strict frozen
-  `lrcbench-external-protocol-0.3` manifest. The protocol's set is authoritative,
+  `lrcbench-external-protocol-0.4` manifest. The protocol's set is authoritative,
   and the benchmark rejects a draft, dataset mismatch, unregistered system, or
-  adapter, dependency-environment, model, tokenizer, retry, or runner-limit
-  mismatch before scoring. Current runner schema
-  `lrcbench-external-run-manifest-0.4` freezes immutable adapter/environment
-  identity, exact 8192-context Qwen, one slot, zero retries/service cost, and
-  bounded runner controls including enforcement polling cadence. The committed
-  v1 protocol is valid but intentionally blocked and not claim-ready.
+  adapter, dependency-environment, model, tokenizer, retry, network-evidence,
+  or runner-limit mismatch before scoring. Current runner schema
+  `lrcbench-external-run-manifest-0.5` freezes immutable adapter/environment
+  identity, exact 8192-context Qwen, one slot, zero retries/service cost,
+  retained network-isolation evidence, and bounded runner controls including
+  enforcement polling cadence. The committed v1 protocol is valid but
+  intentionally blocked and not claim-ready.
 - CI runs a 24-history fail-closed benchmark certificate.
 - The performance profile is a broad shared-runner tripwire, not an SLO: it
   excludes source construction, `tracemalloc` is not RSS, and the separate
@@ -866,10 +867,13 @@ lower quantile before results are observed.
   producing a per-system invalid aggregate when passed directly. The
   claim-bearing manifest path converts bounded runner failures into retained
   invalid decisions with the manifest hash and reason bound into evidence.
-- The bounded runner is not a filesystem or network sandbox. POSIX
-  `RLIMIT_AS` and Windows Job Objects bound the adapter process tree, but not a
-  pre-existing inference service; claim-bearing resource accounting still
-  needs to freeze how that external process is measured or contained.
+- The bounded runner is not a filesystem sandbox and does not establish network
+  isolation. It now binds and revalidates an externally created host firewall,
+  container, or network-namespace policy artifact, but that retained file does
+  not prove the host enforced it. POSIX `RLIMIT_AS` and Windows Job Objects
+  bound the adapter process tree, but not a pre-existing inference service;
+  claim-bearing resource accounting still needs to freeze how that external
+  process is measured or contained.
 
 ## Safe host-side compaction transaction
 
@@ -909,7 +913,7 @@ next work is the external and natural-history evidence path:
 
 1. preserve the paired report and its four verification failures without
    post-result tuning or rescoring;
-2. resolve the eight explicit blockers in the machine-readable external
+2. resolve the nine explicit blockers in the machine-readable external
    protocol without looking at comparative results;
 3. complete result-blind inclusion decisions and freeze the initial comparison
    set, dependency locks, and adapter revisions;

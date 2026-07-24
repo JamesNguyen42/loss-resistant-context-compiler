@@ -12,6 +12,14 @@ from benchmarks.external_protocol import (
     _canonical_sha256,
 )
 
+FIXTURE_NETWORK_ISOLATION_MODE = "host-firewall"
+FIXTURE_NETWORK_ISOLATION_CONTENT = (
+    b"fixture host firewall export: outbound network denied\n"
+)
+FIXTURE_NETWORK_ISOLATION_SHA256 = hashlib.sha256(
+    FIXTURE_NETWORK_ISOLATION_CONTENT
+).hexdigest()
+
 
 def _identity(system: str) -> str:
     return hashlib.sha256(system.encode("utf-8")).hexdigest()
@@ -25,6 +33,10 @@ def write_frozen_external_protocol(
     environment_ids: Mapping[str, str] | None = None,
     synthetic_dataset_sha256: str = "9" * 64,
     max_memory_mb: int = 256,
+    network_isolation_mode: str = FIXTURE_NETWORK_ISOLATION_MODE,
+    network_isolation_evidence_sha256: str = (
+        FIXTURE_NETWORK_ISOLATION_SHA256
+    ),
 ) -> Path:
     registered = tuple(sorted(systems))
     if len(registered) < 4 or len(registered) != len(set(registered)):
@@ -132,6 +144,10 @@ def write_frozen_external_protocol(
             "isolation_mode": "per_case",
             "timeout_seconds": 300,
             "poll_interval_seconds": 0.02,
+            "network_isolation_mode": network_isolation_mode,
+            "network_isolation_evidence_sha256": (
+                network_isolation_evidence_sha256
+            ),
             "max_stdout_bytes": 1_000_000,
             "max_stderr_bytes": 1_000_000,
             "max_candidate_bytes": 20_000_000,

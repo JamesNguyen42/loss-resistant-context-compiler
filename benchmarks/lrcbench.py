@@ -2790,6 +2790,17 @@ def run_benchmark(
                     f"external system {reference.system!r} run manifest limits "
                     "do not match the frozen protocol"
                 )
+            network_isolation = reference.network_isolation
+            if (
+                network_isolation.mode
+                != expected_identity.network_isolation_mode
+                or network_isolation.evidence_sha256
+                != expected_identity.network_isolation_evidence_sha256
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "network-isolation evidence does not match the frozen protocol"
+                )
             external_manifest_sha256[reference.system] = reference.manifest_sha256
             external_model_ids[reference.system] = reference.model_id
             external_model_costs[reference.system] = reference.model_service_cost_usd

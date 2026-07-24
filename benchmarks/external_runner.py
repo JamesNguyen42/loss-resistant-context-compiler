@@ -45,11 +45,21 @@ from .lrcbench import (
     decode_external_candidate,
 )
 
-RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.4"
+RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.5"
 _SYSTEM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 _REVISION_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 _ENVIRONMENT_ID_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _ISOLATION_MODES = frozenset({"whole_corpus", "per_case"})
+NETWORK_ISOLATION_MODES = frozenset(
+    {
+        "unverified",
+        "container-no-network",
+        "network-namespace",
+        "host-firewall",
+    }
+)
+CLAIM_NETWORK_ISOLATION_MODES = NETWORK_ISOLATION_MODES - {"unverified"}
+_NETWORK_ISOLATION_EVIDENCE_MAX_BYTES = 1_000_000
 _WINDOWS_CREATE_SUSPENDED = 0x00000004
 _WINDOWS_JOB_OBJECT_LIMIT_PROCESS_MEMORY = 0x00000100
 _WINDOWS_JOB_OBJECT_LIMIT_JOB_MEMORY = 0x00000200
@@ -84,6 +94,7 @@ class ExternalRunReference:
     isolation_mode: str
     limits: RunnerLimits
     identity: RunnerIdentity
+    network_isolation: NetworkIsolationEvidence
     adapter_revision: str
     environment_id: str
     model_id: str
@@ -183,6 +194,55 @@ class RunnerLimits:
 
 
 @dataclass(frozen=True, slots=True)
+class NetworkIsolationEvidence:
+    """Retained host/container evidence for an externally enforced offline run."""
+
+    mode: str = "unverified"
+    evidence_path: str | None = None
+    evidence_sha256: str | None = None
+    evidence_bytes: int | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.mode, str) or self.mode not in NETWORK_ISOLATION_MODES:
+            raise ValueError("network isolation mode is invalid")
+        fields = (
+            self.evidence_path,
+            self.evidence_sha256,
+            self.evidence_bytes,
+        )
+        if self.mode == "unverified":
+            if any(value is not None for value in fields):
+                raise ValueError(
+                    "unverified network isolation cannot carry evidence"
+                )
+            return
+        if (
+            not isinstance(self.evidence_path, str)
+            or not self.evidence_path
+            or not Path(self.evidence_path).is_absolute()
+        ):
+            raise ValueError(
+                "evidenced network isolation requires an absolute evidence path"
+            )
+        if not _is_sha256(self.evidence_sha256):
+            raise ValueError(
+                "evidenced network isolation requires a SHA-256 evidence digest"
+            )
+        if (
+            isinstance(self.evidence_bytes, bool)
+            or not isinstance(self.evidence_bytes, int)
+            or self.evidence_bytes <= 0
+        ):
+            raise ValueError(
+                "evidenced network isolation requires a positive evidence byte count"
+            )
+
+    @property
+    def claim_evidence_complete(self) -> bool:
+        return self.mode in CLAIM_NETWORK_ISOLATION_MODES
+
+
+@dataclass(frozen=True, slots=True)
 class CaseRunRecord:
     case_id: str
     command: tuple[str, ...]
@@ -234,6 +294,7 @@ class ExternalRunManifest:
     stderr_sha256: str
     limits: RunnerLimits
     identity: RunnerIdentity
+    network_isolation: NetworkIsolationEvidence
     claim_metadata_complete: bool
     memory_limit_enforced: bool
     python_version: str
@@ -339,6 +400,61 @@ def _bounded_file_matches(
     except StrictJsonError:
         return False
     return evidence.file_sha256 == expected_sha256
+
+
+def capture_network_isolation_evidence(
+    mode: str,
+    path: Path | str | None = None,
+) -> NetworkIsolationEvidence:
+    """Hash one retained external-containment artifact for a runner manifest."""
+
+    if not isinstance(mode, str):
+        raise ExternalRunnerError("network isolation mode is invalid")
+    if mode == "unverified":
+        if path is not None:
+            raise ExternalRunnerError(
+                "unverified network isolation cannot accept an evidence path"
+            )
+        return NetworkIsolationEvidence()
+    if mode not in CLAIM_NETWORK_ISOLATION_MODES:
+        raise ExternalRunnerError("network isolation mode is invalid")
+    if path is None:
+        raise ExternalRunnerError(
+            "evidenced network isolation requires a retained evidence file"
+        )
+    resolved = Path(path).expanduser().resolve()
+    evidence = _bounded_file_evidence(
+        resolved,
+        max_bytes=_NETWORK_ISOLATION_EVIDENCE_MAX_BYTES,
+        label="network isolation evidence",
+    )
+    if evidence.byte_count <= 0:
+        raise ExternalRunnerError("network isolation evidence cannot be empty")
+    return NetworkIsolationEvidence(
+        mode=mode,
+        evidence_path=str(resolved),
+        evidence_sha256=evidence.file_sha256,
+        evidence_bytes=evidence.byte_count,
+    )
+
+
+def _network_isolation_evidence_matches(
+    evidence: NetworkIsolationEvidence,
+) -> bool:
+    if evidence.mode == "unverified":
+        return True
+    try:
+        observed = _bounded_file_evidence(
+            Path(evidence.evidence_path or ""),
+            max_bytes=_NETWORK_ISOLATION_EVIDENCE_MAX_BYTES,
+            label="network isolation evidence",
+        )
+    except ExternalRunnerError:
+        return False
+    return (
+        observed.file_sha256 == evidence.evidence_sha256
+        and observed.byte_count == evidence.evidence_bytes
+    )
 
 
 def _is_sha256(value: object) -> bool:
@@ -765,11 +881,13 @@ def _claim_controls_complete(
     identity: RunnerIdentity,
     limits: RunnerLimits,
     isolation_mode: str,
+    network_isolation: NetworkIsolationEvidence,
 ) -> bool:
     return (
         identity.claim_metadata_complete
         and isolation_mode == "per_case"
         and limits.max_memory_mb is not None
+        and network_isolation.claim_evidence_complete
     )
 
 
@@ -982,10 +1100,26 @@ def load_external_run_manifest(
         decoded_identity = RunnerIdentity(**identity_payload)
     except (TypeError, ValueError) as exc:
         raise ExternalRunnerError(f"run manifest identity is invalid: {exc}") from exc
+    try:
+        network_payload = payload["network_isolation"]
+        if not isinstance(network_payload, dict):
+            raise TypeError("network_isolation must be an object")
+        if set(network_payload) != set(NetworkIsolationEvidence.__dataclass_fields__):
+            raise TypeError("network_isolation fields do not match the schema")
+        decoded_network_isolation = NetworkIsolationEvidence(**network_payload)
+    except (TypeError, ValueError) as exc:
+        raise ExternalRunnerError(
+            f"run manifest network-isolation evidence is invalid: {exc}"
+        ) from exc
+    if not _network_isolation_evidence_matches(decoded_network_isolation):
+        raise ExternalRunnerError(
+            "run manifest network-isolation evidence file does not match"
+        )
     expected_claim_controls = _claim_controls_complete(
         decoded_identity,
         decoded_limits,
         isolation_mode,
+        decoded_network_isolation,
     )
     if payload["claim_metadata_complete"] != expected_claim_controls:
         raise ExternalRunnerError("run manifest claim-control completeness flag is inconsistent")
@@ -1120,7 +1254,8 @@ def load_external_run_manifest(
         if not expected_claim_controls:
             failure_reason = (
                 "run manifest lacks complete claim controls: exact-Qwen identity, "
-                "per-case isolation, and an enforced memory limit are required"
+                "per-case isolation, an enforced memory limit, and retained "
+                "network-isolation evidence are required"
             )
     else:
         failure_reason = (
@@ -1142,6 +1277,7 @@ def load_external_run_manifest(
         isolation_mode=isolation_mode,
         limits=decoded_limits,
         identity=decoded_identity,
+        network_isolation=decoded_network_isolation,
         adapter_revision=decoded_identity.adapter_revision,
         environment_id=decoded_identity.environment_id,
         model_id=decoded_identity.model_id,
@@ -1158,6 +1294,7 @@ def run_external_command(
     case_id: str | None = None,
     limits: RunnerLimits | None = None,
     identity: RunnerIdentity | None = None,
+    network_isolation: NetworkIsolationEvidence | None = None,
     working_directory: Path | str | None = None,
     environment: Mapping[str, str] | None = None,
 ) -> ExternalRunManifest:
@@ -1171,6 +1308,11 @@ def run_external_command(
         raise ExternalRunnerError("{case_id} can only be used by the per-case isolation mode")
     limits = limits or RunnerLimits()
     identity = identity or RunnerIdentity()
+    network_isolation = network_isolation or NetworkIsolationEvidence()
+    if not _network_isolation_evidence_matches(network_isolation):
+        raise ExternalRunnerError(
+            "network-isolation evidence file does not match before execution"
+        )
     corpus = Path(corpus_path).expanduser().resolve()
     candidate = Path(candidate_path).expanduser().resolve()
     if candidate.exists():
@@ -1322,6 +1464,11 @@ def run_external_command(
         )
     ):
         termination_reason = "corpus_modified"
+    if (
+        termination_reason is None
+        and not _network_isolation_evidence_matches(network_isolation)
+    ):
+        termination_reason = "network_isolation_evidence_modified"
     if termination_reason is None and stdout_bytes > limits.max_stdout_bytes:
         termination_reason = "stdout_limit"
     if termination_reason is None and stderr_bytes > limits.max_stderr_bytes:
@@ -1459,10 +1606,12 @@ def run_external_command(
         stderr_sha256=stderr_sha256,
         limits=limits,
         identity=identity,
+        network_isolation=network_isolation,
         claim_metadata_complete=_claim_controls_complete(
             identity,
             limits,
             "whole_corpus",
+            network_isolation,
         ),
         memory_limit_enforced=limits.max_memory_mb is not None,
         python_version=platform.python_version(),
@@ -1478,6 +1627,7 @@ def run_external_cases(
     candidate_path: Path | str,
     limits: RunnerLimits | None = None,
     identity: RunnerIdentity | None = None,
+    network_isolation: NetworkIsolationEvidence | None = None,
     working_directory: Path | str | None = None,
     environment: Mapping[str, str] | None = None,
 ) -> ExternalRunManifest:
@@ -1487,6 +1637,11 @@ def run_external_cases(
         raise ExternalRunnerError("system must be a valid LRCBench identifier")
     limits = limits or RunnerLimits()
     identity = identity or RunnerIdentity()
+    network_isolation = network_isolation or NetworkIsolationEvidence()
+    if not _network_isolation_evidence_matches(network_isolation):
+        raise ExternalRunnerError(
+            "network-isolation evidence file does not match before execution"
+        )
     corpus = Path(corpus_path).expanduser().resolve()
     candidate = Path(candidate_path).expanduser().resolve()
     if candidate.exists():
@@ -1566,6 +1721,7 @@ def run_external_cases(
                 case_id=case.id,
                 limits=limits,
                 identity=identity,
+                network_isolation=network_isolation,
                 working_directory=cwd,
                 environment=process_environment,
             )
@@ -1630,6 +1786,11 @@ def run_external_cases(
         )
     ):
         termination_reason = "corpus_modified"
+    if (
+        termination_reason is None
+        and not _network_isolation_evidence_matches(network_isolation)
+    ):
+        termination_reason = "network_isolation_evidence_modified"
     failed_process = next(
         (record for record in case_runs if not record.process_succeeded),
         None,
@@ -1746,10 +1907,12 @@ def run_external_cases(
         stderr_sha256=_case_stream_sha256(case_runs, "stderr"),
         limits=limits,
         identity=identity,
+        network_isolation=network_isolation,
         claim_metadata_complete=_claim_controls_complete(
             identity,
             limits,
             "per_case",
+            network_isolation,
         ),
         memory_limit_enforced=limits.max_memory_mb is not None,
         python_version=platform.python_version(),
@@ -1778,6 +1941,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-stderr-bytes", type=int, default=1_000_000)
     parser.add_argument("--max-candidate-bytes", type=int, default=20_000_000)
     parser.add_argument("--max-memory-mb", type=int)
+    parser.add_argument(
+        "--network-isolation-mode",
+        choices=tuple(sorted(NETWORK_ISOLATION_MODES)),
+        default="unverified",
+        help=(
+            "externally enforced offline boundary; claim modes also require "
+            "--network-isolation-evidence"
+        ),
+    )
+    parser.add_argument(
+        "--network-isolation-evidence",
+        type=Path,
+        help="retained host/container policy artifact hashed into the run manifest",
+    )
     parser.add_argument("--adapter-revision", default="unrecorded")
     parser.add_argument("--environment-id", default="unrecorded")
     parser.add_argument("--model-id", default="unrecorded")
@@ -1803,6 +1980,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.manifest_out.parent.is_dir():
         parser.error(f"manifest output directory does not exist: {args.manifest_out.parent}")
     try:
+        network_isolation = capture_network_isolation_evidence(
+            args.network_isolation_mode,
+            args.network_isolation_evidence,
+        )
         runner = run_external_cases if args.isolation == "per-case" else run_external_command
         manifest = runner(
             command,
@@ -1827,6 +2008,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 retry_count=args.retry_count,
                 model_service_cost_usd=args.model_service_cost_usd,
             ),
+            network_isolation=network_isolation,
         )
     except (ExternalRunnerError, TypeError, ValueError) as exc:
         parser.error(str(exc))

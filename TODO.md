@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 877 tests (872 passing and 5 skipped locally); CI covers Python
+- [x] Collect 878 tests (873 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -293,8 +293,9 @@ same quantity:
   dated Markdown, rejects incomplete frozen identities/datasets/resources, and
   exposes `claim_ready: false` for the current draft.
 - [x] Require every external LRCBench run to load a frozen protocol and match
-  its complete registered set, adapter revisions, and synthetic dataset digest;
-  bind that evidence in `lrcbench-report-0.2`.
+  its complete registered set, adapter/environment/model contract, retained
+  network-isolation evidence, runner limits, and synthetic dataset digest; bind
+  that evidence in `lrcbench-report-0.2`.
 
 Acceptance:
 
@@ -314,6 +315,10 @@ Acceptance:
   memory limits, then resumes it.
 - [ ] Account separately for a pre-existing inference service outside the
   adapter process tree; the runner's memory boundary does not include one.
+- [x] Require claim-bearing manifests to retain a bounded host firewall,
+  container, or network-namespace policy artifact; hash it before execution,
+  detect mutation, revalidate it on import, and match it to the frozen
+  protocol. The runner does not itself establish or prove that isolation.
 - [x] Keep gold atoms completely outside candidate inputs and bind the exported
   corpus to its own canonical digest.
 - [x] Normalize every candidate through
@@ -708,7 +713,7 @@ The next chat should start here unless new evidence changes the priority:
 
 1. preserve and replay the completed held-out paired result without tuning its
    corpus, validators, recovery, scoring, or recorded metrics;
-2. resolve the eight explicit blockers in the external-comparison manifest;
+2. resolve the nine explicit blockers in the external-comparison manifest;
 3. complete result-blind inclusion decisions and freeze the initial
    related-system set;
 4. add the first reproducible no-paid-service external adapter;

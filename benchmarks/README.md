@@ -241,6 +241,8 @@ python -m benchmarks.external_runner `
   --max-stderr-bytes 1000000 `
   --max-candidate-bytes 20000000 `
   --max-memory-mb 32768 `
+  --network-isolation-mode host-firewall `
+  --network-isolation-evidence network-policy.txt `
   --adapter-revision REVISION `
   --environment-id sha256:DEPENDENCY_LOCK_SHA256 `
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m `
@@ -267,20 +269,25 @@ and requires the recorded case count to match before any candidate is scored.
 `--max-memory-mb` uses `RLIMIT_AS` on POSIX and a race-free Windows Job Object
 boundary created before adapter code is resumed. It limits the adapter process
 tree, not an already-running inference service outside that tree. The wrapper
-is not a filesystem or network sandbox, so execute only reviewed adapter code
-in an appropriately isolated environment.
+does not establish a filesystem or network sandbox, so execute only reviewed
+adapter code in an appropriately isolated environment. Claim-bearing runs must
+provide the retained host firewall, container, or network-namespace policy file;
+the runner hashes it before execution, detects changes, and manifest reload
+rehashes it. That artifact is auditable evidence, not proof that the host
+enforced the named policy.
 
 Revision, environment, model, context, tokenizer, inference concurrency,
 retries, and service cost are also recorded. Claim-bearing manifests require
 per-case isolation, an enforced process-tree memory limit, complete identity
 fields, the exact Qwen Q4 model, one inference slot, and zero model-service
-cost. Current `lrcbench-external-run-manifest-0.4` claim metadata requires an
+cost. Current `lrcbench-external-run-manifest-0.5` claim metadata requires an
 immutable adapter revision, `environment_id` equal to
 `sha256:<dependency-lock-sha256>`, context length 8192, the evaluator tokenizer,
-zero retries, and the exact Qwen/one-slot/zero-service-cost identity. Scoring
-also requires every isolation, timeout, polling, output, candidate, and memory
-limit to match the frozen protocol. `--isolation whole-corpus` remains useful
-for diagnostics but is a registered certificate non-win.
+zero retries, the exact Qwen/one-slot/zero-service-cost identity, and retained
+network-isolation evidence. Scoring also requires every isolation, network
+evidence digest, timeout, polling, output, candidate, and memory limit to match
+the frozen protocol. `--isolation whole-corpus` remains useful for diagnostics
+but is a registered certificate non-win.
 
 Evaluation also recomputes active tokens from the final rendered string for
 every bundled or programmatic candidate. A valid character span alone is not
@@ -375,7 +382,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 877 tests alongside it: 872 passed and 5
+The suite collected 878 tests alongside it: 873 passed and 5
 platform/optional checks were skipped.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |
@@ -420,6 +427,6 @@ certificate outcome and document integrity are separate questions.
 The dated inclusion, failure, estimand, and freeze rules are in the
 [draft external comparison protocol](protocols/external-comparison-v1.md) and
 its [strict machine-readable companion](protocols/external-comparison-v1.json).
-The draft records four screened candidates and eight explicit blockers. It
+The draft records four screened candidates and nine explicit blockers. It
 remains non-claim-bearing until every blocker is resolved and the strict
 verifier accepts it with `--require-frozen`.

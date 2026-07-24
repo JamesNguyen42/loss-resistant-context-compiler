@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 877 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 878 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -35,7 +35,7 @@ meaning can be compressed without loss.
 | Exact local Qwen phrase evaluation | 64 calls; 5% model-only recall, 96.92% candidate rejection, 87.5% final recall |
 | Post-hoc Qwen offset ablation | 0 calls; 63.16% literal-only precision, 60% recall, and 2 final verification failures; non-claim-bearing |
 | Held-out paired Qwen result | 128 sequential calls; literal mode raised model-only recall from 17.5% to 92.5%, but reduced precision from 100% to 74% and caused 4 final verification failures |
-| External protocol | Strict self-hashed draft with 4 screened candidates and 8 explicit blockers; not claim-ready |
+| External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
 | Named external comparisons | Not run |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
@@ -190,7 +190,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 877 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 878 regression tests.
 
 ## In development
 
@@ -845,9 +845,11 @@ Current claim-eligible runner manifests identify the environment as
 `sha256:<dependency-lock-sha256>`; scoring requires that identity and the
 immutable adapter revision, exact model/context/tokenizer/retry contract, and
 all retained runner limits—including the 20 ms enforcement polling cadence—to
-match the frozen protocol.
-The wrapper is not a filesystem or network sandbox, and its memory limit does
-not include a pre-existing inference service outside the adapter process tree.
+match the frozen protocol. Claim controls also require a bounded retained
+host/container network-isolation artifact whose digest matches the protocol.
+The wrapper does not itself create a filesystem or network sandbox, and its
+memory limit does not include a pre-existing inference service outside the
+adapter process tree.
 It accepts the legacy producerless adapter payload only at that bounded runner
 boundary, then emits the current self-hashed candidate envelope with the
 registered adapter/model identity. Direct candidate imports require the current
@@ -864,7 +866,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 877 tests are collected (872 pass and 5
+Current local snapshot (2026-07-24): 878 tests are collected (873 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

@@ -1,5 +1,5 @@
 {
-  "schema": "lrcbench-external-protocol-0.3",
+  "schema": "lrcbench-external-protocol-0.4",
   "protocol_id": "external-comparison-v1",
   "status": "draft",
   "created_at": "2026-07-24T00:00:00+00:00",
@@ -7,7 +7,7 @@
   "freeze_repository_commit": null,
   "protocol_document": {
     "path": "external-comparison-v1.md",
-    "file_sha256": "d1eb1ad233629374cbc22ae305cfca09005c52687bbcc575608f4a7e9dcda363"
+    "file_sha256": "8c723f527071c515714ed955715ae07fd6a9f023710b7cc4943cff0e70c4a60f"
   },
   "comparison_candidates": [
     {
@@ -136,6 +136,8 @@
     "isolation_mode": "per_case",
     "timeout_seconds": 300,
     "poll_interval_seconds": 0.02,
+    "network_isolation_mode": null,
+    "network_isolation_evidence_sha256": null,
     "max_stdout_bytes": 1000000,
     "max_stderr_bytes": 1000000,
     "max_candidate_bytes": 20000000,
@@ -176,9 +178,13 @@
       "description": "Seal a licensed, privacy-reviewed natural coding-agent history cohort with independent annotations."
     },
     {
+      "id": "network-isolation-evidence",
+      "description": "Freeze and retain host, container, or namespace evidence that adapter execution had no network access."
+    },
+    {
       "id": "second-task-suite",
       "description": "Select and pin a materially different public tool-use or research task suite."
     }
   ],
-  "protocol_sha256": "4053d6b46ccb1d65cf40e9de7d105d3c696e707e3dfd3a11758f0c5edd698cc8"
+  "protocol_sha256": "42c3482a2586d677cd065335277c74df7ea5cd8cda84984f37616ab2722a7f2e"
 }

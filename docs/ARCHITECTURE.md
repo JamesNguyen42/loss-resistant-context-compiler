@@ -560,9 +560,11 @@ legacy external-inclusive claims fail closed.
 `benchmarks/external_protocol.py` independently validates the self-hashed
 protocol manifest, its retained Markdown digest, candidate revisions, licenses,
 dependency/adapter pins, exact-model and one-slot constraints, required
-datasets, statistics, runner policy, and blockers. `run_benchmark()` accepts
+datasets, statistics, runner policy, retained network-isolation evidence, and
+blockers. `run_benchmark()` accepts
 external inputs only with a claim-ready frozen protocol and then requires exact
-registered-set, adapter-revision, and synthetic-dataset identity matches.
+registered-set, adapter/environment/model, network-evidence, runner-limit, and
+synthetic-dataset identity matches.
 
 `benchmarks/report_verifier.py` verifies saved current-schema reports and the
 retained local `0.1` report beyond the envelope hash. It rejects duplicate and
@@ -601,10 +603,11 @@ generation config, cases, sources, and evaluator gold. The
 `candidate_payload_sha256`. The runner accepts legacy `0.1` output only as a
 raw adapter boundary, upgrades it using the registered runner identity, and
 cross-checks that identity again during manifest reload. Current runner
-manifest schema `0.4` requires an immutable adapter revision, canonical
+manifest schema `0.5` requires an immutable adapter revision, canonical
 `sha256:<dependency-lock-sha256>` environment, exact model/context/tokenizer,
-one inference slot, and zero retries/service cost for claim eligibility.
-External scoring additionally compares all of those fields and the retained
+one inference slot, zero retries/service cost, and bounded retained
+network-isolation evidence for claim eligibility. External scoring additionally
+compares all of those fields, the network-evidence digest, and the retained
 runner limits, including the enforcement polling cadence, with the frozen
 protocol.
 

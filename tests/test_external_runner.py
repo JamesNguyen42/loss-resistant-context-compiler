@@ -14,6 +14,7 @@ from benchmarks.external_runner import (
     ExternalRunnerError,
     RunnerIdentity,
     RunnerLimits,
+    capture_network_isolation_evidence,
     load_external_run_manifest,
     run_external_cases,
     run_external_command,
@@ -35,7 +36,12 @@ from benchmarks.lrcbench import (
     run_benchmark,
 )
 from context_compiler.local_qwen import QWEN_Q4_VARIANT
-from tests.protocol_fixtures import write_frozen_external_protocol
+from tests.protocol_fixtures import (
+    FIXTURE_NETWORK_ISOLATION_CONTENT,
+    FIXTURE_NETWORK_ISOLATION_MODE,
+    FIXTURE_NETWORK_ISOLATION_SHA256,
+    write_frozen_external_protocol,
+)
 
 FIXTURE_ADAPTER_REVISION = "a" * 40
 FIXTURE_ENVIRONMENT_ID = "sha256:" + "b" * 64
@@ -112,6 +118,17 @@ def claim_identity() -> RunnerIdentity:
     )
 
 
+def retained_network_isolation(tmp_path: Path):
+    evidence_path = tmp_path / "network-isolation.txt"
+    evidence_path.write_bytes(FIXTURE_NETWORK_ISOLATION_CONTENT)
+    evidence = capture_network_isolation_evidence(
+        FIXTURE_NETWORK_ISOLATION_MODE,
+        evidence_path,
+    )
+    assert evidence.evidence_sha256 == FIXTURE_NETWORK_ISOLATION_SHA256
+    return evidence
+
+
 def test_claim_identity_requires_frozen_model_and_environment_contract() -> None:
     identity = claim_identity()
 
@@ -132,6 +149,87 @@ def test_claim_identity_requires_frozen_model_and_environment_contract() -> None
     assert not replace(identity, model_service_cost_usd=0.01).claim_metadata_complete
     with pytest.raises(TypeError, match="model_service_cost_usd must be numeric"):
         replace(identity, model_service_cost_usd=None)  # type: ignore[arg-type]
+
+
+def test_network_isolation_evidence_is_required_and_revalidated(tmp_path) -> None:
+    with pytest.raises(
+        ExternalRunnerError,
+        match="unverified network isolation cannot accept",
+    ):
+        capture_network_isolation_evidence(
+            "unverified",
+            tmp_path / "unexpected.txt",
+        )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="requires a retained evidence file",
+    ):
+        capture_network_isolation_evidence("host-firewall")
+
+    corpus_path = tmp_path / "corpus.json"
+    _config, document = write_corpus(corpus_path)
+    diagnostic_candidate = tmp_path / "diagnostic-candidate.json"
+    diagnostic = run_external_cases(
+        valid_adapter_command(),
+        system="network-fixture",
+        corpus_path=corpus_path,
+        candidate_path=diagnostic_candidate,
+        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        identity=claim_identity(),
+    )
+    assert diagnostic.ready_for_scoring
+    assert not diagnostic.claim_metadata_complete
+
+    evidence = retained_network_isolation(tmp_path)
+    candidate_path = tmp_path / "candidate.json"
+    manifest_path = tmp_path / "manifest.json"
+    manifest = run_external_cases(
+        valid_adapter_command(),
+        system="network-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        identity=claim_identity(),
+        network_isolation=evidence,
+    )
+    manifest_path.write_text(manifest.to_json(), encoding="utf-8")
+    assert manifest.claim_metadata_complete
+
+    Path(evidence.evidence_path or "").write_text(
+        "tampered network policy\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="network-isolation evidence file does not match",
+    ):
+        load_external_run_manifest(
+            manifest_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
+    execution_evidence = retained_network_isolation(tmp_path)
+    mutating_candidate = tmp_path / "mutating-candidate.json"
+    mutation_program = (
+        "from pathlib import Path;import sys;"
+        "Path(sys.argv[1]).write_text('changed during execution',encoding='utf-8')"
+    )
+    mutated = run_external_command(
+        [
+            sys.executable,
+            "-c",
+            mutation_program,
+            execution_evidence.evidence_path,
+        ],
+        system="network-fixture",
+        corpus_path=corpus_path,
+        candidate_path=mutating_candidate,
+        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        identity=claim_identity(),
+        network_isolation=execution_evidence,
+    )
+    assert mutated.termination_reason == "network_isolation_evidence_modified"
+    assert not mutated.ready_for_scoring
 
 
 def test_corpus_export_digest_detects_gold_free_source_tampering(tmp_path) -> None:
@@ -391,6 +489,7 @@ def test_per_case_candidate_mutation_before_aggregation_is_rejected(
             candidate_path=candidate_path,
             limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
             identity=claim_identity(),
+            network_isolation=retained_network_isolation(tmp_path),
         )
 
 
@@ -408,6 +507,7 @@ def test_per_case_runner_executes_without_a_shell_and_validates_candidate(
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
         identity=claim_identity(),
+        network_isolation=retained_network_isolation(tmp_path),
     )
 
     assert manifest.process_succeeded
@@ -443,6 +543,7 @@ def test_cli_defaults_to_claim_eligible_per_case_mode(tmp_path, capsys) -> None:
     write_corpus(corpus_path)
     candidate_path = tmp_path / "candidate.json"
     manifest_path = tmp_path / "manifest.json"
+    network_isolation = retained_network_isolation(tmp_path)
 
     exit_code = runner_main(
         [
@@ -458,6 +559,10 @@ def test_cli_defaults_to_claim_eligible_per_case_mode(tmp_path, capsys) -> None:
             "5",
             "--max-memory-mb",
             "256",
+            "--network-isolation-mode",
+            network_isolation.mode,
+            "--network-isolation-evidence",
+            network_isolation.evidence_path,
             "--adapter-revision",
             FIXTURE_ADAPTER_REVISION,
             "--environment-id",
@@ -519,6 +624,7 @@ def test_per_case_runner_uses_one_validated_corpus_case_per_process(tmp_path) ->
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
         identity=claim_identity(),
+        network_isolation=retained_network_isolation(tmp_path),
     )
 
     payload = json.loads(candidate_path.read_text(encoding="utf-8"))
@@ -584,6 +690,7 @@ def test_whole_corpus_mode_is_diagnostic_even_with_complete_identity(tmp_path) -
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
         identity=claim_identity(),
+        network_isolation=retained_network_isolation(tmp_path),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
 
@@ -613,6 +720,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=300, max_memory_mb=256),
         identity=claim_identity(),
+        network_isolation=retained_network_isolation(tmp_path),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
     systems = (
@@ -718,6 +826,31 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             external_protocol_path=mismatched_limits_protocol,
         )
 
+    mismatched_network_directory = tmp_path / "mismatched-network"
+    mismatched_network_directory.mkdir()
+    mismatched_network_protocol = write_frozen_external_protocol(
+        mismatched_network_directory,
+        systems,
+        adapter_revisions={
+            "fixture-adapter": FIXTURE_ADAPTER_REVISION,
+        },
+        environment_ids={
+            "fixture-adapter": FIXTURE_ENVIRONMENT_ID,
+        },
+        synthetic_dataset_sha256=document["dataset_sha256"],
+        network_isolation_evidence_sha256="f" * 64,
+    )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="network-isolation evidence does not match the frozen protocol",
+    ):
+        run_benchmark(
+            config,
+            external_manifest_paths=(manifest_path,),
+            expected_external_systems=systems,
+            external_protocol_path=mismatched_network_protocol,
+        )
+
     mismatched_poll_candidate = tmp_path / "mismatched-poll-candidate.json"
     mismatched_poll_manifest_path = tmp_path / "mismatched-poll-manifest.json"
     mismatched_poll_manifest = run_external_cases(
@@ -731,6 +864,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             poll_interval_seconds=0.01,
         ),
         identity=claim_identity(),
+        network_isolation=retained_network_isolation(tmp_path),
     )
     mismatched_poll_manifest_path.write_text(
         mismatched_poll_manifest.to_json(),
@@ -756,6 +890,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         candidate_path=mismatched_model_candidate,
         limits=RunnerLimits(timeout_seconds=300, max_memory_mb=256),
         identity=replace(claim_identity(), model_context_length=4096),
+        network_isolation=retained_network_isolation(tmp_path),
     )
     mismatched_model_manifest_path.write_text(
         mismatched_model_manifest.to_json(),
@@ -821,6 +956,7 @@ def test_ready_manifest_wraps_candidate_disappearance_during_validation(
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
         identity=claim_identity(),
+        network_isolation=retained_network_isolation(tmp_path),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
     original_loader = external_runner_module.load_strict_json_file
@@ -860,6 +996,7 @@ def test_ready_manifest_rejects_rehashed_candidate_producer_mismatch(
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
         identity=claim_identity(),
+        network_isolation=retained_network_isolation(tmp_path),
     )
     candidate_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
     candidate_payload["producer"]["adapter_revision"] = "forged-revision"
@@ -974,6 +1111,7 @@ def test_rehashed_inconsistent_case_audit_record_is_rejected(tmp_path) -> None:
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
         identity=claim_identity(),
+        network_isolation=retained_network_isolation(tmp_path),
     ).to_dict()
     payload = json.loads(json.dumps(original_payload))
     payload["case_runs"][0]["stdout_bytes"] += 1
@@ -1167,6 +1305,7 @@ def test_failed_exact_contract_manifest_becomes_a_registered_invalid_nonwin(
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=300, max_memory_mb=256),
         identity=claim_identity(),
+        network_isolation=retained_network_isolation(tmp_path),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
     systems = (

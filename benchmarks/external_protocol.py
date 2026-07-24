@@ -27,7 +27,7 @@ from .json_io import (
 )
 from .lrcbench import TOKENIZER_ID
 
-EXTERNAL_PROTOCOL_SCHEMA = "lrcbench-external-protocol-0.3"
+EXTERNAL_PROTOCOL_SCHEMA = "lrcbench-external-protocol-0.4"
 DEFAULT_EXTERNAL_PROTOCOL = (
     Path(__file__).resolve().parent
     / "protocols"
@@ -51,6 +51,9 @@ _REPOSITORY_RE = re.compile(
 )
 _CANDIDATE_STATUSES = frozenset({"screening", "include", "exclude"})
 _DATASET_STATUSES = frozenset({"pending", "frozen"})
+_CLAIM_NETWORK_ISOLATION_MODES = frozenset(
+    {"container-no-network", "network-namespace", "host-firewall"}
+)
 _RESERVED_SYSTEMS = frozenset({"compiler", "head", "tail", "extractive"})
 _REQUIRED_DATASET_KINDS = (
     "synthetic",
@@ -127,6 +130,8 @@ _RUNNER_FIELDS = {
     "isolation_mode",
     "timeout_seconds",
     "poll_interval_seconds",
+    "network_isolation_mode",
+    "network_isolation_evidence_sha256",
     "max_stdout_bytes",
     "max_stderr_bytes",
     "max_candidate_bytes",
@@ -158,6 +163,8 @@ class ExternalExecutionContract:
     isolation_mode: str
     timeout_seconds: float
     poll_interval_seconds: float
+    network_isolation_mode: str | None
+    network_isolation_evidence_sha256: str | None
     max_stdout_bytes: int
     max_stderr_bytes: int
     max_candidate_bytes: int
@@ -175,6 +182,10 @@ class ExternalExecutionContract:
             "isolation_mode": self.isolation_mode,
             "timeout_seconds": self.timeout_seconds,
             "poll_interval_seconds": self.poll_interval_seconds,
+            "network_isolation_mode": self.network_isolation_mode,
+            "network_isolation_evidence_sha256": (
+                self.network_isolation_evidence_sha256
+            ),
             "max_stdout_bytes": self.max_stdout_bytes,
             "max_stderr_bytes": self.max_stderr_bytes,
             "max_candidate_bytes": self.max_candidate_bytes,
@@ -736,14 +747,37 @@ def _validate_runner(value: object, *, frozen: bool) -> None:
             context="runner.max_memory_mb",
             minimum=1,
         )
+    network_mode = runner["network_isolation_mode"]
+    network_evidence_sha256 = runner["network_isolation_evidence_sha256"]
+    if network_mode is None and network_evidence_sha256 is None:
+        pass
+    elif (
+        not isinstance(network_mode, str)
+        or network_mode not in _CLAIM_NETWORK_ISOLATION_MODES
+        or network_evidence_sha256 is None
+    ):
+        raise ExternalProtocolError(
+            "runner network isolation requires a supported mode and evidence SHA-256"
+        )
+    else:
+        _sha256(
+            network_evidence_sha256,
+            context="runner.network_isolation_evidence_sha256",
+        )
     accounting = _optional_string(
         runner["inference_service_accounting"],
         context="runner.inference_service_accounting",
         maximum=2_048,
     )
-    if frozen and (max_memory_mb is None or accounting is None):
+    if frozen and (
+        max_memory_mb is None
+        or accounting is None
+        or network_mode is None
+        or network_evidence_sha256 is None
+    ):
         raise ExternalProtocolError(
-            "frozen runner requires memory and inference-service accounting"
+            "frozen runner requires memory and inference-service accounting "
+            "plus retained network-isolation evidence"
         )
 
 
@@ -916,6 +950,19 @@ def load_external_protocol(
             timeout_seconds=float(payload["runner"]["timeout_seconds"]),
             poll_interval_seconds=float(
                 payload["runner"]["poll_interval_seconds"]
+            ),
+            network_isolation_mode=(
+                None
+                if payload["runner"]["network_isolation_mode"] is None
+                else str(payload["runner"]["network_isolation_mode"])
+            ),
+            network_isolation_evidence_sha256=(
+                None
+                if payload["runner"]["network_isolation_evidence_sha256"]
+                is None
+                else str(
+                    payload["runner"]["network_isolation_evidence_sha256"]
+                )
             ),
             max_stdout_bytes=int(payload["runner"]["max_stdout_bytes"]),
             max_stderr_bytes=int(payload["runner"]["max_stderr_bytes"]),
