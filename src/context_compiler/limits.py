@@ -14,6 +14,10 @@ class SourceLimitError(ValueError):
     """Raised when source history exceeds a configured resource boundary."""
 
 
+class ArtifactLimitError(ValueError):
+    """Raised when a compiled artifact exceeds a configured boundary."""
+
+
 @dataclass(frozen=True, slots=True)
 class SourceLimits:
     """Hard limits applied before source history enters compilation.
@@ -61,11 +65,65 @@ class SourceLimits:
 DEFAULT_SOURCE_LIMITS = SourceLimits()
 
 
+@dataclass(frozen=True, slots=True)
+class ArtifactLimits:
+    """Hard limits applied before a compiled artifact is inspected or replayed."""
+
+    max_input_bytes: int = 128 * _MIB
+    max_line_chars: int = 8 * _MIB
+    max_canonical_bytes: int = 128 * _MIB
+    max_json_depth: int = 128
+    max_items: int = 200_000
+    max_selected_items: int = 200_000
+    max_provenance_spans: int = 1_000_000
+    max_verification_issues: int = 100_000
+
+    def __post_init__(self) -> None:
+        for name in (
+            "max_input_bytes",
+            "max_line_chars",
+            "max_canonical_bytes",
+            "max_json_depth",
+            "max_items",
+            "max_selected_items",
+            "max_provenance_spans",
+            "max_verification_issues",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer")
+            if value <= 0:
+                raise ValueError(f"{name} must be positive")
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "max_input_bytes": self.max_input_bytes,
+            "max_line_chars": self.max_line_chars,
+            "max_canonical_bytes": self.max_canonical_bytes,
+            "max_json_depth": self.max_json_depth,
+            "max_items": self.max_items,
+            "max_selected_items": self.max_selected_items,
+            "max_provenance_spans": self.max_provenance_spans,
+            "max_verification_issues": self.max_verification_issues,
+        }
+
+
+DEFAULT_ARTIFACT_LIMITS = ArtifactLimits()
+
+
 def resolve_source_limits(limits: SourceLimits | None) -> SourceLimits:
     if limits is None:
         return DEFAULT_SOURCE_LIMITS
     if not isinstance(limits, SourceLimits):
         raise TypeError("source limits must be a SourceLimits value")
+    return limits
+
+
+def resolve_artifact_limits(limits: ArtifactLimits | None) -> ArtifactLimits:
+    if limits is None:
+        return DEFAULT_ARTIFACT_LIMITS
+    if not isinstance(limits, ArtifactLimits):
+        raise TypeError("artifact limits must be an ArtifactLimits value")
     return limits
 
 
@@ -95,6 +153,8 @@ def bounded_json_utf8_size(
     max_bytes: int,
     max_depth: int,
     label: str,
+    limit_error: type[ValueError] = SourceLimitError,
+    reject_nonfinite: bool = True,
 ) -> int:
     """Measure compact UTF-8 JSON without allocating the serialized value."""
 
@@ -105,7 +165,7 @@ def bounded_json_utf8_size(
         nonlocal size
         size += amount
         if size > max_bytes:
-            raise SourceLimitError(f"{label} exceeds {max_bytes} UTF-8 JSON bytes")
+            raise limit_error(f"{label} exceeds {max_bytes} UTF-8 JSON bytes")
 
     def visit(current: Any, depth: int) -> None:
         if current is None:
@@ -129,14 +189,15 @@ def bounded_json_utf8_size(
             return
         if isinstance(current, float):
             if not math.isfinite(current):
-                raise TypeError("source numbers must be finite")
+                if reject_nonfinite:
+                    raise TypeError("source numbers must be finite")
+                add(len(json.dumps(current)))
+                return
             add(len(json.dumps(current, allow_nan=False)))
             return
         if isinstance(current, list):
             if depth >= max_depth:
-                raise SourceLimitError(
-                    f"{label} exceeds supported JSON nesting depth of {max_depth}"
-                )
+                raise limit_error(f"{label} exceeds supported JSON nesting depth of {max_depth}")
             container_id = id(current)
             if container_id in active_containers:
                 raise TypeError("source records cannot contain cyclic JSON values")
@@ -152,9 +213,7 @@ def bounded_json_utf8_size(
             return
         if isinstance(current, dict):
             if depth >= max_depth:
-                raise SourceLimitError(
-                    f"{label} exceeds supported JSON nesting depth of {max_depth}"
-                )
+                raise limit_error(f"{label} exceeds supported JSON nesting depth of {max_depth}")
             if not all(isinstance(key, str) for key in current):
                 raise TypeError("source object keys must be strings")
             container_id = id(current)
@@ -202,3 +261,47 @@ def add_source_size(
             f"source records exceed {limits.max_total_record_bytes} total UTF-8 JSON bytes"
         )
     return updated
+
+
+def validate_artifact_value(value: Any, *, limits: ArtifactLimits) -> int:
+    if isinstance(value, dict):
+        items = value.get("items")
+        if isinstance(items, list):
+            if len(items) > limits.max_items:
+                raise ArtifactLimitError(
+                    f"compiled artifact exceeds {limits.max_items} memory items"
+                )
+            provenance_spans = 0
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                provenance = item.get("provenance")
+                if isinstance(provenance, list):
+                    provenance_spans += len(provenance)
+                    if provenance_spans > limits.max_provenance_spans:
+                        raise ArtifactLimitError(
+                            "compiled artifact exceeds "
+                            f"{limits.max_provenance_spans} provenance spans"
+                        )
+
+        selected = value.get("selected_item_ids")
+        if isinstance(selected, list) and len(selected) > limits.max_selected_items:
+            raise ArtifactLimitError(
+                f"compiled artifact exceeds {limits.max_selected_items} selected item ids"
+            )
+
+        verification = value.get("verification")
+        issues = verification.get("issues") if isinstance(verification, dict) else None
+        if isinstance(issues, list) and len(issues) > limits.max_verification_issues:
+            raise ArtifactLimitError(
+                f"compiled artifact exceeds {limits.max_verification_issues} verification issues"
+            )
+
+    return bounded_json_utf8_size(
+        value,
+        max_bytes=limits.max_canonical_bytes,
+        max_depth=limits.max_json_depth,
+        label="compiled artifact",
+        limit_error=ArtifactLimitError,
+        reject_nonfinite=False,
+    )

@@ -88,8 +88,32 @@ as external proof.
 
 These controls bound accepted source material, not total Python process RSS or
 runtime. Callers can allocate an oversized object before passing it to the
-library, and custom extractors, token counters, artifact files, and whole
-compilation still need separate host-level limits.
+library, and custom extractors, token counters, and whole compilation still
+need separate host-level limits.
+
+### Artifact ingestion limits
+
+`ArtifactLimits` applies the same fail-early pattern to compiled artifacts
+before `ctxc verify`, `ctxc inspect`, or direct replay traverses them. Defaults
+cap a serialized artifact at 128 MiB, a physical line at 8,388,608 characters,
+decoded compact JSON at 128 MiB, JSON depth at 128, memory and selected-id
+collections at 200,000 each, total provenance spans at 1,000,000, and embedded
+verification issues at 100,000.
+
+`load_artifact()` and `load_artifact_path()` use bounded chunked reads, strict
+duplicate-key and finite-number decoding, a quote-aware pre-decode depth scan,
+and a non-serializing canonical-size walk. File paths are checked both by
+filesystem size before opening and by decoded UTF-8 bytes while reading.
+Collection lengths are rejected before the detailed schema verifier walks
+their entries. `verify_artifact_dict()` independently enforces the same
+canonical and collection limits for caller-supplied Python values and records
+its effective limits in the returned replay report.
+
+Malformed direct Python artifacts preserve the verifier's failure-report
+contract: cycles and non-JSON objects become `invalid_artifact_json` rather
+than escaping as an unhandled error. Such caller-allocated objects necessarily
+exist before the library can bound them, so hosts still need an outer process
+memory boundary when direct callers are adversarial.
 
 ### `ProvenanceSpan`
 

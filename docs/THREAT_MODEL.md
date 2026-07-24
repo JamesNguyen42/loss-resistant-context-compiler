@@ -51,7 +51,8 @@ to verify it, hashes cannot recover the original truth.
 | Archive overwrite through the API | Append-only path, exclusive local lock, id/sequence collision rejection, `fsync`, load-time hash validation | A filesystem administrator can rewrite/delete files; locks may not be reliable on every network filesystem |
 | Budget pressure removes requirements | Protected kinds bypass optional selection; overflow is explicit or strict-fail | Enough protected content can exceed the downstream model’s hard context window |
 | Source resource exhaustion | Shared positive limits cap serialized source/archive bytes, physical line length, JSON depth, record count, per-record and total canonical size across loaders, compiler, verifier, and archive; strict JSON rejects ambiguous/non-finite input | Python objects may already be allocated before a direct API call; configured maxima are not process-RSS limits |
-| Compile/provider resource exhaustion | Model responses/candidate counts are bounded and the local Qwen subprocess adapter has a hard timeout | Artifact input size, whole-compile duration, custom extractor/token-counter work, and generic completion-callable latency are not globally capped |
+| Artifact resource exhaustion | Strict bounded loaders cap raw/canonical bytes, physical lines, JSON depth, item/selection collections, provenance spans, and embedded issues before inspect or replay | Direct Python objects may already be allocated; limits do not make a self-hashed artifact trustworthy |
+| Compile/provider resource exhaustion | Model responses/candidate counts are bounded and the local Qwen subprocess adapter has a hard timeout | Whole-compile duration, custom extractor/token-counter work, and generic completion-callable latency are not globally capped |
 | Secret disclosure | None beyond caller-controlled storage and provider choice | Source quotes, metadata, artifacts, prompts, benchmark JSON, and model calls can expose secrets; the LM Studio CLI prompt is visible in process arguments on some hosts |
 | External benchmark adapter escape | The standard runner avoids a shell, isolates cases, limits time/output/process-tree memory on POSIX and Windows, terminates descendants, validates candidates, and hashes a manifest | It is not a filesystem or network sandbox; reviewed code and an isolated host/container remain necessary, and a pre-existing inference service is outside the process-tree memory boundary |
 
@@ -203,5 +204,5 @@ The current package does not provide:
 - automatic secret detection;
 - protection after host or Python-process compromise;
 - guaranteed bounded process memory or runtime for adversarial extractors,
-  token counters, artifacts, or caller-allocated Python objects;
+  token counters, or caller-allocated Python objects;
 - a production incident-response or migration system.

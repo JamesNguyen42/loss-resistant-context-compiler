@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Run 197 tests; CI covers Python 3.11, 3.12, and 3.13.
+- [x] Run 223 tests; CI covers Python 3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
 
@@ -500,6 +500,9 @@ than most related technology” within the exact dated evaluation scope.
 - [x] Add shared configurable limits for source bytes, record count, line
   length, canonical record size, JSON depth, and archive size. Model response
   size and candidate count are also bounded.
+- [x] Add strict, configurable artifact limits for raw/canonical bytes, line
+  length, JSON depth, item/selection counts, provenance spans, and embedded
+  verification issues across CLI and direct replay.
 - [ ] Add a portable whole-compile deadline that cannot leave background
   extractors running or corrupt caller state.
 - [ ] Add structured diagnostics that distinguish invalid input, extraction

@@ -10,8 +10,18 @@ from pathlib import Path
 
 from .archive import SourceArchive
 from .compiler import ContextCompiler
-from .io import load_sources, load_sources_path, verify_artifact_dict
-from .limits import DEFAULT_SOURCE_LIMITS, SourceLimits
+from .io import (
+    load_artifact_path,
+    load_sources,
+    load_sources_path,
+    verify_artifact_dict,
+)
+from .limits import (
+    DEFAULT_ARTIFACT_LIMITS,
+    DEFAULT_SOURCE_LIMITS,
+    ArtifactLimits,
+    SourceLimits,
+)
 from .models import CompilationPolicy
 
 
@@ -23,6 +33,19 @@ def _source_limits(args: argparse.Namespace) -> SourceLimits:
         max_record_bytes=args.max_source_record_bytes,
         max_total_record_bytes=args.max_total_source_bytes,
         max_json_depth=args.max_source_json_depth,
+    )
+
+
+def _artifact_limits(args: argparse.Namespace) -> ArtifactLimits:
+    return ArtifactLimits(
+        max_input_bytes=args.max_artifact_bytes,
+        max_line_chars=args.max_artifact_line_chars,
+        max_canonical_bytes=args.max_artifact_canonical_bytes,
+        max_json_depth=args.max_artifact_json_depth,
+        max_items=args.max_artifact_items,
+        max_selected_items=args.max_artifact_selected_items,
+        max_provenance_spans=args.max_artifact_provenance_spans,
+        max_verification_issues=args.max_artifact_verification_issues,
     )
 
 
@@ -128,12 +151,14 @@ def _archive_verify(args: argparse.Namespace) -> int:
 def _verify(args: argparse.Namespace) -> int:
     try:
         source_limits = _source_limits(args)
-        artifact = json.loads(Path(args.artifact).read_text(encoding="utf-8"))
+        artifact_limits = _artifact_limits(args)
+        artifact = load_artifact_path(args.artifact, limits=artifact_limits)
         sources = _input_sources(args.sources, source_limits)
         report = verify_artifact_dict(
             artifact,
             sources,
             source_limits=source_limits,
+            artifact_limits=artifact_limits,
         )
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         sys.stderr.write(f"ctxc: {exc}\n")
@@ -144,8 +169,9 @@ def _verify(args: argparse.Namespace) -> int:
 
 def _inspect(args: argparse.Namespace) -> int:
     try:
-        artifact = json.loads(Path(args.artifact).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        artifact_limits = _artifact_limits(args)
+        artifact = load_artifact_path(args.artifact, limits=artifact_limits)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         sys.stderr.write(f"ctxc: {exc}\n")
         return 2
     if not isinstance(artifact, dict):
@@ -205,6 +231,57 @@ def _add_source_limit_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_artifact_limit_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--max-artifact-bytes",
+        type=int,
+        default=DEFAULT_ARTIFACT_LIMITS.max_input_bytes,
+        help="maximum UTF-8 bytes read from a compiled artifact",
+    )
+    parser.add_argument(
+        "--max-artifact-line-chars",
+        type=int,
+        default=DEFAULT_ARTIFACT_LIMITS.max_line_chars,
+        help="maximum characters in one physical artifact JSON line",
+    )
+    parser.add_argument(
+        "--max-artifact-canonical-bytes",
+        type=int,
+        default=DEFAULT_ARTIFACT_LIMITS.max_canonical_bytes,
+        help="maximum compact UTF-8 JSON bytes in a decoded artifact",
+    )
+    parser.add_argument(
+        "--max-artifact-json-depth",
+        type=int,
+        default=DEFAULT_ARTIFACT_LIMITS.max_json_depth,
+        help="maximum JSON container nesting depth in a compiled artifact",
+    )
+    parser.add_argument(
+        "--max-artifact-items",
+        type=int,
+        default=DEFAULT_ARTIFACT_LIMITS.max_items,
+        help="maximum memory items in a compiled artifact",
+    )
+    parser.add_argument(
+        "--max-artifact-selected-items",
+        type=int,
+        default=DEFAULT_ARTIFACT_LIMITS.max_selected_items,
+        help="maximum selected item ids in a compiled artifact",
+    )
+    parser.add_argument(
+        "--max-artifact-provenance-spans",
+        type=int,
+        default=DEFAULT_ARTIFACT_LIMITS.max_provenance_spans,
+        help="maximum provenance spans across a compiled artifact",
+    )
+    parser.add_argument(
+        "--max-artifact-verification-issues",
+        type=int,
+        default=DEFAULT_ARTIFACT_LIMITS.max_verification_issues,
+        help="maximum embedded verification issues in a compiled artifact",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ctxc",
@@ -237,11 +314,13 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("sources")
     verify_parser.add_argument("-o", "--output")
     _add_source_limit_arguments(verify_parser)
+    _add_artifact_limit_arguments(verify_parser)
     verify_parser.set_defaults(handler=_verify)
 
     inspect_parser = subparsers.add_parser("inspect", help="show artifact health and compression")
     inspect_parser.add_argument("artifact")
     inspect_parser.add_argument("-o", "--output")
+    _add_artifact_limit_arguments(inspect_parser)
     inspect_parser.set_defaults(handler=_inspect)
 
     archive_parser = subparsers.add_parser("archive", help="manage immutable cold source events")

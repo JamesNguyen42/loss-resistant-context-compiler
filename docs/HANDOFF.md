@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 197 passing |
+| Tests at this snapshot | 223 passing |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -237,7 +237,7 @@ supplied extractors and token counters are deterministic.
 | `src/context_compiler/compiler.py` | End-to-end orchestration, recovery, selection, compression accounting |
 | `src/context_compiler/verifier.py` | Independent coverage, provenance, support, authority, and state checks |
 | `src/context_compiler/io.py` | Input decoding, strict artifact shape validation, replay verification |
-| `src/context_compiler/limits.py` | Shared source byte, line, depth, count, and canonical-size limits |
+| `src/context_compiler/limits.py` | Shared source/artifact byte, line, depth, canonical-size, and collection limits |
 | `src/context_compiler/archive.py` | Append-only local archive, locking, loading, and verification |
 | `src/context_compiler/cli.py` | `ctxc` command-line interface and exit codes |
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
@@ -272,7 +272,12 @@ Important compile options:
 - `--archive`;
 - `--max-source-bytes`, `--max-source-records`,
   `--max-source-line-chars`, `--max-source-record-bytes`,
-  `--max-total-source-bytes`, and `--max-source-json-depth`.
+  `--max-total-source-bytes`, and `--max-source-json-depth`;
+- `verify` and `inspect` also expose `--max-artifact-bytes`,
+  `--max-artifact-line-chars`, `--max-artifact-canonical-bytes`,
+  `--max-artifact-json-depth`, `--max-artifact-items`,
+  `--max-artifact-selected-items`, `--max-artifact-provenance-spans`, and
+  `--max-artifact-verification-issues`.
 
 Exit codes:
 
@@ -301,6 +306,8 @@ Primary exported objects:
 - `SourceArchive`;
 - `SourceLimits`;
 - `SourceLimitError`;
+- `ArtifactLimits`;
+- `ArtifactLimitError`;
 - `VerificationReport`.
 
 Custom token accounting requires both a callback and a stable
@@ -372,7 +379,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 197 tests pass.
+- 223 tests pass.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -386,6 +393,10 @@ audited. Any selected superseded item independently fails verification as
   canonical-size limits. Adversarial tests cover UTF-8 boundaries, oversized
   paths and lines, deep/ambiguous/non-finite JSON, high-count generators, huge
   tool schemas, binary-looking output, and atomic archive refusal.
+- Artifact loaders, direct replay, `ctxc verify`, and `ctxc inspect` share
+  strict raw/canonical byte, line, depth, item/selection, provenance, and issue
+  limits. Tests cover BOM/multibyte boundaries, duplicate keys, non-finite
+  values, excessive collections, cyclic direct dictionaries, and CLI refusal.
 - The external runner has deterministic fixture coverage for sequential
   per-case execution, retained case failure, Windows Job Object memory
   enforcement, valid output, timeout, output overflow, invalid candidates,
@@ -529,7 +540,7 @@ lower quantile before results are observed.
 ### Scale and availability
 
 - Batch compilation reparses the supplied history.
-- Source and archive input is bounded by default, but artifact-file size,
+- Source, archive, and compiled-artifact input is bounded by default, but
   whole-compile duration, custom extractor/token-counter work, and generic
   completion-callable latency are not globally capped.
 - Direct Python callers can allocate oversized objects before the compiler

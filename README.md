@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 197 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 223 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
@@ -119,8 +119,8 @@ The repository currently includes:
 - strict bounded model-output parsing with duplicate-key and non-finite-number
   rejection, deterministic provider-failure fallback, and an opt-in strict
   provider-failure policy;
-- shared default-on source limits for UTF-8 input bytes, physical line length,
-  JSON depth, record count, per-record size, total canonical size, and archives;
+- shared default-on source and compiled-artifact limits for UTF-8 input bytes,
+  physical line length, JSON depth, canonical size, and schema collections;
 - a portable JSON artifact, compact prompt renderer, and three JSON Schemas;
 - an append-only local source archive with integrity checks and locking;
 - the `ctxc compile`, `verify`, `inspect`, and `archive` commands;
@@ -131,7 +131,7 @@ The repository currently includes:
   and valid or failed manifests that feed per-system certificate decisions;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
-- cross-version CI, linting, wheel/schema checks, and 197 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 223 regression tests.
 
 ## In development
 
@@ -144,8 +144,8 @@ adding more claims to the README:
 - test the optional model extractor across providers and novel phrasing;
 - add exact provider tokenizers and framework adapters;
 - support efficient incremental compilation for live agent loops;
-- add whole-compile and generic-provider deadlines, bound artifact input, and
-  continue hardening secrets handling, storage authenticity, and observability;
+- add whole-compile and generic-provider deadlines, then continue hardening
+  secrets handling, storage authenticity, and observability;
 - obtain independent reproduction before making a state-of-the-art claim.
 
 The ordered engineering backlog is in [TODO.md](TODO.md). The current design
@@ -321,6 +321,24 @@ They are hard ingestion boundaries, not a promise that total process memory
 equals the byte caps; Python objects, compiler state, and caller-controlled
 extractors have additional overhead.
 
+`ctxc verify` and `ctxc inspect` also decode compiled artifacts strictly and
+bound them independently:
+
+| Boundary | Default | CLI override |
+| --- | ---: | --- |
+| Serialized artifact input | 128 MiB | `--max-artifact-bytes` |
+| One physical artifact line | 8,388,608 characters | `--max-artifact-line-chars` |
+| Decoded compact artifact JSON | 128 MiB | `--max-artifact-canonical-bytes` |
+| JSON container nesting | 128 levels | `--max-artifact-json-depth` |
+| Memory items / selected ids | 200,000 each | `--max-artifact-items`, `--max-artifact-selected-items` |
+| Provenance spans | 1,000,000 | `--max-artifact-provenance-spans` |
+| Embedded verification issues | 100,000 | `--max-artifact-verification-issues` |
+
+`ArtifactLimits` exposes the same boundaries to `load_artifact()`,
+`load_artifact_path()`, and `verify_artifact_dict()`. Duplicate keys,
+non-standard or overflowed non-finite numbers, and excessive depth fail before
+artifact shape or cryptographic replay work begins.
+
 The default JSON output contains the complete typed ledger and is the format to
 retain for audit. It carries `artifact_sha256`, which `ctxc verify`
 recomputes over the canonical artifact payload before checking its contents.
@@ -389,6 +407,7 @@ For exact provider token accounting, give the compiler a stable counter name
 and give independent artifact verification the same callback and name:
 
 ```python
+from context_compiler import ArtifactLimits
 from context_compiler.io import verify_artifact_dict
 
 def count_words(text: str) -> int:
@@ -397,6 +416,7 @@ def count_words(text: str) -> int:
 compiler = ContextCompiler(
     token_counter=count_words,
     token_counter_id="words-v1",
+    artifact_limits=ArtifactLimits(max_items=50_000),
 )
 memory = compiler.compile(sources)
 checked = verify_artifact_dict(
@@ -529,7 +549,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): all 197 tests pass, and the recorded default
+Current local snapshot (2026-07-24): all 223 tests pass, and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`
