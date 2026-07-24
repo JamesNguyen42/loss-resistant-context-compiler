@@ -60,7 +60,8 @@ to verify it, hashes cannot recover the original truth.
 | Benchmark evidence resource exhaustion or parser ambiguity | Reports, corpora, candidates, and manifests share bounded regular-file hashing and strict UTF-8 JSON decoding with duplicate-key, non-finite, byte, line, and depth rejection | Direct already-decoded Python objects are caller allocations; configured file limits do not cap total verifier RSS |
 | Artifact resource exhaustion | Strict bounded loaders cap raw/canonical bytes, physical lines, JSON depth, item/selection collections, provenance spans, and embedded issues before inspect or replay | Direct Python objects may already be allocated; limits do not make a self-hashed artifact trustworthy |
 | Compile/provider resource exhaustion | Model responses/candidate counts are bounded; the local Qwen adapter has a transport timeout; optional whole-compile isolation owns a POSIX process group or Windows Job Object and terminates its descendant tree at the deadline | Direct in-process compilation is uncapped; a deliberately daemonized POSIX child can escape its process group; deadline job configuration uses local pickle and therefore requires trusted serializable objects |
-| Secret disclosure | None beyond caller-controlled storage and provider choice | Source quotes, metadata, artifacts, artifact-diff item text, prompts, benchmark JSON, exception diagnostics, opt-in completion events, and model calls can expose secrets; the LM Studio CLI prompt is visible in process arguments on some hosts |
+| Common content-secret disclosure | Optional preprocessing uses nine fixed lexical detectors, length/line-boundary-preserving masks, recomputed record hashes, explicit limits, deterministic replay, and a strict self-hashed coordinate report that omits original content-secret text and hashes | Detection is heuristic; false positives and false negatives remain. Original input enters process memory first. Metadata, ids, timestamps, PII, unknown formats, report coordinates, storage, logs, and previous artifacts are outside the redaction scope |
+| Secret disclosure after redaction | Compiling the redacted source set prevents recognized content secrets from entering its items, prompt, or artifact; replay binds the exact redacted records | Source metadata and identity fields remain in record hashes and may themselves be sensitive; external providers, process arguments, archives, diffs, benchmark evidence, or host logs can still expose anything not redacted before those boundaries |
 | External benchmark adapter escape | The standard runner avoids a shell, isolates cases, limits time/output/process-tree memory on POSIX and Windows, terminates descendants, validates candidates, and hashes a manifest | It is not a filesystem or network sandbox; reviewed code and an isolated host/container remain necessary, and a pre-existing inference service is outside the process-tree memory boundary |
 
 ## Authority model
@@ -120,14 +121,38 @@ full digest for integrity comparison.
 
 ## Privacy
 
-The project performs no redaction, encryption, retention scheduling, or access
-control. Exact provenance deliberately retains source quotations, which can
-include credentials, personal data, proprietary code, or terminal secrets.
+The project provides opt-in common-secret redaction for source content. It does
+not automatically enable it, and it provides no encryption, retention
+scheduling, access control, general personal-data discovery, or secure
+deletion. Exact provenance retains whichever redacted or unredacted source
+quotations the caller chooses to compile.
+
+`ctxc redact` and `redact_sources()` use only fixed, bounded lexical detectors.
+They preserve character offsets and line boundaries, then recompute content
+and record hashes. Their report includes source ids, coordinates, counts, and a
+redacted-source digest, but no original content-secret text or per-secret
+digest. Mask length and coordinates remain observable. The report self-hash is
+not authentication.
+
+Source ids, roles, sequence numbers, timestamps, and metadata are deliberately
+unchanged in report version `0.1`. The redacted source-set digest commits to
+those values through each record hash. A secret placed in metadata is therefore
+neither removed nor outside all digest-based guessing risk. Minimize those
+fields separately.
+
+The preprocessor must first read the original input. It cannot erase that file,
+Python memory, swap, shell history, backups, previous output, or upstream logs.
+The CLI's redacted source and report files are each replaced atomically, but
+the pair is not one cross-file filesystem transaction. Verify the report digest
+against the retained redacted source set before use.
 
 Before ingestion:
 
-- remove or tokenize secrets and sensitive personal data;
-- minimize metadata;
+- authenticate roles and minimize metadata and source identifiers;
+- run content-secret redaction and inspect its report when its fixed detector
+  scope is appropriate;
+- separately remove or tokenize sensitive personal data and unsupported secret
+  formats;
 - decide whether an external model provider may receive the history;
 - remember that the included LM Studio CLI passes the prompt as a process
   argument that local process monitors or other users may observe;
@@ -136,6 +161,9 @@ Before ingestion:
 
 Do not publish `--include-histories` benchmark-like evidence built from private
 production histories without a separate review.
+
+See [Content secret redaction](REDACTION.md) for the exact detector vocabulary,
+resource limits, replay contract, and safe deployment sequence.
 
 ## Availability and fail behavior
 
@@ -223,7 +251,8 @@ The current package does not provide:
 - sandboxing of source content or downstream actions;
 - distributed consensus or a tamper-proof event log;
 - semantic entailment proofs;
-- automatic secret detection;
+- automatically enabled redaction or comprehensive DLP/PII detection;
+- metadata, source-id, or timestamp redaction;
 - protection after host or Python-process compromise;
 - guaranteed bounded process memory or runtime for adversarial extractors,
   token counters, or caller-allocated Python objects;

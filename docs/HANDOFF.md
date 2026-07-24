@@ -5,7 +5,8 @@ with the root [README](../README.md), [TODO](../TODO.md),
 [architecture](ARCHITECTURE.md), [benchmark protocol](BENCHMARKING.md), and
 [threat model](THREAT_MODEL.md). Read the
 [extraction extension contract](EXTENDING_EXTRACTION.md) before adding domain
-vocabulary or custom extractors.
+vocabulary or custom extractors, and [content secret redaction](REDACTION.md)
+before changing preprocessing or privacy claims.
 
 ## Snapshot
 
@@ -16,12 +17,13 @@ vocabulary or custom extractors.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 709 collected: 704 passing, 5 skipped |
+| Tests at this snapshot | 777 collected: 772 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
 | Recorded local certificate | `ISSUED`, scope `local-bundled-only` |
 | Novel English diagnostic | 64 cases: 85.3659% precision, 87.5% recall |
+| Common content-secret preprocessing | Opt-in, fixed-detector, offset-preserving, replayable |
 | External systems evaluated | None |
 | External 50%-better claim | Not established |
 | Downstream task completion evidence | None yet |
@@ -258,6 +260,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `src/context_compiler/artifact_diff.py` | Integrity-gated deterministic artifact comparison and self-hashed diff reports |
 | `src/context_compiler/artifact_inspection.py` | Versioned bounded artifact summaries and control-character-safe terminal rendering |
 | `src/context_compiler/schema_compatibility.py` | Machine-readable artifact reader/writer window and no-silent-migration policy |
+| `src/context_compiler/redaction.py` | Fixed common-secret content detectors, masking policy, immutable result, audit report, and exact replay |
 | `src/context_compiler/cli.py` | `ctxc` parsing, atomic output transactions, versioned error/completion diagnostics, and exit codes |
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
 | `benchmarks/json_io.py` | Shared bounded regular-file hashing and strict JSON decoding for benchmark evidence |
@@ -265,7 +268,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `benchmarks/external_runner.py` | Shell-free adapter process limits, validation, and self-hashed run manifests |
 | `benchmarks/performance_gate.py` | Fixed-digest CI compile latency/growth/traced-memory regression gate |
 | `benchmarks/protocols/` | Versioned external comparison protocol; v1 is still a non-claim-bearing draft |
-| `schemas/` | Source, model extraction, and compiled artifact contracts |
+| `schemas/` | Source, model extraction, compiled artifact, and redaction-report contracts |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
 | `.github/workflows/ci.yml` | Cross-version tests, lint, wheel checks, interchange, benchmark |
 
@@ -280,6 +283,7 @@ ctxc inspect ARTIFACT
 ctxc inspect ARTIFACT --format text --show-items
 ctxc diff BEFORE_ARTIFACT AFTER_ARTIFACT [--summary-only]
 ctxc schema [--artifact-version VERSION]
+ctxc redact HISTORY -o REDACTED.jsonl --report REPORT.json
 ctxc archive append ARCHIVE HISTORY
 ctxc archive verify ARCHIVE
 ```
@@ -308,6 +312,12 @@ Important compile options:
   `--max-display-links`, and `--max-text-chars` cap the terminal view;
 - every operation accepts `--error-format text|json`; JSON runtime errors use
   the `ctxc-diagnostic-0.1` schema.
+
+`ctxc redact` requires distinct output/report paths, refuses input aliases,
+accepts stdin, and exposes a repeatable `--detector` subset plus mask,
+per-source, total-finding, per-source-character, and total-character limits.
+It changes source content only. The two output files are each atomically
+replaced but are not installed as one cross-file transaction.
 
 Exit codes:
 
@@ -342,6 +352,17 @@ Primary exported objects:
 - `SourceLimitError`;
 - `ArtifactLimits`;
 - `ArtifactLimitError`;
+- `RedactionPolicy`;
+- `RedactionFinding`;
+- `RedactionResult`;
+- `RedactionError`;
+- `RedactionLimitError`;
+- `redact_sources`;
+- `verify_redaction_report_hash`;
+- `verify_redaction_result`;
+- `SECRET_DETECTOR_NAMES`;
+- `REDACTION_REPORT_SCHEMA`;
+- `REDACTION_VERIFICATION_SCHEMA`;
 - `ARTIFACT_DIFF_SCHEMA`;
 - `ARTIFACT_INSPECTION_SCHEMA`;
 - `ARTIFACT_SCHEMA_COMPATIBILITY_SCHEMA`;
@@ -381,6 +402,8 @@ and enforces a subprocess timeout. See [Local Qwen integration](LOCAL_QWEN.md).
 | Artifact inspection schema | `ctxc-artifact-inspection-0.1` |
 | Compile completion event schema | `ctxc-event-0.1` |
 | CLI diagnostic schema | `ctxc-diagnostic-0.1` |
+| Redaction report schema | `ctxc-redaction-report-0.1` |
+| Redaction verification schema | `ctxc-redaction-verification-0.1` |
 | Performance gate report | `ctxc-performance-gate-0.1` |
 | LRCBench report version | `lrcbench-0.2` |
 | LRCBench corpus schema | `lrcbench-corpus-0.3` |
@@ -400,7 +423,7 @@ Input accepts:
 - a JSON list;
 - a JSON object containing `sources`, `events`, or `messages`;
 - JSONL;
-- stdin through `ctxc compile -`.
+- stdin through `ctxc compile -` or `ctxc redact -`.
 
 Each record requires:
 
@@ -435,10 +458,10 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 709 tests are collected: 704 pass and 5 platform/optional checks are skipped.
+- 777 tests are collected: 772 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
-- CI builds a wheel and verifies that all three schemas are included.
+- CI builds a wheel and verifies that all four schemas are included.
 - CI runs the external-candidate interchange self-test.
 - CI enforces `ci-compile-v1` through a self-hashed
   `ctxc-performance-gate-0.1` report: three-trial medians at 128/256 events,
@@ -466,6 +489,16 @@ audited. Any selected superseded item independently fails verification as
   copied, read-only, capped, authority-gated, exact-span, pickle-safe, and
   artifact-replay tested. Custom-domain completeness remains outside the
   built-in certificate; see `docs/EXTENDING_EXTRACTION.md`.
+- Optional `redact_sources()` and `ctxc redact` preprocessing covers nine fixed
+  common-secret content forms without caller regexes. It preserves Unicode
+  character offsets and every Python line-boundary form, recomputes source
+  hashes, incrementally caps direct source iterables, enforces
+  character/candidate/finding limits, and emits a strict self-hashed report
+  without original content-secret text or hashes. Exact
+  rerun verification, detector overlaps, immutable evidence, CLI path aliases,
+  and redacted-provenance compilation are tested. Metadata, ids, timestamps,
+  arbitrary PII, and unknown formats remain outside scope; see
+  `docs/REDACTION.md`.
 - Source loaders, direct compilation, independent verification, and archives
   share default-on byte, line, JSON-depth, count, per-record, and aggregate
   canonical-size limits. Adversarial tests cover UTF-8 boundaries, oversized
@@ -685,9 +718,16 @@ lower quantile before results are observed.
 ### Security and privacy
 
 - Roles must be authenticated upstream.
-- There is no automatic redaction, encryption, access control, or retention
-  manager.
-- Exact provenance can retain secrets or personal data.
+- Common content-secret redaction is explicit, heuristic, and fixed-vocabulary;
+  false positives and false negatives remain.
+- There is no automatically enabled redaction, metadata/PII redaction,
+  encryption, access control, secure deletion, or retention manager.
+- Exact provenance can retain anything left in redacted content and always
+  retains unmodified ids, roles, timestamps, and metadata.
+- Redaction first reads the original source; it does not erase files, memory,
+  process arguments, logs, backups, or prior artifacts.
+- The redaction report reveals source ids, coordinates, and masked lengths; its
+  self-hash is not a signature.
 - Local archive append-only behavior is not filesystem-enforced.
 - Hashes are not signatures and do not prevent rollback.
 
@@ -738,21 +778,28 @@ lower quantile before results are observed.
 The library compiles and verifies memory, but the host decides when old active
 context is removed. A safe integration should perform this transaction:
 
-1. authenticate roles and redact secrets before ingestion;
-2. durably persist the retrievable trusted source events and separately anchor
+1. authenticate roles, minimize metadata/source ids, and normalize events;
+2. run the optional content-secret preprocessor before any model or compiled
+   artifact receives the history, then inspect its bounded report;
+3. separately remove unsupported sensitive data and apply storage controls;
+4. durably persist the retrievable trusted redacted source events and
+   separately anchor
    their expected digest;
-3. compile a candidate artifact without deleting active history;
-4. independently verify the complete artifact against the trusted source set;
-5. reject or escalate verification failure, strict overflow, missing tokenizer,
+5. compile a candidate artifact without deleting active history;
+6. independently verify the complete artifact against the trusted redacted
+   source set;
+7. reject or escalate verification failure, strict overflow, missing tokenizer,
    provider failure, or unsupported schema;
-6. render the prompt and artifact from the same sealed, digest-checked snapshot;
-7. atomically install only that verified prompt and artifact;
-8. retain the source archive, trust anchor, and a rollback pointer;
-9. optionally compose a recent uncompressed tail under a separate tested host
+8. render the prompt and artifact from the same sealed, digest-checked snapshot;
+9. atomically install only that verified prompt and artifact;
+10. retain the redacted source archive, redaction report, trust anchor, and a
+    rollback pointer;
+11. optionally compose a recent uncompressed tail under a separate tested host
    policy;
-10. remove old active context only after the verified replacement is durable.
+12. remove old active context only after the verified replacement is durable.
 
-Recent-tail composition, atomic installation, rollback, retention, redaction,
+Recent-tail composition, atomic multi-artifact installation, rollback,
+retention, redaction-policy selection, unsupported sensitive-data handling,
 and trust-anchor storage are host responsibilities. The package does not
 currently implement this transaction manager.
 
@@ -839,13 +886,13 @@ Then:
 ```text
 Continue the loss-resistant context compiler from this repository.
 First read README.md, TODO.md, docs/HANDOFF.md, docs/ARCHITECTURE.md,
-docs/BENCHMARKING.md, and docs/THREAT_MODEL.md. Inspect the current branch,
-diff, tests, and recorded evidence before changing anything. Preserve the
-fail-closed provenance, authority, protected-retention, and claim-boundary
-rules. Start with the highest-priority incomplete P0 evidence work in TODO.md,
-validate it empirically, and do not claim external superiority without the required
-matched evidence. Keep all GitHub authorship and commits solely under
-JamesNguyen42.
+docs/BENCHMARKING.md, docs/THREAT_MODEL.md, and docs/REDACTION.md. Inspect the
+current branch, diff, tests, and recorded evidence before changing anything.
+Preserve the fail-closed provenance, authority, protected-retention, privacy-
+scope, and claim-boundary rules. Start with the highest-priority incomplete P0
+evidence work in TODO.md, validate it empirically, and do not claim external
+superiority without the required matched evidence. Keep all GitHub authorship
+and commits solely under JamesNguyen42.
 ```
 
 ## Decision log

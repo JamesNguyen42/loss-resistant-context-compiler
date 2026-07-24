@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -29,10 +30,25 @@ from .limits import (
     SourceLimits,
 )
 from .models import CompilationPolicy, CompiledMemory
+from .redaction import (
+    SECRET_DETECTOR_NAMES,
+    RedactionLimitError,
+    RedactionPolicy,
+    redact_sources,
+)
 from .schema_compatibility import artifact_schema_registry, artifact_schema_support
 
 _DIAGNOSTIC_SCHEMA = "ctxc-diagnostic-0.1"
 _EVENT_SCHEMA = "ctxc-event-0.1"
+_CLI_MASK_CHARACTERS = frozenset({"*", "#", "█", "■"})
+
+
+def _mask_character(value: str) -> str:
+    if value not in _CLI_MASK_CHARACTERS:
+        raise argparse.ArgumentTypeError(
+            "mask must be '*', '#', U+2588, or U+25A0"
+        )
+    return value
 
 
 def _source_limits(args: argparse.Namespace) -> SourceLimits:
@@ -80,7 +96,10 @@ def _command_name(args: argparse.Namespace) -> str:
 
 
 def _error_identity(exc: BaseException) -> tuple[str, str]:
-    if isinstance(exc, (ArtifactLimitError, SourceLimitError)):
+    if isinstance(
+        exc,
+        (ArtifactLimitError, RedactionLimitError, SourceLimitError),
+    ):
         return "resource_limit", "resource_limit_exceeded"
     if isinstance(exc, TimeoutError):
         return "timeout", "operation_timed_out"
@@ -471,6 +490,83 @@ def _schema(args: argparse.Namespace) -> int:
     return 0
 
 
+def _paths_alias(first: str, second: str) -> bool:
+    first_path = Path(first)
+    second_path = Path(second)
+    if os.path.normcase(str(first_path.resolve(strict=False))) == os.path.normcase(
+        str(second_path.resolve(strict=False))
+    ):
+        return True
+    try:
+        return first_path.samefile(second_path)
+    except (FileNotFoundError, OSError):
+        return False
+
+
+def _redact(args: argparse.Namespace) -> int:
+    try:
+        if args.output == "-" or args.report == "-":
+            raise ValueError(
+                "redacted source output and report must be file paths; "
+                "'-' is supported only for input"
+            )
+        if _paths_alias(args.output, args.report):
+            raise ValueError(
+                "redacted source output and report must use different paths"
+            )
+        if args.input != "-" and (
+            _paths_alias(args.input, args.output)
+            or _paths_alias(args.input, args.report)
+        ):
+            raise ValueError(
+                "redaction refuses to overwrite its source input"
+            )
+        source_limits = _source_limits(args)
+        sources = _input_sources(args.input, source_limits)
+        policy = RedactionPolicy(
+            enabled_detectors=(
+                tuple(args.detector)
+                if args.detector is not None
+                else SECRET_DETECTOR_NAMES
+            ),
+            mask_character=args.mask_character,
+            max_sources=args.max_source_records,
+            max_findings_per_source=args.max_redactions_per_source,
+            max_total_findings=args.max_total_redactions,
+            max_source_chars=args.max_redaction_source_chars,
+            max_total_chars=args.max_redaction_total_chars,
+        )
+        result = redact_sources(sources, policy=policy)
+        rendered_sources = "".join(
+            json.dumps(
+                source.to_dict(),
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+            + "\n"
+            for source in result.sources
+        )
+        rendered_report = json.dumps(
+            result.to_report(),
+            indent=2,
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        atomic_write_text(Path(args.output), rendered_sources)
+        _write_output(rendered_report, args.report)
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        _write_error(args, exc)
+        return 2
+    return 0
+
+
 def _add_source_limit_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--max-source-bytes",
@@ -687,6 +783,65 @@ def build_parser() -> argparse.ArgumentParser:
     schema_parser.add_argument("-o", "--output")
     _add_error_format_argument(schema_parser)
     schema_parser.set_defaults(handler=_schema)
+
+    redact_parser = subparsers.add_parser(
+        "redact",
+        help="mask common content secrets before compilation",
+    )
+    redact_parser.add_argument("input", help="history path or - for stdin")
+    redact_parser.add_argument(
+        "-o",
+        "--output",
+        required=True,
+        help="redacted JSONL source path (must differ from input)",
+    )
+    redact_parser.add_argument(
+        "--report",
+        required=True,
+        help="self-hashed redaction report path (must differ from input/output)",
+    )
+    redact_parser.add_argument(
+        "--detector",
+        action="append",
+        choices=SECRET_DETECTOR_NAMES,
+        help="enable one fixed detector; repeat to select a subset",
+    )
+    redact_parser.add_argument(
+        "--mask-character",
+        type=_mask_character,
+        metavar="MASK",
+        default="*",
+        help=(
+            "length-preserving mask: *, #, U+2588, or U+25A0"
+        ),
+    )
+    redact_parser.add_argument(
+        "--max-redactions-per-source",
+        type=int,
+        default=1_000,
+        help="maximum selected secret spans in one source",
+    )
+    redact_parser.add_argument(
+        "--max-total-redactions",
+        type=int,
+        default=10_000,
+        help="maximum selected secret spans across all sources",
+    )
+    redact_parser.add_argument(
+        "--max-redaction-source-chars",
+        type=int,
+        default=2_000_000,
+        help="maximum Unicode characters scanned in one source",
+    )
+    redact_parser.add_argument(
+        "--max-redaction-total-chars",
+        type=int,
+        default=16_000_000,
+        help="maximum Unicode characters scanned across all sources",
+    )
+    _add_source_limit_arguments(redact_parser)
+    _add_error_format_argument(redact_parser)
+    redact_parser.set_defaults(handler=_redact)
 
     archive_parser = subparsers.add_parser("archive", help="manage immutable cold source events")
     archive_subparsers = archive_parser.add_subparsers(dest="archive_command", required=True)

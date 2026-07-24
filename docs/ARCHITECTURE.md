@@ -11,12 +11,14 @@ the evidence needed to audit that prompt.
 
 ```mermaid
 flowchart LR
-    A["Ordered SourceRecord events"] --> P["Integrity preflight"]
+    A["Ordered SourceRecord events"] -->|"direct"| P["Integrity preflight"]
+    A -->|"optional preprocessing"| R["Fixed content-secret redaction"]
+    R --> P
     P --> C["Built-in full deterministic recovery"]
     C --> K["Built-in protected-only certification"]
     K --> S["Optional additive safety extractor"]
     S --> B["Primary extractor with fallback policy"]
-    A -. optional .-> H["Append-only SourceArchive"]
+    P -. optional .-> H["Append-only SourceArchive"]
     B --> D["Recovery and canonicalization"]
     C --> D
     S --> D
@@ -98,6 +100,42 @@ These controls bound accepted source material, not total Python process RSS or
 runtime. Callers can allocate an oversized object before passing it to the
 library, and custom extractors, token counters, and whole compilation still
 need separate host-level limits.
+
+### Optional content secret preprocessing
+
+`redaction.py` is an explicit pre-compilation stage. It scans
+`SourceRecord.content` with nine fixed regex detectors for common credential
+forms. Callers cannot inject regexes. `RedactionPolicy` canonicalizes a
+detector subset by built-in priority, allowlists one-character masks, and
+requires positive source-count, per-source/total character, and finding
+limits. Direct source iterables are type/integrity/identity/character checked
+incrementally and stop after the first record beyond the cap before sorting;
+they are never first collected without a bound.
+
+Candidate matches are ordered by start, descending span length, detector
+priority, and detector name. Overlaps are discarded deterministically. Every
+character in a selected span is replaced except the exact physical
+line-boundary characters recognized by Python. This preserves Unicode
+character offsets, content length, and line shape. New immutable source
+records retain id, sequence, role, timestamp, and metadata while recomputing
+content and canonical-record hashes.
+
+`RedactionResult` stores sorted immutable source/finding tuples and a canonical
+private report string. Public report access returns detached JSON.
+`verify_redaction_result()` reruns the policy against independently supplied
+original sources and requires exact sources, findings, and report.
+`verify_redaction_report_hash()` independently checks nested field shapes,
+canonical policy, source/finding/detector counts, coordinate types and bounds,
+ordering, non-overlap, and the report self-hash.
+
+The report carries only detector names, source ids, coordinates, mask counts,
+the policy, and the redacted source-set digest. It deliberately omits original
+content-secret text and per-secret hashes. It still reveals masked lengths and
+source coordinates. Because ids, timestamps, roles, and metadata remain
+unchanged and participate in record hashes, this stage is not metadata
+redaction, PII detection, encryption, or secure deletion. The original input
+already exists before preprocessing. The exact scope and deployment sequence
+are in [REDACTION.md](REDACTION.md).
 
 ### Artifact ingestion limits
 
@@ -445,7 +483,8 @@ Draft 2020-12 JSON Schemas document the public interchange shapes:
 
 - [source event](../schemas/source-event.schema.json);
 - [model extraction envelope](../schemas/model-extraction.schema.json);
-- [compiled memory artifact](../schemas/compiled-memory.schema.json).
+- [compiled memory artifact](../schemas/compiled-memory.schema.json);
+- [content-secret redaction report](../schemas/redaction-report.schema.json).
 
 The standard-library runtime performs its own validation and does not require a
 JSON Schema package. Integrations can use these files for generation,
@@ -477,9 +516,11 @@ replacement removes the temporary file and leaves the old destination
 unchanged. POSIX hosts additionally `fsync` the parent directory after the
 rename; Windows uses the atomic replacement boundary available through
 `os.replace()` but has no portable directory-`fsync` equivalent. CLI file
-outputs, archive commits, benchmark reports, corpus exports, and external-run
-manifests share this primitive. Stdout stays a stream and therefore cannot
-provide file-transaction semantics.
+outputs, redacted source/report files, archive commits, benchmark reports,
+corpus exports, and external-run manifests share this primitive. Stdout stays
+a stream and therefore cannot provide file-transaction semantics. The two
+redaction destinations are each atomic replacements but do not form one
+cross-file transaction; their bound source digest detects a mismatched pair.
 
 The default mode replaces an existing destination. The exclusive mode used for
 runner manifests instead hard-links the complete temporary file to a still

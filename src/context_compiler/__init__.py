@@ -32,6 +32,19 @@ from .models import (
     SourceRecord,
     VerificationReport,
 )
+from .redaction import (
+    REDACTION_REPORT_SCHEMA,
+    REDACTION_VERIFICATION_SCHEMA,
+    SECRET_DETECTOR_NAMES,
+    RedactionError,
+    RedactionFinding,
+    RedactionLimitError,
+    RedactionPolicy,
+    RedactionResult,
+    redact_sources,
+    verify_redaction_report_hash,
+    verify_redaction_result,
+)
 from .schema_compatibility import (
     ARTIFACT_SCHEMA_COMPATIBILITY_SCHEMA,
     artifact_schema_registry,
@@ -61,7 +74,15 @@ __all__ = [
     "LmsQwenCompletion",
     "LocalQwenError",
     "ProvenanceSpan",
+    "REDACTION_REPORT_SCHEMA",
+    "REDACTION_VERIFICATION_SCHEMA",
+    "RedactionError",
+    "RedactionFinding",
+    "RedactionLimitError",
+    "RedactionPolicy",
+    "RedactionResult",
     "RuleBasedExtractor",
+    "SECRET_DETECTOR_NAMES",
     "SourceArchive",
     "SourceLimitError",
     "SourceLimits",
@@ -71,8 +92,11 @@ __all__ = [
     "artifact_schema_support",
     "diff_artifacts",
     "render_artifact_text",
+    "redact_sources",
     "summarize_artifact",
     "validate_artifact_envelope",
+    "verify_redaction_report_hash",
+    "verify_redaction_result",
 ]
 
 __version__ = "0.1.0"

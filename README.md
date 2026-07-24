@@ -27,7 +27,8 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 709 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 777 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Novel English diagnostic | 64 local cases; 85.37% precision and 87.5% recall |
@@ -144,7 +145,7 @@ The repository currently includes:
 - an opt-in whole-compile deadline that runs materialized inputs in an isolated
   POSIX process group or Windows Job Object, terminates the owned descendant
   tree on timeout, and reconstructs successful output from bounded strict JSON;
-- a portable JSON artifact, compact prompt renderer, and three JSON Schemas;
+- a portable JSON artifact, compact prompt renderer, and four JSON Schemas;
 - a machine-readable artifact reader/writer registry with an explicit
   no-silent-migration policy;
 - a fail-closed JSON inspector plus a bounded terminal item view with escaped
@@ -168,7 +169,10 @@ The repository currently includes:
   exact deterministic replay;
 - public, bounded domain-label and strict extractor-composition hooks that do
   not accept caller-supplied regexes or replace built-in recovery;
-- cross-version CI, linting, wheel/schema checks, and 709 regression tests.
+- optional fixed-detector content secret redaction with preserved offsets,
+  recomputed source hashes, bounded scans, strict replay, and a self-hashed
+  audit report that contains neither original content secrets nor their hashes;
+- cross-version CI, linting, wheel/schema checks, and 777 regression tests.
 
 ## In development
 
@@ -181,8 +185,8 @@ adding more claims to the README:
 - test the optional model extractor across providers and novel phrasing;
 - add exact provider tokenizers and framework adapters;
 - support efficient incremental compilation for live agent loops;
-- continue hardening generic-provider transport deadlines, secrets handling,
-  storage authenticity, and observability;
+- continue hardening generic-provider transport deadlines, metadata/PII
+  handling, encryption guidance, storage authenticity, and observability;
 - obtain independent reproduction before making a state-of-the-art claim.
 
 The ordered engineering backlog is in [TODO.md](TODO.md). The current design
@@ -295,8 +299,11 @@ implementation enforces these structural properties:
 
 These are implementation invariants, not a proof of semantic completeness.
 The rule extractor is deliberately conservative and heuristic. Upstream roles
-must be authenticated, archives must be protected by the host, and secrets
-must be removed before ingestion. See [Threat model](docs/THREAT_MODEL.md).
+must be authenticated and archives must be protected by the host. The optional
+preprocessor covers only recognized content secrets; metadata, ids, timestamps,
+personal data, and unknown formats remain the caller's responsibility. See
+[Content secret redaction](docs/REDACTION.md) and
+[Threat model](docs/THREAT_MODEL.md).
 
 ## Install
 
@@ -313,6 +320,22 @@ python -m pip install -e ".[dev]"
 ```
 
 ## CLI quick start
+
+Optionally create length-preserving redacted source records before any model
+extractor sees the history:
+
+```console
+ctxc redact history.jsonl -o redacted-history.jsonl \
+  --report redaction-report.json
+```
+
+The command never overwrites its input. It masks common credential forms in
+content only, writes fresh source hashes, and emits a strict self-hashed audit
+map without copying or hashing the original content secrets. Source ids,
+roles, timestamps, and metadata remain unchanged. Retain the redacted history
+for artifact verification. See [Content secret redaction](docs/REDACTION.md)
+for detector coverage, limits, false-positive/false-negative risk, and the
+non-transactional two-file boundary.
 
 Compile the included small JSONL history to a typed prompt:
 
@@ -425,8 +448,8 @@ Source JSON uses strict decoding: duplicate object keys, non-standard
 NaN/infinity constants, overflowed non-finite floats, and excessive nesting
 are rejected.
 
-Source ingestion is bounded by default across `compile`, `verify`, and archive
-commands:
+Source ingestion is bounded by default across `compile`, `verify`, `redact`,
+and archive commands:
 
 | Boundary | Default | CLI override |
 | --- | ---: | --- |
@@ -649,6 +672,15 @@ recovery still runs independently. See
 [Extending extraction](docs/EXTENDING_EXTRACTION.md) for the contract, replay
 boundary, and deployment checklist.
 
+For programmatic preprocessing, `redact_sources()` accepts immutable source
+records plus a `RedactionPolicy`. `verify_redaction_result()` deterministically
+reruns the same fixed detectors against independently supplied originals, and
+`verify_redaction_report_hash()` validates the report's nested shape, counts,
+ordering, policy, and self-hash. Masking preserves character offsets and
+physical line boundaries, so compiled provenance binds the redacted source
+text exactly. It is not encryption, general PII detection, or deletion of the
+original input.
+
 For the exact locally installed Qwen build approved for this repository, the
 API-free LM Studio CLI adapter verifies the model identity, Q4 quantization,
 loaded state, and a single inference slot before every call:
@@ -671,8 +703,9 @@ compiler = ContextCompiler(
 ```
 
 The adapter disables catalog fetching and does not use an HTTP model API.
-LM Studio passes the prompt as a process argument, so redact secrets before
-using it. See [Local Qwen integration](docs/LOCAL_QWEN.md).
+LM Studio passes the prompt as a process argument, so run content redaction
+before using it and separately minimize metadata. See
+[Local Qwen integration](docs/LOCAL_QWEN.md).
 
 `CompilationPolicy(verify=False)` is an explicitly unsafe diagnostic mode. It
 returns a failed report with `verification_not_performed`; normal
@@ -690,7 +723,7 @@ python -m ruff check src tests benchmarks
 python -m compileall -q src benchmarks tests
 ```
 
-Build the wheel and verify the three packaged schemas:
+Build the wheel and verify the four packaged schemas:
 
 ```console
 python -c "
@@ -704,7 +737,7 @@ with tempfile.TemporaryDirectory() as directory:
     wheels = list(pathlib.Path(directory).glob('*.whl'))
     assert len(wheels) == 1, wheels
     names = zipfile.ZipFile(wheels[0]).namelist()
-    assert sum(name.endswith('.schema.json') for name in names) == 3
+    assert sum(name.endswith('.schema.json') for name in names) == 4
 "
 ```
 
@@ -786,7 +819,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 709 tests are collected (704 pass and 5
+Current local snapshot (2026-07-24): 777 tests are collected (772 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
@@ -828,8 +861,9 @@ the commands above for the current revision and environment.
 - [Draft external comparison protocol](benchmarks/protocols/external-comparison-v1.md)
 - JSON Schemas:
   [source event](schemas/source-event.schema.json),
-  [model extraction](schemas/model-extraction.schema.json), and
-  [compiled memory](schemas/compiled-memory.schema.json)
+  [model extraction](schemas/model-extraction.schema.json),
+  [compiled memory](schemas/compiled-memory.schema.json), and
+  [redaction report](schemas/redaction-report.schema.json)
 
 ## License
 

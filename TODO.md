@@ -41,8 +41,10 @@ raw evidence when completing benchmark work.
   temporal state.
 - [x] Replay and verify portable JSON artifacts against an independently
   supplied source set.
-- [x] Provide `ctxc compile`, `verify`, `inspect`, `diff`, and `archive`.
-- [x] Provide JSON Schemas for source events, model output, and compiled memory.
+- [x] Provide `ctxc compile`, `verify`, `inspect`, `diff`, `redact`, and
+  `archive`.
+- [x] Provide JSON Schemas for source events, model output, compiled memory,
+  and redaction reports.
 - [x] Provide a local append-only archive with collision, hash, and lock checks.
 - [x] Build LRCBench with adversarial histories and matched-budget head, tail,
   and extractive controls.
@@ -59,7 +61,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 709 tests (704 passing and 5 skipped locally); CI covers Python
+- [x] Collect 777 tests (772 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -491,8 +493,13 @@ than most related technology” within the exact dated evaluation scope.
 
 ### Security and privacy
 
-- [ ] Add optional secret and sensitive-data preprocessing with an auditable
-  redaction map.
+- [x] Add optional fixed-detector preprocessing for common secrets in source
+  content, with length/line-boundary-preserving masks, recomputed source
+  hashes, bounded source iterables/scans, exact replay, and a self-hashed audit
+  map that omits original content-secret text and hashes.
+- [ ] Extend privacy policy beyond common content secrets: define reviewed
+  metadata/id/timestamp handling and evaluate PII or domain-sensitive-data
+  detection without claiming completeness from lexical heuristics.
 - [ ] Define encryption-at-rest and access-control guidance for source archives.
 - [ ] Add external signatures or trusted manifests for artifacts and source
   digests.
