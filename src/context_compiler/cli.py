@@ -263,6 +263,12 @@ def _inspect(args: argparse.Namespace) -> int:
     selected = artifact.get("selected_item_ids")
     if not isinstance(items, list) or not isinstance(selected, list):
         raise TypeError("compiled artifact items and selected_item_ids must be arrays")
+    compiler_metadata = artifact.get("compiler_metadata")
+    metrics = (
+        compiler_metadata.get("metrics", {})
+        if isinstance(compiler_metadata, dict)
+        else {}
+    )
     summary = {
         "schema_version": artifact.get("schema_version"),
         "source_count": artifact.get("source_count"),
@@ -270,6 +276,7 @@ def _inspect(args: argparse.Namespace) -> int:
         "selected_items": len(selected),
         "verification": artifact.get("verification", {}),
         "compression": artifact.get("compression", {}),
+        "metrics": metrics,
     }
     _write_output(json.dumps(summary, indent=2, ensure_ascii=False), args.output)
     return 0

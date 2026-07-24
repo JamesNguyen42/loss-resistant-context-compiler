@@ -6,6 +6,8 @@ from .extractors import ModelExtractor, RuleBasedExtractor
 from .limits import ArtifactLimitError, ArtifactLimits, SourceLimitError, SourceLimits
 from .local_qwen import LmsQwenCompletion, LocalQwenError
 from .models import (
+    COMPILATION_METRICS_SCHEMA,
+    CompilationMetrics,
     CompilationPolicy,
     CompiledMemory,
     MemoryItem,
@@ -19,6 +21,8 @@ from .models import (
 __all__ = [
     "ArtifactLimitError",
     "ArtifactLimits",
+    "COMPILATION_METRICS_SCHEMA",
+    "CompilationMetrics",
     "CompilationPolicy",
     "CompiledMemory",
     "ContextCompiler",

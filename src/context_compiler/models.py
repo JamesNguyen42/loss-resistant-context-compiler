@@ -19,6 +19,7 @@ from enum import StrEnum
 from typing import Any
 
 SCHEMA_VERSION = "1.0"
+COMPILATION_METRICS_SCHEMA = "compilation-metrics-0.1"
 PRIMARY_EXTRACTOR_FAILED_MESSAGE = (
     "The primary extractor failed; verified deterministic recovery was used."
 )
@@ -738,6 +739,129 @@ class CompressionStats:
             "token_budget": self.token_budget,
             "budget_overflow": self.budget_overflow,
             "target_met": self.target_met,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CompilationMetrics:
+    """Bounded operational telemetry for one completed compilation."""
+
+    source_records: int
+    primary_extracted_items: int
+    recovery_candidate_items: int
+    certification_candidate_items: int
+    recovery_added_items: int
+    resolved_items: int
+    selected_items: int
+    active_items: int
+    superseded_items: int
+    discarded_items: int
+    conflicting_items: int
+    detected_conflicts: int
+    protected_items: int
+    protected_selected_items: int
+    protected_prompt_tokens: int
+    protected_budget_overflow: int
+    verification_error_count: int
+    verification_warning_count: int
+    verification_info_count: int
+    compile_duration_seconds: float
+
+    def __post_init__(self) -> None:
+        integer_fields = (
+            "source_records",
+            "primary_extracted_items",
+            "recovery_candidate_items",
+            "certification_candidate_items",
+            "recovery_added_items",
+            "resolved_items",
+            "selected_items",
+            "active_items",
+            "superseded_items",
+            "discarded_items",
+            "conflicting_items",
+            "detected_conflicts",
+            "protected_items",
+            "protected_selected_items",
+            "protected_prompt_tokens",
+            "protected_budget_overflow",
+            "verification_error_count",
+            "verification_warning_count",
+            "verification_info_count",
+        )
+        for name in integer_fields:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer")
+            if value < 0:
+                raise ValueError(f"{name} cannot be negative")
+        duration = self.compile_duration_seconds
+        try:
+            finite_duration = (
+                not isinstance(duration, bool)
+                and isinstance(duration, (int, float))
+                and math.isfinite(float(duration))
+                and duration >= 0
+            )
+        except OverflowError:
+            finite_duration = False
+        if not finite_duration:
+            raise ValueError(
+                "compile_duration_seconds must be finite and non-negative"
+            )
+        if (
+            self.active_items
+            + self.superseded_items
+            + self.discarded_items
+            + self.conflicting_items
+            != self.resolved_items
+        ):
+            raise ValueError("status item counts must sum to resolved_items")
+        if self.selected_items > self.resolved_items:
+            raise ValueError("selected_items cannot exceed resolved_items")
+        if self.recovery_added_items > self.resolved_items:
+            raise ValueError("recovery_added_items cannot exceed resolved_items")
+        if self.certification_candidate_items > self.recovery_candidate_items:
+            raise ValueError(
+                "certification_candidate_items cannot exceed "
+                "recovery_candidate_items"
+            )
+        if self.protected_items > self.resolved_items:
+            raise ValueError("protected_items cannot exceed resolved_items")
+        if self.protected_selected_items > min(
+            self.protected_items,
+            self.selected_items,
+        ):
+            raise ValueError(
+                "protected_selected_items exceeds protected or selected items"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": COMPILATION_METRICS_SCHEMA,
+            "source_records": self.source_records,
+            "primary_extracted_items": self.primary_extracted_items,
+            "recovery_candidate_items": self.recovery_candidate_items,
+            "certification_candidate_items": self.certification_candidate_items,
+            "recovery_added_items": self.recovery_added_items,
+            "resolved_items": self.resolved_items,
+            "selected_items": self.selected_items,
+            "active_items": self.active_items,
+            "superseded_items": self.superseded_items,
+            "discarded_items": self.discarded_items,
+            "conflicting_items": self.conflicting_items,
+            "detected_conflicts": self.detected_conflicts,
+            "protected_items": self.protected_items,
+            "protected_selected_items": self.protected_selected_items,
+            "protected_prompt_tokens": self.protected_prompt_tokens,
+            "protected_budget_overflow": self.protected_budget_overflow,
+            "verification_error_count": self.verification_error_count,
+            "verification_warning_count": self.verification_warning_count,
+            "verification_info_count": self.verification_info_count,
+            "compile_duration_seconds": round(
+                float(self.compile_duration_seconds),
+                6,
+            ),
         }
 
 

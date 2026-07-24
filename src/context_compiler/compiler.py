@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Callable, Iterable
 
 from .extractors import ExtractionResult, Extractor, RuleBasedExtractor
@@ -18,6 +19,7 @@ from .models import (
     PRIMARY_EXTRACTOR_DEGRADED_MESSAGE,
     PRIMARY_EXTRACTOR_FAILED_MESSAGE,
     SCHEMA_VERSION,
+    CompilationMetrics,
     CompilationPolicy,
     CompiledMemory,
     CompressionStats,
@@ -73,6 +75,7 @@ class ContextCompiler:
         self.source_limits = resolve_source_limits(source_limits)
 
     def compile(self, sources: Iterable[SourceRecord | dict]) -> CompiledMemory:
+        started = time.perf_counter()
         ordered = self._prepare_sources(sources, limits=self.source_limits)
         trusted_source_digest = source_digest(ordered)
 
@@ -157,6 +160,7 @@ class ContextCompiler:
                     message=PRIMARY_EXTRACTOR_DEGRADED_MESSAGE,
                 )
             )
+        primary_extracted_items = len(primary.items)
 
         # Recheck after every caller-controlled extractor. A custom extractor
         # must not mutate even a deliberately forged SourceRecord before the
@@ -165,7 +169,6 @@ class ContextCompiler:
             raise ValueError("source history changed during extraction")
 
         items = list(primary.items)
-        recovered = 0
         if self.policy.recover_missed_protected:
             for extractor_name, safety in safety_results:
                 for candidate in safety.items:
@@ -176,9 +179,12 @@ class ContextCompiler:
                         )
                         recovered_candidate.metadata["recovered_by"] = extractor_name
                         items.append(recovered_candidate)
-                        recovered += 1
 
         items = resolve_temporal_state(items)
+        # Count replayable recovered ledger items after temporal resolution.
+        # Pre-resolution insertions may merge, so reporting insertion attempts
+        # would make a freshly compiled artifact fail independent replay.
+        recovered = sum("verifier-recovered" in item.tags for item in items)
         selected_ids = self._select(items, ordered)
 
         # Build once with placeholder stats so prompt rendering and its schema
@@ -284,6 +290,69 @@ class ContextCompiler:
                     )
                 ],
             )
+        selected_set = set(selected_ids)
+        protected_selected = [
+            item
+            for item in items
+            if item.id in selected_set and item.protected
+        ]
+        protected_prompt_tokens = (
+            self._count_tokens(
+                render_typed_memory(
+                    protected_selected,
+                    [item.id for item in protected_selected],
+                )
+            )
+            if protected_selected
+            else 0
+        )
+        metrics = CompilationMetrics(
+            source_records=len(ordered),
+            primary_extracted_items=primary_extracted_items,
+            recovery_candidate_items=len(recovery.items),
+            certification_candidate_items=len(certification.items),
+            recovery_added_items=recovered,
+            resolved_items=len(items),
+            selected_items=len(selected_ids),
+            active_items=sum(
+                item.status == MemoryStatus.ACTIVE for item in items
+            ),
+            superseded_items=sum(
+                item.status == MemoryStatus.SUPERSEDED for item in items
+            ),
+            discarded_items=sum(
+                item.status == MemoryStatus.DISCARDED for item in items
+            ),
+            conflicting_items=sum(
+                item.status == MemoryStatus.CONFLICTING for item in items
+            ),
+            detected_conflicts=sum(
+                item.kind == MemoryKind.UNRESOLVED
+                and "detected-conflict" in item.tags
+                for item in items
+            ),
+            protected_items=sum(item.protected for item in items),
+            protected_selected_items=len(protected_selected),
+            protected_prompt_tokens=protected_prompt_tokens,
+            protected_budget_overflow=max(
+                0,
+                protected_prompt_tokens - self.policy.token_budget,
+            ),
+            verification_error_count=sum(
+                issue.severity == IssueSeverity.ERROR
+                for issue in result.verification.issues
+            ),
+            verification_warning_count=sum(
+                issue.severity == IssueSeverity.WARNING
+                for issue in result.verification.issues
+            ),
+            verification_info_count=sum(
+                issue.severity == IssueSeverity.INFO
+                for issue in result.verification.issues
+            ),
+            compile_duration_seconds=time.perf_counter() - started,
+        )
+        result.compiler_metadata["metrics"] = metrics.to_dict()
         return result.seal()
 
     @staticmethod

@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 300 passing |
+| Tests at this snapshot | 306 collected: 301 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -373,9 +373,14 @@ Each record may additionally contain:
 
 The complete JSON artifact is the audit format. It contains all items,
 selection ids, source count and source-set digest, policy, compression report,
-verification report, and artifact self-hash. It does **not** embed the complete
-source history; verification and provenance rehydration require the separately
-retained source events.
+verification report, optional versioned compilation metrics, and artifact
+self-hash. New compiles emit `compilation-metrics-0.1` under
+`compiler_metadata.metrics`; older schema-1.0 artifacts may omit it.
+Independent replay reconciles source, recovery, certification, selection,
+status, conflict, protected-budget, and verification counts. Primary-extractor
+volume and elapsed time are measured but not independently reproducible. The
+artifact does **not** embed the complete source history; verification and
+provenance rehydration require the separately retained source events.
 
 `--active-only` intentionally emits only selected items and marks
 `ledger_complete: false`. Independent verification rejects the incomplete
@@ -387,7 +392,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 300 tests pass.
+- 306 tests are collected: 301 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -405,6 +410,11 @@ audited. Any selected superseded item independently fails verification as
   strict raw/canonical byte, line, depth, item/selection, provenance, and issue
   limits. Tests cover BOM/multibyte boundaries, duplicate keys, non-finite
   values, excessive collections, cyclic direct dictionaries, and CLI refusal.
+- New artifacts carry strict `compilation-metrics-0.1` telemetry for item flow,
+  post-resolution recovery, conflicts, protected-budget pressure, verification
+  outcomes, and compile duration. `ctxc inspect` exposes it; replay rejects
+  rehashed deterministic-count forgeries while preserving compatibility with
+  older schema-1.0 artifacts that omit metrics.
 - CLI file outputs use flushed same-directory temporary files and atomic
   replacement. Failure-injection tests prove pre-replacement `fsync`/replace
   failures preserve the old file and remove temporary files; POSIX tests also

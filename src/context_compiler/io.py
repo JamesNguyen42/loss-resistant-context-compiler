@@ -23,10 +23,14 @@ from .limits import (
 )
 from .models import (
     ADDITIVE_SAFETY_EXTRACTOR_FAILED_MESSAGE,
+    COMPILATION_METRICS_SCHEMA,
     PRIMARY_EXTRACTOR_DEGRADED_MESSAGE,
     PRIMARY_EXTRACTOR_FAILED_MESSAGE,
+    CompilationMetrics,
     IssueSeverity,
     MemoryItem,
+    MemoryKind,
+    MemoryStatus,
     SourceRecord,
     VerificationIssue,
     render_typed_memory,
@@ -115,6 +119,31 @@ _SOURCE_LIMIT_FIELDS = frozenset(
         "max_record_bytes",
         "max_total_record_bytes",
         "max_json_depth",
+    }
+)
+_COMPILATION_METRICS_FIELDS = frozenset(
+    {
+        "schema",
+        "source_records",
+        "primary_extracted_items",
+        "recovery_candidate_items",
+        "certification_candidate_items",
+        "recovery_added_items",
+        "resolved_items",
+        "selected_items",
+        "active_items",
+        "superseded_items",
+        "discarded_items",
+        "conflicting_items",
+        "detected_conflicts",
+        "protected_items",
+        "protected_selected_items",
+        "protected_prompt_tokens",
+        "protected_budget_overflow",
+        "verification_error_count",
+        "verification_warning_count",
+        "verification_info_count",
+        "compile_duration_seconds",
     }
 )
 
@@ -592,10 +621,65 @@ def _validate_source_limits_shape(
             )
 
 
+def _validate_compilation_metrics_shape(
+    compiler_metadata: Any,
+    issues: list[dict[str, Any]],
+) -> bool:
+    """Validate optional versioned metrics without making them mandatory."""
+
+    if not isinstance(compiler_metadata, dict):
+        return False
+    if "metrics" not in compiler_metadata:
+        return True
+    metrics = compiler_metadata["metrics"]
+    if not isinstance(metrics, dict):
+        _shape_issue(
+            issues,
+            "invalid_compilation_metrics",
+            "Artifact compiler_metadata.metrics must be a JSON object.",
+        )
+        return False
+    issue_count = len(issues)
+    _check_exact_fields(
+        metrics,
+        _COMPILATION_METRICS_FIELDS,
+        label="Artifact compiler_metadata.metrics",
+        code="invalid_compilation_metrics",
+        issues=issues,
+    )
+    if metrics.get("schema") != COMPILATION_METRICS_SCHEMA:
+        _shape_issue(
+            issues,
+            "invalid_compilation_metrics",
+            (
+                "Artifact compiler_metadata.metrics.schema must be "
+                f"{COMPILATION_METRICS_SCHEMA!r}."
+            ),
+        )
+    if len(issues) != issue_count:
+        return False
+    try:
+        CompilationMetrics(
+            **{
+                key: metrics[key]
+                for key in _COMPILATION_METRICS_FIELDS
+                if key != "schema"
+            }
+        )
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        _shape_issue(
+            issues,
+            "invalid_compilation_metrics",
+            f"Artifact compiler_metadata.metrics is invalid: {exc}.",
+        )
+        return False
+    return True
+
+
 def _validate_artifact_shape(
     artifact: dict[str, Any],
     issues: list[dict[str, Any]],
-) -> None:
+) -> bool:
     _check_exact_fields(
         artifact,
         _ARTIFACT_FIELDS,
@@ -664,6 +748,10 @@ def _validate_artifact_shape(
     _validate_compression_shape(artifact.get("compression"), issues)
     _validate_policy_shape(artifact.get("compiler_metadata"), issues)
     _validate_source_limits_shape(artifact.get("compiler_metadata"), issues)
+    return _validate_compilation_metrics_shape(
+        artifact.get("compiler_metadata"),
+        issues,
+    )
 
 
 def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -1034,6 +1122,7 @@ def verify_artifact_dict(
                 "message": artifact_value_error,
             }
         )
+    compilation_metrics_valid = True
     if not isinstance(artifact, dict):
         _shape_issue(
             issues,
@@ -1042,7 +1131,7 @@ def verify_artifact_dict(
         )
         artifact = {}
     else:
-        _validate_artifact_shape(artifact, issues)
+        compilation_metrics_valid = _validate_artifact_shape(artifact, issues)
     source_ids = [source.id for source in sources]
     source_sequences = [source.sequence for source in sources]
     if len(source_ids) != len(set(source_ids)):
@@ -1202,8 +1291,19 @@ def verify_artifact_dict(
     compression_valid = True
     expected_budget_overflow = 0
     expected_target_met = True
+    expected_protected_prompt_tokens: int | None = None
+    expected_protected_budget_overflow: int | None = None
     raw_compression = artifact.get("compression")
     compiler_metadata = artifact.get("compiler_metadata")
+    compilation_metrics_present = (
+        isinstance(compiler_metadata, dict)
+        and "metrics" in compiler_metadata
+    )
+    raw_metrics = (
+        compiler_metadata.get("metrics")
+        if isinstance(compiler_metadata, dict)
+        else None
+    )
     policy = (
         compiler_metadata.get("policy")
         if isinstance(compiler_metadata, dict)
@@ -1284,6 +1384,25 @@ def verify_artifact_dict(
             try:
                 source_tokens = estimate_tokens(source_text)
                 active_tokens = estimate_tokens(active_prompt)
+                protected_selected = [
+                    item
+                    for item in decoded_items
+                    if item.id in selected and item.protected
+                ]
+                expected_protected_prompt_tokens = (
+                    estimate_tokens(
+                        render_typed_memory(
+                            protected_selected,
+                            [item.id for item in protected_selected],
+                        )
+                    )
+                    if protected_selected
+                    else 0
+                )
+                expected_protected_budget_overflow = max(
+                    0,
+                    expected_protected_prompt_tokens - token_budget,
+                )
             except (OverflowError, TypeError, ValueError) as exc:
                 compression_valid = False
                 issues.append(
@@ -1379,6 +1498,9 @@ def verify_artifact_dict(
             )
 
     protected_candidates = RuleBasedExtractor(protected_only=True).extract(sources).items
+    recovery_candidate_count: int | None = None
+    if compilation_metrics_present and compilation_metrics_valid:
+        recovery_candidate_count = len(RuleBasedExtractor().extract(sources).items)
     replayed_recovered = sum(
         "verifier-recovered" in item.tags for item in decoded_items
     )
@@ -1438,6 +1560,95 @@ def verify_artifact_dict(
                     "message": "Recovered item count is outside its valid range.",
                 }
             )
+    if (
+        compilation_metrics_present
+        and compilation_metrics_valid
+        and isinstance(raw_metrics, dict)
+    ):
+        protected_selected_items = sum(
+            item.id in selected and item.protected for item in decoded_items
+        )
+        expected_metrics: dict[str, Any] = {
+            "source_records": len(sources),
+            "recovery_candidate_items": recovery_candidate_count,
+            "certification_candidate_items": len(protected_candidates),
+            "selected_items": len(raw_selected),
+            "protected_selected_items": protected_selected_items,
+            "verification_error_count": sum(
+                issue.severity == IssueSeverity.ERROR for issue in core.issues
+            ),
+            "verification_warning_count": sum(
+                issue.severity == IssueSeverity.WARNING for issue in core.issues
+            ),
+            "verification_info_count": sum(
+                issue.severity == IssueSeverity.INFO for issue in core.issues
+            ),
+        }
+        if expected_protected_prompt_tokens is not None:
+            expected_metrics["protected_prompt_tokens"] = (
+                expected_protected_prompt_tokens
+            )
+        if expected_protected_budget_overflow is not None:
+            expected_metrics["protected_budget_overflow"] = (
+                expected_protected_budget_overflow
+            )
+        if artifact.get("ledger_complete") is True:
+            expected_metrics.update(
+                {
+                    "recovery_added_items": replayed_recovered,
+                    "resolved_items": len(decoded_items),
+                    "active_items": sum(
+                        item.status == MemoryStatus.ACTIVE
+                        for item in decoded_items
+                    ),
+                    "superseded_items": sum(
+                        item.status == MemoryStatus.SUPERSEDED
+                        for item in decoded_items
+                    ),
+                    "discarded_items": sum(
+                        item.status == MemoryStatus.DISCARDED
+                        for item in decoded_items
+                    ),
+                    "conflicting_items": sum(
+                        item.status == MemoryStatus.CONFLICTING
+                        for item in decoded_items
+                    ),
+                    "detected_conflicts": sum(
+                        item.kind == MemoryKind.UNRESOLVED
+                        and "detected-conflict" in item.tags
+                        for item in decoded_items
+                    ),
+                    "protected_items": sum(
+                        item.protected for item in decoded_items
+                    ),
+                }
+            )
+        mismatched_metrics = [
+            key
+            for key, expected in expected_metrics.items()
+            if raw_metrics.get(key) != expected
+        ]
+        if (
+            isinstance(compiler_metadata, dict)
+            and "recovered_items" in compiler_metadata
+            and raw_metrics.get("recovery_added_items")
+            != compiler_metadata["recovered_items"]
+        ):
+            mismatched_metrics.append(
+                "recovery_added_items/compiler_metadata.recovered_items"
+            )
+        if mismatched_metrics:
+            compilation_metrics_valid = False
+            issues.append(
+                {
+                    "code": "compilation_metrics_mismatch",
+                    "item_id": None,
+                    "message": (
+                        "Compilation metrics differ from independent replay: "
+                        + ", ".join(mismatched_metrics)
+                    ),
+                }
+            )
     issues.extend(
         {
             "code": issue.code,
@@ -1452,6 +1663,8 @@ def verify_artifact_dict(
         "source_digest_valid": artifact.get("source_digest") == expected_digest,
         "artifact_digest_valid": claimed_artifact_digest == actual_artifact_digest,
         "compression_valid": compression_valid,
+        "compilation_metrics_present": compilation_metrics_present,
+        "compilation_metrics_valid": compilation_metrics_valid,
         "ledger_complete": artifact.get("ledger_complete", True),
         "items": len(decoded_items),
         "protected_candidates": core.protected_candidates,

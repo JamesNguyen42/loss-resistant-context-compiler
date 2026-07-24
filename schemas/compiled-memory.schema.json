@@ -33,7 +33,12 @@
     },
     "verification": {"$ref": "#/$defs/verification"},
     "compression": {"$ref": "#/$defs/compression"},
-    "compiler_metadata": {"type": "object"},
+    "compiler_metadata": {
+      "type": "object",
+      "properties": {
+        "metrics": {"$ref": "#/$defs/compilationMetrics"}
+      }
+    },
     "artifact_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
   },
   "additionalProperties": false,
@@ -163,6 +168,56 @@
         "token_budget": {"type": "integer", "minimum": 1},
         "budget_overflow": {"type": "integer", "minimum": 0},
         "target_met": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "compilationMetrics": {
+      "type": "object",
+      "required": [
+        "schema",
+        "source_records",
+        "primary_extracted_items",
+        "recovery_candidate_items",
+        "certification_candidate_items",
+        "recovery_added_items",
+        "resolved_items",
+        "selected_items",
+        "active_items",
+        "superseded_items",
+        "discarded_items",
+        "conflicting_items",
+        "detected_conflicts",
+        "protected_items",
+        "protected_selected_items",
+        "protected_prompt_tokens",
+        "protected_budget_overflow",
+        "verification_error_count",
+        "verification_warning_count",
+        "verification_info_count",
+        "compile_duration_seconds"
+      ],
+      "properties": {
+        "schema": {"const": "compilation-metrics-0.1"},
+        "source_records": {"type": "integer", "minimum": 0},
+        "primary_extracted_items": {"type": "integer", "minimum": 0},
+        "recovery_candidate_items": {"type": "integer", "minimum": 0},
+        "certification_candidate_items": {"type": "integer", "minimum": 0},
+        "recovery_added_items": {"type": "integer", "minimum": 0},
+        "resolved_items": {"type": "integer", "minimum": 0},
+        "selected_items": {"type": "integer", "minimum": 0},
+        "active_items": {"type": "integer", "minimum": 0},
+        "superseded_items": {"type": "integer", "minimum": 0},
+        "discarded_items": {"type": "integer", "minimum": 0},
+        "conflicting_items": {"type": "integer", "minimum": 0},
+        "detected_conflicts": {"type": "integer", "minimum": 0},
+        "protected_items": {"type": "integer", "minimum": 0},
+        "protected_selected_items": {"type": "integer", "minimum": 0},
+        "protected_prompt_tokens": {"type": "integer", "minimum": 0},
+        "protected_budget_overflow": {"type": "integer", "minimum": 0},
+        "verification_error_count": {"type": "integer", "minimum": 0},
+        "verification_warning_count": {"type": "integer", "minimum": 0},
+        "verification_info_count": {"type": "integer", "minimum": 0},
+        "compile_duration_seconds": {"type": "number", "minimum": 0}
       },
       "additionalProperties": false
     }

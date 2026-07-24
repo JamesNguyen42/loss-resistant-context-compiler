@@ -445,9 +445,16 @@ a subcommand handler exists and retain argparse’s native text format.
 
 Failed verification and compression-target outcomes already return structured
 artifacts or reports with exit status `3` or `4`; extraction rejections and
-deterministic-recovery contributions remain in `compiler_metadata`. A future
-event stream may surface those successful-run diagnostics on stderr without
-changing the artifact contract.
+deterministic-recovery contributions remain in `compiler_metadata`. New
+compiles also write a strict `compilation-metrics-0.1` record there. It covers
+source and item flow, post-resolution recovered items, conflict markers,
+protected-only prompt pressure, verification severities, and elapsed compile
+time. The record is inside the artifact self-hash. Independent replay
+recomputes every deterministic field available from trusted sources and the
+complete ledger; primary-extractor output volume and wall-clock duration remain
+shape-checked observations. Metrics are optional so older schema-1.0 artifacts
+remain readable. A future event stream may surface successful-run diagnostics
+on stderr without changing the artifact contract.
 
 ## Cold source archive
 

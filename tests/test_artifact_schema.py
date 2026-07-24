@@ -114,6 +114,9 @@ class ArtifactSchemaTests(unittest.TestCase):
         def add_policy_field(artifact: dict[str, Any]) -> None:
             artifact["compiler_metadata"]["policy"]["unexpected"] = True
 
+        def add_metrics_field(artifact: dict[str, Any]) -> None:
+            artifact["compiler_metadata"]["metrics"]["unexpected"] = True
+
         cases = (
             (add_item_field, "invalid_item_shape"),
             (add_provenance_field, "invalid_provenance_shape"),
@@ -121,6 +124,7 @@ class ArtifactSchemaTests(unittest.TestCase):
             (add_verification_issue_field, "invalid_verification_issue_shape"),
             (add_compression_field, "invalid_compression_shape"),
             (add_policy_field, "invalid_policy_shape"),
+            (add_metrics_field, "invalid_compilation_metrics"),
         )
         for mutation, expected_code in cases:
             with self.subTest(expected_code=expected_code):
@@ -159,6 +163,12 @@ class ArtifactSchemaTests(unittest.TestCase):
                     "include_discarded"
                 ),
                 "invalid_policy_shape",
+            ),
+            (
+                lambda artifact: artifact["compiler_metadata"]["metrics"].pop(
+                    "resolved_items"
+                ),
+                "invalid_compilation_metrics",
             ),
         )
         for mutation, expected_code in cases:

@@ -59,7 +59,8 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Run 300 tests; CI covers Python 3.11, 3.12, and 3.13.
+- [x] Collect 306 tests (301 passing and 5 skipped locally); CI covers Python
+  3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
 
@@ -537,8 +538,11 @@ than most related technology” within the exact dated evaluation scope.
 - [x] Version and propagate equivalent producer metadata through corpus and
   candidate interchange artifacts without invalidating frozen dataset identity;
   bind corpus and candidate envelopes independently with canonical self-digests.
-- [ ] Add metrics for item counts, protected overflow, recovery additions,
-  conflicts, verification failures, and compile latency.
+- [x] Add versioned artifact metrics for item counts, protected overflow,
+  post-resolution recovery additions, conflicts, verification outcomes, and
+  compile latency; surface them through `ctxc inspect` and independently
+  reconcile all replayable fields while accepting older schema-1.0 artifacts
+  that omit the optional metrics record.
 - [x] Eliminate ordinary stale-lock recovery by replacing create/delete lock
   ownership with a persistent OS advisory lock that releases on descriptor
   close or process death; document that marker existence does not mean held.

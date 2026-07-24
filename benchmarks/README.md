@@ -223,7 +223,8 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-All 300 tests passed alongside it.
+The suite collected 306 tests alongside it: 301 passed and 5
+platform/optional checks were skipped.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
