@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 447 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 669 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
@@ -163,7 +163,7 @@ The repository currently includes:
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
 - a fixed-digest, versioned CI compile-performance gate with latency-growth and
   traced-Python-memory ceilings;
-- cross-version CI, linting, wheel/schema checks, and 447 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 669 regression tests.
 
 ## In development
 
@@ -267,6 +267,9 @@ implementation enforces these structural properties:
 - recognized diagnostics retain their complete literal line, and recognized
   references retain full POSIX/Windows paths plus line ranges, GitHub line
   anchors, or pytest node ids;
+- a deterministic 222-case extraction grammar corpus crosses section labels,
+  bullet forms, conjunctions, negated limits, numbers, units, path locators,
+  diagnostics, and correction forms while checking exact source spans;
 - uncertain source text cannot silently validate as a confirmed fact;
 - tool output cannot assert goals, constraints, corrections, decisions,
   unresolved state, or confirmed facts; a tool fact is accepted only when the
@@ -768,7 +771,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 447 tests are collected (442 pass and 5
+Current local snapshot (2026-07-24): 669 tests are collected (664 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

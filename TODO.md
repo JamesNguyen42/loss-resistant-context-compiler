@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 447 tests (442 passing and 5 skipped locally); CI covers Python
+- [x] Collect 669 tests (664 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -407,7 +407,7 @@ than most related technology” within the exact dated evaluation scope.
 - [x] Add fixed-seed property-style tests for arbitrary control/Unicode source
   ids, character offsets, every Python line boundary, whitespace, and
   semicolon/punctuation/conjunction clause boundaries.
-- [ ] Add grammar-based fuzzing for labels, bullets, conjunctions, negation,
+- [x] Add grammar-based fuzzing for labels, bullets, conjunctions, negation,
   numbers, units, paths, diagnostics, and corrections.
 - [ ] Measure false positives and false negatives on novel English phrasing.
 - [ ] Evaluate non-English and mixed-language histories before claiming

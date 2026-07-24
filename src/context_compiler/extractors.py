@@ -197,7 +197,7 @@ _GITHUB_REFERENCE = re.compile(
 )
 _WINDOWS_SPACE_REFERENCE = re.compile(
     r"(?P<ref>[A-Za-z]:[\\/][^\r\n\"'<>|?*]+?\.[A-Za-z0-9]{1,8}"
-    r"(?::\d+(?:-\d+)?)?)(?=$|[.,;)\]])"
+    r"(?::\d+(?:-\d+)?)?)(?=$|[\s.,;)\]])"
 )
 _REFERENCE = re.compile(rf"(?P<ref>{_REFERENCE_BASE}(?::\d+(?:-\d+)?)?)")
 _TEST_REFERENCE = re.compile(

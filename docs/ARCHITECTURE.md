@@ -244,9 +244,16 @@ assertions, expected/received output, TypeScript and Rust error codes, null or
 undefined references, exceptions, tracebacks, fatal process output, HTTP error
 status, exit codes, and failed-test counts. Reference recognition preserves
 POSIX or Windows paths with `:line` or line ranges, `path lines N-M`, GitHub
-`#L` anchors, and pytest node ids. These regex-recognized forms are exact and
-protected; arbitrary diagnostics and locator syntaxes still require an
-explicit label or another extractor.
+`#L` anchors, and pytest node ids. Windows paths containing spaces are retained
+when followed by punctuation, end-of-line, or surrounding prose whitespace.
+These regex-recognized forms are exact and protected; arbitrary diagnostics
+and locator syntaxes still require an explicit label or another extractor.
+
+A deterministic 222-case grammar corpus exercises these extraction boundaries
+end to end. It crosses label and bullet variants, coordinated constraints,
+negated numeric-unit limits, POSIX and Windows locators, diagnostic families,
+and correction phrasings, then checks verification, exact character spans,
+temporal links, and protected selection.
 
 `ModelExtractor` wraps any callable that maps a provider-neutral JSON prompt to
 a JSON response. String responses use strict object decoding: duplicate keys,

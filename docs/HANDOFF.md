@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 447 collected: 442 passing, 5 skipped |
+| Tests at this snapshot | 669 collected: 664 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -429,7 +429,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 447 tests are collected: 442 pass and 5 platform/optional checks are skipped.
+- 669 tests are collected: 664 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -445,6 +445,10 @@ audited. Any selected superseded item independently fails verification as
   character-vs-byte and invalid direct offsets, all 11 Python line boundaries,
   whitespace, coordinated clause boundaries, prompt JSON-line safety, and
   independent artifact replay.
+- A deterministic 222-case extraction grammar corpus crosses labels, five
+  bullet forms, four conjunction forms, negated numeric-unit limits, six path
+  locator families, seven diagnostic families, and four correction grammars;
+  every case checks verified end-to-end output and exact provenance.
 - Source loaders, direct compilation, independent verification, and archives
   share default-on byte, line, JSON-depth, count, per-record, and aggregate
   canonical-size limits. Adversarial tests cover UTF-8 boundaries, oversized
