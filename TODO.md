@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 941 tests (933 passing and 8 skipped locally); CI covers Python
+- [x] Collect 944 tests (936 passing and 8 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -668,13 +668,17 @@ than most related technology” within the exact dated evaluation scope.
 
 ### Packaging and release
 
-- [ ] Choose the stable distribution name and resolve the current distinction
-  between repository name and `lossless-context-compiler`.
+- [x] Standardize the stable distribution and installed schema directory on
+  `loss-resistant-context-compiler`; retain `context_compiler` and `ctxc`, and
+  document that the old pre-beta `lossless-context-compiler` metadata is not a
+  package alias or automatic upgrade relationship.
 - [ ] Publish signed source and wheel artifacts to a test package index.
-- [ ] Add release notes, a changelog, semantic-versioning policy, and support
+- [x] Add release notes, a changelog, semantic-versioning policy, and support
   matrix.
 - [ ] Verify installation from a clean Python environment on all supported
-  platforms.
+  platforms. A no-index Windows wheel install, import, `ctxc --help`, and
+  seven-schema check pass; the Ubuntu clean-install CI step must pass after
+  publication of this change, and macOS remains outside the supported matrix.
 - [ ] Add supply-chain scanning and dependency review for optional adapters.
 - [ ] Publish `0.2.0` only after the external runner and natural-history corpus
   format are stable.

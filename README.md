@@ -25,9 +25,10 @@ meaning can be compressed without loss.
 | Area | Current state |
 | --- | --- |
 | Release | Alpha research implementation, package version `0.1.0` |
+| Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 941 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 944 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -196,7 +197,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 941 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 944 regression tests.
 
 ## In development
 
@@ -338,6 +339,8 @@ personal data, and unknown formats remain the caller's responsibility. See
 ## Install
 
 Python 3.11 or newer is required. The runtime uses only the standard library.
+The stable distribution name is `loss-resistant-context-compiler`; no package
+index release is currently claimed.
 
 ```console
 python -m pip install -e .
@@ -348,6 +351,11 @@ For development tools:
 ```console
 python -m pip install -e ".[dev]"
 ```
+
+Early editable installs may still carry the old development distribution
+metadata `lossless-context-compiler`. It is not an alias or upgrade target;
+remove it before reinstalling the current project. The Python import and
+`ctxc` command have not changed. See [Support](SUPPORT.md).
 
 ## CLI quick start
 
@@ -866,6 +874,7 @@ with tempfile.TemporaryDirectory() as directory:
     )
     wheels = list(pathlib.Path(directory).glob('*.whl'))
     assert len(wheels) == 1, wheels
+    assert wheels[0].name.startswith('loss_resistant_context_compiler-')
     names = zipfile.ZipFile(wheels[0]).namelist()
     assert sum(name.endswith('.schema.json') for name in names) == 7
 "
@@ -991,7 +1000,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 941 tests are collected (933 pass and 8
+Current local snapshot (2026-07-24): 944 tests are collected (936 pass and 8
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
@@ -1060,6 +1069,9 @@ the commands above for the current revision and environment.
 ## Documentation
 
 - [TODO and development roadmap](TODO.md)
+- [Changelog and release notes](CHANGELOG.md)
+- [Runtime, platform, format, and installation support](SUPPORT.md)
+- [Release and semantic-versioning policy](docs/RELEASE_POLICY.md)
 - [Next-chat handoff and current project state](docs/HANDOFF.md)
 - [Architecture and invariants](docs/ARCHITECTURE.md)
 - [Extending extraction with domain packs](docs/EXTENDING_EXTRACTION.md)

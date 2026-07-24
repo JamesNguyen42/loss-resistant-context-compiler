@@ -48,11 +48,18 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - name: Install package
-        run: python -m pip install -e .
-      - name: Build wheel and verify packaged schemas
+        run: python -m pip install -e ".[dev]"
+      - name: Build release archives and verify packaged contents
         run: |
           python -m pip wheel . --no-deps --wheel-dir dist
-          python -c "import glob, zipfile; p=glob.glob('dist/*.whl')[0]; names=zipfile.ZipFile(p).namelist(); assert sum(name.endswith('.schema.json') for name in names) == 7, names"
+          python -c "import setuptools.build_meta as backend; backend.build_sdist('dist')"
+          python -c "import glob, os, tarfile, zipfile; w=glob.glob('dist/*.whl'); s=glob.glob('dist/*.tar.gz'); assert len(w)==len(s)==1, (w,s); assert os.path.basename(w[0]).startswith('loss_resistant_context_compiler-'); wn=zipfile.ZipFile(w[0]).namelist(); assert sum(n.endswith('.schema.json') for n in wn)==7, wn; sn=tarfile.open(s[0]).getnames(); required=('CHANGELOG.md','SUPPORT.md','docs/RELEASE_POLICY.md','benchmarks/lrcbench.py'); assert all(any(n.endswith('/'+r) for n in sn) for r in required), sn"
+      - name: Install the wheel in a clean environment
+        run: |
+          python -m venv .clean-install
+          .clean-install/bin/python -m pip install --no-index --no-deps dist/*.whl
+          .clean-install/bin/python -c "import pathlib, sys, context_compiler; assert context_compiler.__version__ == '0.1.0'; p=pathlib.Path(sys.prefix)/'share'/'loss-resistant-context-compiler'/'schemas'; assert len(list(p.glob('*.json'))) == 7, p"
+          .clean-install/bin/ctxc --help
       - name: Validate external candidate interchange
         run: python -m benchmarks --self-test
       - name: Verify external protocol readiness artifact

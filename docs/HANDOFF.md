@@ -27,7 +27,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 941 collected: 933 passing, 8 skipped |
+| Tests at this snapshot | 944 collected: 936 passing, 8 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -299,6 +299,10 @@ counters are deterministic, apart from timestamps and measured duration.
 | `benchmarks/protocols/` | Human-readable and machine-verifiable external comparison protocol; v1 is a valid non-claim-bearing draft with explicit blockers |
 | `schemas/` | Source, coordinate/unique-literal model extraction, compiled artifact, redaction report, and source-archive entry/report contracts |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
+| `CHANGELOG.md` | Versioned release notes and the unreleased change ledger |
+| `SUPPORT.md` | Runtime, platform, format, installation, and maintenance matrix |
+| `docs/RELEASE_POLICY.md` | Stable identities, Semantic Versioning, compatibility, and release gates |
+| `MANIFEST.in` | Complete source-distribution inclusion policy |
 | `.github/workflows/ci.yml` | Cross-version tests, lint, wheel checks, interchange, benchmark |
 
 ## Public interfaces
@@ -431,7 +435,7 @@ and enforces a subprocess timeout. See [Local Qwen integration](LOCAL_QWEN.md).
 | --- | --- |
 | Project and repository name | Loss-resistant Context Compiler |
 | GitHub repository slug | `loss-resistant-context-compiler` |
-| Python distribution | `lossless-context-compiler` |
+| Python distribution | `loss-resistant-context-compiler` |
 | Import package | `context_compiler` |
 | CLI command | `ctxc` |
 | Package version | `0.1.0` |
@@ -452,11 +456,14 @@ and enforces a subprocess timeout. See [Local Qwen integration](LOCAL_QWEN.md).
 | External runner manifest | `lrcbench-external-run-manifest-0.13` |
 | External comparison protocol | `lrcbench-external-protocol-0.9` |
 | Adapter process-environment evidence | `lrcbench-process-environment-0.1` |
-| Installed schema directory | `share/lossless-context-compiler/schemas` |
+| Installed schema directory | `share/loss-resistant-context-compiler/schemas` |
 
-The resistant/lossless distribution-name difference is unresolved and is a
-release TODO. Do not rename it casually: package, schema-install,
-documentation, and migration compatibility must change together.
+The previous `lossless-context-compiler` value was unresolved pre-beta
+metadata. The stable distribution now matches the truthful repository name.
+It is not a compatibility alias: an old editable distribution must be removed
+before reinstalling. The import package, CLI, package version, and every stored
+schema identity remain unchanged. See [release policy](RELEASE_POLICY.md) and
+[support matrix](../SUPPORT.md).
 
 ## Input and output contracts
 
@@ -502,10 +509,15 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 941 tests are collected: 933 pass and 8 platform/optional checks are skipped.
+- 944 tests are collected: 936 pass and 8 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
-- CI builds a wheel and verifies that all seven schemas are included.
+- Distribution metadata, `ctxc`, package version, and the renamed installed
+  schema path are regression-tested. CI builds a wheel and verifies that all
+  seven schemas are included. A local no-index Windows clean environment
+  installs the wheel, imports version `0.1.0`, runs `ctxc --help`, and finds all
+  seven schemas under the renamed prefix; equivalent Ubuntu validation is now
+  staged in CI.
 - CI runs the external-candidate interchange self-test.
 - CI enforces `ci-compile-v1` through a self-hashed
   `ctxc-performance-gate-0.1` report: three-trial medians at 128/256 events,
@@ -1031,6 +1043,7 @@ with tempfile.TemporaryDirectory() as directory:
     )
     wheels = list(pathlib.Path(directory).glob('*.whl'))
     assert len(wheels) == 1, wheels
+    assert wheels[0].name.startswith('loss_resistant_context_compiler-')
     names = zipfile.ZipFile(wheels[0]).namelist()
     assert sum(name.endswith('.schema.json') for name in names) == 7
 "
