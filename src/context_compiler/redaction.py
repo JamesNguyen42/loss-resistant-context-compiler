@@ -15,7 +15,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from .models import SourceRecord, source_digest
+from .models import MAX_SOURCE_ID_CHARS, SourceRecord, source_digest
 
 REDACTION_REPORT_SCHEMA = "ctxc-redaction-report-0.1"
 REDACTION_VERIFICATION_SCHEMA = "ctxc-redaction-verification-0.1"
@@ -258,6 +258,10 @@ class RedactionFinding:
         if not isinstance(self.source_id, str) or not self.source_id:
             raise TypeError(
                 "redaction finding source_id must be a non-empty string"
+            )
+        if len(self.source_id) > MAX_SOURCE_ID_CHARS:
+            raise ValueError(
+                f"redaction finding source_id exceeds {MAX_SOURCE_ID_CHARS} characters"
             )
         if self.detector not in SECRET_DETECTOR_NAMES:
             raise ValueError("redaction finding detector is unknown")
@@ -769,6 +773,11 @@ def verify_redaction_report_hash(document: Any) -> dict[str, Any]:
         if not isinstance(source_id, str) or not source_id:
             raise RedactionError(
                 "redaction report source id must be a non-empty string"
+            )
+        if len(source_id) > MAX_SOURCE_ID_CHARS:
+            raise RedactionError(
+                "redaction report source id exceeds "
+                f"{MAX_SOURCE_ID_CHARS} characters"
             )
         if detector not in policy.enabled_detectors:
             raise RedactionError(

@@ -37,11 +37,16 @@
         "record_sha256"
       ],
       "properties": {
-        "id": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1, "maxLength": 1024},
         "sequence": {"type": "integer", "minimum": 0},
-        "role": {"type": "string", "minLength": 1, "pattern": "\\S"},
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "\\S"
+        },
         "content": {"type": "string"},
-        "timestamp": {"type": ["string", "null"]},
+        "timestamp": {"type": ["string", "null"], "maxLength": 256},
         "metadata": {"type": "object"},
         "content_sha256": {"$ref": "#/$defs/sha256"},
         "record_sha256": {"$ref": "#/$defs/sha256"}

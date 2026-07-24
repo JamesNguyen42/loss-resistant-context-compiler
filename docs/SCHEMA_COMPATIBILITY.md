@@ -21,6 +21,12 @@ Within `1.0`, `compiler_metadata.metrics` is an optional additive field. Older
 present, their schema and replayable fields are validated. No other omitted,
 renamed, or reinterpreted field is implied by this exception.
 
+The current `1.0` reader also enforces the shared 1,024-character source-id
+resource ceiling. It rejects an oversized id instead of truncating, rewriting,
+or re-signing the artifact. This is a fail-closed validity constraint, not a
+migration; an artifact outside the current schema remains preserved bytes but
+is not reported as readable.
+
 The support window is available without reading an artifact:
 
 ```console

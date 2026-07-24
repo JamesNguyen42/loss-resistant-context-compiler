@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from context_compiler import (
+    MAX_SOURCE_ID_CHARS,
     ContextCompiler,
     LiteralModelExtractor,
     MemoryKind,
@@ -477,5 +478,9 @@ def test_literal_schema_matches_the_strict_runtime_shape() -> None:
         "type": "array",
         "minItems": 1,
         "uniqueItems": True,
-        "items": {"type": "string", "minLength": 1},
+        "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": MAX_SOURCE_ID_CHARS,
+        },
     }

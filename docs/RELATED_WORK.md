@@ -88,7 +88,7 @@ of design goals is not evidence of comparative performance.
 | FoldAgent | Agent-controlled branching and folding | Yes; reinforcement learning | Folded sub-trajectory outcomes | Deep research and software-engineering tasks |
 | AMA-Bench / AMA-Agent | Benchmark and causal/tool-augmented long-term memory | AMA-Agent uses structured retrieval | Objective and causal information | Real and scalable synthetic trajectories with QA |
 | MemIR | Typed long-term memory and source monitoring | Representation and retrieval architecture | Central: grounded atoms and factual authorization | LoCoMo and BEAM-100K |
-| This project | Loss-resistant active-context compilation | Optional exact-span model extractors; deterministic core | Exact source spans and independent checks | 904 tests, local synthetic LRCBench, replayable exact-Qwen diagnostics, a non-claim-bearing offset ablation, and a retained 128-call paired result |
+| This project | Loss-resistant active-context compilation | Optional exact-span model extractors; deterministic core | Exact source spans and independent checks | 912 tests, local synthetic LRCBench, replayable exact-Qwen diagnostics, a non-claim-bearing offset ablation, and a retained 128-call paired result |
 
 ## What can be claimed today
 

@@ -20,6 +20,9 @@ from typing import Any
 
 SCHEMA_VERSION = "1.0"
 COMPILATION_METRICS_SCHEMA = "compilation-metrics-0.1"
+MAX_SOURCE_ID_CHARS = 1_024
+MAX_SOURCE_ROLE_CHARS = 128
+MAX_SOURCE_TIMESTAMP_CHARS = 256
 PRIMARY_EXTRACTOR_FAILED_MESSAGE = (
     "The primary extractor failed; verified deterministic recovery was used."
 )
@@ -126,6 +129,11 @@ def stable_hash_parts(*values: Any, length: int = 24) -> str:
     return stable_hash(canonical, length=length)
 
 
+def _validate_source_field_length(value: str, *, label: str, maximum: int) -> None:
+    if len(value) > maximum:
+        raise ValueError(f"{label} exceeds {maximum} characters")
+
+
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -185,16 +193,32 @@ class SourceRecord:
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not self.id:
             raise TypeError("source record id must be a non-empty string")
+        _validate_source_field_length(
+            self.id,
+            label="source record id",
+            maximum=MAX_SOURCE_ID_CHARS,
+        )
         if isinstance(self.sequence, bool) or not isinstance(self.sequence, int):
             raise TypeError("source sequence must be an integer")
         if self.sequence < 0:
             raise ValueError("source sequence cannot be negative")
         if not isinstance(self.role, str) or not self.role.strip():
             raise TypeError("source role must be a non-empty string")
+        _validate_source_field_length(
+            self.role,
+            label="source role",
+            maximum=MAX_SOURCE_ROLE_CHARS,
+        )
         if not isinstance(self.content, str):
             raise TypeError("source content must be a string")
         if self.timestamp is not None and not isinstance(self.timestamp, str):
             raise TypeError("source timestamp must be a string or null")
+        if self.timestamp is not None:
+            _validate_source_field_length(
+                self.timestamp,
+                label="source timestamp",
+                maximum=MAX_SOURCE_TIMESTAMP_CHARS,
+            )
         if not isinstance(self.metadata, dict):
             raise TypeError("source metadata must be an object")
         object.__setattr__(self, "metadata", _freeze_json(self.metadata))
@@ -226,6 +250,24 @@ class SourceRecord:
     ) -> SourceRecord:
         if id is not None and (not isinstance(id, str) or not id):
             raise ValueError("source id must be null or a non-empty string")
+        if id is not None:
+            _validate_source_field_length(
+                id,
+                label="source id",
+                maximum=MAX_SOURCE_ID_CHARS,
+            )
+        if isinstance(role, str):
+            _validate_source_field_length(
+                role,
+                label="source role",
+                maximum=MAX_SOURCE_ROLE_CHARS,
+            )
+        if isinstance(timestamp, str):
+            _validate_source_field_length(
+                timestamp,
+                label="source timestamp",
+                maximum=MAX_SOURCE_TIMESTAMP_CHARS,
+            )
         metadata_value = {} if metadata is None else copy.deepcopy(metadata)
         generated_hash = stable_hash_parts(
             sequence,
@@ -329,6 +371,11 @@ class ProvenanceSpan:
     def __post_init__(self) -> None:
         if not isinstance(self.source_id, str) or not self.source_id:
             raise TypeError("provenance source_id must be a non-empty string")
+        _validate_source_field_length(
+            self.source_id,
+            label="provenance source_id",
+            maximum=MAX_SOURCE_ID_CHARS,
+        )
         if isinstance(self.start, bool) or not isinstance(self.start, int):
             raise TypeError("provenance start must be an integer")
         if isinstance(self.end, bool) or not isinstance(self.end, int):

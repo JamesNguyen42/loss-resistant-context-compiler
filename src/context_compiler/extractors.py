@@ -11,6 +11,7 @@ from types import MappingProxyType
 from typing import Any, Protocol, runtime_checkable
 
 from .models import (
+    MAX_SOURCE_ID_CHARS,
     MemoryItem,
     MemoryKind,
     ProvenanceSpan,
@@ -1257,6 +1258,10 @@ class ModelExtractor:
             start, end = raw_span["start"], raw_span["end"]
             if not isinstance(source_id, str) or not source_id:
                 raise TypeError("candidate source_id must be a non-empty string")
+            if len(source_id) > MAX_SOURCE_ID_CHARS:
+                raise ValueError(
+                    f"candidate source_id exceeds {MAX_SOURCE_ID_CHARS} characters"
+                )
             if (
                 isinstance(start, bool)
                 or not isinstance(start, int)
@@ -1377,6 +1382,11 @@ class LiteralModelExtractor(ModelExtractor):
             if not isinstance(source_id, str) or not source_id:
                 raise TypeError(
                     "candidate source_ids must contain non-empty strings"
+                )
+            if len(source_id) > MAX_SOURCE_ID_CHARS:
+                raise ValueError(
+                    "candidate source_ids must not exceed "
+                    f"{MAX_SOURCE_ID_CHARS} characters"
                 )
             if source_id in seen_source_ids:
                 raise ValueError("candidate source_ids must be unique")

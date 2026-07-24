@@ -27,7 +27,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 904 collected: 897 passing, 7 skipped |
+| Tests at this snapshot | 912 collected: 905 passing, 7 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -208,6 +208,12 @@ but valid-prefix rollback detection depends on retaining that head outside the
 archive. Artifacts and source state need an independent trust anchor in
 adversarial storage.
 
+Source ids, roles, and timestamps are opaque but have fixed structural ceilings
+of 1,024, 128, and 256 characters. These bounds apply across direct
+`SourceRecord` construction, provenance, model interchange, archives,
+artifacts, and redaction reports; they limit derived-field amplification but do
+not constitute metadata or PII redaction.
+
 ## Closed fail-closed defects
 
 Four defects reproduced against the clean starting baseline are now closed:
@@ -261,7 +267,7 @@ counters are deterministic, apart from timestamps and measured duration.
 
 | Path | Responsibility |
 | --- | --- |
-| `src/context_compiler/models.py` | Enums, immutable source records, sealable items, frozen reports, policy, rendering, hashes |
+| `src/context_compiler/models.py` | Enums, immutable and identity-bounded source records, sealable items, frozen reports, policy, rendering, hashes |
 | `src/context_compiler/extractors.py` | Rule extraction, constraint atomization, coordinate and unique-literal model adapters, authority checks |
 | `src/context_compiler/local_qwen.py` | Exact local Qwen Q4 LM Studio CLI preflight, timeout, and single-slot adapter |
 | `src/context_compiler/resolver.py` | Deduplication, corrections, revocations, unresolved closure, conflicts |
@@ -489,7 +495,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 904 tests are collected: 897 pass and 7 platform/optional checks are skipped.
+- 912 tests are collected: 905 pass and 7 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all seven schemas are included.
@@ -1071,6 +1077,8 @@ and commits solely under JamesNguyen42.
 - Seal verified snapshots and recheck their canonical digest before rendering.
 - Treat provider output as optional by default with explicit deterministic
   fallback warnings; retain an opt-in strict failure policy.
+- Keep source ids, roles, and timestamps opaque while enforcing their shared
+  fixed character ceilings before they can amplify into derived state.
 - Treat superseded selection as audit-only and fail execution verification.
 - Keep the runtime provider-neutral and standard-library-only.
 - Restrict the included LM Studio adapter to the exact local Qwen Q4 model and

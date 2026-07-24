@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 904 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 912 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -134,7 +134,9 @@ The repository currently includes:
   rejection, deterministic provider-failure fallback, and an opt-in strict
   provider-failure policy;
 - shared default-on source and compiled-artifact limits for UTF-8 input bytes,
-  physical line length, JSON depth, canonical size, and schema collections;
+  physical line length, JSON depth, canonical size, schema collections, and
+  fixed source-id/role/timestamp ceilings that bound derived-field
+  amplification;
 - shared strict regular-file loading for benchmark reports, corpora, external
   candidates, and run manifests, with byte/line/depth limits plus duplicate-key
   and non-finite-number rejection;
@@ -191,7 +193,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 904 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 912 regression tests.
 
 ## In development
 
@@ -314,6 +316,10 @@ implementation enforces these structural properties:
   checked against an independently trusted source set;
 - source metadata is deep-copied, restricted to finite canonical JSON values,
   and recursively immutable after `SourceRecord` construction;
+- opaque source ids, roles, and timestamps retain arbitrary Unicode and
+  control characters but are capped at 1,024, 128, and 256 characters
+  respectively across source, provenance, model, archive, artifact, and
+  redaction contracts;
 - the final compiled ledger, verification report, statistics, selection, and
   compiler metadata are recursively sealed, and prompt/artifact rendering
   rechecks a canonical snapshot digest.
@@ -515,11 +521,17 @@ and archive commands:
 | One canonical source record | 4 MiB | `--max-source-record-bytes` |
 | All canonical source records | 64 MiB | `--max-total-source-bytes` |
 | JSON container nesting | 128 levels | `--max-source-json-depth` |
+| Source id | 1,024 characters | fixed structural invariant |
+| Source role | 128 characters | fixed structural invariant |
+| Source timestamp | 256 characters | fixed structural invariant |
 
-The same six limits are available through `SourceLimits` for the Python API.
-They are hard ingestion boundaries, not a promise that total process memory
-equals the byte caps; Python objects, compiler state, and caller-controlled
-extractors have additional overhead.
+The first six configurable limits are available through `SourceLimits` for the
+Python API. The final three are exported as `MAX_SOURCE_ID_CHARS`,
+`MAX_SOURCE_ROLE_CHARS`, and `MAX_SOURCE_TIMESTAMP_CHARS` and apply to every
+`SourceRecord`; increasing a byte limit does not bypass them. These are hard
+ingestion boundaries, not a promise that total process memory equals the byte
+caps; Python objects, compiler state, and caller-controlled extractors have
+additional overhead.
 
 Serialized source and compiled-artifact paths must resolve directly to stable
 regular files. Path loaders reject symlinks and special files, use no-follow
@@ -939,7 +951,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 904 tests are collected (897 pass and 7
+Current local snapshot (2026-07-24): 912 tests are collected (905 pass and 7
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

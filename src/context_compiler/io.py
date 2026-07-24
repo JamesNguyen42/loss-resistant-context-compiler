@@ -28,6 +28,7 @@ from .limits import (
 from .models import (
     ADDITIVE_SAFETY_EXTRACTOR_FAILED_MESSAGE,
     COMPILATION_METRICS_SCHEMA,
+    MAX_SOURCE_ID_CHARS,
     PRIMARY_EXTRACTOR_DEGRADED_MESSAGE,
     PRIMARY_EXTRACTOR_FAILED_MESSAGE,
     SCHEMA_VERSION,
@@ -246,11 +247,22 @@ def _validate_provenance_shape(
         issues=issues,
         item_id=item_id,
     )
-    if not isinstance(value.get("source_id"), str) or not value.get("source_id"):
+    source_id = value.get("source_id")
+    if not isinstance(source_id, str) or not source_id:
         _shape_issue(
             issues,
             "invalid_provenance_shape",
             f"{label}.source_id must be a non-empty string.",
+            item_id=item_id,
+        )
+    elif len(source_id) > MAX_SOURCE_ID_CHARS:
+        _shape_issue(
+            issues,
+            "invalid_provenance_shape",
+            (
+                f"{label}.source_id exceeds "
+                f"{MAX_SOURCE_ID_CHARS} characters."
+            ),
             item_id=item_id,
         )
     start = value.get("start")

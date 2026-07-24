@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 904 tests (897 passing and 7 skipped locally); CI covers Python
+- [x] Collect 912 tests (905 passing and 7 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -584,12 +584,15 @@ than most related technology” within the exact dated evaluation scope.
   detection; document that standalone self-hashes remain recomputable and do
   not replace a protected monotonic/signature anchor.
 - [ ] Define safe retention, deletion, and backup workflows.
-- [ ] Complete the remaining parent-directory traversal and hostile-metadata
-  security matrix. Source, artifact, and archive paths now reject symlink and
-  special-file inputs, detect substitution/in-place mutation, bound
-  replacement retries, and refuse compressed bytes without decompression;
-  archive hard-link aliases, writer races, and oversized/ambiguous JSON also
-  have fail-closed coverage.
+- [x] Complete the hostile serialized-file and structural-metadata matrix:
+  source, artifact, and archive paths reject symlink/special-file inputs,
+  detect substitution/in-place mutation, bound replacement retries, and refuse
+  compressed bytes without decompression; archive hard-link aliases, writer
+  races, oversized/ambiguous JSON, canonical immutable metadata, and fixed
+  source-id/role/timestamp amplification ceilings have fail-closed coverage.
+- [ ] Define and test the remaining parent-directory traversal boundary.
+  File-level no-follow and identity checks do not prevent a privileged rename
+  or alias of an ancestor directory.
 - [ ] Complete an external security review before a production claim.
 
 ### Reliability and operations

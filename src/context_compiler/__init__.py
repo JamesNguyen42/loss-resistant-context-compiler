@@ -30,6 +30,9 @@ from .limits import ArtifactLimitError, ArtifactLimits, SourceLimitError, Source
 from .local_qwen import LmsQwenCompletion, LocalQwenError
 from .models import (
     COMPILATION_METRICS_SCHEMA,
+    MAX_SOURCE_ID_CHARS,
+    MAX_SOURCE_ROLE_CHARS,
+    MAX_SOURCE_TIMESTAMP_CHARS,
     CompilationMetrics,
     CompilationPolicy,
     CompiledMemory,
@@ -70,6 +73,9 @@ __all__ = [
     "ARTIFACT_INSPECTION_SCHEMA",
     "ARTIFACT_SCHEMA_COMPATIBILITY_SCHEMA",
     "COMPILATION_METRICS_SCHEMA",
+    "MAX_SOURCE_ID_CHARS",
+    "MAX_SOURCE_ROLE_CHARS",
+    "MAX_SOURCE_TIMESTAMP_CHARS",
     "CompilationIsolationError",
     "CompilationMetrics",
     "CompilationPolicy",

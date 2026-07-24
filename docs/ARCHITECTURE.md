@@ -65,6 +65,13 @@ objects and arrays are recursively copied and frozen during construction, so
 later caller mutation cannot change the record and attempted nested mutation
 raises `TypeError`. Serialization returns an ordinary detached JSON object.
 
+Ids, roles, and timestamps remain opaque: valid Unicode and control characters
+are not normalized or filtered. Fixed character ceilings of 1,024, 128, and
+256 respectively prevent those fields from expanding without bound when ids
+are repeated in provenance/prompt references and roles are copied into item
+metadata. `ProvenanceSpan`, model interchange, archive, artifact, and
+redaction-report contracts share the id ceiling.
+
 The source-input schema accepts `id: null` and empty hash fields as omission
 sentinels for OpenAI-style message exports. Loading replaces them with a
 generated non-empty id and canonical SHA-256 values, so serialized
@@ -77,7 +84,9 @@ generated non-empty id and canonical SHA-256 values, so serialized
 serialized input and archive files at 64 MiB, physical lines at 1,048,576
 characters, histories at 100,000 records, individual canonical records at
 4 MiB, total canonical records at 64 MiB, and JSON container depth at 128.
-Every field must be a positive non-boolean integer.
+Every field must be a positive non-boolean integer. The fixed identity-field
+ceilings are data-model invariants rather than `SourceLimits` settings, so
+direct construction and redaction cannot bypass them.
 
 Serialized source and compiled-artifact path loaders share a stable
 regular-file boundary: lstat rejection of links/special files, OS no-follow
