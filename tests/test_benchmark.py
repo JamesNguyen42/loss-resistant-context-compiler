@@ -260,6 +260,41 @@ def test_external_interchange_rejects_active_token_override_and_overflow() -> No
             token_budget=config.token_budget,
         )
 
+    atom = cases[0].gold_atoms[0]
+    sidecar_case = {
+        "case_id": cases[0].id,
+        "rendered_text": atom.text,
+        "claims": [
+            {
+                "text": atom.text,
+                "kind": atom.kind,
+                "provenance": [
+                    {
+                        "source_id": atom.source_id,
+                        "start": atom.start,
+                        "end": atom.end,
+                        "quote": atom.text,
+                    }
+                ],
+            }
+            for _ in range(32)
+        ],
+    }
+    assert estimate_tokens(sidecar_case["rendered_text"]) < config.token_budget
+    sidecar_payload = candidate_document(
+        dataset_sha256=digest,
+        system="external-test",
+        cases=[sidecar_case],
+        producer=producer,
+    )
+    with pytest.raises(ExternalBaselineError, match="exceeding the matched budget"):
+        decode_external_candidate(
+            sidecar_payload,
+            cases=cases,
+            dataset_sha256=digest,
+            token_budget=config.token_budget,
+        )
+
     case_payload["active_tokens"] = 1
     payload = candidate_document(
         dataset_sha256=digest,

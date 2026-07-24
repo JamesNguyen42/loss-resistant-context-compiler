@@ -331,8 +331,10 @@ Acceptance:
   manifests retain and rehash the actual dependency lock, require canonical
   `sha256:<dependency-lock-sha256>` environment identity, and scoring matches
   it to the frozen protocol.
-- [ ] Count the final rendered output and provenance ledger under the same
-  tokenizer and token budget for every system.
+- [x] Count the final rendered output and provenance ledger under the same
+  evaluator-owned tokenizer and token budget for every system; external
+  candidates receive a canonical typed-claim/provenance sidecar, and tests show
+  that sidecar overhead alone can trigger matched-budget rejection.
 - [x] Fail closed on missing cases, duplicate cases, malformed spans, unknown
   fields, budget overruns, timeouts, output limits, or partial output.
 - [x] Convert validated runner-manifest failures, including malformed candidate
