@@ -424,6 +424,16 @@ byte count and SHA-256. Corpus, candidate, manifest, and report consumers share
 that path; candidate validation and per-case aggregation compare successive
 byte evidence so replacement races fail closed.
 
+Interchange provenance is separate from dataset identity. The
+`lrcbench-corpus-0.3` envelope binds `lrcbench-corpus-producer-0.1` with
+`corpus_sha256`, but `dataset_sha256` still depends only on benchmark version,
+generation config, cases, sources, and evaluator gold. The
+`lrcbench-candidate-output-0.2` envelope similarly binds its
+`lrcbench-candidate-producer-0.1` adapter/model record and cases with
+`candidate_payload_sha256`. The runner accepts legacy `0.1` output only as a
+raw adapter boundary, upgrades it using the registered runner identity, and
+cross-checks that identity again during manifest reload.
+
 Every runtime-error path calls one formatter. The default remains
 `ctxc: <message>` on stderr. `--error-format json` instead emits one compact
 `ctxc-diagnostic-0.1` object with command, stable category/code, exit status,

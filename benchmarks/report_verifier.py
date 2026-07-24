@@ -15,7 +15,9 @@ from .json_io import StrictJsonError, StrictJsonLimits, load_strict_json_file
 from .lrcbench import (
     BENCHMARK_VERSION,
     BUNDLED_SYSTEMS,
+    CANDIDATE_PRODUCER_SCHEMA,
     CANDIDATE_SCHEMA,
+    CORPUS_PRODUCER_SCHEMA,
     CORPUS_SCHEMA,
     REPORT_SCHEMA,
     TOKENIZER_ID,
@@ -719,6 +721,8 @@ def _validate_run_metadata(
         "report": REPORT_SCHEMA,
         "corpus": CORPUS_SCHEMA,
         "candidate": CANDIDATE_SCHEMA,
+        "corpus_producer": CORPUS_PRODUCER_SCHEMA,
+        "candidate_producer": CANDIDATE_PRODUCER_SCHEMA,
     }
     actual_schemas = {item.name: item.revision for item in decoded.schema_versions}
     if actual_schemas != expected_schemas:

@@ -44,17 +44,32 @@ $env:PYTHONPATH = "src"
 python -m benchmarks --histories 24 --export-corpus lrcbench-corpus.json
 ```
 
-The export has schema `lrcbench-corpus-0.2`, the full benchmark config,
-`dataset_sha256`, a `corpus_sha256` over the complete gold-free export, and
-ordered `source_events` for every case. It never contains gold atoms. The
-corpus decoder rejects any source or configuration change that does not match
-that self-digest. An external adapter must return a document with this shape:
+The export has schema `lrcbench-corpus-0.3`, the full benchmark config,
+`dataset_sha256`, a versioned `lrcbench-corpus-producer-0.1` record, a
+`corpus_sha256` over the complete gold-free export, and ordered `source_events`
+for every case. Producer metadata changes corpus evidence but is deliberately
+excluded from `dataset_sha256`. The export never contains gold atoms. The
+corpus decoder rejects any source, configuration, or producer-envelope change
+that does not match the self-digest. A direct external candidate must use this
+current envelope:
 
 ```json
 {
-  "schema": "lrcbench-candidate-output-0.1",
+  "schema": "lrcbench-candidate-output-0.2",
   "dataset_sha256": "<copy from corpus export>",
+  "candidate_payload_sha256": "<canonical SHA-256 of every other field>",
   "system": "acon",
+  "producer": {
+    "schema": "lrcbench-candidate-producer-0.1",
+    "adapter_revision": "<immutable adapter revision>",
+    "environment_id": "<frozen environment identifier>",
+    "model_id": "qwen/qwen3.6-35b-a3b@q4_k_m",
+    "model_context_length": 8192,
+    "tokenizer_id": "character-estimate-v1",
+    "inference_concurrency": 1,
+    "retry_count": 0,
+    "model_service_cost_usd": 0.0
+  },
   "cases": [
     {
       "case_id": "history-000",
@@ -77,6 +92,12 @@ that self-digest. An external adapter must return a document with this shape:
   ]
 }
 ```
+
+The standard bounded runner remains compatible with a raw
+`lrcbench-candidate-output-0.1` adapter payload. After validating it, the runner
+adds its registered `RunnerIdentity`, computes `candidate_payload_sha256`, and
+retains only the normalized `0.2` artifact. This legacy allowance does not
+apply to direct `--external-baseline` imports.
 
 Every exported case must occur exactly once. `kind` may be `null` for
 untyped/extractive output or one of the typed-memory kinds. Every claim needs
@@ -202,7 +223,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-All 297 tests passed alongside it.
+All 300 tests passed alongside it.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |

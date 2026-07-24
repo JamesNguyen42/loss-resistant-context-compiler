@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 297 passing |
+| Tests at this snapshot | 300 passing |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -340,8 +340,10 @@ and enforces a subprocess timeout. See [Local Qwen integration](LOCAL_QWEN.md).
 | Package version | `0.1.0` |
 | Compiled artifact schema | `1.0` |
 | LRCBench report version | `lrcbench-0.2` |
-| LRCBench corpus schema | `lrcbench-corpus-0.2` |
-| LRCBench candidate schema | `lrcbench-candidate-output-0.1` |
+| LRCBench corpus schema | `lrcbench-corpus-0.3` |
+| LRCBench candidate schema | `lrcbench-candidate-output-0.2` |
+| Corpus producer schema | `lrcbench-corpus-producer-0.1` |
+| Candidate producer schema | `lrcbench-candidate-producer-0.1` |
 | Installed schema directory | `share/lossless-context-compiler/schemas` |
 
 The resistant/lossless distribution-name difference is unresolved and is a
@@ -385,7 +387,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 297 tests pass.
+- 300 tests pass.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -431,6 +433,12 @@ audited. Any selected superseded item independently fails verification as
   strict regular-file JSON boundary. Tests cover duplicate/non-finite values,
   size/line/depth limits, special files, and candidate mutation between hash,
   validation, and per-case aggregation.
+- Corpus and candidate envelopes carry separate versioned producer records.
+  Corpus producer changes alter `corpus_sha256` but not `dataset_sha256`;
+  candidate producer and cases are bound by `candidate_payload_sha256`.
+  The bounded runner normalizes legacy producerless adapter output to the
+  current envelope and cross-checks retained producer identity against the
+  manifest before scoring.
 - Opt-in JSON runtime diagnostics have stable resource, timeout, I/O,
   invalid-input, integrity, and policy categories. Default text output and
   stdout behavior remain unchanged.

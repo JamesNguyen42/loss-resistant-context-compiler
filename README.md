@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 297 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 300 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
@@ -124,6 +124,8 @@ The repository currently includes:
 - shared strict regular-file loading for benchmark reports, corpora, external
   candidates, and run manifests, with byte/line/depth limits plus duplicate-key
   and non-finite-number rejection;
+- versioned corpus and candidate producer records that are bound by envelope
+  self-digests while remaining outside the frozen benchmark dataset identity;
 - reusable same-directory atomic file replacement for CLI outputs, archive
   commits, benchmark reports, corpus exports, and runner manifests, plus opt-in
   versioned JSON error diagnostics with stable resource, I/O, input, integrity,
@@ -140,7 +142,7 @@ The repository currently includes:
   and valid or failed manifests that feed per-system certificate decisions;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
-- cross-version CI, linting, wheel/schema checks, and 297 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 300 regression tests.
 
 ## In development
 
@@ -595,6 +597,10 @@ case sequentially in a fresh process, records a hashed per-case audit trail,
 and merges only fully validated outputs. Whole-corpus mode is diagnostic-only.
 The wrapper is not a filesystem or network sandbox, and its memory limit does
 not include a pre-existing inference service outside the adapter process tree.
+It accepts the legacy producerless adapter payload only at that bounded runner
+boundary, then emits the current self-hashed candidate envelope with the
+registered adapter/model identity. Direct candidate imports require the current
+producer-bearing schema.
 
 LRCBench requires exact gold-atom offsets for credited provenance. A candidate
 cannot cite a broad enclosing source span to obtain recall credit for a smaller
@@ -607,7 +613,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): all 297 tests pass, and the recorded default
+Current local snapshot (2026-07-24): all 300 tests pass, and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`

@@ -1,6 +1,6 @@
 {
   "benchmark": "lrcbench-0.2",
-  "candidate_schema": "lrcbench-candidate-output-0.1",
+  "candidate_schema": "lrcbench-candidate-output-0.2",
   "certificate": {
     "baseline_quality": 0.0,
     "bootstrap_lower_quantile": 0.025,
@@ -77,8 +77,87 @@
     "seed": 56056,
     "token_budget": 900
   },
-  "corpus_schema": "lrcbench-corpus-0.2",
+  "corpus_schema": "lrcbench-corpus-0.3",
   "dataset_sha256": "421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761",
+  "report_schema": "lrcbench-report-0.1",
+  "report_sha256": "06fcaf5cdb72b9e3a4521db0d3c13179ac13ee21aa48f2cec405d4290b0cc74d",
+  "run_metadata": {
+    "baseline_revisions": [
+      {
+        "name": "compiler",
+        "revision": "927606067b2ad3cd2b7f6f3fcd92342be962d1ab"
+      },
+      {
+        "name": "head",
+        "revision": "927606067b2ad3cd2b7f6f3fcd92342be962d1ab"
+      },
+      {
+        "name": "tail",
+        "revision": "927606067b2ad3cd2b7f6f3fcd92342be962d1ab"
+      },
+      {
+        "name": "extractive",
+        "revision": "927606067b2ad3cd2b7f6f3fcd92342be962d1ab"
+      }
+    ],
+    "command": [
+      "C:\\Users\\nguye\\OneDrive\\Documents\\GitHub\\loss-resistant-context-compiler\\.venv\\Scripts\\python.exe",
+      "-m",
+      "benchmarks",
+      "--histories",
+      "32",
+      "--messages",
+      "72",
+      "--noise-lines",
+      "8",
+      "--token-budget",
+      "900",
+      "--minimum-compression",
+      "5",
+      "--seed",
+      "56056",
+      "--bootstrap-samples",
+      "2000",
+      "--bootstrap-lower-quantile",
+      "0.025",
+      "--json-out",
+      "docs/results/lrcbench-local.json",
+      "--include-histories"
+    ],
+    "duration_seconds": 14.281,
+    "failures": [],
+    "model_id": "deterministic-no-model",
+    "model_service_cost_usd": 0.0,
+    "package_version": "0.1.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.12.13",
+    "repository_commit": "927606067b2ad3cd2b7f6f3fcd92342be962d1ab",
+    "repository_dirty": true,
+    "schema_versions": [
+      {
+        "name": "report",
+        "revision": "lrcbench-report-0.1"
+      },
+      {
+        "name": "corpus",
+        "revision": "lrcbench-corpus-0.3"
+      },
+      {
+        "name": "candidate",
+        "revision": "lrcbench-candidate-output-0.2"
+      },
+      {
+        "name": "corpus_producer",
+        "revision": "lrcbench-corpus-producer-0.1"
+      },
+      {
+        "name": "candidate_producer",
+        "revision": "lrcbench-candidate-producer-0.1"
+      }
+    ],
+    "started_at": "2026-07-24T11:21:57.387414+00:00",
+    "tokenizer_id": "character-estimate-v1"
+  },
   "systems": [
     {
       "active_tokens": 26423,

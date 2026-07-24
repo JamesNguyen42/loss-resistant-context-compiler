@@ -9,11 +9,13 @@ from benchmarks.lrcbench import (
     REQUIRED_STRATA,
     AggregateMetrics,
     BenchmarkConfig,
+    CandidateProducerMetadata,
     ExternalBaselineError,
     HistoryCase,
     HistoryMetrics,
     _aggregate,
     _make_certificate,
+    candidate_document,
     dataset_digest,
     generate_histories,
     run_benchmark,
@@ -307,22 +309,30 @@ def test_registered_missing_and_degenerate_outputs_remain_external_nonwins(
     cases = generate_histories(config)
     digest = dataset_digest(cases, config)
     candidate_path = tmp_path / "candidate.json"
-    candidate_path.write_text(
-        json.dumps(
-            {
-                "schema": "lrcbench-candidate-output-0.1",
-                "dataset_sha256": digest,
-                "system": "registered-empty",
-                "cases": [
-                    {
-                        "case_id": case.id,
-                        "rendered_text": "",
-                        "claims": [],
-                    }
-                    for case in cases
-                ],
-            }
+    candidate_payload = candidate_document(
+        dataset_sha256=digest,
+        system="registered-empty",
+        producer=CandidateProducerMetadata(
+            adapter_revision="fixture-adapter",
+            environment_id="fixture-environment",
+            model_id="fixture-model",
+            model_context_length=4096,
+            tokenizer_id="fixture-tokenizer",
+            inference_concurrency=1,
+            retry_count=0,
+            model_service_cost_usd=0.0,
         ),
+        cases=[
+            {
+                "case_id": case.id,
+                "rendered_text": "",
+                "claims": [],
+            }
+            for case in cases
+        ],
+    )
+    candidate_path.write_text(
+        json.dumps(candidate_payload),
         encoding="utf-8",
     )
 
@@ -332,6 +342,11 @@ def test_registered_missing_and_degenerate_outputs_remain_external_nonwins(
         expected_external_systems=("registered-empty", "registered-missing"),
     )
 
+    revisions = {
+        value.name: value.revision
+        for value in report.run_metadata.baseline_revisions
+    }
+    assert revisions["registered-empty"] == "fixture-adapter"
     assert report.certificate.scope == "external-inclusive"
     assert not report.certificate.issued
     assert report.certificate.external_wins == 0

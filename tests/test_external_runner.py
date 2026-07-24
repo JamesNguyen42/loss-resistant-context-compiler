@@ -22,8 +22,11 @@ from benchmarks.external_runner import main as runner_main
 from benchmarks.json_io import StrictJsonLimits
 from benchmarks.lrcbench import (
     CANDIDATE_SCHEMA,
+    CORPUS_PRODUCER_SCHEMA,
     BenchmarkConfig,
+    CorpusProducerMetadata,
     ExternalBaselineError,
+    _canonical_sha256,
     corpus_document,
     dataset_digest,
     decode_corpus_document,
@@ -31,6 +34,21 @@ from benchmarks.lrcbench import (
     run_benchmark,
 )
 from context_compiler.local_qwen import QWEN_Q4_VARIANT
+
+
+def corpus_producer(
+    *,
+    created_at: str = "2026-01-01T00:00:00+00:00",
+) -> CorpusProducerMetadata:
+    return CorpusProducerMetadata(
+        created_at=created_at,
+        repository_commit=None,
+        repository_dirty=None,
+        package_version="0.1.0",
+        python_version="test-python",
+        platform="test-platform",
+        command=("pytest", "external-runner"),
+    )
 
 
 def write_corpus(
@@ -46,7 +64,12 @@ def write_corpus(
         bootstrap_samples=100,
     )
     cases = generate_histories(config)
-    document = corpus_document(cases, config, dataset_digest(cases, config))
+    document = corpus_document(
+        cases,
+        config,
+        dataset_digest(cases, config),
+        producer=corpus_producer(),
+    )
     path.write_text(json.dumps(document), encoding="utf-8")
     return config, document
 
@@ -111,6 +134,41 @@ def test_corpus_export_digest_detects_gold_free_source_tampering(tmp_path) -> No
         decode_corpus_document(tampered)
 
 
+def test_corpus_producer_changes_evidence_without_changing_dataset_identity() -> None:
+    config = BenchmarkConfig(
+        histories=1,
+        messages_per_history=24,
+        noise_lines_per_message=1,
+        token_budget=900,
+        bootstrap_samples=100,
+    )
+    cases = generate_histories(config)
+    digest = dataset_digest(cases, config)
+    first = corpus_document(
+        cases,
+        config,
+        digest,
+        producer=corpus_producer(),
+    )
+    second = corpus_document(
+        cases,
+        config,
+        digest,
+        producer=corpus_producer(created_at="2026-01-02T00:00:00+00:00"),
+    )
+
+    assert first["producer"]["schema"] == CORPUS_PRODUCER_SCHEMA
+    assert first["dataset_sha256"] == second["dataset_sha256"] == digest
+    assert first["corpus_sha256"] != second["corpus_sha256"]
+
+    tampered = json.loads(json.dumps(first))
+    tampered["producer"]["tokenizer_id"] = "wrong-tokenizer"
+    tampered.pop("corpus_sha256")
+    tampered["corpus_sha256"] = _canonical_sha256(tampered)
+    with pytest.raises(ExternalBaselineError, match="tokenizer_id must be"):
+        decode_corpus_document(tampered)
+
+
 def test_interchange_file_loaders_reject_duplicate_keys_and_size_overflow(
     tmp_path,
 ) -> None:
@@ -120,7 +178,7 @@ def test_interchange_file_loaders_reject_duplicate_keys_and_size_overflow(
     corpus_path.write_text(
         original_corpus.replace(
             "{",
-            '{"schema":"lrcbench-corpus-0.2",',
+            '{"schema":"lrcbench-corpus-0.3",',
             1,
         ),
         encoding="utf-8",
@@ -323,6 +381,11 @@ def test_per_case_runner_executes_without_a_shell_and_validates_candidate(
     assert manifest.termination_reason is None
     assert manifest.corpus_sha256 == document["corpus_sha256"]
     assert manifest.candidate_sha256 == hashlib.sha256(candidate_path.read_bytes()).hexdigest()
+    candidate_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+    candidate_payload_sha256 = candidate_payload.pop("candidate_payload_sha256")
+    assert candidate_payload["schema"] == CANDIDATE_SCHEMA
+    assert candidate_payload["producer"] == claim_identity().to_candidate_producer().to_dict()
+    assert candidate_payload_sha256 == _canonical_sha256(candidate_payload)
     payload = manifest.to_dict()
     manifest_sha = payload.pop("manifest_sha256")
     canonical = json.dumps(
@@ -599,23 +662,70 @@ def test_ready_manifest_wraps_candidate_disappearance_during_validation(
         identity=claim_identity(),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
-    original_hasher = external_runner_module.hash_bounded_regular_file
+    original_loader = external_runner_module.load_strict_json_file
 
-    def remove_before_candidate_hash(path, *, max_bytes, label):
+    def remove_before_candidate_load(path, *, limits, label):
         if label == "manifest candidate":
             candidate_path.unlink()
-        return original_hasher(path, max_bytes=max_bytes, label=label)
+        return original_loader(path, limits=limits, label=label)
 
     monkeypatch.setattr(
         external_runner_module,
-        "hash_bounded_regular_file",
-        remove_before_candidate_hash,
+        "load_strict_json_file",
+        remove_before_candidate_load,
     )
 
     with pytest.raises(
         ExternalRunnerError,
         match="manifest candidate could not be validated",
     ):
+        load_external_run_manifest(
+            manifest_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
+
+def test_ready_manifest_rejects_rehashed_candidate_producer_mismatch(
+    tmp_path,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    _config, document = write_corpus(corpus_path)
+    candidate_path = tmp_path / "candidate.json"
+    manifest_path = tmp_path / "manifest.json"
+    manifest = run_external_cases(
+        valid_adapter_command(),
+        system="fixture-adapter",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        identity=claim_identity(),
+    )
+    candidate_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+    candidate_payload["producer"]["adapter_revision"] = "forged-revision"
+    candidate_payload.pop("candidate_payload_sha256")
+    candidate_payload["candidate_payload_sha256"] = _canonical_sha256(
+        candidate_payload
+    )
+    candidate_text = (
+        json.dumps(
+            candidate_payload,
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
+    candidate_path.write_text(candidate_text, encoding="utf-8")
+    candidate_bytes = candidate_path.read_bytes()
+
+    manifest_payload = manifest.to_dict()
+    manifest_payload["candidate_bytes"] = len(candidate_bytes)
+    manifest_payload["candidate_sha256"] = hashlib.sha256(candidate_bytes).hexdigest()
+    manifest_payload.pop("manifest_sha256")
+    manifest_payload["manifest_sha256"] = _canonical_sha256(manifest_payload)
+    manifest_path.write_text(json.dumps(manifest_payload), encoding="utf-8")
+
+    with pytest.raises(ExternalRunnerError, match="registered runner identity"):
         load_external_run_manifest(
             manifest_path,
             expected_dataset_sha256=document["dataset_sha256"],

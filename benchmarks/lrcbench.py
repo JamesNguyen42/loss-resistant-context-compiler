@@ -34,8 +34,11 @@ from .json_io import StrictJsonError, StrictJsonLimits, load_strict_json_file
 
 BENCHMARK_VERSION = "lrcbench-0.2"
 REPORT_SCHEMA = "lrcbench-report-0.1"
-CORPUS_SCHEMA = "lrcbench-corpus-0.2"
-CANDIDATE_SCHEMA = "lrcbench-candidate-output-0.1"
+CORPUS_SCHEMA = "lrcbench-corpus-0.3"
+CANDIDATE_SCHEMA = "lrcbench-candidate-output-0.2"
+CORPUS_PRODUCER_SCHEMA = "lrcbench-corpus-producer-0.1"
+CANDIDATE_PRODUCER_SCHEMA = "lrcbench-candidate-producer-0.1"
+LEGACY_ADAPTER_CANDIDATE_SCHEMA = "lrcbench-candidate-output-0.1"
 TOKENIZER_ID = "character-estimate-v1"
 DEFAULT_EXTERNAL_CANDIDATE_BYTES = 20_000_000
 REQUIRED_BASELINES = ("head", "tail", "extractive")
@@ -138,6 +141,135 @@ class BenchmarkConfig:
             raise ValueError("bootstrap_samples must be at least 100")
         if not 0.0 < self.bootstrap_lower_quantile < 0.5:
             raise ValueError("bootstrap_lower_quantile must be between 0 and 0.5")
+
+
+@dataclass(frozen=True, slots=True)
+class CorpusProducerMetadata:
+    """Versioned identity for the process that exported a gold-free corpus."""
+
+    created_at: str
+    repository_commit: str | None
+    repository_dirty: bool | None
+    package_version: str
+    python_version: str
+    platform: str
+    command: tuple[str, ...]
+    tokenizer_id: str = TOKENIZER_ID
+    model_id: str = "deterministic-no-model"
+    model_service_cost_usd: float = 0.0
+
+    def __post_init__(self) -> None:
+        try:
+            created_at = datetime.fromisoformat(self.created_at)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("created_at must be an ISO-8601 timestamp") from exc
+        if created_at.utcoffset() is None:
+            raise ValueError("created_at must include a timezone")
+        if self.repository_commit is not None and (
+            not isinstance(self.repository_commit, str)
+            or re.fullmatch(
+                r"[0-9a-f]{40}|[0-9a-f]{64}",
+                self.repository_commit,
+            )
+            is None
+        ):
+            raise ValueError(
+                "repository_commit must be a lowercase Git object id or None"
+            )
+        if self.repository_dirty is not None and not isinstance(
+            self.repository_dirty,
+            bool,
+        ):
+            raise TypeError("repository_dirty must be a boolean or None")
+        for name in ("package_version", "python_version", "platform"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise TypeError(f"{name} must be a non-empty string")
+        if not isinstance(self.command, tuple) or not self.command or not all(
+            isinstance(part, str) and part for part in self.command
+        ):
+            raise TypeError("command must contain non-empty strings")
+        if self.tokenizer_id != TOKENIZER_ID:
+            raise ValueError(f"tokenizer_id must be {TOKENIZER_ID!r}")
+        if self.model_id != "deterministic-no-model":
+            raise ValueError("corpus production must record deterministic-no-model")
+        cost = self.model_service_cost_usd
+        if (
+            isinstance(cost, bool)
+            or not isinstance(cost, (int, float))
+            or float(cost) != 0.0
+        ):
+            raise ValueError("corpus production model_service_cost_usd must be zero")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema": CORPUS_PRODUCER_SCHEMA,
+            "created_at": self.created_at,
+            "repository_commit": self.repository_commit,
+            "repository_dirty": self.repository_dirty,
+            "package_version": self.package_version,
+            "python_version": self.python_version,
+            "platform": self.platform,
+            "command": list(self.command),
+            "tokenizer_id": self.tokenizer_id,
+            "model_id": self.model_id,
+            "model_service_cost_usd": float(self.model_service_cost_usd),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateProducerMetadata:
+    """Versioned adapter/model identity embedded in a candidate artifact."""
+
+    adapter_revision: str
+    environment_id: str
+    model_id: str
+    model_context_length: int
+    tokenizer_id: str
+    inference_concurrency: int
+    retry_count: int
+    model_service_cost_usd: float
+
+    def __post_init__(self) -> None:
+        for name in (
+            "adapter_revision",
+            "environment_id",
+            "model_id",
+            "tokenizer_id",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise TypeError(f"{name} must be a non-empty string")
+        for name in (
+            "model_context_length",
+            "inference_concurrency",
+            "retry_count",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer")
+            if value < 0:
+                raise ValueError(f"{name} cannot be negative")
+        cost = self.model_service_cost_usd
+        if isinstance(cost, bool) or not isinstance(cost, (int, float)):
+            raise TypeError("model_service_cost_usd must be numeric")
+        if not 0 <= float(cost) < float("inf"):
+            raise ValueError(
+                "model_service_cost_usd must be finite and non-negative"
+            )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema": CANDIDATE_PRODUCER_SCHEMA,
+            "adapter_revision": self.adapter_revision,
+            "environment_id": self.environment_id,
+            "model_id": self.model_id,
+            "model_context_length": self.model_context_length,
+            "tokenizer_id": self.tokenizer_id,
+            "inference_concurrency": self.inference_concurrency,
+            "retry_count": self.retry_count,
+            "model_service_cost_usd": float(self.model_service_cost_usd),
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -766,13 +898,29 @@ def corpus_document(
     cases: Sequence[HistoryCase],
     config: BenchmarkConfig,
     digest: str,
+    *,
+    producer: CorpusProducerMetadata | None = None,
 ) -> dict[str, object]:
     """Return the exact source corpus without evaluator-only gold atoms."""
 
+    if producer is None:
+        repository_commit, repository_dirty = _repository_state()
+        producer = CorpusProducerMetadata(
+            created_at=datetime.now(UTC).isoformat(),
+            repository_commit=repository_commit,
+            repository_dirty=repository_dirty,
+            package_version=PACKAGE_VERSION,
+            python_version=platform.python_version(),
+            platform=platform.platform(),
+            command=("python-api:benchmarks.corpus_document",),
+        )
+    if not isinstance(producer, CorpusProducerMetadata):
+        raise TypeError("producer must be CorpusProducerMetadata")
     document: dict[str, object] = {
         "schema": CORPUS_SCHEMA,
         "benchmark": BENCHMARK_VERSION,
         "dataset_sha256": digest,
+        "producer": producer.to_dict(),
         "config": asdict(config),
         "cases": [
             {
@@ -825,6 +973,97 @@ def _strict_int(value: object, context: str) -> int:
     return value
 
 
+def _decode_corpus_producer(
+    value: object,
+    *,
+    context: str,
+) -> CorpusProducerMetadata:
+    producer = _strict_object(value, context)
+    fields = {
+        "schema",
+        "created_at",
+        "repository_commit",
+        "repository_dirty",
+        "package_version",
+        "python_version",
+        "platform",
+        "command",
+        "tokenizer_id",
+        "model_id",
+        "model_service_cost_usd",
+    }
+    _strict_keys(
+        producer,
+        required=fields,
+        allowed=fields,
+        context=context,
+    )
+    if producer["schema"] != CORPUS_PRODUCER_SCHEMA:
+        raise ExternalBaselineError(
+            f"{context}.schema must be {CORPUS_PRODUCER_SCHEMA!r}"
+        )
+    command = producer["command"]
+    if not isinstance(command, list):
+        raise ExternalBaselineError(f"{context}.command must be an array")
+    try:
+        return CorpusProducerMetadata(
+            created_at=producer["created_at"],
+            repository_commit=producer["repository_commit"],
+            repository_dirty=producer["repository_dirty"],
+            package_version=producer["package_version"],
+            python_version=producer["python_version"],
+            platform=producer["platform"],
+            command=tuple(command),
+            tokenizer_id=producer["tokenizer_id"],
+            model_id=producer["model_id"],
+            model_service_cost_usd=producer["model_service_cost_usd"],
+        )
+    except (TypeError, ValueError) as exc:
+        raise ExternalBaselineError(f"{context} is invalid: {exc}") from exc
+
+
+def _decode_candidate_producer(
+    value: object,
+    *,
+    context: str,
+) -> CandidateProducerMetadata:
+    producer = _strict_object(value, context)
+    fields = {
+        "schema",
+        "adapter_revision",
+        "environment_id",
+        "model_id",
+        "model_context_length",
+        "tokenizer_id",
+        "inference_concurrency",
+        "retry_count",
+        "model_service_cost_usd",
+    }
+    _strict_keys(
+        producer,
+        required=fields,
+        allowed=fields,
+        context=context,
+    )
+    if producer["schema"] != CANDIDATE_PRODUCER_SCHEMA:
+        raise ExternalBaselineError(
+            f"{context}.schema must be {CANDIDATE_PRODUCER_SCHEMA!r}"
+        )
+    try:
+        return CandidateProducerMetadata(
+            adapter_revision=producer["adapter_revision"],
+            environment_id=producer["environment_id"],
+            model_id=producer["model_id"],
+            model_context_length=producer["model_context_length"],
+            tokenizer_id=producer["tokenizer_id"],
+            inference_concurrency=producer["inference_concurrency"],
+            retry_count=producer["retry_count"],
+            model_service_cost_usd=producer["model_service_cost_usd"],
+        )
+    except (TypeError, ValueError) as exc:
+        raise ExternalBaselineError(f"{context} is invalid: {exc}") from exc
+
+
 def decode_corpus_document(
     payload: object,
     *,
@@ -840,6 +1079,7 @@ def decode_corpus_document(
             "benchmark",
             "dataset_sha256",
             "corpus_sha256",
+            "producer",
             "config",
             "cases",
         },
@@ -848,6 +1088,7 @@ def decode_corpus_document(
             "benchmark",
             "dataset_sha256",
             "corpus_sha256",
+            "producer",
             "config",
             "cases",
         },
@@ -887,6 +1128,10 @@ def decode_corpus_document(
         ) from exc
     if actual_corpus_sha256 != corpus_sha256:
         raise ExternalBaselineError(f"{source_label} corpus_sha256 mismatch")
+    _decode_corpus_producer(
+        document["producer"],
+        context=f"{source_label}.producer",
+    )
 
     raw_config = _strict_object(document["config"], f"{source_label}.config")
     expected_config_keys = {
@@ -999,6 +1244,39 @@ def _canonical_external_render(
     return "\n".join(lines)
 
 
+def candidate_document(
+    *,
+    dataset_sha256: str,
+    system: str,
+    cases: Sequence[Mapping[str, object]],
+    producer: CandidateProducerMetadata,
+) -> dict[str, object]:
+    """Build a current candidate envelope and bind all fields with a self-digest."""
+
+    if (
+        not isinstance(dataset_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", dataset_sha256) is None
+    ):
+        raise ValueError("dataset_sha256 must be lowercase SHA-256")
+    if not isinstance(system, str) or _SYSTEM_RE.fullmatch(system) is None:
+        raise ValueError("system name is invalid")
+    if system in BUNDLED_SYSTEMS:
+        raise ValueError(f"system name {system!r} collides with a bundled system")
+    if isinstance(cases, (str, bytes)) or not isinstance(cases, Sequence):
+        raise TypeError("cases must be a sequence")
+    if not isinstance(producer, CandidateProducerMetadata):
+        raise TypeError("producer must be CandidateProducerMetadata")
+    document: dict[str, object] = {
+        "schema": CANDIDATE_SCHEMA,
+        "dataset_sha256": dataset_sha256,
+        "system": system,
+        "producer": producer.to_dict(),
+        "cases": [dict(case) for case in cases],
+    }
+    document["candidate_payload_sha256"] = _canonical_sha256(document)
+    return document
+
+
 def decode_external_candidate(
     payload: object,
     *,
@@ -1006,17 +1284,78 @@ def decode_external_candidate(
     dataset_sha256: str,
     token_budget: int,
     source_label: str = "<memory>",
+    expected_producer: CandidateProducerMetadata | None = None,
+    allow_legacy_adapter: bool = False,
 ) -> tuple[str, dict[str, CandidateOutput]]:
     """Validate and decode one dataset-bound external candidate document."""
 
+    if expected_producer is not None and not isinstance(
+        expected_producer,
+        CandidateProducerMetadata,
+    ):
+        raise TypeError("expected_producer must be CandidateProducerMetadata or None")
+    if not isinstance(allow_legacy_adapter, bool):
+        raise TypeError("allow_legacy_adapter must be a boolean")
     document = _strict_object(payload, source_label)
-    _strict_keys(
-        document,
-        required={"schema", "dataset_sha256", "system", "cases"},
-        allowed={"schema", "dataset_sha256", "system", "cases"},
-        context=source_label,
-    )
-    if document["schema"] != CANDIDATE_SCHEMA:
+    schema = document.get("schema")
+    if "schema" not in document:
+        raise ExternalBaselineError(f"{source_label} is missing fields: schema")
+    if schema == CANDIDATE_SCHEMA:
+        fields = {
+            "schema",
+            "dataset_sha256",
+            "candidate_payload_sha256",
+            "system",
+            "producer",
+            "cases",
+        }
+        _strict_keys(
+            document,
+            required=fields,
+            allowed=fields,
+            context=source_label,
+        )
+        candidate_sha256 = document["candidate_payload_sha256"]
+        if (
+            not isinstance(candidate_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", candidate_sha256) is None
+        ):
+            raise ExternalBaselineError(
+                f"{source_label}.candidate_payload_sha256 must be lowercase SHA-256"
+            )
+        unsigned = dict(document)
+        unsigned.pop("candidate_payload_sha256")
+        try:
+            actual_candidate_sha256 = _canonical_sha256(unsigned)
+        except (TypeError, ValueError) as exc:
+            raise ExternalBaselineError(
+                f"{source_label} is not canonical finite JSON"
+            ) from exc
+        if actual_candidate_sha256 != candidate_sha256:
+            raise ExternalBaselineError(
+                f"{source_label}.candidate_payload_sha256 mismatch"
+            )
+        producer = _decode_candidate_producer(
+            document["producer"],
+            context=f"{source_label}.producer",
+        )
+        if expected_producer is not None and producer != expected_producer:
+            raise ExternalBaselineError(
+                f"{source_label}.producer does not match the registered runner identity"
+            )
+    elif schema == LEGACY_ADAPTER_CANDIDATE_SCHEMA and allow_legacy_adapter:
+        if expected_producer is None:
+            raise TypeError(
+                "legacy adapter decoding requires an expected producer identity"
+            )
+        fields = {"schema", "dataset_sha256", "system", "cases"}
+        _strict_keys(
+            document,
+            required=fields,
+            allowed=fields,
+            context=source_label,
+        )
+    else:
         raise ExternalBaselineError(
             f"{source_label} schema must be {CANDIDATE_SCHEMA!r}"
         )
@@ -1155,7 +1494,10 @@ def load_external_candidates(
     token_budget: int,
     max_candidate_bytes: int = DEFAULT_EXTERNAL_CANDIDATE_BYTES,
     expected_file_evidence: Mapping[Path, tuple[int, str]] | None = None,
-) -> dict[str, dict[str, CandidateOutput]]:
+) -> tuple[
+    dict[str, dict[str, CandidateOutput]],
+    dict[str, CandidateProducerMetadata],
+]:
     input_limits = _external_candidate_json_limits(max_candidate_bytes)
     expected_evidence = dict(expected_file_evidence or {})
     for evidence_path, evidence in expected_evidence.items():
@@ -1174,6 +1516,7 @@ def load_external_candidates(
                 f"candidate file evidence is invalid for {evidence_path}"
             )
     systems: dict[str, dict[str, CandidateOutput]] = {}
+    producers: dict[str, CandidateProducerMetadata] = {}
     for path in paths:
         try:
             document = load_strict_json_file(
@@ -1201,7 +1544,11 @@ def load_external_candidates(
         if system in systems:
             raise ExternalBaselineError(f"external system {system!r} was supplied more than once")
         systems[system] = outputs
-    return systems
+        producers[system] = _decode_candidate_producer(
+            document.value["producer"],
+            context=f"{path}.producer",
+        )
+    return systems, producers
 
 
 def _render_baseline(name: str, claims: Sequence[OutputClaim]) -> str:
@@ -2158,11 +2505,29 @@ def run_benchmark(
         )
     cases = generate_histories(config)
     digest = dataset_digest(cases, config)
+    corpus_producer = CorpusProducerMetadata(
+        created_at=started_at,
+        repository_commit=repository_commit,
+        repository_dirty=repository_dirty,
+        package_version=PACKAGE_VERSION,
+        python_version=platform.python_version(),
+        platform=platform.platform(),
+        command=run_command,
+    )
     if corpus_export_path is not None:
         export_path = Path(corpus_export_path)
         atomic_write_text(
             export_path,
-            json.dumps(corpus_document(cases, config, digest), indent=2, sort_keys=True)
+            json.dumps(
+                corpus_document(
+                    cases,
+                    config,
+                    digest,
+                    producer=corpus_producer,
+                ),
+                indent=2,
+                sort_keys=True,
+            )
             + "\n",
         )
     manifest_candidate_paths: list[Path] = []
@@ -2212,7 +2577,7 @@ def run_benchmark(
         if name not in external_manifest_sha256:
             external_failures[name] = "no validated external run manifest was supplied"
 
-    external = load_external_candidates(
+    external, external_candidate_producers = load_external_candidates(
         [
             *[Path(path) for path in external_baseline_paths],
             *manifest_candidate_paths,
@@ -2223,6 +2588,40 @@ def run_benchmark(
         max_candidate_bytes=max_external_candidate_bytes,
         expected_file_evidence=manifest_candidate_evidence,
     )
+    for system, producer in external_candidate_producers.items():
+        recorded_revision = external_adapter_revisions.get(system)
+        if (
+            recorded_revision is not None
+            and recorded_revision != producer.adapter_revision
+        ):
+            raise ExternalBaselineError(
+                f"external system {system!r} candidate producer revision "
+                "does not match its run manifest"
+            )
+        recorded_model = external_model_ids.get(system)
+        if recorded_model is not None and recorded_model != producer.model_id:
+            raise ExternalBaselineError(
+                f"external system {system!r} candidate producer model "
+                "does not match its run manifest"
+            )
+        recorded_cost = external_model_costs.get(system)
+        if (
+            recorded_cost is not None
+            and float(recorded_cost) != float(producer.model_service_cost_usd)
+        ):
+            raise ExternalBaselineError(
+                f"external system {system!r} candidate producer cost "
+                "does not match its run manifest"
+            )
+        external_adapter_revisions.setdefault(
+            system,
+            producer.adapter_revision,
+        )
+        external_model_ids.setdefault(system, producer.model_id)
+        external_model_costs.setdefault(
+            system,
+            float(producer.model_service_cost_usd),
+        )
     unexpected = (
         (set(external) | set(external_manifest_sha256)) - set(expected)
         if expected
@@ -2325,6 +2724,8 @@ def run_benchmark(
             ComponentRevision("report", REPORT_SCHEMA),
             ComponentRevision("corpus", CORPUS_SCHEMA),
             ComponentRevision("candidate", CANDIDATE_SCHEMA),
+            ComponentRevision("corpus_producer", CORPUS_PRODUCER_SCHEMA),
+            ComponentRevision("candidate_producer", CANDIDATE_PRODUCER_SCHEMA),
         ),
         baseline_revisions=baseline_revisions,
         model_service_cost_usd=model_service_cost_usd,
@@ -2355,7 +2756,21 @@ def run_interchange_self_test() -> dict[str, object]:
     digest = dataset_digest(cases, config)
     if digest != dataset_digest(repeat, config):
         raise AssertionError("dataset generation is not deterministic")
-    corpus = corpus_document(cases, config, digest)
+    corpus_producer = CorpusProducerMetadata(
+        created_at="2026-01-01T00:00:00+00:00",
+        repository_commit=None,
+        repository_dirty=None,
+        package_version=PACKAGE_VERSION,
+        python_version=platform.python_version(),
+        platform=platform.platform(),
+        command=("python", "-m", "benchmarks", "--self-test"),
+    )
+    corpus = corpus_document(
+        cases,
+        config,
+        digest,
+        producer=corpus_producer,
+    )
     decoded_config, decoded_cases, decoded_digest = decode_corpus_document(
         corpus,
         source_label="<roundtrip-corpus>",
@@ -2380,6 +2795,27 @@ def run_interchange_self_test() -> dict[str, object]:
         pass
     else:
         raise AssertionError("tampered corpus passed its export digest")
+    alternate_corpus = corpus_document(
+        cases,
+        config,
+        digest,
+        producer=CorpusProducerMetadata(
+            created_at="2026-01-02T00:00:00+00:00",
+            repository_commit=None,
+            repository_dirty=None,
+            package_version=PACKAGE_VERSION,
+            python_version=platform.python_version(),
+            platform=platform.platform(),
+            command=("python", "-m", "benchmarks", "--self-test"),
+        ),
+    )
+    if (
+        alternate_corpus["dataset_sha256"] != corpus["dataset_sha256"]
+        or alternate_corpus["corpus_sha256"] == corpus["corpus_sha256"]
+    ):
+        raise AssertionError(
+            "producer metadata must change corpus evidence, not dataset identity"
+        )
 
     payload_cases: list[dict[str, object]] = []
     for case in cases:
@@ -2398,12 +2834,22 @@ def run_interchange_self_test() -> dict[str, object]:
                 ],
             }
         )
-    payload: dict[str, object] = {
-        "schema": CANDIDATE_SCHEMA,
-        "dataset_sha256": digest,
-        "system": "roundtrip-self-test",
-        "cases": payload_cases,
-    }
+    candidate_producer = CandidateProducerMetadata(
+        adapter_revision="self-test-adapter",
+        environment_id="self-test-environment",
+        model_id="deterministic-self-test",
+        model_context_length=0,
+        tokenizer_id=TOKENIZER_ID,
+        inference_concurrency=1,
+        retry_count=0,
+        model_service_cost_usd=0.0,
+    )
+    payload = candidate_document(
+        dataset_sha256=digest,
+        system="roundtrip-self-test",
+        cases=payload_cases,
+        producer=candidate_producer,
+    )
     serialized = json.dumps(payload, sort_keys=True)
     system, decoded = decode_external_candidate(
         json.loads(serialized),
@@ -2421,9 +2867,14 @@ def run_interchange_self_test() -> dict[str, object]:
     bad_hash["dataset_sha256"] = "0" * 64
     missing_case = dict(payload)
     missing_case["cases"] = payload_cases[:-1]
+    missing_case.pop("candidate_payload_sha256")
+    missing_case["candidate_payload_sha256"] = _canonical_sha256(missing_case)
+    mismatched_producer = json.loads(json.dumps(payload))
+    mismatched_producer["producer"]["adapter_revision"] = "tampered"
     for bad_payload, budget in (
         (bad_hash, config.token_budget),
         (missing_case, config.token_budget),
+        (mismatched_producer, config.token_budget),
         (payload, 1),
     ):
         try:
@@ -2444,6 +2895,8 @@ def run_interchange_self_test() -> dict[str, object]:
         "cases": len(cases),
         "schema": CANDIDATE_SCHEMA,
         "corpus_schema": CORPUS_SCHEMA,
+        "candidate_producer_schema": CANDIDATE_PRODUCER_SCHEMA,
+        "corpus_producer_schema": CORPUS_PRODUCER_SCHEMA,
     }
 
 

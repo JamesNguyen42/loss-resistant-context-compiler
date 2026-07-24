@@ -33,7 +33,10 @@ from .json_io import (
 from .lrcbench import (
     CANDIDATE_SCHEMA,
     CORPUS_SCHEMA,
+    LEGACY_ADAPTER_CANDIDATE_SCHEMA,
+    CandidateProducerMetadata,
     ExternalBaselineError,
+    candidate_document,
     decode_corpus_document,
     decode_external_candidate,
 )
@@ -120,6 +123,18 @@ class RunnerIdentity:
             and self.tokenizer_id != "unrecorded"
             and self.inference_concurrency == 1
             and self.model_service_cost_usd == 0.0
+        )
+
+    def to_candidate_producer(self) -> CandidateProducerMetadata:
+        return CandidateProducerMetadata(
+            adapter_revision=self.adapter_revision,
+            environment_id=self.environment_id,
+            model_id=self.model_id,
+            model_context_length=self.model_context_length,
+            tokenizer_id=self.tokenizer_id,
+            inference_concurrency=self.inference_concurrency,
+            retry_count=self.retry_count,
+            model_service_cost_usd=self.model_service_cost_usd,
         )
 
 
@@ -967,7 +982,7 @@ def load_external_run_manifest(
         if not _is_sha256(payload[name]):
             raise ExternalRunnerError(f"run manifest {name} is invalid")
     (
-        _corpus_config,
+        corpus_config,
         corpus_cases,
         corpus_dataset_sha256,
         corpus_payload,
@@ -1059,19 +1074,38 @@ def load_external_run_manifest(
         if not _is_sha256(candidate_sha256):
             raise ExternalRunnerError("manifest candidate SHA-256 mismatch")
         try:
-            candidate_evidence = _bounded_file_evidence(
+            candidate_file = load_strict_json_file(
                 candidate_path,
-                max_bytes=decoded_limits.max_candidate_bytes,
+                limits=_candidate_json_limits(
+                    decoded_limits.max_candidate_bytes,
+                ),
                 label="manifest candidate",
             )
-        except ExternalRunnerError as exc:
+        except StrictJsonError as exc:
             raise ExternalRunnerError(
                 f"manifest candidate could not be validated: {candidate_path}"
             ) from exc
-        if candidate_evidence.byte_count != candidate_bytes:
+        if candidate_file.byte_count != candidate_bytes:
             raise ExternalRunnerError("manifest candidate byte count is invalid")
-        if candidate_evidence.file_sha256 != candidate_sha256:
+        if candidate_file.file_sha256 != candidate_sha256:
             raise ExternalRunnerError("manifest candidate SHA-256 mismatch")
+        try:
+            candidate_system, _candidate_outputs = decode_external_candidate(
+                candidate_file.value,
+                cases=corpus_cases,
+                dataset_sha256=expected_dataset_sha256,
+                token_budget=corpus_config.token_budget,
+                source_label=str(candidate_path),
+                expected_producer=decoded_identity.to_candidate_producer(),
+            )
+        except ExternalBaselineError as exc:
+            raise ExternalRunnerError(
+                f"manifest candidate payload is invalid: {exc}"
+            ) from exc
+        if candidate_system != system:
+            raise ExternalRunnerError(
+                "manifest candidate system does not match the registered system"
+            )
         if not expected_claim_controls:
             failure_reason = (
                 "run manifest lacks complete claim controls: exact-Qwen identity, "
@@ -1305,32 +1339,71 @@ def run_external_command(
             validation_error = "adapter did not create the candidate output"
         else:
             try:
-                candidate_document = load_strict_json_file(
+                candidate_file = load_strict_json_file(
                     candidate,
                     limits=_candidate_json_limits(limits.max_candidate_bytes),
                     label="external candidate",
                 )
                 if (
-                    candidate_document.file_sha256 != candidate_sha256
-                    or candidate_document.byte_count != candidate_bytes
+                    candidate_file.file_sha256 != candidate_sha256
+                    or candidate_file.byte_count != candidate_bytes
                 ):
                     raise ExternalBaselineError(
                         "candidate changed while it was being validated"
                     )
-                candidate_payload = candidate_document.value
+                candidate_payload = candidate_file.value
+                producer = identity.to_candidate_producer()
                 candidate_system, _outputs = decode_external_candidate(
                     candidate_payload,
                     cases=cases,
                     dataset_sha256=dataset_sha256,
                     token_budget=config.token_budget,
                     source_label=str(candidate),
+                    expected_producer=producer,
+                    allow_legacy_adapter=True,
                 )
                 if candidate_system != system:
                     raise ExternalBaselineError(
                         f"candidate system {candidate_system!r} does not match "
                         f"registered system {system!r}"
                     )
+                if candidate_payload["schema"] == LEGACY_ADAPTER_CANDIDATE_SCHEMA:
+                    normalized_payload = candidate_document(
+                        dataset_sha256=dataset_sha256,
+                        system=system,
+                        cases=candidate_payload["cases"],
+                        producer=producer,
+                    )
+                    normalized_text = (
+                        json.dumps(
+                            normalized_payload,
+                            indent=2,
+                            sort_keys=True,
+                            ensure_ascii=False,
+                        )
+                        + "\n"
+                    )
+                    normalized_bytes = normalized_text.encode("utf-8")
+                    if len(normalized_bytes) > limits.max_candidate_bytes:
+                        raise ExternalBaselineError(
+                            "candidate producer envelope exceeds the candidate limit"
+                        )
+                    atomic_write_text(candidate, normalized_text)
+                    candidate_file = load_strict_json_file(
+                        candidate,
+                        limits=_candidate_json_limits(
+                            limits.max_candidate_bytes,
+                        ),
+                        label="normalized external candidate",
+                    )
+                    if candidate_file.value != normalized_payload:
+                        raise ExternalBaselineError(
+                            "normalized candidate changed before validation"
+                        )
+                    candidate_bytes = candidate_file.byte_count
+                    candidate_sha256 = candidate_file.file_sha256
             except (
+                OSError,
                 StrictJsonError,
                 ExternalBaselineError,
             ) as exc:
@@ -1455,6 +1528,7 @@ def run_external_cases(
                 "schema": corpus_payload["schema"],
                 "benchmark": corpus_payload["benchmark"],
                 "dataset_sha256": dataset_sha256,
+                "producer": corpus_payload["producer"],
                 "config": case_config,
                 "cases": [raw_case],
             }
@@ -1566,12 +1640,12 @@ def run_external_cases(
     candidate_sha256: str | None = None
     candidate_bytes: int | None = None
     if process_succeeded and invalid_candidate is None and len(candidate_cases) == len(cases):
-        candidate_payload: dict[str, Any] = {
-            "schema": CANDIDATE_SCHEMA,
-            "dataset_sha256": dataset_sha256,
-            "system": system,
-            "cases": candidate_cases,
-        }
+        candidate_payload = candidate_document(
+            dataset_sha256=dataset_sha256,
+            system=system,
+            cases=candidate_cases,
+            producer=identity.to_candidate_producer(),
+        )
         try:
             decoded_system, _decoded = decode_external_candidate(
                 candidate_payload,
@@ -1579,6 +1653,7 @@ def run_external_cases(
                 dataset_sha256=dataset_sha256,
                 token_budget=config.token_budget,
                 source_label=str(candidate),
+                expected_producer=identity.to_candidate_producer(),
             )
             if decoded_system != system:
                 raise ExternalBaselineError(

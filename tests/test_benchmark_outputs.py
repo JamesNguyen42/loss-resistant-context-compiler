@@ -99,7 +99,9 @@ def test_report_metadata_is_self_contained_and_self_hashed(
     )
     assert {value["name"] for value in payload["run_metadata"]["schema_versions"]} == {
         "candidate",
+        "candidate_producer",
         "corpus",
+        "corpus_producer",
         "report",
     }
 

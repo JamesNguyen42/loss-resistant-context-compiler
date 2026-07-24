@@ -229,13 +229,18 @@ LRCBench can export the exact generated corpus without gold atoms:
 python -m benchmarks --histories 24 --export-corpus lrcbench-corpus.json
 ```
 
-The export records schema `lrcbench-corpus-0.2`, full generation config,
-`dataset_sha256`, a canonical `corpus_sha256`, case ids, and ordered source
-events. The corpus decoder verifies the gold-free self-digest before an adapter
-run. Run an external system on that fixed corpus, then adapt its output to
-`lrcbench-candidate-output-0.1`. Each case supplies `rendered_text` and typed
-or untyped claims with exact source id, character offsets, and quote. The full
-schema and example are in [the benchmark README](../benchmarks/README.md).
+The export records schema `lrcbench-corpus-0.3`, full generation config,
+`dataset_sha256`, versioned producer metadata, a canonical `corpus_sha256`,
+case ids, and ordered source events. Producer metadata is bound by the corpus
+digest but excluded from the frozen dataset identity. The corpus decoder
+verifies the gold-free self-digest before an adapter run. Direct external
+artifacts use `lrcbench-candidate-output-0.2`, embed the versioned adapter/model
+producer record, and bind every other field with
+`candidate_payload_sha256`. Each case supplies `rendered_text` and typed or
+untyped claims with exact source id, character offsets, and quote. The standard
+runner can ingest a legacy producerless `0.1` adapter payload only to normalize
+it to `0.2`; direct imports cannot use that compatibility path. The full schema
+and example are in [the benchmark README](../benchmarks/README.md).
 
 Serialized reports, corpora, candidates, and run manifests all enter through
 the same strict regular-file JSON reader. It enforces UTF-8, byte, physical-line,
@@ -340,7 +345,7 @@ evidence requirements below still apply.
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-All 297 tests also passed. The relevant observed metrics were:
+All 300 tests also passed. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |

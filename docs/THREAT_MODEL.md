@@ -182,10 +182,14 @@ inconsistent reports, but an attacker who can fabricate a completely new
 self-consistent report can also compute new self-hashes. Trusted publication
 still requires an external signature or independently anchored digest.
 
-Gold-free corpus exports now carry their own canonical `corpus_sha256`, and the
-external runner verifies it before execution. That detects accidental or
-unanchored export changes; it is still a self-hash, not a signature or proof
-that the evaluator supplied the intended corpus.
+Gold-free corpus exports carry versioned producer metadata and a canonical
+`corpus_sha256`; candidates carry versioned adapter/model metadata and
+`candidate_payload_sha256`. Producer fields are deliberately outside the
+frozen dataset identity but inside their envelope digests. The external runner
+verifies these records, normalizes legacy adapter output, and cross-checks
+candidate identity against the retained manifest. These controls detect
+accidental or unanchored changes; they remain self-hashes, not signatures or
+proof that the named producer supplied the artifact.
 
 The default external runner gives every case a fresh sequential process and
 records its exact command and outcome. POSIX `RLIMIT_AS` and Windows Job Objects
