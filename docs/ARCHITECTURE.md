@@ -312,6 +312,19 @@ rejects model paraphrases and truncated clauses rather than trying to prove
 them. Raw response characters, conservative decoded JSON size, and candidate
 count are bounded before candidates enter the compiler.
 
+`LiteralModelExtractor` is a separate opt-in extractor identity and response
+schema. It accepts an exact literal plus unique source ids, forbids
+model-supplied coordinates, and derives each span only when the literal occurs
+exactly once in every cited immutable source. Matching is exact and
+case-sensitive after the same Python edge trim; it performs no normalization,
+case folding, internal whitespace collapse, fuzzy search, or occurrence
+guessing. All common validation remains active, and this stricter mode also
+requires intrinsically exact errors and references to satisfy the atomic-span
+predicate. A prevalidation pass caps aggregate cited-source search characters
+before substring search. Existing `ModelExtractor` behavior and prompt bytes
+remain unchanged. See
+[Unique-literal model extraction](LITERAL_MODEL_EXTRACTION.md).
+
 Model extraction does not authenticate upstream roles or protect source text
 sent to the model provider. A consumer that enables it must treat the callable
 as part of the confidentiality boundary, and must authenticate roles before
@@ -483,6 +496,7 @@ Draft 2020-12 JSON Schemas document the public interchange shapes:
 
 - [source event](../schemas/source-event.schema.json);
 - [model extraction envelope](../schemas/model-extraction.schema.json);
+- [unique-literal model extraction envelope](../schemas/model-extraction-literal.schema.json);
 - [compiled memory artifact](../schemas/compiled-memory.schema.json);
 - [content-secret redaction report](../schemas/redaction-report.schema.json).
 
@@ -641,6 +655,8 @@ in scope.
 - Combine uniquely named packs with strict, fail-fast `CompositeExtractor`;
   built-in recovery already runs separately and need not be a component.
 - Use `ModelExtractor` with any JSON-capable model provider.
+- Use `LiteralModelExtractor` when the provider should copy exact literals and
+  the validator should derive only unambiguous character offsets.
 - Use `LmsQwenCompletion` for the exact local Qwen Q4 LM Studio CLI path.
 - Supply an exact tokenizer through `token_counter`; add a stable
   `token_counter_id` and pass both to `verify_artifact_dict()` for portable

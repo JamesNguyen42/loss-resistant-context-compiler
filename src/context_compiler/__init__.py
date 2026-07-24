@@ -13,6 +13,7 @@ from .extractors import (
     DomainLabelExtractor,
     ExtractionResult,
     Extractor,
+    LiteralModelExtractor,
     ModelExtractor,
     RuleBasedExtractor,
 )
@@ -73,6 +74,7 @@ __all__ = [
     "ModelExtractor",
     "LmsQwenCompletion",
     "LocalQwenError",
+    "LiteralModelExtractor",
     "ProvenanceSpan",
     "REDACTION_REPORT_SCHEMA",
     "REDACTION_VERIFICATION_SCHEMA",

@@ -43,8 +43,8 @@ raw evidence when completing benchmark work.
   supplied source set.
 - [x] Provide `ctxc compile`, `verify`, `inspect`, `diff`, `redact`, and
   `archive`.
-- [x] Provide JSON Schemas for source events, model output, compiled memory,
-  and redaction reports.
+- [x] Provide JSON Schemas for source events, coordinate-bearing and
+  unique-literal model output, compiled memory, and redaction reports.
 - [x] Provide a local append-only archive with collision, hash, and lock checks.
 - [x] Build LRCBench with adversarial histories and matched-budget head, tail,
   and extractive controls.
@@ -57,11 +57,14 @@ raw evidence when completing benchmark work.
 - [x] Make superseded selection fail execution verification.
 - [x] Use history-weighted benchmark estimands and per-system majority decisions.
 - [x] Add an API-free, single-slot adapter for the exact local Qwen Q4 model.
+- [x] Add a separate fail-closed `LiteralModelExtractor` that derives offsets
+  only from a unique exact source literal, caps aggregate search work, and
+  leaves the original coordinate-bearing contract unchanged.
 - [x] Add a shell-free bounded external-adapter runner with sequential per-case
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 798 tests (793 passing and 5 skipped locally); CI covers Python
+- [x] Collect 832 tests (827 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -444,8 +447,13 @@ than most related technology” within the exact dated evaluation scope.
   subprocess timeout at the adapter boundary.
 - [x] Test malicious model output, duplicate and unknown keys, NaN/infinity,
   invalid offsets, role forgery, reserved tags, and paraphrases.
-- [ ] Decide whether exact-span-only model extraction remains the permanent
-  contract or whether a separately verified abstractive path is justified.
+- [x] Retain exact-source-literal model extraction as the permanent admission
+  contract for now. Permit deterministic unique-literal offset derivation as a
+  separate schema, but do not add an abstractive path without new evidence and
+  an independently verified semantic-support design.
+- [ ] Evaluate `LiteralModelExtractor` on a newly frozen corpus and prompt;
+  treat replay against the already observed 64-case Qwen corpus as post-hoc
+  exploration only.
 - [ ] Never weaken deterministic recovery merely to improve model-only metrics.
 
 ### Temporal and semantic state

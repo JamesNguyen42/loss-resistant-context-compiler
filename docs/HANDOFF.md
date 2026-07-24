@@ -8,7 +8,9 @@ with the root [README](../README.md), [TODO](../TODO.md),
 vocabulary or custom extractors, and [content secret redaction](REDACTION.md)
 before changing preprocessing or privacy claims. Read the
 [exact local-Qwen phrase protocol](QWEN_PHRASE_EVALUATION.md) before running or
-changing the captured-output evaluation.
+changing the captured-output evaluation. Read
+[unique-literal model extraction](LITERAL_MODEL_EXTRACTION.md) before changing
+the model response or provenance-derivation contract.
 
 ## Snapshot
 
@@ -19,13 +21,14 @@ changing the captured-output evaluation.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 798 collected: 793 passing, 5 skipped |
+| Tests at this snapshot | 832 collected: 827 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
 | Recorded local certificate | `ISSUED`, scope `local-bundled-only` |
 | Novel English diagnostic | 64 cases: 85.3659% precision, 87.5% recall |
 | Exact local Qwen phrase evaluation | 64 calls: 5% model-only recall, 96.9231% candidate rejection, 87.5% final recall |
+| Unique-literal model extraction | Opt-in; derives only unique exact spans and keeps the coordinate contract unchanged |
 | Common content-secret preprocessing | Opt-in, fixed-detector, offset-preserving, replayable |
 | External systems evaluated | None |
 | External 50%-better claim | Not established |
@@ -248,7 +251,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | Path | Responsibility |
 | --- | --- |
 | `src/context_compiler/models.py` | Enums, immutable source records, sealable items, frozen reports, policy, rendering, hashes |
-| `src/context_compiler/extractors.py` | Rule extraction, constraint atomization, model adapter, authority checks |
+| `src/context_compiler/extractors.py` | Rule extraction, constraint atomization, coordinate and unique-literal model adapters, authority checks |
 | `src/context_compiler/local_qwen.py` | Exact local Qwen Q4 LM Studio CLI preflight, timeout, and single-slot adapter |
 | `src/context_compiler/resolver.py` | Deduplication, corrections, revocations, unresolved closure, conflicts |
 | `src/context_compiler/compiler.py` | End-to-end orchestration, recovery, selection, compression accounting |
@@ -272,7 +275,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `benchmarks/performance_gate.py` | Fixed-digest CI compile latency/growth/traced-memory regression gate |
 | `benchmarks/qwen_phrase_eval.py` | Sequential exact-Qwen prompt/output capture, model-only/recovery scoring, and offline replay |
 | `benchmarks/protocols/` | Versioned external comparison protocol; v1 is still a non-claim-bearing draft |
-| `schemas/` | Source, model extraction, compiled artifact, and redaction-report contracts |
+| `schemas/` | Source, coordinate/unique-literal model extraction, compiled artifact, and redaction-report contracts |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
 | `.github/workflows/ci.yml` | Cross-version tests, lint, wheel checks, interchange, benchmark |
 
@@ -349,6 +352,7 @@ Primary exported objects:
 - `CompositeExtractor`;
 - `RuleBasedExtractor`;
 - `ModelExtractor`;
+- `LiteralModelExtractor`;
 - `LmsQwenCompletion`;
 - `LocalQwenError`;
 - `SourceArchive`;
@@ -462,10 +466,10 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 798 tests are collected: 793 pass and 5 platform/optional checks are skipped.
+- 832 tests are collected: 827 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
-- CI builds a wheel and verifies that all four schemas are included.
+- CI builds a wheel and verifies that all five schemas are included.
 - CI runs the external-candidate interchange self-test.
 - CI enforces `ci-compile-v1` through a self-hashed
   `ctxc-performance-gate-0.1` report: three-trial medians at 128/256 events,
@@ -496,6 +500,15 @@ audited. Any selected superseded item independently fails verification as
   call latency was 1.968 seconds; model-service cost was USD 0.00. The
   self-hashed raw-output report replays offline; see
   `docs/QWEN_PHRASE_EVALUATION.md`.
+- Opt-in `LiteralModelExtractor` removes model-supplied offset arithmetic from
+  the trust boundary without accepting paraphrases. Its separate strict schema
+  accepts exact text and unique source ids, derives Python-character spans only
+  for a single exact occurrence in every cited immutable source, applies all
+  role/uncertainty/atomicity checks, and caps aggregate locator work. The
+  original `ModelExtractor` prompt and frozen report replay remain unchanged;
+  one post-hoc public-example smoke compile verified with 10 admitted model
+  items, 1 rejection, and 4 recoveries, but retained no replayable raw output.
+  See `docs/LITERAL_MODEL_EXTRACTION.md`.
 - Public `DomainLabelExtractor`, `CompositeExtractor`, `Extractor`, and
   `ExtractionResult` APIs provide bounded exact-label domain packs and strict
   composition without changing the global regex vocabulary. Configuration is
@@ -905,8 +918,9 @@ Then:
 ```text
 Continue the loss-resistant context compiler from this repository.
 First read README.md, TODO.md, docs/HANDOFF.md, docs/ARCHITECTURE.md,
-docs/BENCHMARKING.md, docs/THREAT_MODEL.md, and docs/REDACTION.md. Inspect the
-current branch, diff, tests, and recorded evidence before changing anything.
+docs/BENCHMARKING.md, docs/THREAT_MODEL.md, docs/REDACTION.md, and
+docs/LITERAL_MODEL_EXTRACTION.md. Inspect the current branch, diff, tests, and
+recorded evidence before changing anything.
 Preserve the fail-closed provenance, authority, protected-retention, privacy-
 scope, and claim-boundary rules. Start with the highest-priority incomplete P0
 evidence work in TODO.md, validate it empirically, and do not claim external
@@ -924,6 +938,9 @@ and commits solely under JamesNguyen42.
 - Keep built-in recovery and protected certification non-replaceable; custom
   safety extraction is additive only.
 - Reject model paraphrases from the trusted typed ledger.
+- Keep exact-source-literal admission as the model contract; offer
+  unique-literal offset derivation as a separate strict schema rather than an
+  abstractive exception or silent coordinate repair.
 - Treat tool output as untrusted for durable state by default.
 - Retain superseded and conflicting state for audit.
 - Surface protected overflow instead of silently dropping commitments.

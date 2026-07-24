@@ -25,8 +25,9 @@ The compiler assumes:
 3. the source set supplied to verification is trusted independently of the
    artifact being checked;
 4. the local host and Python process are not fully compromised;
-5. any callable supplied to `ModelExtractor` is trusted to receive the source
-   text, even though its output remains untrusted data.
+5. any callable supplied to `ModelExtractor` or `LiteralModelExtractor` is
+   trusted to receive the source text, even though its output remains
+   untrusted data.
 
 If an attacker controls both an artifact and the “trusted” source history used
 to verify it, hashes cannot recover the original truth.
@@ -42,7 +43,7 @@ to verify it, hashes cannot recover the original truth.
 | Tool-output prompt injection | Goals, constraints, and corrections require `user`, `system`, or `developer`; decisions and unresolved state reject tool provenance; facts reject tool provenance unless the host sets `metadata.trusted_for_state: true` | Spoofed upstream roles or host-supplied trust metadata defeat the gate; errors and references still preserve untrusted tool literals |
 | Memory text closes or splits its prompt envelope | Selected items are JSON-encoded; `<`, `>`, `&`, NEL, and Unicode line/paragraph separators are escaped inside an explicitly untrusted JSONL envelope | Syntactic containment does not stop a model from semantically following quoted instructions |
 | Artifact text injects terminal controls | Item inspection runs only after envelope validation; text output JSON-quotes strings and visibly escapes control/format and line-separator characters, detailed JSON uses ASCII escapes, and item/link/text display is bounded | Printable confusable Unicode is not normalized; downstream programs should consume JSON rather than parse terminal text |
-| Fabricated model provenance | Strict JSON rejects duplicate keys and non-finite numbers; model spans are rebuilt from known source ids and integer character offsets; ordinary text must equal a complete atomic cited span across every Python line-boundary form, and forged fields, reserved tags, byte-offset substitutions, and paraphrases are rejected | A real literal can still be assigned an incorrect non-authority-gated type that passes lexical checks |
+| Fabricated model provenance | Strict JSON rejects duplicate keys and non-finite numbers. The coordinate mode rebuilds spans from known source ids and integer character offsets. The unique-literal mode forbids coordinates and derives a span only from one exact occurrence in every cited source. Ordinary text must equal a complete atomic cited span across every Python line-boundary form; forged fields, reserved tags, byte-offset substitutions, ambiguous literals, and paraphrases are rejected | A real literal can still be assigned an incorrect non-authority-gated type that passes lexical checks; unique occurrence does not prove semantic completeness |
 | Hallucinated model claim | Exact atomic extraction, role checks, ordered token support, numeric/negation checks, and consistent evidence polarity | Literal support is not logical entailment or proof that a memory kind is pragmatically correct |
 | Lexical cue used only as quoted or discussed text | Authority gates block tool and assistant commitments; a frozen phrase diagnostic explicitly measures benign mention traps | The current local diagnostic observed four negative cases with six false-positive atoms overall; lexical matching does not generally distinguish use from mention |
 | Uncertainty promoted to fact | Rule ordering favors unresolved; verifier rejects facts citing uncertainty without confirmation markers | Novel uncertainty phrasing or mixed confirmed/uncertain spans can be misclassified |
@@ -59,7 +60,7 @@ to verify it, hashes cannot recover the original truth.
 | Source resource exhaustion | Shared positive limits cap serialized source/archive bytes, physical line length, JSON depth, record count, per-record and total canonical size across loaders, compiler, verifier, and archive; strict JSON rejects ambiguous/non-finite input | Python objects may already be allocated before a direct API call; configured maxima are not process-RSS limits |
 | Benchmark evidence resource exhaustion or parser ambiguity | Reports, corpora, candidates, and manifests share bounded regular-file hashing and strict UTF-8 JSON decoding with duplicate-key, non-finite, byte, line, and depth rejection | Direct already-decoded Python objects are caller allocations; configured file limits do not cap total verifier RSS |
 | Artifact resource exhaustion | Strict bounded loaders cap raw/canonical bytes, physical lines, JSON depth, item/selection collections, provenance spans, and embedded issues before inspect or replay | Direct Python objects may already be allocated; limits do not make a self-hashed artifact trustworthy |
-| Compile/provider resource exhaustion | Model responses/candidate counts are bounded; the local Qwen adapter has a transport timeout; optional whole-compile isolation owns a POSIX process group or Windows Job Object and terminates its descendant tree at the deadline | Direct in-process compilation is uncapped; a deliberately daemonized POSIX child can escape its process group; deadline job configuration uses local pickle and therefore requires trusted serializable objects |
+| Compile/provider resource exhaustion | Model responses/candidate counts are bounded; unique-literal extraction preflights aggregate cited-source search characters; the local Qwen adapter has a transport timeout; optional whole-compile isolation owns a POSIX process group or Windows Job Object and terminates its descendant tree at the deadline | Search characters are a work proxy, not a time/RSS cap; direct in-process compilation is uncapped; a deliberately daemonized POSIX child can escape its process group; deadline job configuration uses local pickle and therefore requires trusted serializable objects |
 | Common content-secret disclosure | Optional preprocessing uses nine fixed lexical detectors, length/line-boundary-preserving masks, recomputed record hashes, explicit limits, deterministic replay, and a strict self-hashed coordinate report that omits original content-secret text and hashes | Detection is heuristic; false positives and false negatives remain. Original input enters process memory first. Metadata, ids, timestamps, PII, unknown formats, report coordinates, storage, logs, and previous artifacts are outside the redaction scope |
 | Secret disclosure after redaction | Compiling the redacted source set prevents recognized content secrets from entering its items, prompt, or artifact; replay binds the exact redacted records | Source metadata and identity fields remain in record hashes and may themselves be sensitive; external providers, process arguments, archives, diffs, benchmark evidence, or host logs can still expose anything not redacted before those boundaries |
 | External benchmark adapter escape | The standard runner avoids a shell, isolates cases, limits time/output/process-tree memory on POSIX and Windows, terminates descendants, validates candidates, and hashes a manifest | It is not a filesystem or network sandbox; reviewed code and an isolated host/container remain necessary, and a pre-existing inference service is outside the process-tree memory boundary |
@@ -95,6 +96,15 @@ polarity. These controls prevent several representation attacks; they do not
 prove that a correctly copied source statement is true or that every plausible
 memory kind is semantically appropriate. Source roles are rendered in the
 prompt so a downstream agent can retain that distinction.
+
+`LiteralModelExtractor` keeps those policies but removes model-generated
+coordinates from its schema. It uses exact, case-sensitive Python code-point
+matching after edge trimming, rejects missing or repeated literals, constructs
+the span from immutable source content, and requires atomic support even for
+intrinsically exact errors and references. It does not normalize Unicode,
+collapse whitespace, choose an occurrence, or accept a paraphrase. Unique
+occurrence is provenance derivation, not evidence that the chosen text is the
+best or only durable claim in the source.
 
 ## Integrity is not authenticity
 

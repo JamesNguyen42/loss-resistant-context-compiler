@@ -204,3 +204,10 @@ of the useful coverage, and the model produced no aggregate improvement on
 this corpus. This comparison remains local, small, English-only, and
 non-independent. No production extractor, validator, recovery rule, or corpus
 annotation was changed after observing the run.
+
+The later opt-in
+[`LiteralModelExtractor`](LITERAL_MODEL_EXTRACTION.md) removes model-supplied
+coordinate arithmetic while retaining exact literal admission. It was designed
+in response to these observed failures. Results from replaying or rerunning
+this already seen corpus with that interface are necessarily post-hoc and
+cannot replace a separately frozen evaluation.

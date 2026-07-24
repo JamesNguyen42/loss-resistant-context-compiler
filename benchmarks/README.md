@@ -82,6 +82,10 @@ result. Raw outputs make replay possible but can expose source text, so this
 path is intended for the public corpus. See
 [the exact protocol and result audit](../docs/QWEN_PHRASE_EVALUATION.md).
 
+The later `LiteralModelExtractor` unique-literal prompt is not evaluated by
+that frozen report. Reuse of the observed corpus for it is post-hoc; a new
+claim-bearing run needs a separately frozen corpus and report protocol.
+
 ## External baselines
 
 The bundled baselines are deterministic controls, not claims about the current
@@ -299,7 +303,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 798 tests alongside it: 793 passed and 5
+The suite collected 832 tests alongside it: 827 passed and 5
 platform/optional checks were skipped.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |

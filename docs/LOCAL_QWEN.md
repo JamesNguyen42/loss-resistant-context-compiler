@@ -95,6 +95,40 @@ Automated tests mock the CLI boundary and cover exact identity, quantization,
 loaded-state and single-slot checks, ANSI removal, timeouts, and refusal of a
 different configuration. They do not require the model in CI.
 
+## Unique-literal response mode
+
+`LiteralModelExtractor` can be used with the same completion adapter when the
+model can copy a source literal more reliably than it can calculate Python
+character offsets. Its separate response schema asks for exact text and
+`source_ids` only. The validator rejects absent or repeated text and derives
+coordinates from a single exact occurrence before applying the ordinary
+authority, uncertainty, exactness, and atomicity checks.
+
+```python
+from context_compiler import LiteralModelExtractor
+
+compiler = ContextCompiler(
+    extractor=LiteralModelExtractor(
+        complete,
+        model_id=complete.model_id,
+        max_response_chars=200_000,
+        max_candidates=32,
+    )
+)
+```
+
+This is not a fuzzy repair mode and does not accept paraphrases. It was designed
+after the first 64-case Qwen report, so that already observed corpus cannot
+serve as preregistered evidence for the new prompt. See
+[Unique-literal model extraction](LITERAL_MODEL_EXTRACTION.md).
+
+In one explicitly post-hoc smoke run against the same public
+`examples/auth_timeout.jsonl` history, the compile passed verification with 10
+model-extracted items, 1 rejected model candidate, and 4 deterministic
+recoveries in a 14-item ledger. The raw response was not retained, so this is
+only an integration check; it is not replayable model-quality, latency, cost,
+or comparative evidence.
+
 ## Frozen corpus-scale evaluator
 
 `benchmarks.qwen_phrase_eval` is frozen before its first live result. It uses

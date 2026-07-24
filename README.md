@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 798 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 832 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -114,6 +114,8 @@ The repository currently includes:
   coordinated clause boundaries;
 - a deterministic rule extractor and an optional provider-neutral
   `ModelExtractor`;
+- an opt-in `LiteralModelExtractor` that derives character offsets only from a
+  unique exact source literal and never trusts model-supplied coordinates;
 - an independent deterministic recovery pass for rule-recognized content;
 - conservative correction, revocation, conflict, and unresolved-state
   resolution;
@@ -177,7 +179,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 798 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 832 regression tests.
 
 ## In development
 
@@ -668,6 +670,18 @@ return deterministic fallback memory instead of aborting the complete run.
 The callable and any data it sends remain the integrator’s security and privacy
 responsibility.
 
+`LiteralModelExtractor(complete)` is a separate, stricter response mode for
+models that copy source text more reliably than they calculate Python
+character offsets. Its schema accepts exact `text` plus unique `source_ids`,
+forbids model-supplied provenance coordinates, and derives a span only when the
+literal occurs exactly once in every cited immutable source. It performs no
+normalization, fuzzy matching, or paraphrase recovery; it retains all ordinary
+authority, uncertainty, atomicity, and exactness checks and additionally
+requires atomic literals for exact errors and references. An aggregate
+locator-work limit bounds substring scanning. The original `ModelExtractor`
+contract and frozen prompt replay remain unchanged. See
+[Unique-literal model extraction](docs/LITERAL_MODEL_EXTRACTION.md).
+
 For domain vocabulary, use `DomainLabelExtractor` rather than widening the
 global phrase regexes. It maps up to 256 exact ASCII labels to `MemoryKind`
 values, preserves exact spans, enforces the same role-authority policy, and
@@ -728,7 +742,7 @@ python -m ruff check src tests benchmarks
 python -m compileall -q src benchmarks tests
 ```
 
-Build the wheel and verify the four packaged schemas:
+Build the wheel and verify the five packaged schemas:
 
 ```console
 python -c "
@@ -742,7 +756,7 @@ with tempfile.TemporaryDirectory() as directory:
     wheels = list(pathlib.Path(directory).glob('*.whl'))
     assert len(wheels) == 1, wheels
     names = zipfile.ZipFile(wheels[0]).namelist()
-    assert sum(name.endswith('.schema.json') for name in names) == 4
+    assert sum(name.endswith('.schema.json') for name in names) == 5
 "
 ```
 
@@ -824,7 +838,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 798 tests are collected (793 pass and 5
+Current local snapshot (2026-07-24): 832 tests are collected (827 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
@@ -871,6 +885,7 @@ the commands above for the current revision and environment.
 - [Benchmark design and the exact 50% bar](docs/BENCHMARKING.md)
 - [Novel English phrase diagnostic](docs/PHRASE_EVALUATION.md)
 - [Exact local Qwen phrase-evaluation protocol](docs/QWEN_PHRASE_EVALUATION.md)
+- [Unique-literal model extraction](docs/LITERAL_MODEL_EXTRACTION.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Compiled-artifact schema compatibility](docs/SCHEMA_COMPATIBILITY.md)
 - [Related work](docs/RELATED_WORK.md)
@@ -880,6 +895,7 @@ the commands above for the current revision and environment.
 - JSON Schemas:
   [source event](schemas/source-event.schema.json),
   [model extraction](schemas/model-extraction.schema.json),
+  [unique-literal model extraction](schemas/model-extraction-literal.schema.json),
   [compiled memory](schemas/compiled-memory.schema.json), and
   [redaction report](schemas/redaction-report.schema.json)
 
