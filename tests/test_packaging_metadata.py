@@ -53,11 +53,24 @@ def test_schema_install_path_matches_the_distribution_and_all_schemas_parse() ->
         ]
     }
     schemas = sorted((ROOT / "schemas").glob("*.json"))
-    assert len(schemas) == 7
+    assert len(schemas) == 8
+    schema_ids: dict[str, str] = {}
     for schema in schemas:
         decoded = json.loads(schema.read_text(encoding="utf-8"))
         assert isinstance(decoded, dict)
         assert decoded.get("type") == "object"
+        schema_ids[schema.name] = decoded["$id"]
+
+    assert schema_ids["trust-manifest.schema.json"].startswith(
+        "https://example.invalid/loss-resistant-context-compiler/"
+    )
+    assert all(
+        schema_id.startswith(
+            "https://example.invalid/lossless-context-compiler/"
+        )
+        for name, schema_id in schema_ids.items()
+        if name != "trust-manifest.schema.json"
+    )
 
 
 def test_release_documents_freeze_name_versioning_and_support_boundaries() -> None:

@@ -41,6 +41,11 @@ from .redaction import (
     redact_sources,
 )
 from .schema_compatibility import artifact_schema_registry, artifact_schema_support
+from .trust import (
+    create_trust_manifest,
+    load_trust_manifest_path,
+    verify_trust_manifest,
+)
 
 _DIAGNOSTIC_SCHEMA = "ctxc-diagnostic-0.1"
 _EVENT_SCHEMA = "ctxc-event-0.1"
@@ -109,8 +114,10 @@ def _write_output(value: str, path: str | None) -> None:
 
 
 def _command_name(args: argparse.Namespace) -> str:
-    if getattr(args, "command", None) == "archive":
-        return f"archive {getattr(args, 'archive_command', '')}".strip()
+    command = getattr(args, "command", None)
+    if command in {"archive", "trust"}:
+        nested = getattr(args, f"{command}_command", "")
+        return f"{command} {nested}".strip()
     return str(getattr(args, "command", "unknown"))
 
 
@@ -472,6 +479,141 @@ def _verify(args: argparse.Namespace) -> int:
         _write_error(args, exc)
         return 2
     _write_output(json.dumps(report, indent=2, ensure_ascii=False), args.output)
+    return 0 if report["passed"] else 3
+
+
+def _trust_sources(
+    args: argparse.Namespace,
+    source_limits: SourceLimits,
+) -> tuple[list, str | None]:
+    if (args.sources is None) == (args.source_archive is None):
+        raise ValueError(
+            "trust commands require exactly one of SOURCES or --archive"
+        )
+    if (
+        args.archive_expected_chain_head is not None
+        and args.source_archive is None
+    ):
+        raise ValueError("--archive-expected-chain-head requires --archive")
+    if args.source_archive is None:
+        return _input_sources(args.sources, source_limits), None
+
+    archive = SourceArchive(
+        args.source_archive,
+        source_limits=source_limits,
+    )
+    report = archive.verify(
+        expected_chain_head=args.archive_expected_chain_head,
+    )
+    if not report.passed:
+        detail = "; ".join(report.issues) or "unknown archive failure"
+        raise ValueError(f"source archive verification failed: {detail}")
+    if report.chain_head_sha256 is None:
+        raise ValueError(
+            "trust commands require a hash-chained source archive; append "
+            "through ctxc archive append to upgrade this legacy archive"
+        )
+    sources = archive.load(
+        expected_chain_head=report.chain_head_sha256,
+    )
+    return sources, report.chain_head_sha256
+
+
+def _trust_output_aliases_input(
+    args: argparse.Namespace,
+    *,
+    include_manifest: bool,
+) -> bool:
+    if args.output is None:
+        return False
+    protected = [args.artifact]
+    if include_manifest:
+        protected.append(args.manifest)
+    if args.sources is not None and args.sources != "-":
+        protected.append(args.sources)
+    if args.source_archive is not None:
+        archive_path = Path(args.source_archive)
+        protected.extend(
+            (
+                str(archive_path / "events.jsonl"),
+                str(archive_path / ".append.lock"),
+            )
+        )
+    return any(_paths_alias(args.output, path) for path in protected)
+
+
+def _trust_create(args: argparse.Namespace) -> int:
+    try:
+        if _trust_output_aliases_input(args, include_manifest=False):
+            raise ValueError(
+                "trust manifest output must not overwrite an input"
+            )
+        source_limits = _source_limits(args)
+        artifact_limits = _artifact_limits(args)
+        artifact = load_artifact_path(
+            args.artifact,
+            limits=artifact_limits,
+        )
+        sources, archive_head = _trust_sources(args, source_limits)
+        manifest = create_trust_manifest(
+            artifact,
+            sources,
+            archive_chain_head_sha256=archive_head,
+            source_limits=source_limits,
+            artifact_limits=artifact_limits,
+        )
+        _write_output(
+            json.dumps(manifest, indent=2, ensure_ascii=False),
+            args.output,
+        )
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        _write_error(args, exc)
+        return 2
+    return 0
+
+
+def _trust_verify(args: argparse.Namespace) -> int:
+    try:
+        if _trust_output_aliases_input(args, include_manifest=True):
+            raise ValueError(
+                "trust verification output must not overwrite an input"
+            )
+        source_limits = _source_limits(args)
+        artifact_limits = _artifact_limits(args)
+        manifest = load_trust_manifest_path(args.manifest)
+        artifact = load_artifact_path(
+            args.artifact,
+            limits=artifact_limits,
+        )
+        sources, archive_head = _trust_sources(args, source_limits)
+        report = verify_trust_manifest(
+            manifest,
+            artifact,
+            sources,
+            expected_manifest_sha256=(
+                args.expected_manifest_sha256
+            ),
+            archive_chain_head_sha256=archive_head,
+            source_limits=source_limits,
+            artifact_limits=artifact_limits,
+        )
+        _write_output(
+            json.dumps(report, indent=2, ensure_ascii=False),
+            args.output,
+        )
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        _write_error(args, exc)
+        return 2
     return 0 if report["passed"] else 3
 
 
@@ -1005,6 +1147,71 @@ def build_parser() -> argparse.ArgumentParser:
     _add_source_limit_arguments(archive_verify)
     _add_error_format_argument(archive_verify)
     archive_verify.set_defaults(handler=_archive_verify)
+
+    trust_parser = subparsers.add_parser(
+        "trust",
+        help="create or verify externally anchored artifact/source manifests",
+    )
+    trust_subparsers = trust_parser.add_subparsers(
+        dest="trust_command",
+        required=True,
+    )
+    trust_create = trust_subparsers.add_parser(
+        "create",
+        help="create a detached manifest for a replay-verified artifact",
+    )
+    trust_create.add_argument("artifact")
+    trust_create.add_argument("sources", nargs="?")
+    trust_create.add_argument(
+        "--archive",
+        dest="source_archive",
+        help="bind immutable sources from this SourceArchive directory",
+    )
+    trust_create.add_argument(
+        "--archive-expected-chain-head",
+        help=(
+            "require this externally retained archive chain head before "
+            "creating the manifest"
+        ),
+    )
+    trust_create.add_argument("-o", "--output")
+    _add_source_limit_arguments(trust_create)
+    _add_artifact_limit_arguments(trust_create)
+    _add_error_format_argument(trust_create)
+    trust_create.set_defaults(handler=_trust_create)
+
+    trust_verify = trust_subparsers.add_parser(
+        "verify",
+        help="verify a detached manifest against an external SHA-256 anchor",
+    )
+    trust_verify.add_argument("manifest")
+    trust_verify.add_argument("artifact")
+    trust_verify.add_argument("sources", nargs="?")
+    trust_verify.add_argument(
+        "--archive",
+        dest="source_archive",
+        help="verify immutable sources from this SourceArchive directory",
+    )
+    trust_verify.add_argument(
+        "--archive-expected-chain-head",
+        help=(
+            "require this externally retained archive chain head before "
+            "verifying the manifest"
+        ),
+    )
+    trust_verify.add_argument(
+        "--expected-manifest-sha256",
+        required=True,
+        help=(
+            "externally retained 64-character lowercase SHA-256 of the "
+            "manifest payload"
+        ),
+    )
+    trust_verify.add_argument("-o", "--output")
+    _add_source_limit_arguments(trust_verify)
+    _add_artifact_limit_arguments(trust_verify)
+    _add_error_format_argument(trust_verify)
+    trust_verify.set_defaults(handler=_trust_verify)
     return parser
 
 

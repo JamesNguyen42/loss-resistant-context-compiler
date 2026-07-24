@@ -30,6 +30,9 @@ versioning and release rules in
   substitution tests.
 - Strict artifact inspection, artifact diffing, schema-compatibility reporting,
   JSON diagnostics, completion events, redaction, and compile deadlines.
+- Detached `ctxc-trust-manifest-0.1` creation and verification for complete
+  replay-verified artifacts, exact source sets, optional archive heads, and
+  separately retained SHA-256 anchors.
 - A bounded sequential external-adapter runner and frozen local Qwen diagnostic
   replay paths.
 - A fixed-digest performance regression gate and offline wheel/schema checks.
@@ -39,6 +42,9 @@ versioning and release rules in
 - Rejected ungrounded or non-atomic model claims, unauthorized state, stale
   superseded execution state, mutable verified output, special-file inputs,
   hard-link aliases where identity matters, and unsafe ancestor paths.
+- Prevented detached manifests from reporting trust without an external
+  digest anchor, and refused incomplete ledgers, replay failures, malformed
+  manifests, archive races, and output aliases.
 
 ## 0.1.0 - 2026-07-23
 

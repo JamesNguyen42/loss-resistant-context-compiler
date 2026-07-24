@@ -527,6 +527,33 @@ intentionally omits cold and superseded ledger entries and sets
 `incomplete_ledger` and fails rather than certifying incomplete protected
 coverage.
 
+### Detached externally anchored bundle verification
+
+`trust.py` adds `ctxc-trust-manifest-0.1` without changing artifact schema
+`1.0`. `create_trust_manifest()` first validates the artifact envelope,
+requires `ledger_complete: true`, and independently replays the artifact
+against the supplied `SourceRecord` list. Only then does it bind the artifact
+schema/digest, source-set digest/count, complete-ledger marker, and optional
+archive chain head. Its `manifest_sha256` covers canonical JSON for every other
+manifest field.
+
+`verify_trust_manifest()` separates eight checks: strict manifest shape,
+manifest self-hash, external expected digest, artifact envelope, artifact
+replay, artifact binding, source binding, and archive-head binding. Every
+check must pass. The CLI makes the expected manifest digest mandatory; the
+Python API permits a missing value only to return an explicitly failed
+`missing_external_anchor` report. Thus a recomputable self-hash is never
+promoted into an authenticity claim.
+
+Trust-manifest inputs use a dedicated 64 KiB byte/line and depth-eight strict
+JSON boundary plus the shared stable regular-file loader. With `--archive`,
+the CLI verifies the archive, captures its current chain head, and reloads
+against that exact head before manifest creation or verification. This closes
+the verify/load substitution window at the API boundary. A direct Python
+caller that supplies an archive head owns the equivalent stable-state check.
+The complete operational and residual-risk contract is in
+[TRUST_MANIFESTS.md](TRUST_MANIFESTS.md).
+
 ## Outputs
 
 `CompiledMemory.to_json()` emits schema version `1.0`, source digest and count,
@@ -552,7 +579,8 @@ Draft 2020-12 JSON Schemas document the public interchange shapes:
 - [compiled memory artifact](../schemas/compiled-memory.schema.json);
 - [content-secret redaction report](../schemas/redaction-report.schema.json);
 - [source archive entry](../schemas/source-archive-entry.schema.json);
-- [source archive command report](../schemas/source-archive-report.schema.json).
+- [source archive command report](../schemas/source-archive-report.schema.json);
+- [detached trust manifest](../schemas/trust-manifest.schema.json).
 
 The standard-library runtime performs its own validation and does not require a
 JSON Schema package. Integrations can use these files for generation,
@@ -758,7 +786,10 @@ readable and upgrades atomically on the first new append. The chain is not
 signed: anyone able to rewrite the archive can recompute it, and standalone
 verification cannot distinguish an internally valid older prefix from the
 latest state. Protect the head independently or use an external signed/WORM
-store when adversarial tampering is in scope.
+store when adversarial tampering is in scope. `ctxc trust create` and
+`ctxc trust verify` with `--archive` can bind this head together with the
+artifact and source digest, but the manifest digest must itself be retained
+beyond the same rewrite boundary.
 
 ## Extension points
 

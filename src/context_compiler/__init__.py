@@ -69,6 +69,17 @@ from .schema_compatibility import (
     artifact_schema_registry,
     artifact_schema_support,
 )
+from .trust import (
+    TRUST_MANIFEST_SCHEMA,
+    TRUST_VERIFICATION_SCHEMA,
+    TrustManifestError,
+    create_trust_manifest,
+    load_trust_manifest,
+    load_trust_manifest_path,
+    trust_manifest_sha256,
+    validate_trust_manifest,
+    verify_trust_manifest,
+)
 
 __all__ = [
     "ARCHIVE_ENTRY_SCHEMA",
@@ -118,16 +129,25 @@ __all__ = [
     "SourceLimitError",
     "SourceLimits",
     "SourceRecord",
+    "TRUST_MANIFEST_SCHEMA",
+    "TRUST_VERIFICATION_SCHEMA",
+    "TrustManifestError",
     "VerificationReport",
     "artifact_schema_registry",
     "artifact_schema_support",
+    "create_trust_manifest",
     "diff_artifacts",
+    "load_trust_manifest",
+    "load_trust_manifest_path",
     "render_artifact_text",
     "redact_sources",
     "summarize_artifact",
+    "trust_manifest_sha256",
     "validate_artifact_envelope",
+    "validate_trust_manifest",
     "verify_redaction_report_hash",
     "verify_redaction_result",
+    "verify_trust_manifest",
 ]
 
 __version__ = "0.1.0"

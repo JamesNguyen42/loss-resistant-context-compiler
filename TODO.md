@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 944 tests (936 passing and 8 skipped locally); CI covers Python
+- [x] Collect 963 tests (955 passing and 8 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -577,8 +577,11 @@ than most related technology” within the exact dated evaluation scope.
   metadata/id/timestamp handling and evaluate PII or domain-sensitive-data
   detection without claiming completeness from lexical heuristics.
 - [ ] Define encryption-at-rest and access-control guidance for source archives.
-- [ ] Add external signatures or trusted manifests for artifacts and source
-  digests.
+- [x] Add strict detached trusted manifests for complete replay-verified
+  artifacts, exact source digests/counts, and optional source-archive chain
+  heads. Verification requires a manifest SHA-256 retained outside the bundle
+  boundary; unanchored Python verification cannot report success. Digital
+  signatures and key management remain future work.
 - [x] Add canonical source-archive entry hash chaining and optional
   externally retained head checks for stale-state and valid-prefix rollback
   detection; document that standalone self-hashes remain recomputable and do
@@ -677,7 +680,7 @@ than most related technology” within the exact dated evaluation scope.
   matrix.
 - [ ] Verify installation from a clean Python environment on all supported
   platforms. A no-index Windows wheel install, import, `ctxc --help`, and
-  seven-schema check pass; the Ubuntu clean-install CI step must pass after
+  eight-schema check pass; the Ubuntu clean-install CI step must pass after
   publication of this change, and macOS remains outside the supported matrix.
 - [ ] Add supply-chain scanning and dependency review for optional adapters.
 - [ ] Publish `0.2.0` only after the external runner and natural-history corpus

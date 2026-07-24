@@ -14,6 +14,12 @@ supported alias or compatibility package. A local editable installation with
 the old metadata should be uninstalled before installing the renamed
 distribution. No artifact, source-archive, or benchmark schema was renamed
 with the distribution; the import package and CLI identity are also unchanged.
+The seven JSON Schemas that existed before the rename retain their historical
+`https://example.invalid/lossless-context-compiler/...` `$id` values because
+those URIs are stored-format identifiers, not distribution branding or live
+network endpoints. New schemas, beginning with the detached trust manifest,
+use the `loss-resistant-context-compiler` namespace. All schema files install
+under the current distribution path.
 
 ## Semantic versions
 
@@ -64,7 +70,7 @@ commit:
 3. offline source-distribution and wheel builds;
 4. exact distribution name/version/entry-point metadata checks;
 5. clean-environment wheel installation and import;
-6. inclusion and parseability of all seven installed JSON Schemas;
+6. inclusion and parseability of all eight installed JSON Schemas;
 7. frozen benchmark, protocol, and model-diagnostic replay without new model
    calls;
 8. the fixed performance gate;

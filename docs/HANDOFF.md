@@ -27,7 +27,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 944 collected: 936 passing, 8 skipped |
+| Tests at this snapshot | 963 collected: 955 passing, 8 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -38,6 +38,7 @@ claim rules.
 | Post-hoc Qwen offset ablation | 0 calls: 63.1579% literal-only precision, 60% recall, 2 final verification failures; not claim-bearing |
 | Held-out paired Qwen result | 128 sequential calls; literal model-only P/R/F1 74%/92.5%/82.2222%, coordinate 100%/17.5%/29.7872%; literal final verification failures 4 |
 | Common content-secret preprocessing | Opt-in, fixed-detector, offset-preserving, replayable |
+| Detached trust manifest | Complete artifact + exact source set + optional archive head; success requires a separately retained digest |
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | None |
 | External 50%-better claim | Not established |
@@ -206,7 +207,10 @@ role authenticity, freshness, or freedom from malicious source content. The
 archive chain supplies a current head and optional expected-head precondition,
 but valid-prefix rollback detection depends on retaining that head outside the
 archive. Artifacts and source state need an independent trust anchor in
-adversarial storage.
+adversarial storage. `ctxc-trust-manifest-0.1` now standardizes that binding:
+creation requires a complete independently replayed artifact, and verification
+requires the expected manifest digest supplied outside the file. It remains a
+digest-anchor workflow, not a signature, timestamp authority, or key manager.
 
 Source ids, roles, and timestamps are opaque but have fixed structural ceilings
 of 1,024, 128, and 256 characters. These bounds apply across direct
@@ -282,6 +286,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `src/context_compiler/atomic.py` | Ancestor-guarded same-directory replace-or-create UTF-8 transactions and durability helpers |
 | `src/context_compiler/file_lock.py` | Ancestor-guarded, single-link persistent advisory-file locking |
 | `src/context_compiler/archive.py` | Logically append-only local archive, canonical entry chain, expected-head preconditions, legacy migration, advisory locking, atomic commits, loading, and verification |
+| `src/context_compiler/trust.py` | Strict detached artifact/source/archive bindings, bounded loading, external-anchor enforcement, and verification reports |
 | `src/context_compiler/artifact_diff.py` | Integrity-gated deterministic artifact comparison and self-hashed diff reports |
 | `src/context_compiler/artifact_inspection.py` | Versioned bounded artifact summaries and control-character-safe terminal rendering |
 | `src/context_compiler/schema_compatibility.py` | Machine-readable artifact reader/writer window and no-silent-migration policy |
@@ -297,7 +302,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `benchmarks/qwen_literal_ablation.py` | Model-free frozen-output offset ablation, literal replay, self-hashed report, and strict regeneration |
 | `benchmarks/qwen_paired_eval.py` | Clean-tree paired coordinate/literal capture, alternating order, comparison metrics, and offline replay |
 | `benchmarks/protocols/` | Human-readable and machine-verifiable external comparison protocol; v1 is a valid non-claim-bearing draft with explicit blockers |
-| `schemas/` | Source, coordinate/unique-literal model extraction, compiled artifact, redaction report, and source-archive entry/report contracts |
+| `schemas/` | Source, coordinate/unique-literal model extraction, compiled artifact, redaction report, source-archive entry/report, and detached trust-manifest contracts |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
 | `CHANGELOG.md` | Versioned release notes and the unreleased change ledger |
 | `SUPPORT.md` | Runtime, platform, format, installation, and maintenance matrix |
@@ -320,6 +325,10 @@ ctxc schema [--artifact-version VERSION]
 ctxc redact HISTORY -o REDACTED.jsonl --report REPORT.json
 ctxc archive append ARCHIVE HISTORY [--expected-chain-head HEAD]
 ctxc archive verify ARCHIVE [--expected-chain-head HEAD]
+ctxc trust create ARTIFACT HISTORY [-o MANIFEST]
+ctxc trust create ARTIFACT --archive ARCHIVE [-o MANIFEST]
+ctxc trust verify MANIFEST ARTIFACT HISTORY --expected-manifest-sha256 HASH
+ctxc trust verify MANIFEST ARTIFACT --archive ARCHIVE --expected-manifest-sha256 HASH
 ```
 
 Important compile options:
@@ -336,6 +345,9 @@ Important compile options:
   `--archive-expected-chain-head` precondition;
 - `verify --archive` consumes the chained archive directly instead of the
   positional JSON/JSONL source path and accepts the same head precondition;
+- `trust create` refuses incomplete or replay-failing artifacts, while
+  `trust verify` requires the externally retained manifest SHA-256; both
+  support direct sources or a hash-chained archive, never both;
 - `--max-source-bytes`, `--max-source-records`,
   `--max-source-line-chars`, `--max-source-record-bytes`,
   `--max-total-source-bytes`, and `--max-source-json-depth`;
@@ -415,6 +427,13 @@ Primary exported objects:
 - `summarize_artifact`;
 - `render_artifact_text`;
 - `validate_artifact_envelope`;
+- `TrustManifestError`;
+- `TRUST_MANIFEST_SCHEMA` and `TRUST_VERIFICATION_SCHEMA`;
+- `create_trust_manifest`;
+- `load_trust_manifest` and `load_trust_manifest_path`;
+- `trust_manifest_sha256`;
+- `validate_trust_manifest`;
+- `verify_trust_manifest`;
 - `VerificationReport`.
 
 Custom token accounting requires both a callback and a stable
@@ -447,6 +466,8 @@ and enforces a subprocess timeout. See [Local Qwen integration](LOCAL_QWEN.md).
 | CLI diagnostic schema | `ctxc-diagnostic-0.1` |
 | Redaction report schema | `ctxc-redaction-report-0.1` |
 | Redaction verification schema | `ctxc-redaction-verification-0.1` |
+| Detached trust manifest schema | `ctxc-trust-manifest-0.1` |
+| Trust verification report schema | `ctxc-trust-verification-0.1` |
 | Performance gate report | `ctxc-performance-gate-0.1` |
 | LRCBench report version | `lrcbench-0.2` |
 | LRCBench corpus schema | `lrcbench-corpus-0.3` |
@@ -464,6 +485,12 @@ It is not a compatibility alias: an old editable distribution must be removed
 before reinstalling. The import package, CLI, package version, and every stored
 schema identity remain unchanged. See [release policy](RELEASE_POLICY.md) and
 [support matrix](../SUPPORT.md).
+
+The seven pre-rename JSON Schema `$id` URI values deliberately retain their
+historical `lossless-context-compiler` namespace as stored compatibility
+identifiers. The new trust schema uses the current
+`loss-resistant-context-compiler` namespace. All eight files install under the
+current schema directory.
 
 ## Input and output contracts
 
@@ -499,6 +526,12 @@ volume and elapsed time are measured but not independently reproducible. The
 artifact does **not** embed the complete source history; verification and
 provenance rehydration require the separately retained source events.
 
+The detached trust manifest is a separate, strict 64 KiB document that binds
+the complete artifact digest, source-set digest/count, and optional archive
+head. Its self-hash becomes meaningful only when the expected digest is
+retained outside the bundle's rewrite boundary. See
+[TRUST_MANIFESTS.md](TRUST_MANIFESTS.md).
+
 `--active-only` intentionally emits only selected items and marks
 `ledger_complete: false`. Independent verification rejects the incomplete
 ledger for a full certificate because omitted protected coverage cannot be
@@ -509,15 +542,16 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 944 tests are collected: 936 pass and 8 platform/optional checks are skipped.
+- 963 tests are collected: 955 pass and 8 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - Distribution metadata, `ctxc`, package version, and the renamed installed
   schema path are regression-tested. CI builds a wheel and verifies that all
-  seven schemas are included. A local no-index Windows clean environment
-  installs the wheel, imports version `0.1.0`, runs `ctxc --help`, and finds all
-  seven schemas under the renamed prefix; equivalent Ubuntu validation is now
-  staged in CI.
+  eight schemas are included. A local no-index Windows clean environment
+  installs the wheel, imports version `0.1.0`, runs `ctxc --help`, finds all
+  eight schemas under the renamed prefix, and completes an installed
+  compile/trust-create/trust-verify round trip; equivalent Ubuntu validation
+  is staged in CI.
 - CI runs the external-candidate interchange self-test.
 - CI enforces `ci-compile-v1` through a self-hashed
   `ctxc-performance-gate-0.1` report: three-trial medians at 128/256 events,
@@ -892,6 +926,9 @@ lower quantile before results are observed.
 - Archive hashes are not signatures; standalone verification accepts a valid
   older prefix, while rollback detection requires a separately protected
   expected head.
+- Trust manifests are not signatures or trusted timestamps. If the expected
+  manifest digest is kept beside attacker-writable bundle files, the attacker
+  can replace and rehash the complete bundle.
 
 ### Scale and availability
 
@@ -1045,7 +1082,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert len(wheels) == 1, wheels
     assert wheels[0].name.startswith('loss_resistant_context_compiler-')
     names = zipfile.ZipFile(wheels[0]).namelist()
-    assert sum(name.endswith('.schema.json') for name in names) == 7
+    assert sum(name.endswith('.schema.json') for name in names) == 8
 "
 ```
 

@@ -43,12 +43,17 @@ diagnostic; deterministic compilation does not require a model.
 | Redaction reports | `ctxc-redaction-report-0.1` |
 | Artifact inspection | `ctxc-artifact-inspection-0.1` |
 | Artifact diff | `ctxc-artifact-diff-0.1` |
+| Detached trust manifests | `ctxc-trust-manifest-0.1`; verification reports use `ctxc-trust-verification-0.1` |
 | CLI diagnostics/events | `ctxc-diagnostic-0.1` / `ctxc-event-0.1` |
 | LRCBench reports | Current `lrcbench-0.2` plus the explicit retained local-only `0.1` replay path |
 
 No format is silently migrated. See
 [docs/SCHEMA_COMPATIBILITY.md](docs/SCHEMA_COMPATIBILITY.md) and
 [docs/RELEASE_POLICY.md](docs/RELEASE_POLICY.md).
+The seven schemas that predate the distribution rename retain their historical
+`lossless-context-compiler` `$id` URI values for compatibility. The new trust
+manifest schema uses the current `loss-resistant-context-compiler` namespace;
+all eight files install under the current distribution's schema directory.
 
 ## Installation support
 
@@ -65,7 +70,9 @@ an upgrade relationship.
 ## Security and maintenance
 
 During alpha development, fixes target the latest branch only. Hashes in this
-repository detect inconsistency but are not signatures. Filesystem
-administrators, upstream role authentication, key management, encryption,
-retention, and external trust anchors remain host responsibilities as detailed
-in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
+repository detect inconsistency but are not signatures. Detached trust
+manifests can bind an artifact and its exact source set only when the expected
+manifest digest is protected separately. Filesystem administrators, upstream
+role authentication, key management, encryption, retention, and the external
+anchor channel remain host responsibilities as detailed in
+[docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).

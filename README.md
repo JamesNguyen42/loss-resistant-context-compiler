@@ -28,7 +28,7 @@ meaning can be compressed without loss.
 | Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 944 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 963 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -157,7 +157,7 @@ The repository currently includes:
 - an opt-in whole-compile deadline that runs materialized inputs in an isolated
   POSIX process group or Windows Job Object, terminates the owned descendant
   tree on timeout, and reconstructs successful output from bounded strict JSON;
-- a portable JSON artifact, compact prompt renderer, and seven JSON Schemas;
+- a portable JSON artifact, compact prompt renderer, and eight JSON Schemas;
 - a machine-readable artifact reader/writer registry with an explicit
   no-silent-migration policy;
 - a fail-closed JSON inspector plus a bounded terminal item view with escaped
@@ -166,8 +166,8 @@ The repository currently includes:
 - a logically append-only local source archive with canonical entry hash
   chaining, optional externally retained head checks, exclusive locking,
   legacy migration, and bounded old-or-new atomic commits;
-- the `ctxc compile`, `verify`, `inspect`, `diff`, `schema`, and `archive`
-  commands;
+- the `ctxc compile`, `verify`, `inspect`, `diff`, `schema`, `redact`,
+  `archive`, and `trust` commands;
 - LRCBench, external-candidate import/export, history-weighted paired bootstrap
   gates, per-system decisions, and self-hashed JSON reports with producer/run
   metadata;
@@ -197,7 +197,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 944 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 963 regression tests.
 
 ## In development
 
@@ -211,7 +211,8 @@ adding more claims to the README:
 - add exact provider tokenizers and framework adapters;
 - support efficient incremental compilation for live agent loops;
 - continue hardening generic-provider transport deadlines, metadata/PII
-  handling, encryption guidance, storage authenticity, and observability;
+  handling, encryption guidance, signed publication/key handling, and
+  observability;
 - obtain independent reproduction before making a state-of-the-art claim.
 
 The ordered engineering backlog is in [TODO.md](TODO.md). The current design
@@ -517,6 +518,28 @@ filesystem access control. Anyone able to rewrite the archive can recompute it,
 so rollback detection depends on keeping the expected head in a separately
 protected location.
 
+Create a detached manifest when the artifact, source digest, and optional
+archive head need one externally anchored bundle identity:
+
+```console
+ctxc trust create compiled-memory.json examples/auth_timeout.jsonl \
+  -o trust-manifest.json
+ctxc trust verify trust-manifest.json compiled-memory.json \
+  examples/auth_timeout.jsonl \
+  --expected-manifest-sha256 MANIFEST_SHA256
+```
+
+`trust create` accepts only a complete artifact that passes independent replay.
+It binds the artifact digest, exact source-set digest/count, complete-ledger
+status, and either the verified archive chain head or `null`. Retain the
+manifest's `manifest_sha256` outside the storage boundary holding the manifest,
+artifact, and sources; verification requires that separately retained value.
+For archive-backed sources, use `--archive ARCHIVE` and optionally require
+`--archive-expected-chain-head HEAD` on both trust commands. A self-hash copied
+beside the bundle is not an external anchor, and this feature is not a digital
+signature or key-management system. See
+[Detached trust manifests](docs/TRUST_MANIFESTS.md).
+
 `ctxc compile` also accepts `-` for stdin. Inputs may be a JSON list, an object
 containing `sources`, `events`, or `messages`, or JSONL. Each record accepts
 `id`, `sequence`, `role`, `content`, `timestamp`, and `metadata`.
@@ -632,6 +655,9 @@ resource enforcement. Primary-extractor volume and elapsed time are measured
 evidence and can only be shape-checked during replay. A self-hash is an
 integrity check, not a signature; an attacker who can rewrite both an artifact
 and its expected trust anchors is outside this guarantee.
+`ctxc trust create` standardizes a detached bundle binding, and
+`ctxc trust verify` refuses to pass without the externally supplied manifest
+digest. It does not remove that external-anchor trust boundary.
 `--active-only` intentionally omits unselected ledger entries for compact
 transport. Its artifact is marked `ledger_complete: false`;
 independent `ctxc verify` rejects it with `incomplete_ledger` because omitted
@@ -682,8 +708,10 @@ from context_compiler import (
     SourceLimits,
     SourceRecord,
     artifact_schema_support,
+    create_trust_manifest,
     diff_artifacts,
     validate_artifact_envelope,
+    verify_trust_manifest,
 )
 
 sources = [
@@ -705,17 +733,29 @@ compiler = ContextCompiler(
     compilation_limits=CompilationLimits(max_extractor_items=5_000),
 )
 memory = compiler.compile(sources)
-validate_artifact_envelope(memory.to_dict())
+artifact = memory.to_dict()
+validate_artifact_envelope(artifact)
 assert artifact_schema_support(memory.schema_version)["readable"]
 
 if not memory.verification.passed:
     raise RuntimeError(memory.verification.to_dict())
 
 print(memory.to_prompt())
+
+manifest = create_trust_manifest(artifact, sources)
+anchor = manifest["manifest_sha256"]  # retain outside the bundle's storage boundary
+assert verify_trust_manifest(
+    manifest,
+    artifact,
+    sources,
+    expected_manifest_sha256=anchor,
+)["passed"]
 ```
 
 `diff_artifacts(before, after, include_item_details=False)` returns the same
 self-hashed summary used by `ctxc diff --summary-only`.
+Passing `expected_manifest_sha256=None` to `verify_trust_manifest()` always
+produces a failed, explicitly unanchored report.
 
 Pass `timeout_seconds` to execute the entire compiler pipeline in a dedicated
 process tree:
@@ -861,7 +901,7 @@ python -m ruff check src tests benchmarks
 python -m compileall -q src benchmarks tests
 ```
 
-Build the wheel and verify the seven packaged schemas:
+Build the wheel and verify the eight packaged schemas:
 
 ```console
 python -c "
@@ -876,7 +916,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert len(wheels) == 1, wheels
     assert wheels[0].name.startswith('loss_resistant_context_compiler-')
     names = zipfile.ZipFile(wheels[0]).namelist()
-    assert sum(name.endswith('.schema.json') for name in names) == 7
+    assert sum(name.endswith('.schema.json') for name in names) == 8
 "
 ```
 
@@ -1000,7 +1040,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 944 tests are collected (936 pass and 8
+Current local snapshot (2026-07-24): 963 tests are collected (955 pass and 8
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
@@ -1083,6 +1123,7 @@ the commands above for the current revision and environment.
 - [Held-out paired Qwen captured-output evidence](docs/results/qwen-heldout-paired-extractors-v1.json)
 - [Unique-literal model extraction](docs/LITERAL_MODEL_EXTRACTION.md)
 - [Threat model](docs/THREAT_MODEL.md)
+- [Detached externally anchored trust manifests](docs/TRUST_MANIFESTS.md)
 - [Compiled-artifact schema compatibility](docs/SCHEMA_COMPATIBILITY.md)
 - [Related work](docs/RELATED_WORK.md)
 - [Exact local Qwen integration](docs/LOCAL_QWEN.md)
@@ -1095,8 +1136,9 @@ the commands above for the current revision and environment.
   [unique-literal model extraction](schemas/model-extraction-literal.schema.json),
   [compiled memory](schemas/compiled-memory.schema.json),
   [redaction report](schemas/redaction-report.schema.json),
-  [source archive entry](schemas/source-archive-entry.schema.json), and
-  [source archive command report](schemas/source-archive-report.schema.json)
+  [source archive entry](schemas/source-archive-entry.schema.json),
+  [source archive command report](schemas/source-archive-report.schema.json),
+  and [detached trust manifest](schemas/trust-manifest.schema.json)
 
 ## License
 
