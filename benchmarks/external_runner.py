@@ -21,7 +21,10 @@ from pathlib import Path
 from typing import Any
 
 from context_compiler.atomic import atomic_write_text
-from context_compiler.local_qwen import QWEN_Q4_VARIANT
+from context_compiler.local_qwen import (
+    QWEN_Q4_CONTEXT_LENGTH,
+    QWEN_Q4_VARIANT,
+)
 
 from .json_io import (
     StrictFileEvidence,
@@ -34,6 +37,7 @@ from .lrcbench import (
     CANDIDATE_SCHEMA,
     CORPUS_SCHEMA,
     LEGACY_ADAPTER_CANDIDATE_SCHEMA,
+    TOKENIZER_ID,
     CandidateProducerMetadata,
     ExternalBaselineError,
     candidate_document,
@@ -41,8 +45,9 @@ from .lrcbench import (
     decode_external_candidate,
 )
 
-RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.3"
+RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.4"
 _SYSTEM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
+_REVISION_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 _ENVIRONMENT_ID_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _ISOLATION_MODES = frozenset({"whole_corpus", "per_case"})
 _WINDOWS_CREATE_SUSPENDED = 0x00000004
@@ -76,6 +81,9 @@ class ExternalRunReference:
     candidate_bytes: int | None
     failure_reason: str | None
     manifest_sha256: str
+    isolation_mode: str
+    limits: RunnerLimits
+    identity: RunnerIdentity
     adapter_revision: str
     environment_id: str
     model_id: str
@@ -118,12 +126,13 @@ class RunnerIdentity:
     @property
     def claim_metadata_complete(self) -> bool:
         return (
-            self.adapter_revision != "unrecorded"
+            _REVISION_RE.fullmatch(self.adapter_revision) is not None
             and _ENVIRONMENT_ID_RE.fullmatch(self.environment_id) is not None
             and self.model_id == QWEN_Q4_VARIANT
-            and self.model_context_length > 0
-            and self.tokenizer_id != "unrecorded"
+            and self.model_context_length == QWEN_Q4_CONTEXT_LENGTH
+            and self.tokenizer_id == TOKENIZER_ID
             and self.inference_concurrency == 1
+            and self.retry_count == 0
             and self.model_service_cost_usd == 0.0
         )
 
@@ -1130,6 +1139,9 @@ def load_external_run_manifest(
         ),
         failure_reason=failure_reason,
         manifest_sha256=claimed_manifest_sha,
+        isolation_mode=isolation_mode,
+        limits=decoded_limits,
+        identity=decoded_identity,
         adapter_revision=decoded_identity.adapter_revision,
         environment_id=decoded_identity.environment_id,
         model_id=decoded_identity.model_id,

@@ -24,6 +24,7 @@ def write_frozen_external_protocol(
     adapter_revisions: Mapping[str, str] | None = None,
     environment_ids: Mapping[str, str] | None = None,
     synthetic_dataset_sha256: str = "9" * 64,
+    max_memory_mb: int = 256,
 ) -> Path:
     registered = tuple(sorted(systems))
     if len(registered) < 4 or len(registered) != len(set(registered)):
@@ -133,7 +134,7 @@ def write_frozen_external_protocol(
             "max_stdout_bytes": 1_000_000,
             "max_stderr_bytes": 1_000_000,
             "max_candidate_bytes": 20_000_000,
-            "max_memory_mb": 8_192,
+            "max_memory_mb": max_memory_mb,
             "inference_service_accounting": (
                 "Shared exact-model service is sampled and reported."
             ),

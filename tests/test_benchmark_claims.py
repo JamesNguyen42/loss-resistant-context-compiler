@@ -9,6 +9,7 @@ import pytest
 from benchmarks.external_protocol import DEFAULT_EXTERNAL_PROTOCOL
 from benchmarks.lrcbench import (
     REQUIRED_STRATA,
+    TOKENIZER_ID,
     AggregateMetrics,
     BenchmarkConfig,
     CandidateProducerMetadata,
@@ -24,6 +25,7 @@ from benchmarks.lrcbench import (
     generate_histories,
     run_benchmark,
 )
+from context_compiler.local_qwen import QWEN_Q4_VARIANT
 from tests.protocol_fixtures import write_frozen_external_protocol
 
 
@@ -447,6 +449,11 @@ def test_external_scoring_rejects_draft_and_mismatched_protocols(
             config,
             external_protocol_path=protocol_path,
         )
+    with pytest.raises(ExternalBaselineError, match="token budget does not match"):
+        run_benchmark(
+            replace(config, token_budget=901),
+            external_protocol_path=protocol_path,
+        )
 
 
 def test_registered_missing_and_degenerate_outputs_remain_external_nonwins(
@@ -483,9 +490,9 @@ def test_registered_missing_and_degenerate_outputs_remain_external_nonwins(
         producer=CandidateProducerMetadata(
             adapter_revision=adapter_revision,
             environment_id=environment_id,
-            model_id="fixture-model",
-            model_context_length=4096,
-            tokenizer_id="fixture-tokenizer",
+            model_id=QWEN_Q4_VARIANT,
+            model_context_length=8192,
+            tokenizer_id=TOKENIZER_ID,
             inference_concurrency=1,
             retry_count=0,
             model_service_cost_usd=0.0,
@@ -566,6 +573,27 @@ def test_registered_missing_and_degenerate_outputs_remain_external_nonwins(
     with pytest.raises(
         ExternalBaselineError,
         match="environment identity does not match the frozen protocol",
+    ):
+        run_benchmark(
+            config,
+            external_baseline_paths=(candidate_path,),
+            expected_external_systems=systems,
+            external_protocol_path=protocol_path,
+        )
+
+    candidate_payload["producer"]["environment_id"] = environment_id
+    candidate_payload["producer"]["model_context_length"] = 4096
+    candidate_payload.pop("candidate_payload_sha256")
+    candidate_payload["candidate_payload_sha256"] = _canonical_sha256(
+        candidate_payload
+    )
+    candidate_path.write_text(
+        json.dumps(candidate_payload),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="model contract does not match the frozen protocol",
     ):
         run_benchmark(
             config,

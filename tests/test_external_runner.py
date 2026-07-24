@@ -31,6 +31,7 @@ from benchmarks.lrcbench import (
     dataset_digest,
     decode_corpus_document,
     generate_histories,
+    load_external_candidates,
     run_benchmark,
 )
 from context_compiler.local_qwen import QWEN_Q4_VARIANT
@@ -111,7 +112,7 @@ def claim_identity() -> RunnerIdentity:
     )
 
 
-def test_claim_identity_requires_exact_qwen_one_slot_and_zero_service_cost() -> None:
+def test_claim_identity_requires_frozen_model_and_environment_contract() -> None:
     identity = claim_identity()
 
     assert identity.claim_metadata_complete
@@ -120,7 +121,14 @@ def test_claim_identity_requires_exact_qwen_one_slot_and_zero_service_cost() -> 
         identity,
         environment_id="fixture-environment",
     ).claim_metadata_complete
+    assert not replace(
+        identity,
+        adapter_revision="fixture-revision",
+    ).claim_metadata_complete
+    assert not replace(identity, model_context_length=4096).claim_metadata_complete
+    assert not replace(identity, tokenizer_id="other-tokenizer").claim_metadata_complete
     assert not replace(identity, inference_concurrency=2).claim_metadata_complete
+    assert not replace(identity, retry_count=1).claim_metadata_complete
     assert not replace(identity, model_service_cost_usd=0.01).claim_metadata_complete
     with pytest.raises(TypeError, match="model_service_cost_usd must be numeric"):
         replace(identity, model_service_cost_usd=None)  # type: ignore[arg-type]
@@ -239,6 +247,17 @@ def test_interchange_file_loaders_reject_duplicate_keys_and_size_overflow(
 
     candidate_path.write_text(candidate_text, encoding="utf-8")
     with pytest.raises(ExternalBaselineError, match="external candidate exceeds"):
+        load_external_candidates(
+            (candidate_path,),
+            cases=generate_histories(config),
+            dataset_sha256=document["dataset_sha256"],
+            token_budget=config.token_budget,
+            max_candidate_bytes=len(candidate_text.encode("utf-8")) - 1,
+        )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="candidate byte limit does not match",
+    ):
         run_benchmark(
             config,
             external_baseline_paths=(candidate_path,),
@@ -440,7 +459,7 @@ def test_cli_defaults_to_claim_eligible_per_case_mode(tmp_path, capsys) -> None:
             "--max-memory-mb",
             "256",
             "--adapter-revision",
-            "fixture-revision",
+            FIXTURE_ADAPTER_REVISION,
             "--environment-id",
             FIXTURE_ENVIRONMENT_ID,
             "--model-id",
@@ -592,7 +611,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         system="fixture-adapter",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(timeout_seconds=300, max_memory_mb=256),
         identity=claim_identity(),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
@@ -673,6 +692,55 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             external_manifest_paths=(manifest_path,),
             expected_external_systems=systems,
             external_protocol_path=mismatched_protocol_path,
+        )
+    mismatched_limits_directory = tmp_path / "mismatched-limits"
+    mismatched_limits_directory.mkdir()
+    mismatched_limits_protocol = write_frozen_external_protocol(
+        mismatched_limits_directory,
+        systems,
+        adapter_revisions={
+            "fixture-adapter": FIXTURE_ADAPTER_REVISION,
+        },
+        environment_ids={
+            "fixture-adapter": FIXTURE_ENVIRONMENT_ID,
+        },
+        synthetic_dataset_sha256=document["dataset_sha256"],
+        max_memory_mb=512,
+    )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="run manifest limits do not match the frozen protocol",
+    ):
+        run_benchmark(
+            config,
+            external_manifest_paths=(manifest_path,),
+            expected_external_systems=systems,
+            external_protocol_path=mismatched_limits_protocol,
+        )
+
+    mismatched_model_candidate = tmp_path / "mismatched-model-candidate.json"
+    mismatched_model_manifest_path = tmp_path / "mismatched-model-manifest.json"
+    mismatched_model_manifest = run_external_cases(
+        valid_adapter_command(),
+        system="fixture-adapter",
+        corpus_path=corpus_path,
+        candidate_path=mismatched_model_candidate,
+        limits=RunnerLimits(timeout_seconds=300, max_memory_mb=256),
+        identity=replace(claim_identity(), model_context_length=4096),
+    )
+    mismatched_model_manifest_path.write_text(
+        mismatched_model_manifest.to_json(),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="run manifest model contract does not match the frozen protocol",
+    ):
+        run_benchmark(
+            config,
+            external_manifest_paths=(mismatched_model_manifest_path,),
+            expected_external_systems=systems,
+            external_protocol_path=protocol_path,
         )
 
     original_manifest_loader = external_runner_module.load_external_run_manifest
@@ -1056,17 +1124,19 @@ def test_windows_job_memory_limit_blocks_descendant_allocation(tmp_path) -> None
     assert not candidate_path.exists()
 
 
-def test_failed_manifest_reason_becomes_a_registered_invalid_nonwin(tmp_path) -> None:
+def test_failed_exact_contract_manifest_becomes_a_registered_invalid_nonwin(
+    tmp_path,
+) -> None:
     corpus_path = tmp_path / "corpus.json"
     config, document = write_corpus(corpus_path)
     candidate_path = tmp_path / "candidate.json"
     manifest_path = tmp_path / "manifest.json"
-    manifest = run_external_command(
-        [sys.executable, "-c", "import time; time.sleep(5)"],
+    manifest = run_external_cases(
+        [sys.executable, "-c", "raise SystemExit(7)"],
         system="timeout-fixture",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=0.05, poll_interval_seconds=0.01),
+        limits=RunnerLimits(timeout_seconds=300, max_memory_mb=256),
         identity=claim_identity(),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
@@ -1099,8 +1169,10 @@ def test_failed_manifest_reason_becomes_a_registered_invalid_nonwin(tmp_path) ->
         value for value in report.certificate.comparisons if value.system == "timeout-fixture"
     )
     assert comparison.decision == "invalid"
-    assert "timeout" in comparison.reasons
-    assert report.certificate.external_manifests[0].failure_reason == "timeout"
+    assert any(reason.endswith("nonzero_exit") for reason in comparison.reasons)
+    assert report.certificate.external_manifests[
+        0
+    ].failure_reason.endswith("nonzero_exit")
 
 
 def test_runner_enforces_final_stdout_limit_even_for_fast_process(tmp_path) -> None:

@@ -233,11 +233,12 @@ Whole-corpus isolation, no enforced adapter memory limit, incomplete identity
 metadata, any model other than the exact Qwen Q4 variant, inference concurrency
 other than one, or nonzero model-service cost makes the system a certificate
 non-win. Claim-eligible runner schema
-`lrcbench-external-run-manifest-0.3` also requires the environment id to be the
-canonical `sha256:` identity of the dependency lock recorded for that system.
-The scorer rejects any adapter or environment identity that differs from the
-frozen protocol. The candidate may still be retained for interchange
-diagnostics.
+`lrcbench-external-run-manifest-0.4` also requires an immutable adapter
+revision, the canonical `sha256:` identity of the dependency lock, context
+length 8192, the evaluator tokenizer, one slot, zero retries, and zero service
+cost. The scorer rejects any identity, isolation mode, timeout, output,
+candidate, or memory limit that differs from the frozen protocol. The candidate
+may still be retained for interchange diagnostics.
 
 Score all intended systems in one explicitly registered invocation:
 

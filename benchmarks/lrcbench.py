@@ -2619,6 +2619,7 @@ def run_benchmark(
     external_protocol: ExternalProtocolEvidence | None = None
     protocol_adapter_revisions: dict[str, str] = {}
     protocol_environment_ids: dict[str, str] = {}
+    protocol_execution_contract: Any | None = None
     if external_protocol_path is not None:
         from .external_protocol import ExternalProtocolError, load_external_protocol
 
@@ -2642,6 +2643,7 @@ def run_benchmark(
         expected = verified_protocol.registered_systems
         protocol_adapter_revisions = dict(verified_protocol.adapter_revisions)
         protocol_environment_ids = dict(verified_protocol.environment_ids)
+        protocol_execution_contract = verified_protocol.execution_contract
         external_protocol = ExternalProtocolEvidence(
             protocol_id=verified_protocol.protocol_id,
             protocol_sha256=verified_protocol.protocol_sha256,
@@ -2655,6 +2657,18 @@ def run_benchmark(
         raise ExternalBaselineError(
             "external protocol system names collide with built-ins"
         )
+    if protocol_execution_contract is not None:
+        if config.token_budget != protocol_execution_contract.active_token_budget:
+            raise ExternalBaselineError(
+                "benchmark token budget does not match the frozen external protocol"
+            )
+        if (
+            max_external_candidate_bytes
+            != protocol_execution_contract.max_candidate_bytes
+        ):
+            raise ExternalBaselineError(
+                "external candidate byte limit does not match the frozen protocol"
+            )
     cases = generate_histories(config)
     digest = dataset_digest(cases, config)
     if (
@@ -2739,6 +2753,41 @@ def run_benchmark(
                     f"external system {reference.system!r} run manifest "
                     "environment identity does not match the frozen protocol"
                 )
+            identity = reference.identity
+            expected_identity = protocol_execution_contract
+            if (
+                identity.model_id != expected_identity.model_id
+                or identity.model_context_length
+                != expected_identity.model_context_length
+                or identity.tokenizer_id != expected_identity.tokenizer_id
+                or identity.inference_concurrency
+                != expected_identity.inference_concurrency
+                or identity.retry_count != expected_identity.retry_count
+                or float(identity.model_service_cost_usd)
+                != expected_identity.model_service_cost_usd
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest model "
+                    "contract does not match the frozen protocol"
+                )
+            limits = reference.limits
+            if (
+                reference.isolation_mode
+                != expected_identity.isolation_mode
+                or float(limits.timeout_seconds)
+                != expected_identity.timeout_seconds
+                or limits.max_stdout_bytes
+                != expected_identity.max_stdout_bytes
+                or limits.max_stderr_bytes
+                != expected_identity.max_stderr_bytes
+                or limits.max_candidate_bytes
+                != expected_identity.max_candidate_bytes
+                or limits.max_memory_mb != expected_identity.max_memory_mb
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest limits "
+                    "do not match the frozen protocol"
+                )
             external_manifest_sha256[reference.system] = reference.manifest_sha256
             external_model_ids[reference.system] = reference.model_id
             external_model_costs[reference.system] = reference.model_service_cost_usd
@@ -2794,6 +2843,25 @@ def run_benchmark(
             raise ExternalBaselineError(
                 f"external system {system!r} candidate producer environment "
                 "identity does not match the frozen protocol or run manifest"
+            )
+        expected_identity = protocol_execution_contract
+        if (
+            expected_identity is not None
+            and (
+                producer.model_id != expected_identity.model_id
+                or producer.model_context_length
+                != expected_identity.model_context_length
+                or producer.tokenizer_id != expected_identity.tokenizer_id
+                or producer.inference_concurrency
+                != expected_identity.inference_concurrency
+                or producer.retry_count != expected_identity.retry_count
+                or float(producer.model_service_cost_usd)
+                != expected_identity.model_service_cost_usd
+            )
+        ):
+            raise ExternalBaselineError(
+                f"external system {system!r} candidate producer model "
+                "contract does not match the frozen protocol"
             )
         recorded_model = external_model_ids.get(system)
         if recorded_model is not None and recorded_model != producer.model_id:

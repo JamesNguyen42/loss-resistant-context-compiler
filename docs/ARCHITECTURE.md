@@ -601,9 +601,11 @@ generation config, cases, sources, and evaluator gold. The
 `candidate_payload_sha256`. The runner accepts legacy `0.1` output only as a
 raw adapter boundary, upgrades it using the registered runner identity, and
 cross-checks that identity again during manifest reload. Current runner
-manifest schema `0.3` treats only
-`sha256:<dependency-lock-sha256>` as a claim-eligible environment identity;
-external scoring compares it and the adapter revision with the frozen protocol.
+manifest schema `0.4` requires an immutable adapter revision, canonical
+`sha256:<dependency-lock-sha256>` environment, exact model/context/tokenizer,
+one inference slot, and zero retries/service cost for claim eligibility.
+External scoring additionally compares all of those fields and the retained
+runner limits with the frozen protocol.
 
 Every runtime-error path calls one formatter. The default remains
 `ctxc: <message>` on stderr. `--error-format json` instead emits one compact

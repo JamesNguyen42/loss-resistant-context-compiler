@@ -660,10 +660,12 @@ audited. Any selected superseded item independently fails verification as
 - External scoring requires a strict frozen
   `lrcbench-external-protocol-0.2` manifest. The protocol's set is authoritative,
   and the benchmark rejects a draft, dataset mismatch, unregistered system, or
-  adapter or dependency-environment revision mismatch before scoring. Current
-  runner schema `lrcbench-external-run-manifest-0.3` requires claim-eligible
-  environment ids to equal `sha256:<dependency-lock-sha256>`. The committed v1
-  protocol is valid but intentionally blocked and not claim-ready.
+  adapter, dependency-environment, model, tokenizer, retry, or runner-limit
+  mismatch before scoring. Current runner schema
+  `lrcbench-external-run-manifest-0.4` freezes immutable adapter/environment
+  identity, exact 8192-context Qwen, one slot, zero retries/service cost, and
+  bounded runner controls. The committed v1 protocol is valid but intentionally
+  blocked and not claim-ready.
 - CI runs a 24-history fail-closed benchmark certificate.
 - The performance profile is a broad shared-runner tripwire, not an SLO: it
   excludes source construction, `tracemalloc` is not RSS, and the separate

@@ -11,7 +11,12 @@ from context_compiler import LmsQwenCompletion, LocalQwenError
 from context_compiler.local_qwen import QWEN_MODEL_KEY, QWEN_Q4_VARIANT
 
 
-def model_payload(*, parallel: int = 1, quantization: str = "Q4_K_M") -> dict:
+def model_payload(
+    *,
+    parallel: int = 1,
+    quantization: str = "Q4_K_M",
+    context_length: int = 8192,
+) -> dict:
     return {
         "type": "llm",
         "modelKey": QWEN_MODEL_KEY,
@@ -20,7 +25,7 @@ def model_payload(*, parallel: int = 1, quantization: str = "Q4_K_M") -> dict:
         "quantization": {"name": quantization, "bits": 4},
         "status": "idle",
         "parallel": parallel,
-        "contextLength": 8192,
+        "contextLength": context_length,
     }
 
 
@@ -176,6 +181,13 @@ def test_cli_adapter_enforces_one_loaded_inference_slot(tmp_path) -> None:
         "context_compiler.local_qwen.subprocess.run",
         side_effect=[completed([], disk), completed([], loaded)],
     ), pytest.raises(LocalQwenError, match="one inference slot"):
+        LmsQwenCompletion(executable).preflight()
+
+    wrong_context = json.dumps([model_payload(context_length=4096)])
+    with patch(
+        "context_compiler.local_qwen.subprocess.run",
+        side_effect=[completed([], disk), completed([], wrong_context)],
+    ), pytest.raises(LocalQwenError, match="8192-token context"):
         LmsQwenCompletion(executable).preflight()
 
 

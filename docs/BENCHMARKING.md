@@ -332,9 +332,12 @@ cost. Missing per-case isolation, no enforced process-tree memory limit,
 unrecorded identity, a model other than the exact local Qwen Q4 build,
 concurrency other than one, or nonzero model service cost is a
 certificate-invalid non-win even when the candidate interchange itself is
-valid. In current runner schema `lrcbench-external-run-manifest-0.3`, a
-claim-eligible environment id is exactly
-`sha256:<dependency-lock-sha256>` and must match the frozen protocol candidate.
+valid. In current runner schema `lrcbench-external-run-manifest-0.4`, a
+claim-eligible identity requires an immutable adapter revision, environment id
+`sha256:<dependency-lock-sha256>`, the exact 8192-context Qwen model, evaluator
+tokenizer, one slot, zero retries, and zero service cost. Scoring also matches
+the manifest's isolation and time/output/candidate/memory limits to the frozen
+protocol.
 
 Run the built-in round-trip and negative checks before preparing an adapter:
 

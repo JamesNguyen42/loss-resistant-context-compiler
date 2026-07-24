@@ -184,7 +184,7 @@ def test_committed_draft_is_verified_but_not_claim_ready() -> None:
     verified = load_external_protocol(DEFAULT_EXTERNAL_PROTOCOL)
 
     assert verified.protocol_sha256 == (
-        "068e5f2ebb39c1f7cf009a236f25e6a74f077c3a2bad066372f1dedbc9bbb2d3"
+        "5e8039da30665d36d7a6863f8cdaef754b23e0f3ea69d81fcd2198bb0e547e03"
     )
     assert verified.status == "draft"
     assert verified.claim_ready is False
@@ -229,6 +229,21 @@ def test_complete_frozen_protocol_is_claim_ready(tmp_path: Path) -> None:
         "beta": "sha256:" + _sha("2"),
         "delta": "sha256:" + _sha("3"),
         "gamma": "sha256:" + _sha("4"),
+    }
+    assert verified.execution_contract.to_dict() == {
+        "model_id": EXACT_QWEN_MODEL_ID,
+        "model_context_length": 8_192,
+        "tokenizer_id": "character-estimate-v1",
+        "inference_concurrency": 1,
+        "retry_count": 0,
+        "model_service_cost_usd": 0.0,
+        "active_token_budget": 900,
+        "isolation_mode": "per_case",
+        "timeout_seconds": 300.0,
+        "max_stdout_bytes": 1_000_000,
+        "max_stderr_bytes": 1_000_000,
+        "max_candidate_bytes": 20_000_000,
+        "max_memory_mb": 8_192,
     }
     assert verified.blocker_ids == ()
 

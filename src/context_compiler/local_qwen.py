@@ -13,6 +13,8 @@ from typing import Any
 
 QWEN_MODEL_KEY = "qwen/qwen3.6-35b-a3b"
 QWEN_Q4_VARIANT = "qwen/qwen3.6-35b-a3b@q4_k_m"
+QWEN_Q4_QUANTIZATION = "Q4_K_M"
+QWEN_Q4_CONTEXT_LENGTH = 8_192
 _ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
 _INFERENCE_LOCK = threading.Lock()
 _MAX_LOADING_STATUS_PREFIX_CHARS = 4_096
@@ -194,7 +196,7 @@ class LmsQwenCompletion:
             and model.get("publisher") == "qwen"
             and model.get("selectedVariant") == self.expected_variant
             and isinstance(quantization, dict)
-            and quantization.get("name") == "Q4_K_M"
+            and quantization.get("name") == QWEN_Q4_QUANTIZATION
             and quantization.get("bits") == 4
         )
 
@@ -228,9 +230,13 @@ class LmsQwenCompletion:
             raise LocalQwenError("loaded model does not match the required Qwen Q4 build")
         if self.require_single_concurrency and active.get("parallel") != 1:
             raise LocalQwenError("local Qwen must be loaded with exactly one inference slot")
+        if active.get("contextLength") != QWEN_Q4_CONTEXT_LENGTH:
+            raise LocalQwenError(
+                "local Qwen must be loaded with the required 8192-token context"
+            )
         return {
             "model_id": self.expected_variant,
-            "quantization": "Q4_K_M",
+            "quantization": QWEN_Q4_QUANTIZATION,
             "parallel": active.get("parallel"),
             "context_length": active.get("contextLength"),
             "transport": "lm-studio-cli",

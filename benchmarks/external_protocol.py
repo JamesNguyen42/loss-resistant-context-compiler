@@ -13,6 +13,12 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from context_compiler.local_qwen import (
+    QWEN_Q4_CONTEXT_LENGTH,
+    QWEN_Q4_QUANTIZATION,
+    QWEN_Q4_VARIANT,
+)
+
 from .json_io import (
     StrictJsonError,
     StrictJsonLimits,
@@ -27,9 +33,9 @@ DEFAULT_EXTERNAL_PROTOCOL = (
     / "protocols"
     / "external-comparison-v1.json"
 )
-EXACT_QWEN_MODEL_ID = "qwen/qwen3.6-35b-a3b@q4_k_m"
-EXACT_QWEN_QUANTIZATION = "Q4_K_M"
-EXACT_QWEN_CONTEXT_LENGTH = 8_192
+EXACT_QWEN_MODEL_ID = QWEN_Q4_VARIANT
+EXACT_QWEN_QUANTIZATION = QWEN_Q4_QUANTIZATION
+EXACT_QWEN_CONTEXT_LENGTH = QWEN_Q4_CONTEXT_LENGTH
 _PROTOCOL_LIMITS = StrictJsonLimits(
     max_bytes=2 * 1024 * 1024,
     max_line_chars=256 * 1024,
@@ -138,6 +144,42 @@ class ExternalProtocolError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class ExternalExecutionContract:
+    """Model and runner controls that every retained external run must match."""
+
+    model_id: str
+    model_context_length: int
+    tokenizer_id: str
+    inference_concurrency: int
+    retry_count: int
+    model_service_cost_usd: float
+    active_token_budget: int
+    isolation_mode: str
+    timeout_seconds: float
+    max_stdout_bytes: int
+    max_stderr_bytes: int
+    max_candidate_bytes: int
+    max_memory_mb: int | None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "model_id": self.model_id,
+            "model_context_length": self.model_context_length,
+            "tokenizer_id": self.tokenizer_id,
+            "inference_concurrency": self.inference_concurrency,
+            "retry_count": self.retry_count,
+            "model_service_cost_usd": self.model_service_cost_usd,
+            "active_token_budget": self.active_token_budget,
+            "isolation_mode": self.isolation_mode,
+            "timeout_seconds": self.timeout_seconds,
+            "max_stdout_bytes": self.max_stdout_bytes,
+            "max_stderr_bytes": self.max_stderr_bytes,
+            "max_candidate_bytes": self.max_candidate_bytes,
+            "max_memory_mb": self.max_memory_mb,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class VerifiedExternalProtocol:
     """Security-relevant summary of one internally consistent protocol."""
 
@@ -150,6 +192,7 @@ class VerifiedExternalProtocol:
     registered_systems: tuple[str, ...]
     adapter_revisions: tuple[tuple[str, str], ...]
     environment_ids: tuple[tuple[str, str], ...]
+    execution_contract: ExternalExecutionContract
     candidate_count: int
     blocker_ids: tuple[str, ...]
     claim_ready: bool
@@ -173,6 +216,7 @@ class VerifiedExternalProtocol:
                 system: environment_id
                 for system, environment_id in self.environment_ids
             },
+            "execution_contract": self.execution_contract.to_dict(),
             "candidate_count": self.candidate_count,
             "blocker_ids": list(self.blocker_ids),
             "claim_ready": self.claim_ready,
@@ -847,6 +891,35 @@ def load_external_protocol(
                 f"sha256:{candidates[system]['dependency_lock_sha256']}",
             )
             for system in registered
+        ),
+        execution_contract=ExternalExecutionContract(
+            model_id=str(payload["constraints"]["model_id"]),
+            model_context_length=int(
+                payload["constraints"]["model_context_length"]
+            ),
+            tokenizer_id=str(payload["constraints"]["tokenizer_id"]),
+            inference_concurrency=int(
+                payload["constraints"]["inference_concurrency"]
+            ),
+            retry_count=int(payload["constraints"]["retry_count"]),
+            model_service_cost_usd=float(
+                payload["constraints"]["model_service_cost_usd"]
+            ),
+            active_token_budget=int(
+                payload["constraints"]["active_token_budget"]
+            ),
+            isolation_mode=str(payload["runner"]["isolation_mode"]),
+            timeout_seconds=float(payload["runner"]["timeout_seconds"]),
+            max_stdout_bytes=int(payload["runner"]["max_stdout_bytes"]),
+            max_stderr_bytes=int(payload["runner"]["max_stderr_bytes"]),
+            max_candidate_bytes=int(
+                payload["runner"]["max_candidate_bytes"]
+            ),
+            max_memory_mb=(
+                None
+                if payload["runner"]["max_memory_mb"] is None
+                else int(payload["runner"]["max_memory_mb"])
+            ),
         ),
         candidate_count=len(payload["comparison_candidates"]),
         blocker_ids=blockers,

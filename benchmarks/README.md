@@ -274,11 +274,13 @@ Revision, environment, model, context, tokenizer, inference concurrency,
 retries, and service cost are also recorded. Claim-bearing manifests require
 per-case isolation, an enforced process-tree memory limit, complete identity
 fields, the exact Qwen Q4 model, one inference slot, and zero model-service
-cost. Current `lrcbench-external-run-manifest-0.3` claim metadata requires
-`environment_id` to be `sha256:<dependency-lock-sha256>`; scoring checks that
-value against the included system's frozen protocol lock. `--isolation
-whole-corpus` remains useful for diagnostics but is a registered certificate
-non-win.
+cost. Current `lrcbench-external-run-manifest-0.4` claim metadata requires an
+immutable adapter revision, `environment_id` equal to
+`sha256:<dependency-lock-sha256>`, context length 8192, the evaluator tokenizer,
+zero retries, and the exact Qwen/one-slot/zero-service-cost identity. Scoring
+also requires every isolation, timeout, output, candidate, and memory limit to
+match the frozen protocol. `--isolation whole-corpus` remains useful for
+diagnostics but is a registered certificate non-win.
 
 Evaluation also recomputes active tokens from the final rendered string for
 every bundled or programmatic candidate. A valid character span alone is not
