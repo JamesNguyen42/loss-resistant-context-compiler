@@ -168,8 +168,11 @@ running; use a local filesystem with documented advisory-lock semantics.
 
 The LRCBench certificate can be gamed by overfitting to its generator, changing
 baselines, tuning after observing gold cases, or reporting only favorable
-seeds. The report digest detects changes only relative to recorded inputs; it
-does not guarantee experimental fairness.
+seeds. `certificate.evidence_sha256` detects changes to deterministic comparison
+evidence, while top-level `report_sha256` additionally binds producer/run
+metadata and failures. Both are self-hashes: they detect inconsistency relative
+to the recorded document but provide neither authorship nor experimental
+fairness.
 
 Gold-free corpus exports now carry their own canonical `corpus_sha256`, and the
 external runner verifies it before execution. That detects accidental or

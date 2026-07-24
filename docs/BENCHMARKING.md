@@ -193,11 +193,15 @@ python -m benchmarks \
   --include-histories
 ```
 
-The JSON report includes the full config, deterministic dataset SHA-256,
-aggregate system metrics, optional per-history evidence, certificate margins,
-reasons, and an evidence digest. Record the code revision, Python version,
-platform, and command alongside any published result. Generated reports are
-measurements, not source fixtures, unless intentionally reviewed and committed.
+The `lrcbench-report-0.1` JSON report includes the full config, deterministic
+dataset SHA-256, aggregate system metrics, optional per-history evidence,
+certificate margins/reasons, and two digests. `certificate.evidence_sha256`
+binds deterministic comparison evidence. Top-level `report_sha256` also binds
+the run-specific envelope: repository commit and dirty state, package and
+schema versions, Python/platform, exact command, UTC start, duration, tokenizer
+and model identity, baseline revisions, model-service cost, and failures.
+Generated reports are measurements, not source fixtures, unless intentionally
+reviewed and committed.
 Report and corpus-export files are installed through a flushed, `fsync`ed
 same-directory atomic replacement, so a pre-replacement failure preserves an
 older evidence file rather than truncating it.
@@ -314,7 +318,7 @@ evidence requirements below still apply.
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-All 277 tests also passed. The relevant observed metrics were:
+All 280 tests also passed. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |

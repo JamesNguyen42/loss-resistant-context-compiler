@@ -399,6 +399,16 @@ This closes the existence-check/write race: if another producer wins, its file
 is preserved and the commit fails. A filesystem without same-directory
 hard-link support therefore refuses exclusive installation safely.
 
+Benchmark reports add a separate integrity envelope. The deterministic
+certificate `evidence_sha256` continues to commit to comparable dataset,
+configuration, system metrics, and decisions. Top-level `report_sha256`
+canonically commits to that certificate plus `lrcbench-report-0.1`
+`run_metadata`: source revision/dirty state, package and interchange versions,
+command, time and duration, runtime platform, tokenizer/model, baseline
+revisions, cost, and observed failures. This makes individual runs auditable
+without making time- or machine-specific fields part of the reproducible
+certificate estimand.
+
 Every runtime-error path calls one formatter. The default remains
 `ctxc: <message>` on stderr. `--error-format json` instead emits one compact
 `ctxc-diagnostic-0.1` object with command, stable category/code, exit status,

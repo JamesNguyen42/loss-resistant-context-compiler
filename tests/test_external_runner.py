@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import benchmarks.external_runner as external_runner_module
 from benchmarks.external_runner import (
     ExternalRunnerError,
     RunnerIdentity,
@@ -88,6 +89,8 @@ def test_claim_identity_requires_exact_qwen_one_slot_and_zero_service_cost() -> 
     assert not replace(identity, model_id="another/model").claim_metadata_complete
     assert not replace(identity, inference_concurrency=2).claim_metadata_complete
     assert not replace(identity, model_service_cost_usd=0.01).claim_metadata_complete
+    with pytest.raises(TypeError, match="model_service_cost_usd must be numeric"):
+        replace(identity, model_service_cost_usd=None)  # type: ignore[arg-type]
 
 
 def test_corpus_export_digest_detects_gold_free_source_tampering(tmp_path) -> None:
@@ -333,6 +336,15 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(tmp_path)
     assert reference.system == "fixture-adapter"
     assert reference.candidate_path == candidate_path.resolve()
     assert reference.failure_reason is None
+    assert reference.adapter_revision == "fixture-revision"
+    assert reference.model_id == QWEN_Q4_VARIANT
+    assert reference.model_service_cost_usd == 0.0
+    assert report.run_metadata.model_id == QWEN_Q4_VARIANT
+    assert report.run_metadata.model_service_cost_usd == 0.0
+    assert {
+        revision.name: revision.revision
+        for revision in report.run_metadata.baseline_revisions
+    }["fixture-adapter"] == "fixture-revision"
     assert report.certificate.external_manifests[0].system == "fixture-adapter"
     assert (
         report.certificate.external_manifests[0].manifest_sha256
@@ -522,6 +534,34 @@ def test_runner_removes_descendants_after_successful_adapter_exit(tmp_path) -> N
 
     assert manifest.ready_for_scoring
     assert not marker_path.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows sharing violation regression")
+def test_windows_temp_cleanup_retries_sharing_violation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "runner-temp"
+    directory.mkdir()
+    (directory / "stderr.bin").write_bytes(b"fixture")
+    real_rmtree = external_runner_module.shutil.rmtree
+    calls = 0
+
+    def fail_once(path: Path) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            error = PermissionError(13, "injected sharing violation")
+            error.winerror = 32
+            raise error
+        real_rmtree(path)
+
+    monkeypatch.setattr(external_runner_module.shutil, "rmtree", fail_once)
+
+    external_runner_module._remove_runner_directory(directory)
+
+    assert calls == 2
+    assert not directory.exists()
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows Job Object regression")

@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 277 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 280 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
@@ -130,13 +130,14 @@ The repository currently includes:
   locking, and bounded old-or-new atomic commits;
 - the `ctxc compile`, `verify`, `inspect`, and `archive` commands;
 - LRCBench, external-candidate import/export, history-weighted paired bootstrap
-  gates, per-system decisions, and auditable JSON reports;
+  gates, per-system decisions, and self-hashed JSON reports with producer/run
+  metadata;
 - gold-free corpus self-digests plus a bounded, shell-free external runner with
   sequential per-case processes, cross-platform process-tree memory limits,
   and valid or failed manifests that feed per-system certificate decisions;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
-- cross-version CI, linting, wheel/schema checks, and 277 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 280 regression tests.
 
 ## In development
 
@@ -561,6 +562,14 @@ same-directory replacement as CLI artifacts. External-run manifests use an
 exclusive atomic install: a competing file created after the initial check is
 preserved and the manifest commit fails instead of overwriting it.
 
+Each JSON report carries `report_schema: lrcbench-report-0.1`,
+`report_sha256`, and `run_metadata` containing the producer commit and dirty
+state, package and interchange versions, exact command, UTC start time,
+duration, Python/platform, tokenizer/model identity, baseline revisions,
+model-service cost, and failures. The certificate `evidence_sha256` remains the
+deterministic metric digest; `report_sha256` additionally binds the
+run-specific envelope.
+
 External outputs can be imported directly with repeatable
 `--external-baseline` for diagnostics. A counted registered comparison also
 requires a validated `--external-run-manifest`; otherwise it is an invalid
@@ -585,7 +594,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): all 277 tests pass, and the recorded default
+Current local snapshot (2026-07-24): all 280 tests pass, and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`

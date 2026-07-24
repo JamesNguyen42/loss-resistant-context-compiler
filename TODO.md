@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Run 277 tests; CI covers Python 3.11, 3.12, and 3.13.
+- [x] Run 280 tests; CI covers Python 3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
 
@@ -520,9 +520,13 @@ than most related technology” within the exact dated evaluation scope.
 - [x] Commit benchmark reports, gold-free corpus exports, per-case corpus
   inputs, and runner manifests through the atomic writer; use exclusive install
   for manifests so a check/write race cannot overwrite another producer.
-- [ ] Embed commit SHA, package and schema versions, Python/platform, command,
-  tokenizer id, run timestamp, baseline revisions, latency, cost, and failures
-  in every benchmark evidence artifact.
+- [x] Embed commit SHA plus dirty state, package and schema versions,
+  Python/platform, exact command, tokenizer/model id, UTC start, duration,
+  baseline revisions, cost, and failures in benchmark reports; bind the
+  envelope with `report_sha256` while retaining deterministic certificate
+  `evidence_sha256`.
+- [ ] Version and propagate equivalent producer metadata through corpus and
+  candidate interchange artifacts without invalidating frozen dataset identity.
 - [ ] Add metrics for item counts, protected overflow, recovery additions,
   conflicts, verification failures, and compile latency.
 - [x] Eliminate ordinary stale-lock recovery by replacing create/delete lock

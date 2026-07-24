@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,6 +22,86 @@ def small_config() -> BenchmarkConfig:
         token_budget=900,
         bootstrap_samples=100,
     )
+
+
+def test_report_metadata_is_self_contained_and_self_hashed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commit = "a" * 40
+    monkeypatch.setattr(
+        lrcbench_module,
+        "_repository_state",
+        lambda: (commit, True),
+    )
+
+    report = lrcbench_module.run_benchmark(
+        small_config(),
+        command=("python", "-m", "benchmarks", "--histories", "1"),
+    )
+    payload = report.to_dict(include_histories=True)
+    claimed_digest = payload.pop("report_sha256")
+
+    assert payload["report_schema"] == lrcbench_module.REPORT_SCHEMA
+    assert lrcbench_module._canonical_sha256(payload) == claimed_digest
+    assert payload["run_metadata"]["repository_commit"] == commit
+    assert payload["run_metadata"]["repository_dirty"] is True
+    assert payload["run_metadata"]["package_version"] == "0.1.0"
+    assert payload["run_metadata"]["tokenizer_id"] == lrcbench_module.TOKENIZER_ID
+    assert payload["run_metadata"]["model_id"] == "deterministic-no-model"
+    assert payload["run_metadata"]["model_service_cost_usd"] == 0.0
+    assert payload["run_metadata"]["command"] == (
+        "python",
+        "-m",
+        "benchmarks",
+        "--histories",
+        "1",
+    )
+    assert {value["name"] for value in payload["run_metadata"]["schema_versions"]} == {
+        "candidate",
+        "corpus",
+        "report",
+    }
+
+    altered = replace(
+        report,
+        run_metadata=replace(report.run_metadata, command=("different",)),
+    )
+    assert altered.certificate.evidence_sha256 == report.certificate.evidence_sha256
+    assert altered.to_dict()["report_sha256"] != report.to_dict()["report_sha256"]
+    with pytest.raises(ValueError, match="Git object id"):
+        replace(report.run_metadata, repository_commit="not-a-commit")
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        replace(report.run_metadata, model_service_cost_usd=-0.01)
+    with pytest.raises(TypeError, match="command"):
+        replace(report.run_metadata, command=())
+
+
+def test_benchmark_cli_records_reproducible_command(tmp_path: Path) -> None:
+    output = tmp_path / "report.json"
+    arguments = [
+        "--histories",
+        "1",
+        "--messages",
+        "24",
+        "--noise-lines",
+        "1",
+        "--bootstrap-samples",
+        "100",
+        "--json-out",
+        str(output),
+    ]
+
+    assert lrcbench_module.main(arguments) in {0, 2}
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["run_metadata"]["command"] == [
+        sys.executable,
+        "-m",
+        "benchmarks",
+        *arguments,
+    ]
+    claimed_digest = payload.pop("report_sha256")
+    assert lrcbench_module._canonical_sha256(payload) == claimed_digest
 
 
 def test_failed_corpus_export_preserves_previous_evidence(

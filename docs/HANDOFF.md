@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 277 passing |
+| Tests at this snapshot | 280 passing |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -383,7 +383,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 277 tests pass.
+- 280 tests pass.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -417,13 +417,17 @@ audited. Any selected superseded item independently fails verification as
   manifests use atomic commits. Failure injection proves old evidence survives
   failed replacement, temporary files are cleaned, and a manifest creation race
   cannot clobber the competing file.
+- Benchmark reports use `lrcbench-report-0.1`, embed producer/run metadata, and
+  carry a canonical `report_sha256`. Tests prove metadata changes affect the
+  report digest without destabilizing deterministic certificate evidence.
 - Opt-in JSON runtime diagnostics have stable resource, timeout, I/O,
   invalid-input, integrity, and policy categories. Default text output and
   stdout behavior remain unchanged.
 - The external runner has deterministic fixture coverage for sequential
   per-case execution, retained case failure, Windows Job Object memory
   enforcement, valid output, timeout, output overflow, invalid candidates,
-  corpus mutation, digest validation, and overwrite refusal.
+  corpus mutation, digest validation, overwrite refusal, and retried Windows
+  cleanup for post-termination sharing violations.
 - Claim-bearing runner manifests require per-case isolation, an enforced
   adapter process-tree memory limit, recorded adapter/environment identity, the
   exact local Qwen Q4 model, one inference slot, context and tokenizer ids,
@@ -492,11 +496,11 @@ Therefore:
 - do not generalize the local 32.60x result to natural histories;
 - do not call the package production-ready.
 
-The committed result file also does not embed the producing commit SHA, Python
-version, platform, exact command, or run timestamp. The implementation baseline
-is known from repository history, but that is weaker than self-contained
-evidence metadata. Adding those fields and binding them into the report digest
-is a P1 evidence task.
+Newly generated reports embed the producing commit plus dirty state, package and
+schema versions, Python/platform, exact command, UTC timestamp, duration,
+tokenizer/model identity, baseline revisions, cost, and failures. The older
+committed `docs/results/lrcbench-local.json` predates `lrcbench-report-0.1` and
+must not be retroactively presented as carrying that metadata.
 
 ## LRCBench claim protocol
 

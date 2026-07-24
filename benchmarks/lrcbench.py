@@ -11,21 +11,30 @@ import argparse
 import hashlib
 import json
 import math
+import os
+import platform
 import random
 import re
+import subprocess
+import sys
+import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from statistics import fmean
 from typing import Any
 
 from context_compiler import CompilationPolicy, ContextCompiler, MemoryKind, SourceRecord
+from context_compiler import __version__ as PACKAGE_VERSION
 from context_compiler.atomic import atomic_write_text
 
 BENCHMARK_VERSION = "lrcbench-0.2"
+REPORT_SCHEMA = "lrcbench-report-0.1"
 CORPUS_SCHEMA = "lrcbench-corpus-0.2"
 CANDIDATE_SCHEMA = "lrcbench-candidate-output-0.1"
+TOKENIZER_ID = "character-estimate-v1"
 REQUIRED_BASELINES = ("head", "tail", "extractive")
 BUNDLED_SYSTEMS = ("compiler", *REQUIRED_BASELINES)
 REQUIRED_STRATA = (
@@ -286,12 +295,102 @@ class SystemComparison:
 
 
 @dataclass(frozen=True, slots=True)
+class ComponentRevision:
+    name: str
+    revision: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name:
+            raise TypeError("component revision name must be a non-empty string")
+        if not isinstance(self.revision, str) or not self.revision:
+            raise TypeError("component revision must be a non-empty string")
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkRunMetadata:
+    started_at: str
+    duration_seconds: float
+    repository_commit: str | None
+    repository_dirty: bool | None
+    package_version: str
+    python_version: str
+    platform: str
+    command: tuple[str, ...]
+    tokenizer_id: str
+    model_id: str
+    schema_versions: tuple[ComponentRevision, ...]
+    baseline_revisions: tuple[ComponentRevision, ...]
+    model_service_cost_usd: float | None
+    failures: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        try:
+            started_at = datetime.fromisoformat(self.started_at)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("started_at must be an ISO-8601 timestamp") from exc
+        if started_at.utcoffset() is None:
+            raise ValueError("started_at must include a timezone")
+        if (
+            isinstance(self.duration_seconds, bool)
+            or not isinstance(self.duration_seconds, (int, float))
+            or not 0 <= float(self.duration_seconds) < float("inf")
+        ):
+            raise ValueError("duration_seconds must be finite and non-negative")
+        if self.repository_commit is not None and (
+            not isinstance(self.repository_commit, str)
+            or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", self.repository_commit) is None
+        ):
+            raise ValueError("repository_commit must be a lowercase Git object id or None")
+        if self.repository_dirty is not None and not isinstance(
+            self.repository_dirty,
+            bool,
+        ):
+            raise TypeError("repository_dirty must be a boolean or None")
+        for name in (
+            "package_version",
+            "python_version",
+            "platform",
+            "tokenizer_id",
+            "model_id",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise TypeError(f"{name} must be a non-empty string")
+        if not self.command or not all(
+            isinstance(part, str) and part for part in self.command
+        ):
+            raise TypeError("command must contain non-empty strings")
+        for name in ("schema_versions", "baseline_revisions"):
+            values = getattr(self, name)
+            if not isinstance(values, tuple) or not all(
+                isinstance(value, ComponentRevision) for value in values
+            ):
+                raise TypeError(f"{name} must contain ComponentRevision values")
+            component_names = [value.name for value in values]
+            if len(component_names) != len(set(component_names)):
+                raise ValueError(f"{name} contains duplicate component names")
+        if self.model_service_cost_usd is not None and (
+            isinstance(self.model_service_cost_usd, bool)
+            or not isinstance(self.model_service_cost_usd, (int, float))
+            or not 0 <= float(self.model_service_cost_usd) < float("inf")
+        ):
+            raise ValueError(
+                "model_service_cost_usd must be finite and non-negative or None"
+            )
+        if not isinstance(self.failures, tuple) or not all(
+            isinstance(failure, str) and failure for failure in self.failures
+        ):
+            raise TypeError("failures must contain non-empty strings")
+
+
+@dataclass(frozen=True, slots=True)
 class BenchmarkReport:
     benchmark: str
     config: BenchmarkConfig
     dataset_sha256: str
     systems: tuple[AggregateMetrics, ...]
     certificate: GainCertificate
+    run_metadata: BenchmarkRunMetadata
 
     def to_dict(self, *, include_histories: bool = False) -> dict[str, object]:
         systems: list[dict[str, object]] = []
@@ -300,7 +399,8 @@ class BenchmarkReport:
             if include_histories:
                 encoded["per_history"] = [asdict(item) for item in result.per_history]
             systems.append(encoded)
-        return {
+        payload: dict[str, object] = {
+            "report_schema": REPORT_SCHEMA,
             "benchmark": self.benchmark,
             "corpus_schema": CORPUS_SCHEMA,
             "candidate_schema": CANDIDATE_SCHEMA,
@@ -308,7 +408,10 @@ class BenchmarkReport:
             "dataset_sha256": self.dataset_sha256,
             "systems": systems,
             "certificate": asdict(self.certificate),
+            "run_metadata": asdict(self.run_metadata),
         }
+        payload["report_sha256"] = _canonical_sha256(payload)
+        return payload
 
     def to_json(self, *, include_histories: bool = False) -> str:
         return json.dumps(
@@ -1904,6 +2007,79 @@ def _make_certificate(
     )
 
 
+def _repository_state() -> tuple[str | None, bool | None]:
+    environment_commit = next(
+        (
+            value.strip().lower()
+            for name in ("CONTEXT_COMPILER_COMMIT", "GITHUB_SHA")
+            if (value := os.environ.get(name))
+            and re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", value.strip())
+        ),
+        None,
+    )
+    source_root = Path(__file__).resolve().parents[1]
+    repository_root = next(
+        (
+            candidate
+            for candidate in (Path.cwd().resolve(), source_root)
+            if (candidate / ".git").exists()
+        ),
+        None,
+    )
+    if repository_root is None:
+        return environment_commit, None
+
+    process_environment = os.environ.copy()
+    process_environment["GIT_OPTIONAL_LOCKS"] = "0"
+    try:
+        commit_result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=repository_root,
+            env=process_environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=2.0,
+        )
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain=v1", "--untracked-files=normal"],
+            cwd=repository_root,
+            env=process_environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=2.0,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return environment_commit, None
+
+    raw_commit = commit_result.stdout.strip().lower()
+    commit = (
+        raw_commit
+        if commit_result.returncode == 0
+        and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", raw_commit)
+        else environment_commit
+    )
+    dirty = (
+        bool(status_result.stdout.strip()) if status_result.returncode == 0 else None
+    )
+    return commit, dirty
+
+
+def _normalized_run_command(command: Sequence[str] | None) -> tuple[str, ...]:
+    if command is None:
+        return ("python-api:benchmarks.run_benchmark",)
+    if isinstance(command, (str, bytes)) or not command or not all(
+        isinstance(part, str) and part for part in command
+    ):
+        raise TypeError("command must be a non-empty sequence of non-empty strings")
+    return tuple(command)
+
+
 def run_benchmark(
     config: BenchmarkConfig | None = None,
     *,
@@ -1911,7 +2087,12 @@ def run_benchmark(
     external_manifest_paths: Sequence[Path | str] = (),
     expected_external_systems: Sequence[str] = (),
     corpus_export_path: Path | str | None = None,
+    command: Sequence[str] | None = None,
 ) -> BenchmarkReport:
+    started_at = datetime.now(UTC).isoformat()
+    started = time.monotonic()
+    run_command = _normalized_run_command(command)
+    repository_commit, repository_dirty = _repository_state()
     config = config or BenchmarkConfig()
     expected = tuple(expected_external_systems)
     if len(expected) != len(set(expected)) or any(
@@ -1940,6 +2121,9 @@ def run_benchmark(
     manifest_candidate_paths: list[Path] = []
     external_failures: dict[str, str] = {}
     external_manifest_sha256: dict[str, str] = {}
+    external_adapter_revisions: dict[str, str] = {}
+    external_model_ids: dict[str, str] = {}
+    external_model_costs: dict[str, float] = {}
     if external_manifest_paths:
         from .external_runner import ExternalRunnerError, load_external_run_manifest
 
@@ -1958,6 +2142,9 @@ def run_benchmark(
                     f"external system {reference.system!r} has multiple run manifests"
                 )
             external_manifest_sha256[reference.system] = reference.manifest_sha256
+            external_adapter_revisions[reference.system] = reference.adapter_revision
+            external_model_ids[reference.system] = reference.model_id
+            external_model_costs[reference.system] = reference.model_service_cost_usd
             if reference.candidate_path is not None:
                 manifest_candidate_paths.append(reference.candidate_path)
             if reference.failure_reason is not None:
@@ -2013,7 +2200,83 @@ def run_benchmark(
         external_failures=external_failures,
         external_manifest_sha256=external_manifest_sha256,
     )
-    return BenchmarkReport(BENCHMARK_VERSION, config, digest, tuple(aggregates), certificate)
+    local_revision = repository_commit or f"package:{PACKAGE_VERSION}"
+    baseline_revisions = tuple(
+        [
+            *(
+                ComponentRevision(name=system, revision=local_revision)
+                for system in BUNDLED_SYSTEMS
+            ),
+            *(
+                ComponentRevision(
+                    name=system,
+                    revision=external_adapter_revisions.get(system, "unrecorded"),
+                )
+                for system in sorted(expected)
+            ),
+        ]
+    )
+    if not expected:
+        model_id = "deterministic-no-model"
+        model_service_cost_usd: float | None = 0.0
+    elif set(expected) <= set(external_model_ids) & set(external_model_costs):
+        unique_model_ids = set(external_model_ids.values())
+        model_id = (
+            next(iter(unique_model_ids))
+            if len(unique_model_ids) == 1
+            else "multiple-external-models"
+        )
+        recorded_costs = [external_model_costs[name] for name in expected]
+        if any(
+            isinstance(cost, bool)
+            or not isinstance(cost, (int, float))
+            or not 0 <= float(cost) < float("inf")
+            for cost in recorded_costs
+        ):
+            raise ExternalBaselineError("external model cost accounting is invalid")
+        model_service_cost_usd = float(sum(recorded_costs))
+    else:
+        model_id = "unrecorded"
+        model_service_cost_usd = None
+    failures = tuple(
+        dict.fromkeys(
+            [
+                *(
+                    f"{name}: {external_failures[name]}"
+                    for name in sorted(external_failures)
+                ),
+                *certificate.reasons,
+            ]
+        )
+    )
+    run_metadata = BenchmarkRunMetadata(
+        started_at=started_at,
+        duration_seconds=round(time.monotonic() - started, 6),
+        repository_commit=repository_commit,
+        repository_dirty=repository_dirty,
+        package_version=PACKAGE_VERSION,
+        python_version=platform.python_version(),
+        platform=platform.platform(),
+        command=run_command,
+        tokenizer_id=TOKENIZER_ID,
+        model_id=model_id,
+        schema_versions=(
+            ComponentRevision("report", REPORT_SCHEMA),
+            ComponentRevision("corpus", CORPUS_SCHEMA),
+            ComponentRevision("candidate", CANDIDATE_SCHEMA),
+        ),
+        baseline_revisions=baseline_revisions,
+        model_service_cost_usd=model_service_cost_usd,
+        failures=failures,
+    )
+    return BenchmarkReport(
+        BENCHMARK_VERSION,
+        config,
+        digest,
+        tuple(aggregates),
+        certificate,
+        run_metadata,
+    )
 
 
 def run_interchange_self_test() -> dict[str, object]:
@@ -2180,6 +2443,7 @@ def _summary(report: BenchmarkReport) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    effective_argv = list(sys.argv[1:] if argv is None else argv)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--histories", type=int, default=32)
     parser.add_argument("--messages", type=int, default=72)
@@ -2227,7 +2491,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="run deterministic corpus/candidate interchange checks and exit",
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_args(effective_argv)
     if args.self_test:
         print(json.dumps(run_interchange_self_test(), indent=2, sort_keys=True))
         return 0
@@ -2248,6 +2512,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             external_manifest_paths=args.external_run_manifest,
             expected_external_systems=args.expected_external_system,
             corpus_export_path=args.export_corpus,
+            command=(sys.executable, "-m", "benchmarks", *effective_argv),
         )
     except (ExternalBaselineError, OSError) as exc:
         parser.error(str(exc))

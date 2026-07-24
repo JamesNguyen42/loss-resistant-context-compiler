@@ -197,7 +197,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-All 277 tests passed alongside it.
+All 280 tests passed alongside it.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -214,6 +214,11 @@ source fixtures unless intentionally reviewed and committed.
 Reports and corpus exports are installed by same-directory atomic replacement.
 Runner manifests use exclusive atomic installation, so a competing destination
 created during the run is preserved rather than overwritten.
+JSON reports use schema id `lrcbench-report-0.1`. Their `run_metadata` records
+the repository revision/dirty state, package and interchange versions, exact
+command, timestamp, duration, environment, tokenizer/model, baseline revisions,
+cost, and failures. `report_sha256` binds that whole envelope while the
+certificate's `evidence_sha256` remains deterministic across equivalent runs.
 
 The dated inclusion, failure, estimand, and freeze rules are in the
 [draft external comparison protocol](protocols/external-comparison-v1.md).

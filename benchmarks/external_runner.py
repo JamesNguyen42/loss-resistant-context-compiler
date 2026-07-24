@@ -13,8 +13,8 @@ import signal
 import subprocess
 import tempfile
 import time
-from collections.abc import Mapping, Sequence
-from contextlib import suppress
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -53,6 +53,9 @@ class ExternalRunReference:
     candidate_path: Path | None
     failure_reason: str | None
     manifest_sha256: str
+    adapter_revision: str
+    model_id: str
+    model_service_cost_usd: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,6 +263,37 @@ def _size(path: Path) -> int:
         return path.stat().st_size
     except FileNotFoundError:
         return 0
+
+
+def _remove_runner_directory(path: Path) -> None:
+    deadline = time.monotonic() + 2.0
+    while True:
+        try:
+            shutil.rmtree(path)
+            return
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            if (
+                os.name != "nt"
+                or time.monotonic() >= deadline
+                or getattr(exc, "winerror", None) not in {5, 32, 145}
+            ):
+                raise
+            time.sleep(0.02)
+
+
+@contextmanager
+def _runner_temporary_directory(
+    *,
+    prefix: str,
+    directory: Path,
+) -> Iterator[Path]:
+    path = Path(tempfile.mkdtemp(prefix=prefix, dir=directory))
+    try:
+        yield path
+    finally:
+        _remove_runner_directory(path)
 
 
 class _WindowsJob:
@@ -965,6 +999,9 @@ def load_external_run_manifest(
         candidate_path=candidate_path,
         failure_reason=failure_reason,
         manifest_sha256=claimed_manifest_sha,
+        adapter_revision=decoded_identity.adapter_revision,
+        model_id=decoded_identity.model_id,
+        model_service_cost_usd=decoded_identity.model_service_cost_usd,
     )
 
 
@@ -1044,12 +1081,12 @@ def run_external_command(
         creation_flags |= _WINDOWS_CREATE_SUSPENDED
     process: subprocess.Popen[bytes] | None = None
     try:
-        with tempfile.TemporaryDirectory(
+        with _runner_temporary_directory(
             prefix=".lrcbench-run-",
-            dir=candidate.parent,
+            directory=candidate.parent,
         ) as temporary_directory:
-            stdout_path = Path(temporary_directory) / "stdout.bin"
-            stderr_path = Path(temporary_directory) / "stderr.bin"
+            stdout_path = temporary_directory / "stdout.bin"
+            stderr_path = temporary_directory / "stderr.bin"
             try:
                 with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
                     try:
@@ -1288,11 +1325,11 @@ def run_external_cases(
     validation_error: str | None = None
 
     for index, (case, raw_case) in enumerate(zip(cases, raw_cases, strict=True)):
-        with tempfile.TemporaryDirectory(
+        with _runner_temporary_directory(
             prefix=f".lrcbench-case-{index:06d}-",
-            dir=candidate.parent,
+            directory=candidate.parent,
         ) as case_directory_value:
-            case_directory = Path(case_directory_value)
+            case_directory = case_directory_value
             case_corpus_path = case_directory / "corpus.json"
             case_candidate_path = case_directory / "candidate.json"
             case_config = dict(corpus_payload["config"])
