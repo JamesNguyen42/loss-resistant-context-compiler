@@ -417,6 +417,13 @@ comparison metadata, and reconciles per-history counts/rates/aggregates when
 raw histories are retained. This is an integrity and consistency check, not an
 authentication mechanism.
 
+`benchmarks/json_io.py` supplies the underlying benchmark evidence boundary.
+It opens only regular files, checks size before and during reads, rejects
+duplicate/non-finite or excessively deep JSON, and returns the exact serialized
+byte count and SHA-256. Corpus, candidate, manifest, and report consumers share
+that path; candidate validation and per-case aggregation compare successive
+byte evidence so replacement races fail closed.
+
 Every runtime-error path calls one formatter. The default remains
 `ctxc: <message>` on stderr. `--error-format json` instead emits one compact
 `ctxc-diagnostic-0.1` object with command, stable category/code, exit status,

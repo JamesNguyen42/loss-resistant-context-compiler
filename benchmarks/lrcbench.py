@@ -30,11 +30,14 @@ from context_compiler import CompilationPolicy, ContextCompiler, MemoryKind, Sou
 from context_compiler import __version__ as PACKAGE_VERSION
 from context_compiler.atomic import atomic_write_text
 
+from .json_io import StrictJsonError, StrictJsonLimits, load_strict_json_file
+
 BENCHMARK_VERSION = "lrcbench-0.2"
 REPORT_SCHEMA = "lrcbench-report-0.1"
 CORPUS_SCHEMA = "lrcbench-corpus-0.2"
 CANDIDATE_SCHEMA = "lrcbench-candidate-output-0.1"
 TOKENIZER_ID = "character-estimate-v1"
+DEFAULT_EXTERNAL_CANDIDATE_BYTES = 20_000_000
 REQUIRED_BASELINES = ("head", "tail", "extractive")
 BUNDLED_SYSTEMS = ("compiler", *REQUIRED_BASELINES)
 REQUIRED_STRATA = (
@@ -1133,21 +1136,63 @@ def decode_external_candidate(
     return system, decoded
 
 
+def _external_candidate_json_limits(max_candidate_bytes: int) -> StrictJsonLimits:
+    try:
+        return StrictJsonLimits(
+            max_bytes=max_candidate_bytes,
+            max_line_chars=min(max_candidate_bytes, 8 * 1024 * 1024),
+            max_depth=64,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ExternalBaselineError(f"invalid external candidate limits: {exc}") from exc
+
+
 def load_external_candidates(
     paths: Sequence[Path],
     *,
     cases: Sequence[HistoryCase],
     dataset_sha256: str,
     token_budget: int,
+    max_candidate_bytes: int = DEFAULT_EXTERNAL_CANDIDATE_BYTES,
+    expected_file_evidence: Mapping[Path, tuple[int, str]] | None = None,
 ) -> dict[str, dict[str, CandidateOutput]]:
+    input_limits = _external_candidate_json_limits(max_candidate_bytes)
+    expected_evidence = dict(expected_file_evidence or {})
+    for evidence_path, evidence in expected_evidence.items():
+        if not isinstance(evidence_path, Path):
+            raise ExternalBaselineError("candidate evidence keys must be Path values")
+        if (
+            not isinstance(evidence, tuple)
+            or len(evidence) != 2
+            or isinstance(evidence[0], bool)
+            or not isinstance(evidence[0], int)
+            or evidence[0] < 0
+            or not isinstance(evidence[1], str)
+            or re.fullmatch(r"[0-9a-f]{64}", evidence[1]) is None
+        ):
+            raise ExternalBaselineError(
+                f"candidate file evidence is invalid for {evidence_path}"
+            )
     systems: dict[str, dict[str, CandidateOutput]] = {}
     for path in paths:
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            document = load_strict_json_file(
+                path,
+                limits=input_limits,
+                label="external candidate",
+            )
+        except StrictJsonError as exc:
             raise ExternalBaselineError(f"cannot read external candidate {path}: {exc}") from exc
+        expected = expected_evidence.get(path)
+        if expected is not None and (
+            document.byte_count != expected[0]
+            or document.file_sha256 != expected[1]
+        ):
+            raise ExternalBaselineError(
+                f"external candidate {path} changed after manifest validation"
+            )
         system, outputs = decode_external_candidate(
-            payload,
+            document.value,
             cases=cases,
             dataset_sha256=dataset_sha256,
             token_budget=token_budget,
@@ -2088,10 +2133,12 @@ def run_benchmark(
     expected_external_systems: Sequence[str] = (),
     corpus_export_path: Path | str | None = None,
     command: Sequence[str] | None = None,
+    max_external_candidate_bytes: int = DEFAULT_EXTERNAL_CANDIDATE_BYTES,
 ) -> BenchmarkReport:
     started_at = datetime.now(UTC).isoformat()
     started = time.monotonic()
     run_command = _normalized_run_command(command)
+    _external_candidate_json_limits(max_external_candidate_bytes)
     repository_commit, repository_dirty = _repository_state()
     config = config or BenchmarkConfig()
     expected = tuple(expected_external_systems)
@@ -2119,6 +2166,7 @@ def run_benchmark(
             + "\n",
         )
     manifest_candidate_paths: list[Path] = []
+    manifest_candidate_evidence: dict[Path, tuple[int, str]] = {}
     external_failures: dict[str, str] = {}
     external_manifest_sha256: dict[str, str] = {}
     external_adapter_revisions: dict[str, str] = {}
@@ -2147,6 +2195,17 @@ def run_benchmark(
             external_model_costs[reference.system] = reference.model_service_cost_usd
             if reference.candidate_path is not None:
                 manifest_candidate_paths.append(reference.candidate_path)
+                if (
+                    reference.candidate_bytes is None
+                    or reference.candidate_sha256 is None
+                ):
+                    raise ExternalBaselineError(
+                        f"external system {reference.system!r} lacks candidate file evidence"
+                    )
+                manifest_candidate_evidence[reference.candidate_path] = (
+                    reference.candidate_bytes,
+                    reference.candidate_sha256,
+                )
             if reference.failure_reason is not None:
                 external_failures[reference.system] = reference.failure_reason
     for name in expected:
@@ -2161,6 +2220,8 @@ def run_benchmark(
         cases=cases,
         dataset_sha256=digest,
         token_budget=config.token_budget,
+        max_candidate_bytes=max_external_candidate_bytes,
+        expected_file_evidence=manifest_candidate_evidence,
     )
     unexpected = (
         (set(external) | set(external_manifest_sha256)) - set(expected)
@@ -2474,6 +2535,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="score a dataset-bound external candidate JSON file; repeatable",
     )
     parser.add_argument(
+        "--max-external-candidate-bytes",
+        type=int,
+        default=DEFAULT_EXTERNAL_CANDIDATE_BYTES,
+        help="maximum size accepted for each imported external candidate",
+    )
+    parser.add_argument(
         "--external-run-manifest",
         type=Path,
         action="append",
@@ -2525,6 +2592,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             or args.json_out is not None
             or args.export_corpus is not None
             or bool(args.external_baseline)
+            or args.max_external_candidate_bytes != DEFAULT_EXTERNAL_CANDIDATE_BYTES
             or bool(args.external_run_manifest)
             or bool(args.expected_external_system)
             or args.include_histories
@@ -2567,6 +2635,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             expected_external_systems=args.expected_external_system,
             corpus_export_path=args.export_corpus,
             command=(sys.executable, "-m", "benchmarks", *effective_argv),
+            max_external_candidate_bytes=args.max_external_candidate_bytes,
         )
     except (ExternalBaselineError, OSError) as exc:
         parser.error(str(exc))

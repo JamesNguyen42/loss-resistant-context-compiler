@@ -23,6 +23,13 @@ from typing import Any
 from context_compiler.atomic import atomic_write_text
 from context_compiler.local_qwen import QWEN_Q4_VARIANT
 
+from .json_io import (
+    StrictFileEvidence,
+    StrictJsonError,
+    StrictJsonLimits,
+    hash_bounded_regular_file,
+    load_strict_json_file,
+)
 from .lrcbench import (
     CANDIDATE_SCHEMA,
     CORPUS_SCHEMA,
@@ -41,6 +48,16 @@ _WINDOWS_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 _WINDOWS_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 _WINDOWS_TH32CS_SNAPTHREAD = 0x00000004
 _WINDOWS_THREAD_SUSPEND_RESUME = 0x0002
+_CORPUS_JSON_LIMITS = StrictJsonLimits(
+    max_bytes=128 * 1024 * 1024,
+    max_line_chars=8 * 1024 * 1024,
+    max_depth=128,
+)
+_MANIFEST_JSON_LIMITS = StrictJsonLimits(
+    max_bytes=5_000_000,
+    max_line_chars=1_000_000,
+    max_depth=64,
+)
 
 
 class ExternalRunnerError(RuntimeError):
@@ -51,6 +68,8 @@ class ExternalRunnerError(RuntimeError):
 class ExternalRunReference:
     system: str
     candidate_path: Path | None
+    candidate_sha256: str | None
+    candidate_bytes: int | None
     failure_reason: str | None
     manifest_sha256: str
     adapter_revision: str
@@ -254,6 +273,48 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _bounded_file_evidence(
+    path: Path,
+    *,
+    max_bytes: int,
+    label: str,
+) -> StrictFileEvidence:
+    try:
+        return hash_bounded_regular_file(
+            path,
+            max_bytes=max_bytes,
+            label=label,
+        )
+    except StrictJsonError as exc:
+        raise ExternalRunnerError(str(exc)) from exc
+
+
+def _bounded_file_sha256(path: Path, *, max_bytes: int, label: str) -> str:
+    return _bounded_file_evidence(
+        path,
+        max_bytes=max_bytes,
+        label=label,
+    ).file_sha256
+
+
+def _bounded_file_matches(
+    path: Path,
+    expected_sha256: str,
+    *,
+    max_bytes: int,
+    label: str,
+) -> bool:
+    try:
+        evidence = hash_bounded_regular_file(
+            path,
+            max_bytes=max_bytes,
+            label=label,
+        )
+    except StrictJsonError:
+        return False
+    return evidence.file_sha256 == expected_sha256
+
+
 def _is_sha256(value: object) -> bool:
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
@@ -263,6 +324,14 @@ def _size(path: Path) -> int:
         return path.stat().st_size
     except FileNotFoundError:
         return 0
+
+
+def _candidate_json_limits(max_bytes: int) -> StrictJsonLimits:
+    return StrictJsonLimits(
+        max_bytes=max_bytes,
+        max_line_chars=max_bytes,
+        max_depth=64,
+    )
 
 
 def _remove_runner_directory(path: Path) -> None:
@@ -644,11 +713,13 @@ def _posix_limit_setup(limits: RunnerLimits):
 
 
 def _load_corpus(path: Path):
-    if not path.is_file():
-        raise ExternalRunnerError(f"corpus file was not found: {path}")
     try:
-        encoded = path.read_bytes()
-        payload = json.loads(encoded.decode("utf-8"))
+        document = load_strict_json_file(
+            path,
+            limits=_CORPUS_JSON_LIMITS,
+            label="benchmark corpus",
+        )
+        payload = document.value
         config, cases, dataset_sha256 = decode_corpus_document(
             payload,
             source_label=str(path),
@@ -658,9 +729,9 @@ def _load_corpus(path: Path):
             cases,
             dataset_sha256,
             payload,
-            hashlib.sha256(encoded).hexdigest(),
+            document.file_sha256,
         )
-    except (OSError, UnicodeError, json.JSONDecodeError, ExternalBaselineError) as exc:
+    except (StrictJsonError, ExternalBaselineError) as exc:
         raise ExternalRunnerError(f"invalid corpus: {exc}") from exc
 
 
@@ -771,11 +842,14 @@ def load_external_run_manifest(
     manifest_path = Path(path).expanduser().resolve()
     if not manifest_path.is_file():
         raise ExternalRunnerError(f"run manifest was not found: {manifest_path}")
-    if manifest_path.stat().st_size > 5_000_000:
-        raise ExternalRunnerError("run manifest exceeded the 5 MB limit")
     try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        document = load_strict_json_file(
+            manifest_path,
+            limits=_MANIFEST_JSON_LIMITS,
+            label="external run manifest",
+        )
+        payload = document.value
+    except StrictJsonError as exc:
         raise ExternalRunnerError(f"invalid run manifest JSON: {exc}") from exc
     if not isinstance(payload, dict) or not all(isinstance(key, str) for key in payload):
         raise ExternalRunnerError("run manifest must be a JSON object")
@@ -908,8 +982,12 @@ def load_external_run_manifest(
     if len(corpus_cases) != case_count:
         raise ExternalRunnerError("run manifest case_count does not match the retained corpus")
     if (
-        not corpus_evidence_path.is_file()
-        or _file_sha256(corpus_evidence_path) != corpus_file_sha256
+        not _bounded_file_matches(
+            corpus_evidence_path,
+            corpus_file_sha256,
+            max_bytes=_CORPUS_JSON_LIMITS.max_bytes,
+            label="manifest corpus",
+        )
     ):
         raise ExternalRunnerError("manifest corpus changed while its evidence was validated")
     for name in ("stdout_bytes", "stderr_bytes"):
@@ -970,18 +1048,29 @@ def load_external_run_manifest(
         if not isinstance(raw_candidate_path, str) or not raw_candidate_path:
             raise ExternalRunnerError("run manifest candidate_path is invalid")
         candidate_path = Path(raw_candidate_path).expanduser().resolve()
-        if not candidate_path.is_file():
-            raise ExternalRunnerError(f"manifest candidate was not found: {candidate_path}")
         candidate_bytes = payload["candidate_bytes"]
         candidate_sha256 = payload["candidate_sha256"]
         if (
             isinstance(candidate_bytes, bool)
             or not isinstance(candidate_bytes, int)
             or candidate_bytes < 0
-            or candidate_path.stat().st_size != candidate_bytes
         ):
             raise ExternalRunnerError("manifest candidate byte count is invalid")
-        if not _is_sha256(candidate_sha256) or _file_sha256(candidate_path) != candidate_sha256:
+        if not _is_sha256(candidate_sha256):
+            raise ExternalRunnerError("manifest candidate SHA-256 mismatch")
+        try:
+            candidate_evidence = _bounded_file_evidence(
+                candidate_path,
+                max_bytes=decoded_limits.max_candidate_bytes,
+                label="manifest candidate",
+            )
+        except ExternalRunnerError as exc:
+            raise ExternalRunnerError(
+                f"manifest candidate could not be validated: {candidate_path}"
+            ) from exc
+        if candidate_evidence.byte_count != candidate_bytes:
+            raise ExternalRunnerError("manifest candidate byte count is invalid")
+        if candidate_evidence.file_sha256 != candidate_sha256:
             raise ExternalRunnerError("manifest candidate SHA-256 mismatch")
         if not expected_claim_controls:
             failure_reason = (
@@ -997,6 +1086,12 @@ def load_external_run_manifest(
     return ExternalRunReference(
         system=system,
         candidate_path=candidate_path,
+        candidate_sha256=(
+            payload["candidate_sha256"] if candidate_path is not None else None
+        ),
+        candidate_bytes=(
+            payload["candidate_bytes"] if candidate_path is not None else None
+        ),
         failure_reason=failure_reason,
         manifest_sha256=claimed_manifest_sha,
         adapter_revision=decoded_identity.adapter_revision,
@@ -1170,7 +1265,12 @@ def run_external_command(
     duration = time.monotonic() - started
     candidate_bytes = _size(candidate) if candidate.exists() else None
     if termination_reason is None and (
-        not corpus.is_file() or _file_sha256(corpus) != corpus_file_sha256
+        not _bounded_file_matches(
+            corpus,
+            corpus_file_sha256,
+            max_bytes=_CORPUS_JSON_LIMITS.max_bytes,
+            label="benchmark corpus",
+        )
     ):
         termination_reason = "corpus_modified"
     if termination_reason is None and stdout_bytes > limits.max_stdout_bytes:
@@ -1183,13 +1283,20 @@ def run_external_command(
         and candidate_bytes > limits.max_candidate_bytes
     ):
         termination_reason = "candidate_limit"
-    candidate_sha256 = (
-        _file_sha256(candidate)
-        if candidate.is_file()
+    candidate_sha256: str | None = None
+    if (
+        candidate.is_file()
         and candidate_bytes is not None
         and candidate_bytes <= limits.max_candidate_bytes
-        else None
-    )
+    ):
+        try:
+            candidate_sha256 = _bounded_file_sha256(
+                candidate,
+                max_bytes=limits.max_candidate_bytes,
+                label="external candidate",
+            )
+        except ExternalRunnerError:
+            termination_reason = termination_reason or "candidate_limit"
     process_succeeded = exit_code == 0 and termination_reason is None
     candidate_valid = False
     validation_error: str | None = None
@@ -1198,7 +1305,19 @@ def run_external_command(
             validation_error = "adapter did not create the candidate output"
         else:
             try:
-                candidate_payload = json.loads(candidate.read_text(encoding="utf-8"))
+                candidate_document = load_strict_json_file(
+                    candidate,
+                    limits=_candidate_json_limits(limits.max_candidate_bytes),
+                    label="external candidate",
+                )
+                if (
+                    candidate_document.file_sha256 != candidate_sha256
+                    or candidate_document.byte_count != candidate_bytes
+                ):
+                    raise ExternalBaselineError(
+                        "candidate changed while it was being validated"
+                    )
+                candidate_payload = candidate_document.value
                 candidate_system, _outputs = decode_external_candidate(
                     candidate_payload,
                     cases=cases,
@@ -1212,9 +1331,7 @@ def run_external_command(
                         f"registered system {system!r}"
                     )
             except (
-                OSError,
-                UnicodeError,
-                json.JSONDecodeError,
+                StrictJsonError,
                 ExternalBaselineError,
             ) as exc:
                 validation_error = str(exc)
@@ -1387,10 +1504,22 @@ def run_external_cases(
             aggregate_stderr_bytes += case_run.stderr_bytes
             if case_manifest.ready_for_scoring:
                 try:
-                    case_candidate_payload = json.loads(
-                        case_candidate_path.read_text(encoding="utf-8")
+                    case_candidate_document = load_strict_json_file(
+                        case_candidate_path,
+                        limits=_candidate_json_limits(limits.max_candidate_bytes),
+                        label="per-case external candidate",
                     )
-                except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                    if (
+                        case_candidate_document.file_sha256
+                        != case_manifest.candidate_sha256
+                        or case_candidate_document.byte_count
+                        != case_manifest.candidate_bytes
+                    ):
+                        raise ExternalRunnerError(
+                            "validated case output changed before aggregation"
+                        )
+                    case_candidate_payload = case_candidate_document.value
+                except StrictJsonError as exc:
                     raise ExternalRunnerError(
                         f"validated case output could not be reread: {exc}"
                     ) from exc
@@ -1404,7 +1533,12 @@ def run_external_cases(
             break
 
     if termination_reason is None and (
-        not corpus.is_file() or _file_sha256(corpus) != corpus_file_sha256
+        not _bounded_file_matches(
+            corpus,
+            corpus_file_sha256,
+            max_bytes=_CORPUS_JSON_LIMITS.max_bytes,
+            label="benchmark corpus",
+        )
     ):
         termination_reason = "corpus_modified"
     failed_process = next(
@@ -1476,7 +1610,11 @@ def run_external_cases(
                     raise ExternalRunnerError(
                         "candidate output appeared during the run; refusing to overwrite"
                     ) from exc
-                candidate_sha256 = _file_sha256(candidate)
+                candidate_sha256 = _bounded_file_sha256(
+                    candidate,
+                    max_bytes=limits.max_candidate_bytes,
+                    label="merged external candidate",
+                )
                 candidate_valid = True
 
     if all(record.exit_code == 0 for record in case_runs) and all_cases_executed:

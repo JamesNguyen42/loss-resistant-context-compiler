@@ -5,14 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import os
 import re
-import stat
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import fmean
 from typing import Any
 
+from .json_io import StrictJsonError, StrictJsonLimits, load_strict_json_file
 from .lrcbench import (
     BENCHMARK_VERSION,
     BUNDLED_SYSTEMS,
@@ -1226,106 +1225,6 @@ def verify_benchmark_report(
     )
 
 
-def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    decoded: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in decoded:
-            raise BenchmarkReportError(f"duplicate JSON object key: {key}")
-        decoded[key] = value
-    return decoded
-
-
-def _finite_json_float(value: str) -> float:
-    decoded = float(value)
-    if not math.isfinite(decoded):
-        raise BenchmarkReportError("JSON numbers must be finite")
-    return decoded
-
-
-def _reject_json_constant(value: str) -> None:
-    raise BenchmarkReportError(f"non-standard JSON constant is forbidden: {value}")
-
-
-def _validate_json_text(raw: str, *, limits: BenchmarkReportLimits, label: str) -> None:
-    depth = 0
-    line_chars = 0
-    in_string = False
-    escaped = False
-    previous_was_cr = False
-    for character in raw:
-        if character == "\r":
-            line_chars = 0
-            previous_was_cr = True
-        elif character == "\n":
-            if not previous_was_cr:
-                line_chars = 0
-            previous_was_cr = False
-        else:
-            previous_was_cr = False
-            line_chars += 1
-            if line_chars > limits.max_line_chars:
-                raise BenchmarkReportError(
-                    f"{label} exceeds {limits.max_line_chars} characters on one line"
-                )
-        if in_string:
-            if escaped:
-                escaped = False
-            elif character == "\\":
-                escaped = True
-            elif character == '"':
-                in_string = False
-            continue
-        if character == '"':
-            in_string = True
-        elif character in "[{":
-            depth += 1
-            if depth > limits.max_json_depth:
-                raise BenchmarkReportError(
-                    f"{label} exceeds JSON depth {limits.max_json_depth}"
-                )
-        elif character in "]}":
-            depth = max(0, depth - 1)
-
-
-def _read_bounded_regular_file(
-    path: Path,
-    *,
-    max_bytes: int,
-) -> bytes:
-    try:
-        candidate_stat = path.lstat()
-    except OSError as exc:
-        raise BenchmarkReportError(f"could not inspect report: {path}") from exc
-    if not stat.S_ISREG(candidate_stat.st_mode):
-        raise BenchmarkReportError(f"report path must be a regular file: {path}")
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_CLOEXEC", 0)
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    try:
-        descriptor = os.open(path, flags)
-    except OSError as exc:
-        raise BenchmarkReportError(f"could not open report: {path}") from exc
-    try:
-        file_stat = os.fstat(descriptor)
-        if not stat.S_ISREG(file_stat.st_mode):
-            raise BenchmarkReportError(f"report path must be a regular file: {path}")
-        if file_stat.st_size > max_bytes:
-            raise BenchmarkReportError(f"report exceeds {max_bytes} bytes")
-        chunks: list[bytes] = []
-        total = 0
-        while True:
-            block = os.read(descriptor, min(64 * 1024, max_bytes - total + 1))
-            if not block:
-                break
-            total += len(block)
-            if total > max_bytes:
-                raise BenchmarkReportError(f"report exceeds {max_bytes} bytes")
-            chunks.append(block)
-        return b"".join(chunks)
-    finally:
-        os.close(descriptor)
-
-
 def load_benchmark_report(
     path: str | Path,
     *,
@@ -1337,32 +1236,20 @@ def load_benchmark_report(
     if not isinstance(resolved_limits, BenchmarkReportLimits):
         raise TypeError("limits must be a BenchmarkReportLimits value")
     report_path = Path(path)
-    encoded = _read_bounded_regular_file(
-        report_path,
-        max_bytes=resolved_limits.max_input_bytes,
-    )
     try:
-        raw = encoded.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise BenchmarkReportError(f"{report_path} must be valid UTF-8") from exc
-    if raw.startswith("\ufeff"):
-        raw = raw[1:]
-    if not raw.strip():
-        raise BenchmarkReportError(f"{report_path} cannot be empty")
-    _validate_json_text(raw, limits=resolved_limits, label=str(report_path))
-    try:
-        payload = json.loads(
-            raw,
-            object_pairs_hook=_strict_json_object,
-            parse_float=_finite_json_float,
-            parse_constant=_reject_json_constant,
+        document = load_strict_json_file(
+            report_path,
+            limits=StrictJsonLimits(
+                max_bytes=resolved_limits.max_input_bytes,
+                max_line_chars=resolved_limits.max_line_chars,
+                max_depth=resolved_limits.max_json_depth,
+            ),
+            label="benchmark report",
         )
-    except BenchmarkReportError:
-        raise
-    except (json.JSONDecodeError, RecursionError, ValueError) as exc:
-        raise BenchmarkReportError(f"{report_path} is not valid strict JSON: {exc}") from exc
+    except StrictJsonError as exc:
+        raise BenchmarkReportError(str(exc)) from exc
     return verify_benchmark_report(
-        payload,
+        document.value,
         source_label=str(report_path),
         limits=resolved_limits,
     )

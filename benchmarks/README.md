@@ -87,6 +87,11 @@ Do not submit an `active_tokens` field: the harness derives token usage after
 adding a canonical claim/provenance ledger, so metadata cannot be free.
 Unknown fields, wrong hashes, missing or extra cases, invalid spans, duplicate
 system names, and any over-budget case fail closed before a report is emitted.
+All report, corpus, candidate, and manifest file reads share a regular-file,
+UTF-8, duplicate-key, non-finite-number, byte, line, and JSON-depth boundary.
+Direct `--external-baseline` imports default to 20 MB per candidate; override
+that explicit boundary with `--max-external-candidate-bytes` when a frozen
+protocol requires a different limit.
 
 Run an adapter through the standard shell-free bounded process wrapper:
 
@@ -197,7 +202,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-All 286 tests passed alongside it.
+All 297 tests passed alongside it.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |

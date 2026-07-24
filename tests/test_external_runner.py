@@ -19,7 +19,9 @@ from benchmarks.external_runner import (
     run_external_command,
 )
 from benchmarks.external_runner import main as runner_main
+from benchmarks.json_io import StrictJsonLimits
 from benchmarks.lrcbench import (
+    CANDIDATE_SCHEMA,
     BenchmarkConfig,
     ExternalBaselineError,
     corpus_document,
@@ -107,6 +109,191 @@ def test_corpus_export_digest_detects_gold_free_source_tampering(tmp_path) -> No
     tampered["cases"][0]["source_events"][0]["content"] += "tampered"
     with pytest.raises(ExternalBaselineError, match="corpus_sha256 mismatch"):
         decode_corpus_document(tampered)
+
+
+def test_interchange_file_loaders_reject_duplicate_keys_and_size_overflow(
+    tmp_path,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    config, document = write_corpus(corpus_path)
+    original_corpus = corpus_path.read_text(encoding="utf-8")
+    corpus_path.write_text(
+        original_corpus.replace(
+            "{",
+            '{"schema":"lrcbench-corpus-0.2",',
+            1,
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ExternalRunnerError, match="duplicate JSON object key"):
+        external_runner_module._load_corpus(corpus_path)
+    corpus_path.write_text(original_corpus, encoding="utf-8")
+
+    candidate_payload = {
+        "schema": CANDIDATE_SCHEMA,
+        "dataset_sha256": document["dataset_sha256"],
+        "system": "strict-fixture",
+        "cases": [
+            {
+                "case_id": case["case_id"],
+                "rendered_text": "",
+                "claims": [],
+            }
+            for case in document["cases"]
+        ],
+    }
+    candidate_path = tmp_path / "candidate.json"
+    candidate_text = json.dumps(candidate_payload)
+    candidate_path.write_text(
+        candidate_text.replace(
+            "{",
+            f'{{"schema":"{CANDIDATE_SCHEMA}",',
+            1,
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ExternalBaselineError, match="duplicate JSON object key"):
+        run_benchmark(
+            config,
+            external_baseline_paths=(candidate_path,),
+            expected_external_systems=("strict-fixture",),
+        )
+
+    candidate_path.write_text(candidate_text, encoding="utf-8")
+    with pytest.raises(ExternalBaselineError, match="external candidate exceeds"):
+        run_benchmark(
+            config,
+            external_baseline_paths=(candidate_path,),
+            expected_external_systems=("strict-fixture",),
+            max_external_candidate_bytes=len(candidate_text.encode("utf-8")) - 1,
+        )
+    with pytest.raises(ExternalBaselineError, match="max_bytes must be positive"):
+        run_benchmark(
+            config,
+            max_external_candidate_bytes=0,
+        )
+
+    runner_candidate = tmp_path / "runner-candidate.json"
+    manifest = run_external_command(
+        valid_adapter_command(),
+        system="strict-fixture",
+        corpus_path=corpus_path,
+        candidate_path=runner_candidate,
+        limits=RunnerLimits(timeout_seconds=5),
+    )
+    manifest_text = manifest.to_json()
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        manifest_text.replace(
+            "{",
+            '{"schema":"lrcbench-external-run-manifest-0.2",',
+            1,
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ExternalRunnerError, match="duplicate JSON object key"):
+        load_external_run_manifest(
+            manifest_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
+
+def test_corpus_loader_enforces_serialized_size_before_decoding(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    write_corpus(corpus_path)
+    byte_count = corpus_path.stat().st_size
+    monkeypatch.setattr(
+        external_runner_module,
+        "_CORPUS_JSON_LIMITS",
+        StrictJsonLimits(
+            max_bytes=byte_count - 1,
+            max_line_chars=byte_count,
+            max_depth=128,
+        ),
+    )
+
+    with pytest.raises(ExternalRunnerError, match="benchmark corpus exceeds"):
+        external_runner_module._load_corpus(corpus_path)
+
+
+def test_candidate_mutation_during_validation_fails_closed(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    write_corpus(corpus_path)
+    candidate_path = tmp_path / "candidate.json"
+    original_loader = external_runner_module.load_strict_json_file
+    mutated = False
+
+    def mutate_before_candidate_read(path, *, limits, label):
+        nonlocal mutated
+        if label == "external candidate" and not mutated:
+            mutated = True
+            candidate = Path(path)
+            candidate.write_text(
+                candidate.read_text(encoding="utf-8") + " ",
+                encoding="utf-8",
+            )
+        return original_loader(path, limits=limits, label=label)
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "load_strict_json_file",
+        mutate_before_candidate_read,
+    )
+
+    manifest = run_external_command(
+        valid_adapter_command(),
+        system="strict-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5),
+    )
+
+    assert mutated
+    assert manifest.process_succeeded
+    assert not manifest.candidate_valid
+    assert not manifest.ready_for_scoring
+    assert manifest.validation_error == "candidate changed while it was being validated"
+
+
+def test_per_case_candidate_mutation_before_aggregation_is_rejected(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    write_corpus(corpus_path)
+    candidate_path = tmp_path / "candidate.json"
+    original_loader = external_runner_module.load_strict_json_file
+
+    def mutate_before_aggregate_read(path, *, limits, label):
+        if label == "per-case external candidate":
+            candidate = Path(path)
+            candidate.write_text(
+                candidate.read_text(encoding="utf-8") + " ",
+                encoding="utf-8",
+            )
+        return original_loader(path, limits=limits, label=label)
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "load_strict_json_file",
+        mutate_before_aggregate_read,
+    )
+
+    with pytest.raises(ExternalRunnerError, match="changed before aggregation"):
+        run_external_cases(
+            valid_adapter_command(),
+            system="strict-fixture",
+            corpus_path=corpus_path,
+            candidate_path=candidate_path,
+            limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+            identity=claim_identity(),
+        )
 
 
 def test_per_case_runner_executes_without_a_shell_and_validates_candidate(
@@ -308,7 +495,10 @@ def test_whole_corpus_mode_is_diagnostic_even_with_complete_identity(tmp_path) -
     assert "per-case isolation" in reference.failure_reason
 
 
-def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(tmp_path) -> None:
+def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     corpus_path = tmp_path / "corpus.json"
     config, document = write_corpus(corpus_path)
     candidate_path = tmp_path / "candidate.json"
@@ -335,6 +525,10 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(tmp_path)
 
     assert reference.system == "fixture-adapter"
     assert reference.candidate_path == candidate_path.resolve()
+    assert reference.candidate_bytes == candidate_path.stat().st_size
+    assert reference.candidate_sha256 == hashlib.sha256(
+        candidate_path.read_bytes()
+    ).hexdigest()
     assert reference.failure_reason is None
     assert reference.adapter_revision == "fixture-revision"
     assert reference.model_id == QWEN_Q4_VARIANT
@@ -355,11 +549,73 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(tmp_path)
     )
     assert "no validated external run manifest" not in comparison.reasons
 
+    original_manifest_loader = external_runner_module.load_external_run_manifest
+
+    def load_then_mutate_candidate(*args, **kwargs):
+        loaded = original_manifest_loader(*args, **kwargs)
+        candidate_path.write_text(
+            candidate_path.read_text(encoding="utf-8") + " ",
+            encoding="utf-8",
+        )
+        return loaded
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "load_external_run_manifest",
+        load_then_mutate_candidate,
+    )
+    with pytest.raises(ExternalBaselineError, match="changed after manifest validation"):
+        run_benchmark(
+            config,
+            external_manifest_paths=(manifest_path,),
+            expected_external_systems=("fixture-adapter",),
+        )
+
     corpus_path.write_text(
         corpus_path.read_text(encoding="utf-8") + " ",
         encoding="utf-8",
     )
     with pytest.raises(ExternalRunnerError, match="corpus file SHA-256"):
+        load_external_run_manifest(
+            manifest_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
+
+def test_ready_manifest_wraps_candidate_disappearance_during_validation(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    _config, document = write_corpus(corpus_path)
+    candidate_path = tmp_path / "candidate.json"
+    manifest_path = tmp_path / "manifest.json"
+    manifest = run_external_cases(
+        valid_adapter_command(),
+        system="fixture-adapter",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        identity=claim_identity(),
+    )
+    manifest_path.write_text(manifest.to_json(), encoding="utf-8")
+    original_hasher = external_runner_module.hash_bounded_regular_file
+
+    def remove_before_candidate_hash(path, *, max_bytes, label):
+        if label == "manifest candidate":
+            candidate_path.unlink()
+        return original_hasher(path, max_bytes=max_bytes, label=label)
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "hash_bounded_regular_file",
+        remove_before_candidate_hash,
+    )
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="manifest candidate could not be validated",
+    ):
         load_external_run_manifest(
             manifest_path,
             expected_dataset_sha256=document["dataset_sha256"],

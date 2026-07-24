@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 286 passing |
+| Tests at this snapshot | 297 passing |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -243,6 +243,7 @@ supplied extractors and token counters are deterministic.
 | `src/context_compiler/archive.py` | Logically append-only local archive, advisory locking, atomic commits, loading, and verification |
 | `src/context_compiler/cli.py` | `ctxc` parsing, atomic output transactions, versioned error diagnostics, and exit codes |
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
+| `benchmarks/json_io.py` | Shared bounded regular-file hashing and strict JSON decoding for benchmark evidence |
 | `benchmarks/report_verifier.py` | Bounded strict saved-report verification and deterministic replay |
 | `benchmarks/external_runner.py` | Shell-free adapter process limits, validation, and self-hashed run manifests |
 | `benchmarks/protocols/` | Versioned external comparison protocol; v1 is still a non-claim-bearing draft |
@@ -384,7 +385,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 286 tests pass.
+- 297 tests pass.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -426,6 +427,10 @@ audited. Any selected superseded item independently fails verification as
   the dataset id, recomputes both report digests, validates run/comparison
   metadata, and reconciles included per-history metrics. Passing verifies
   internal consistency, not authorship or fairness.
+- Benchmark report, corpus, candidate, and manifest inputs now share the same
+  strict regular-file JSON boundary. Tests cover duplicate/non-finite values,
+  size/line/depth limits, special files, and candidate mutation between hash,
+  validation, and per-case aggregation.
 - Opt-in JSON runtime diagnostics have stable resource, timeout, I/O,
   invalid-input, integrity, and policy categories. Default text output and
   stdout behavior remain unchanged.

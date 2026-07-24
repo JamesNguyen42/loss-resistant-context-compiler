@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Run 286 tests; CI covers Python 3.11, 3.12, and 3.13.
+- [x] Run 297 tests; CI covers Python 3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
 
@@ -529,6 +529,10 @@ than most related technology” within the exact dated evaluation scope.
   that rejects duplicate/non-finite JSON, regenerates the dataset identity,
   recomputes report and certificate digests, validates comparison/run metadata,
   and reconciles included per-history counts and rates.
+- [x] Route serialized benchmark reports, corpora, candidates, and manifests
+  through one strict regular-file reader with byte, line, and depth limits;
+  reject ambiguous/non-finite JSON and bind validation to the exact candidate
+  bytes so mutation races fail closed.
 - [ ] Version and propagate equivalent producer metadata through corpus and
   candidate interchange artifacts without invalidating frozen dataset identity.
 - [ ] Add metrics for item counts, protected overflow, recovery additions,
