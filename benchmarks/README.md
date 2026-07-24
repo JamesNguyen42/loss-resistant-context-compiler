@@ -107,7 +107,7 @@ the benefit of deterministic coordinate derivation while showing that exact
 copying does not solve semantic selection or kind assignment. See
 [the evidence and claim boundary](../docs/QWEN_PHRASE_EVALUATION.md#post-hoc-unique-literal-offset-ablation).
 
-## Frozen held-out paired extractor protocol
+## Held-out paired extractor protocol and result
 
 `python -m benchmarks.qwen_paired_eval` is frozen before any target output on
 the new
@@ -124,10 +124,16 @@ uncontrolled draw per case and mode and treats sampling noise as a limitation.
 The live path requires a clean revision and an exclusive new report
 destination.
 
-No target result exists at this checkpoint. The exact corpus hash, report
-schema, metrics, replay rules, command, resource identity, and claim boundary
-are in the
-[pre-result paired protocol](../docs/QWEN_PAIRED_EVALUATION.md).
+The completed run retained all 128 calls. Coordinate mode recorded 7 TP, 0 FP,
+and 33 FN before recovery (100% precision, 17.5% recall, 29.7872% F1); literal
+mode recorded 37 TP, 13 FP, and 3 FN (74% precision, 92.5% recall, 82.2222%
+F1). Literal final F1 was only 6.4974 points higher, final precision was
+12.0638 points lower, and four literal compiles failed verification. One
+coordinate capture retained LM Studio loading-status stdout as an
+`invalid_json` failure. The exact corpus hash, report schema, metrics, replay
+rules, command, resource identity, result audit, and claim boundary are in the
+[paired protocol](../docs/QWEN_PAIRED_EVALUATION.md) and
+[self-hashed report](../docs/results/qwen-heldout-paired-extractors-v1.json).
 
 ## External baselines
 
@@ -346,7 +352,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 862 tests alongside it: 857 passed and 5
+The suite collected 863 tests alongside it: 858 passed and 5
 platform/optional checks were skipped.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |

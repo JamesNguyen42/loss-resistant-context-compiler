@@ -27,14 +27,14 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 862 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 863 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Novel English diagnostic | 64 local cases; 85.37% precision and 87.5% recall |
 | Exact local Qwen phrase evaluation | 64 calls; 5% model-only recall, 96.92% candidate rejection, 87.5% final recall |
 | Post-hoc Qwen offset ablation | 0 calls; 63.16% literal-only precision, 60% recall, and 2 final verification failures; non-claim-bearing |
-| Held-out paired Qwen protocol | Frozen 64-case disjoint corpus; 128 sequential calls planned; no target result observed yet |
+| Held-out paired Qwen result | 128 sequential calls; literal mode raised model-only recall from 17.5% to 92.5%, but reduced precision from 100% to 74% and caused 4 final verification failures |
 | Named external comparisons | Not run |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
@@ -182,14 +182,14 @@ The repository currently includes:
   unevaluated;
 - a pre-result paired evaluator and disjoint self-hashed 64-case corpus that
   counterbalance coordinate/unique-literal prompt order, require a clean
-  revision, retain failures without retry, and reserve an exclusive report
-  destination;
+  revision, retain failures without retry, reserve an exclusive report
+  destination, and now bind the complete 128-call exact-Qwen result;
 - public, bounded domain-label and strict extractor-composition hooks that do
   not accept caller-supplied regexes or replace built-in recovery;
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 862 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 863 regression tests.
 
 ## In development
 
@@ -848,7 +848,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 862 tests are collected (857 pass and 5
+Current local snapshot (2026-07-24): 863 tests are collected (858 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
@@ -895,13 +895,20 @@ for `LiteralModelExtractor`. See the
 [method boundary](docs/QWEN_PHRASE_EVALUATION.md#post-hoc-unique-literal-offset-ablation)
 and [self-hashed replay](docs/results/qwen-literal-offset-ablation-v1.json).
 
-A separate pre-result protocol now freezes a disjoint 64-case corpus for a
-paired comparison of coordinate and unique-literal prompts. It requires 128
-strictly sequential calls, counterbalances prompt order by case parity, uses
-one captured draw per mode without retries, and refuses dirty-tree or
-overwrite-prone live runs. No target output or result is recorded at this
-checkpoint. See the
-[held-out paired protocol](docs/QWEN_PAIRED_EVALUATION.md).
+A separate pre-result protocol froze a disjoint 64-case corpus before a paired
+comparison of coordinate and unique-literal prompts. The retained run made all
+128 strictly sequential calls with counterbalanced order, one draw per mode,
+and no retries. Coordinate output recorded 7 TP, 0 FP, and 33 FN before
+recovery (100% precision, 17.5% recall, 29.7872% F1); literal output recorded
+37 TP, 13 FP, and 3 FN (74% precision, 92.5% recall, 82.2222% F1). After
+deterministic recovery, literal mode improved F1 over coordinate mode by only
+6.4974 points, reduced precision by 12.0638 points, and caused four independent
+confirmation-evidence verification failures. One coordinate response also
+retains LM Studio loading-spinner stdout contamination as an `invalid_json`
+failure. This is evidence of a recall/safety tradeoff, not a blanket model or
+product win. See the
+[held-out paired protocol and result](docs/QWEN_PAIRED_EVALUATION.md) and
+[self-hashed report](docs/results/qwen-heldout-paired-extractors-v1.json).
 
 These local generated results are **not an external-system comparison** and do
 not establish the requested 50% advantage over most related technology. Rerun
@@ -918,6 +925,7 @@ the commands above for the current revision and environment.
 - [Exact local Qwen phrase-evaluation protocol](docs/QWEN_PHRASE_EVALUATION.md)
 - [Post-hoc Qwen literal-offset ablation evidence](docs/results/qwen-literal-offset-ablation-v1.json)
 - [Held-out paired Qwen extractor-evaluation protocol](docs/QWEN_PAIRED_EVALUATION.md)
+- [Held-out paired Qwen captured-output evidence](docs/results/qwen-heldout-paired-extractors-v1.json)
 - [Unique-literal model extraction](docs/LITERAL_MODEL_EXTRACTION.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Compiled-artifact schema compatibility](docs/SCHEMA_COMPATIBILITY.md)

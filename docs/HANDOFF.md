@@ -11,8 +11,8 @@ before changing preprocessing or privacy claims. Read the
 changing the captured-output evaluation. Read
 [unique-literal model extraction](LITERAL_MODEL_EXTRACTION.md) before changing
 the model response or provenance-derivation contract. Read the
-[held-out paired Qwen protocol](QWEN_PAIRED_EVALUATION.md) before running,
-changing, or interpreting the next live comparison.
+[held-out paired Qwen protocol and result](QWEN_PAIRED_EVALUATION.md) before
+changing or interpreting the recorded comparison.
 
 ## Snapshot
 
@@ -23,7 +23,7 @@ changing, or interpreting the next live comparison.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 862 collected: 857 passing, 5 skipped |
+| Tests at this snapshot | 863 collected: 858 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -32,7 +32,7 @@ changing, or interpreting the next live comparison.
 | Exact local Qwen phrase evaluation | 64 calls: 5% model-only recall, 96.9231% candidate rejection, 87.5% final recall |
 | Unique-literal model extraction | Opt-in; derives only unique exact spans and keeps the coordinate contract unchanged |
 | Post-hoc Qwen offset ablation | 0 calls: 63.1579% literal-only precision, 60% recall, 2 final verification failures; not claim-bearing |
-| Held-out paired Qwen protocol | Frozen disjoint 64-case corpus; 128 sequential calls planned; target result pending |
+| Held-out paired Qwen result | 128 sequential calls; literal model-only P/R/F1 74%/92.5%/82.2222%, coordinate 100%/17.5%/29.7872%; literal final verification failures 4 |
 | Common content-secret preprocessing | Opt-in, fixed-detector, offset-preserving, replayable |
 | External systems evaluated | None |
 | External 50%-better claim | Not established |
@@ -472,7 +472,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 862 tests are collected: 857 pass and 5 platform/optional checks are skipped.
+- 863 tests are collected: 858 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all five schemas are included.
@@ -524,13 +524,18 @@ audited. Any selected superseded item independently fails verification as
   verification. The self-hashed report explicitly says the target prompt was
   not evaluated and the analysis is not claim-bearing; see
   `docs/results/qwen-literal-offset-ablation-v1.json`.
-- A second, disjoint 64-case corpus and paired evaluator are frozen before any
-  target result. The planned run makes 128 sequential calls, alternates prompt
-  order by case parity, records one draw per mode with no retry, requires a
-  clean repository, and exclusively creates its report. Perfect-oracle,
-  all-timeout, output/prompt/metric/protocol tamper, non-finite delta, and
-  replay tests pass. No coordinate-versus-literal result should be quoted
-  until the clean live report exists; see `docs/QWEN_PAIRED_EVALUATION.md`.
+- A second, disjoint 64-case corpus and paired evaluator were frozen on
+  `b6d7095` before any target result. The retained exact-Qwen run completed all
+  128 sequential calls with alternating order, one draw per mode, no retries,
+  one slot, no model API, and USD 0.00 model-service cost. Coordinate mode
+  recorded 7 TP / 0 FP / 33 FN (100% precision, 17.5% recall, 29.7872% F1);
+  literal mode recorded 37 TP / 13 FP / 3 FN (74% precision, 92.5% recall,
+  82.2222% F1). Final F1 was 70.2703% versus 76.7677%, but literal mode had
+  lower final precision (64.4068% versus 76.4706%) and four
+  confirmation-evidence verification failures. One coordinate capture retained
+  LM Studio loading-spinner stdout contamination as `invalid_json`. The
+  self-hashed report replays offline and CI now checks it; see
+  `docs/QWEN_PAIRED_EVALUATION.md`.
 - Public `DomainLabelExtractor`, `CompositeExtractor`, `Extractor`, and
   `ExtractionResult` APIs provide bounded exact-label domain packs and strict
   composition without changing the global regex vocabulary. Configuration is
@@ -818,10 +823,12 @@ lower quantile before results are observed.
   to 60% but reduced precision to 63.1579%, admitted 14 false positives, and
   left 2 final verification failures. It did not evaluate the new prompt and
   cannot substitute for a newly frozen live evaluation.
-- The newly frozen paired corpus is still locally authored, English-only, and
-  isolated to one message per case. The local CLI exposes no sampling seed or
-  temperature, so alternating prompt order cannot eliminate one-draw sampling
-  noise. No target result has been observed at this checkpoint.
+- The paired corpus is still locally authored, English-only, and isolated to
+  one message per case. The local CLI exposes no sampling seed or temperature,
+  so alternating prompt order cannot eliminate one-draw sampling noise. The
+  observed literal recall gain came with 13 model-only false positives, a
+  37.5% primary negative-case error rate, and four final verification failures;
+  it is a tradeoff diagnostic, not evidence of production superiority.
 - Local controls are simple and are not state-of-the-art substitutes.
 - Atom recall is a proxy for agent success, not task completion.
 - Bootstrap intervals do not cover benchmark design bias.
@@ -866,16 +873,16 @@ currently implement this transaction manager.
 
 ## Exact next step
 
-The known in-process safety paths and internal benchmark estimands are closed.
-The highest-value next work is the frozen model diagnostic followed by the
-external and natural-history evidence path:
+The known in-process safety paths and internal benchmark estimands are closed,
+and the frozen model diagnostic is recorded. The highest-value next work is
+transport hardening followed by the external and natural-history evidence path:
 
-1. run the now-frozen paired evaluator with the exact local Qwen Q4 build and
-   one inference slot, retaining all 128 calls without retries;
-2. replay the new report offline and compare coordinate and unique-literal
-   modes without weakening deterministic recovery or semantic admission;
-3. document and checkpoint every weak, failed, and verification-failing
-   outcome before any follow-up design change;
+1. preserve the paired report and its four verification failures without
+   post-result tuning or rescoring;
+2. specify fail-closed LM Studio stdout framing and cover bounded status
+   prefixes, ambiguous JSON, and trailing payloads with synthetic tests;
+3. keep any transport fix independent from the observed corpus and do not
+   rerun that corpus as claim-bearing evidence;
 4. resolve every `TBD` in the versioned draft external protocol without looking
    at comparative results;
 5. freeze the initial comparison set and pinned revisions;

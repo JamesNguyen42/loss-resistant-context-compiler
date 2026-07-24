@@ -60,6 +60,7 @@ jobs:
           python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json
           python -m benchmarks.qwen_phrase_eval --verify-report docs/results/qwen-novel-english-phrases-v1.json
           python -m benchmarks.qwen_literal_ablation --verify-report docs/results/qwen-literal-offset-ablation-v1.json
+          python -m benchmarks.qwen_paired_eval --verify-report docs/results/qwen-heldout-paired-extractors-v1.json
       - name: Run the fail-closed 24-history certificate
         run: >-
           python -m benchmarks

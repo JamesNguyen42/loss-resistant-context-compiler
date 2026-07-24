@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 862 tests (857 passing and 5 skipped locally); CI covers Python
+- [x] Collect 863 tests (858 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -463,10 +463,18 @@ than most related technology” within the exact dated evaluation scope.
   make no retry, retain failures, record one uncontrolled draw per mode, and
   install the first live report exclusively. See the
   [pre-result protocol](docs/QWEN_PAIRED_EVALUATION.md).
-- [ ] Execute the frozen paired evaluator with the exact local Qwen Q4 build,
+- [x] Execute the frozen paired evaluator with the exact local Qwen Q4 build,
   publish all coordinate and unique-literal outputs and failures, replay the
   report offline, and do not tune the corpus, validators, recovery, or scoring
-  after observing results.
+  after observing results. The 128-call report records a large model-only
+  recall gain alongside 13 literal-mode false positives, lower precision, 4
+  final verification failures, and one coordinate-mode JSON contamination
+  event; see the
+  [paired result audit](docs/QWEN_PAIRED_EVALUATION.md).
+- [ ] Harden LM Studio stdout framing against bounded non-JSON status prefixes
+  without accepting ambiguous or trailing payloads. Specify and test the
+  transport rule independently; do not rerun or rescore the observed paired
+  corpus as evidence for that follow-up.
 - [ ] Never weaken deterministic recovery merely to improve model-only metrics.
 
 ### Temporal and semantic state
@@ -683,17 +691,16 @@ than most related technology” within the exact dated evaluation scope.
 
 The next chat should start here unless new evidence changes the priority:
 
-1. run the frozen held-out paired evaluator with the exact local Qwen Q4 model
-   and one inference slot, capturing all 128 calls without retries;
-2. replay the report offline and compare coordinate and unique-literal modes
-   without weakening deterministic recovery or semantic admission;
-3. document and checkpoint all weak, failed, and verification-failing outcomes;
-4. resolve the remaining `TBD` fields in the external-comparison protocol;
-5. define inclusion rules and freeze the initial related-system set;
-6. add the first reproducible no-paid-service external adapter;
-7. run the interchange self-test and adapter on a small diagnostic corpus;
-8. design the privacy/licensing and annotation protocol for natural histories;
-9. freeze a full natural corpus only after the diagnostic path is reliable;
-10. record all results without changing the claim boundary.
+1. preserve and replay the completed held-out paired result without tuning its
+   corpus, validators, recovery, scoring, or recorded metrics;
+2. specify and test fail-closed LM Studio stdout framing using synthetic
+   transport fixtures, including the retained loading-spinner failure shape;
+3. resolve the remaining `TBD` fields in the external-comparison protocol;
+4. define inclusion rules and freeze the initial related-system set;
+5. add the first reproducible no-paid-service external adapter;
+6. run the interchange self-test and adapter on a small diagnostic corpus;
+7. design the privacy/licensing and annotation protocol for natural histories;
+8. freeze a full natural corpus only after the diagnostic path is reliable;
+9. record all results without changing the claim boundary.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) before changing code or benchmark rules.

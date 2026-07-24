@@ -266,7 +266,11 @@ clean repository, alternating sequential call order, no retries, and exclusive
 creation of the first report. These controls reduce result-selection and
 overwrite risk but do not provide execution attestation. The local CLI exposes
 no seed or temperature setting, so one captured draw per mode remains subject
-to sampling noise.
+to sampling noise. The retained run also demonstrates that LM Studio can emit
+loading-status text on stdout before an otherwise structured response. Strict
+whole-output JSON parsing safely rejected that capture instead of guessing at
+framing, but reduced availability and recall; any future prefix-tolerant
+transport must remain bounded and reject ambiguous or trailing payloads.
 
 Manifest replay requires the retained corpus at its recorded absolute path and
 checks its canonical digest, file digest, dataset id, and case count. The

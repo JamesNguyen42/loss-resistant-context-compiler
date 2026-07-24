@@ -167,7 +167,11 @@ precision, 60% recall, and two final verification failures. See
 [the post-hoc method and result](QWEN_PHRASE_EVALUATION.md#post-hoc-unique-literal-offset-ablation).
 
 A new disjoint corpus and
-[paired pre-result protocol](QWEN_PAIRED_EVALUATION.md) are frozen for the
-first live coordinate-versus-unique-literal comparison. It will make 128
-sequential calls with alternating order and no retries. No target result is
-recorded yet.
+[paired pre-result protocol](QWEN_PAIRED_EVALUATION.md) were frozen before the
+first live coordinate-versus-unique-literal comparison. The completed run made
+128 sequential calls with alternating order and no retries. Literal mode raised
+model-only recall from 17.5% to 92.5% but reduced precision from 100% to 74%
+and caused four final confirmation-evidence verification failures. One
+coordinate response was also rejected as invalid JSON because LM Studio
+loading progress preceded the JSON on stdout. The result is replayable evidence
+of a recall/safety tradeoff, not an unconditional recommendation.

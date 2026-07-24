@@ -14,6 +14,7 @@ from benchmarks.phrase_eval import PhraseCorpus, load_phrase_corpus
 from benchmarks.qwen_paired_eval import (
     DEFAULT_HELDOUT_LITERAL_CORPUS,
     DEFAULT_HELDOUT_LITERAL_CORPUS_SHA256,
+    DEFAULT_QWEN_PAIRED_REPORT,
     NORMALIZED_QWEN_PAIRED_COMMAND,
     QWEN_PAIRED_REPORT_SCHEMA,
     QWEN_PAIRED_VERIFICATION_SCHEMA,
@@ -530,6 +531,221 @@ def test_cli_verifies_saved_report_without_lms(
     assert output["schema"] == QWEN_PAIRED_VERIFICATION_SCHEMA
     assert output["verified"] is True
     assert output["model_calls"] == 128
+
+
+def test_committed_exact_qwen_paired_report_replays_without_model(
+    corpus: PhraseCorpus,
+) -> None:
+    report = load_qwen_paired_report(DEFAULT_QWEN_PAIRED_REPORT)
+    verification = verify_qwen_paired_report(report, corpus)
+
+    assert verification == {
+        "schema": QWEN_PAIRED_VERIFICATION_SCHEMA,
+        "verified": True,
+        "corpus_sha256": corpus.corpus_sha256,
+        "report_sha256": (
+            "eb76a5accefdb50b906bb5c4658432d70958be112ef2a1febb1d71e957c9e6d2"
+        ),
+        "case_count": 64,
+        "model_id": QWEN_Q4_VARIANT,
+        "model_calls": 128,
+        "case_concurrency": 1,
+        "network_model_api": False,
+        "model_service_cost_usd": 0.0,
+    }
+    assert report["run"]["repository_commit"] == (
+        "b6d7095714e01c7e1d43a34ea86f8bee9235794b"
+    )
+    assert report["run"]["repository_dirty"] is False
+    assert report["metrics"]["execution"] == {
+        "expected_model_calls": 128,
+        "recorded_model_calls": 128,
+        "case_concurrency": 1,
+        "case_call_order": {
+            "even_index": ["coordinate", "literal"],
+            "odd_index": ["literal", "coordinate"],
+        },
+        "samples_per_case_mode": 1,
+        "retries_per_call": 0,
+        "network_model_api": False,
+        "model_service_cost_usd": 0.0,
+    }
+
+    coordinate = report["metrics"]["coordinate"]
+    literal = report["metrics"]["literal"]
+    assert coordinate["completion"] == {
+        "successful_calls": 64,
+        "failed_calls": 0,
+        "error_types": {},
+    }
+    assert literal["completion"] == coordinate["completion"]
+    assert coordinate["candidates"] == {
+        "reported_candidates": 66,
+        "accepted_candidates": 7,
+        "rejected_candidates": 59,
+        "candidate_rejection_rate": 0.893939,
+        "rejection_events": 60,
+        "rejection_reasons": {
+            "invalid_candidate": 59,
+            "invalid_json": 1,
+        },
+        "degraded_cases": 57,
+    }
+    assert literal["candidates"] == {
+        "reported_candidates": 65,
+        "accepted_candidates": 50,
+        "rejected_candidates": 15,
+        "candidate_rejection_rate": 0.230769,
+        "rejection_events": 15,
+        "rejection_reasons": {"invalid_candidate": 15},
+        "degraded_cases": 15,
+    }
+    assert {
+        mode: {
+            metric: values["model_only"][metric]
+            for metric in (
+                "predicted_atoms",
+                "true_positives",
+                "false_positives",
+                "false_negatives",
+                "precision",
+                "recall",
+                "f1",
+                "case_exact_matches",
+            )
+        }
+        for mode, values in {
+            "coordinate": coordinate,
+            "literal": literal,
+        }.items()
+    } == {
+        "coordinate": {
+            "predicted_atoms": 7,
+            "true_positives": 7,
+            "false_positives": 0,
+            "false_negatives": 33,
+            "precision": 1.0,
+            "recall": 0.175,
+            "f1": 0.297872,
+            "case_exact_matches": 31,
+        },
+        "literal": {
+            "predicted_atoms": 50,
+            "true_positives": 37,
+            "false_positives": 13,
+            "false_negatives": 3,
+            "precision": 0.74,
+            "recall": 0.925,
+            "f1": 0.822222,
+            "case_exact_matches": 52,
+        },
+    }
+    assert {
+        mode: {
+            metric: values["final_compiler"][metric]
+            for metric in (
+                "true_positives",
+                "false_positives",
+                "false_negatives",
+                "precision",
+                "recall",
+                "f1",
+                "case_exact_matches",
+                "verification_failures",
+            )
+        }
+        for mode, values in {
+            "coordinate": coordinate,
+            "literal": literal,
+        }.items()
+    } == {
+        "coordinate": {
+            "true_positives": 26,
+            "false_positives": 8,
+            "false_negatives": 14,
+            "precision": 0.764706,
+            "recall": 0.65,
+            "f1": 0.702703,
+            "case_exact_matches": 43,
+            "verification_failures": 0,
+        },
+        "literal": {
+            "true_positives": 38,
+            "false_positives": 21,
+            "false_negatives": 2,
+            "precision": 0.644068,
+            "recall": 0.95,
+            "f1": 0.767677,
+            "case_exact_matches": 44,
+            "verification_failures": 4,
+        },
+    }
+    assert report["metrics"]["comparison"] == {
+        "literal_minus_coordinate": {
+            "model_only": {
+                "predicted_atoms": 43,
+                "true_positives": 30,
+                "false_positives": 13,
+                "false_negatives": -30,
+                "precision": -0.26,
+                "recall": 0.75,
+                "f1": 0.52435,
+                "case_exact_matches": 21,
+                "positive_case_exact_matches": 30,
+                "negative_cases_without_predictions": -9,
+            },
+            "final_compiler": {
+                "predicted_atoms": 25,
+                "true_positives": 12,
+                "false_positives": 13,
+                "false_negatives": -12,
+                "precision": -0.120638,
+                "recall": 0.3,
+                "f1": 0.064974,
+                "case_exact_matches": 1,
+                "positive_case_exact_matches": 6,
+                "negative_cases_without_predictions": -5,
+            },
+            "accepted_candidates": 43,
+            "rejected_candidates": -44,
+            "degraded_cases": -42,
+            "verification_failures": 4,
+        },
+        "paired_primary_exactness": {
+            "both_exact": 22,
+            "coordinate_only_exact": 9,
+            "literal_only_exact": 30,
+            "neither_exact": 3,
+        },
+        "paired_final_exactness": {
+            "both_exact": 37,
+            "coordinate_only_exact": 6,
+            "literal_only_exact": 7,
+            "neither_exact": 14,
+        },
+    }
+
+    invalid_json_cases = [
+        case["id"]
+        for case in report["cases"]
+        if any(
+            rejection["reason"] == "invalid_json"
+            for rejection in case["coordinate"]["primary"]["rejections"]
+        )
+    ]
+    assert invalid_json_cases == ["h-n-authority-08"]
+    literal_error_issues = [
+        (case["id"], issue["code"])
+        for case in report["cases"]
+        for issue in case["literal"]["final"]["verification_issues"]
+        if issue["severity"] == "error"
+    ]
+    assert literal_error_issues == [
+        ("h-fact-02", "fact_without_confirmation_evidence"),
+        ("h-fact-03", "fact_without_confirmation_evidence"),
+        ("h-fact-04", "fact_without_confirmation_evidence"),
+        ("h-fact-05", "fact_without_confirmation_evidence"),
+    ]
 
 
 def test_cli_refuses_to_overwrite_a_live_destination(

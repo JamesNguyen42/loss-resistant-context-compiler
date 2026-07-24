@@ -189,8 +189,12 @@ Python-character spans without trusting model arithmetic. It does not support
 provider generalization, production readiness, downstream task improvement,
 or a comparison with another memory system.
 
-A disjoint corpus and paired coordinate-versus-literal live procedure are now
-frozen in the
-[held-out paired Qwen protocol](QWEN_PAIRED_EVALUATION.md). No target result
-has been observed at this checkpoint, so it does not yet change the evidence
-claims above.
+A disjoint corpus and paired coordinate-versus-literal live procedure were
+frozen before target output in the
+[held-out paired Qwen protocol](QWEN_PAIRED_EVALUATION.md). The completed
+128-call run raised literal model-only recall from 17.5% to 92.5% and F1 from
+29.7872% to 82.2222%, but reduced precision from 100% to 74%, admitted 13 false
+positives, and caused four final confirmation-evidence verification failures.
+This supports the narrower conclusion that unique-literal provenance removes
+a major offset-admission bottleneck while leaving semantic selection, typing,
+and independent verification as mandatory safety boundaries.

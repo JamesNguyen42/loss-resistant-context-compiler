@@ -1,15 +1,16 @@
 # Held-out paired Qwen extractor evaluation
 
-This is the pre-result protocol for comparing the coordinate-bearing
-`ModelExtractor` prompt with the unique-literal `LiteralModelExtractor` prompt
-on a new frozen corpus. The same exact local Qwen build, annotations, limits,
-and process are used for both modes, with call order alternating by frozen case
-index.
+This document records the pre-result protocol and retained result for comparing
+the coordinate-bearing `ModelExtractor` prompt with the unique-literal
+`LiteralModelExtractor` prompt on a new frozen corpus. The same exact local
+Qwen build, annotations, limits, and process were used for both modes, with
+call order alternating by frozen case index.
 
-The protocol and corpus must be committed on a clean revision before the first
-target-prompt output is observed. A weak result, transport failure, false
-positive, or verification failure is evidence to retain, not permission to
-edit the corpus, validator, recovery pass, or scoring rules and rerun.
+The protocol and corpus were committed on clean revision
+`b6d7095714e01c7e1d43a34ea86f8bee9235794b` before the first target-prompt
+output was observed. A weak result, transport failure, false positive, or
+verification failure is evidence to retain, not permission to edit the corpus,
+validator, recovery pass, or scoring rules and rerun.
 
 ## Frozen corpus
 
@@ -141,9 +142,66 @@ Self-hashes detect inconsistent modification relative to checked-in values.
 They do not prove that Qwen produced the bytes. An author able to replace and
 rehash the complete evidence can fabricate an internally consistent report.
 
+## Recorded held-out result
+
+The 2026-07-24 run completed all 128 strictly sequential calls and produced
+[the self-hashed captured-output report](results/qwen-heldout-paired-extractors-v1.json).
+Offline replay verifies report SHA-256
+`eb76a5accefdb50b906bb5c4658432d70958be112ef2a1febb1d71e957c9e6d2`
+against the frozen corpus and both extractor implementations.
+
+| Metric | Coordinate | Unique literal | Literal minus coordinate |
+| --- | ---: | ---: | ---: |
+| Reported / accepted / rejected candidates | 66 / 7 / 59 | 65 / 50 / 15 | -1 / +43 / -44 |
+| Degraded cases | 57 | 15 | -42 |
+| Model-only TP / FP / FN | 7 / 0 / 33 | 37 / 13 / 3 | +30 / +13 / -30 |
+| Model-only precision | 100% | 74% | -26 points |
+| Model-only recall | 17.5% | 92.5% | +75 points |
+| Model-only F1 | 29.7872% | 82.2222% | +52.435 points |
+| Model-only exact cases | 31 / 64 | 52 / 64 | +21 |
+| Negative cases without a primary prediction | 24 / 24 | 15 / 24 | -9 |
+| Recovery TP after a primary miss | 19 | 1 | -18 |
+| Final TP / FP / FN | 26 / 8 / 14 | 38 / 21 / 2 | +12 / +13 / -12 |
+| Final precision | 76.4706% | 64.4068% | -12.0638 points |
+| Final recall | 65% | 95% | +30 points |
+| Final F1 | 70.2703% | 76.7677% | +6.4974 points |
+| Final exact cases | 43 / 64 | 44 / 64 | +1 |
+| Final verification failures | 0 | 4 | +4 |
+
+The primary paired exactness counts were 22 both exact, 9 coordinate-only,
+30 literal-only, and 3 neither. After deterministic recovery they were 37
+both exact, 6 coordinate-only, 7 literal-only, and 14 neither.
+
+The result confirms that generated coordinates were a large admission
+bottleneck for this model and corpus: unique-literal output greatly increased
+model-only recall and F1. It did not produce an unqualified improvement.
+Literal mode admitted 13 model-only false positives, reduced primary negative
+accuracy from 100% to 62.5%, reduced final precision, and produced four
+`fact_without_confirmation_evidence` verification failures on
+`h-fact-02` through `h-fact-05`. Its three primary false negatives were the
+complete `discarded_attempt` atoms in `h-discarded-02`, `h-discarded-04`, and
+`h-discarded-05`; one response also split a failed attempt into truncated
+`discarded_attempt` and `progress` claims.
+
+Coordinate mode remained precise after strict admission but recalled only
+7/40 expected atoms without recovery. Its rejection evidence includes 19
+out-of-bounds spans, 18 ordinary literal mismatches, 14 exact-literal
+mismatches, and eight authority, tool-role, or correction violations. One
+otherwise successful `h-n-authority-08` CLI invocation was degraded as
+`invalid_json` because LM Studio model-loading spinner lines preceded the JSON
+on stdout. The report retains those bytes; the harness did not silently strip
+or retry them.
+
+Both modes completed 64 CLI invocations without a caught transport exception.
+Coordinate calls took 131.374205 seconds in aggregate and literal calls
+113.825091 seconds; the full run lasted 245.380297 seconds. The report records
+one inference slot, no retries, no network model API, and USD 0.00 in model
+service charges. Because the CLI exposed no sampling controls, all differences
+remain one-draw point estimates on a small, locally authored corpus.
+
 ## Commands
 
-Run the live evaluation once from the clean frozen revision:
+The live evaluation was run once from the clean frozen revision with:
 
 ```console
 python -m benchmarks.qwen_paired_eval \

@@ -372,7 +372,7 @@ and documentation together.
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 862 tests: 857 passed and 5 platform/optional checks were
+The suite collected 863 tests: 858 passed and 5 platform/optional checks were
 skipped. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |
@@ -452,19 +452,23 @@ the frozen claim cohorts and at least 5x real-token compression per cohort.
   final recall to 87.5%. That result exposes an exact-span reliability gap but
   remains locally authored, small, English-only, and outside LRCBench's
   downstream comparison protocol.
-- The later unique-literal response mode removes model offset arithmetic but
-  has no preregistered model-quality result yet. A model-free
+- The later unique-literal response mode removes model offset arithmetic. A
+  model-free
   [post-hoc ablation](QWEN_PHRASE_EVALUATION.md#post-hoc-unique-literal-offset-ablation)
   transformed the 65 saved outputs and measured 63.1579% literal-only
   precision, 60% recall, and 2 final verification failures. It did not call
   the model or evaluate the new prompt and may not be presented as
   claim-bearing evidence.
 - A new disjoint 64-case corpus and
-  [paired pre-result protocol](QWEN_PAIRED_EVALUATION.md) are frozen for a
-  128-call coordinate-versus-unique-literal comparison. No target result is
-  recorded yet. The local CLI offers no seed or temperature control, so the
-  planned one-draw-per-mode comparison will remain sensitive to sampling
-  noise even with alternating prompt order.
+  [paired pre-result protocol and result](QWEN_PAIRED_EVALUATION.md) record the
+  128-call coordinate-versus-unique-literal comparison. Literal mode improved
+  model-only recall from 17.5% to 92.5% and F1 from 29.7872% to 82.2222%, but
+  reduced precision from 100% to 74%, admitted 13 false positives, and produced
+  four final verification failures. After deterministic recovery, its F1
+  advantage was only 6.4974 points and its precision was 12.0638 points lower.
+  The local CLI offers no seed or temperature control, so the
+  one-draw-per-mode comparison remains sensitive to sampling noise even with
+  alternating prompt order.
 - The four-characters-per-token estimate is deterministic but not a provider
   tokenizer.
 - Local baselines are intentionally simple and are not substitutes for current
