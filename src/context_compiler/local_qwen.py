@@ -15,6 +15,9 @@ QWEN_MODEL_KEY = "qwen/qwen3.6-35b-a3b"
 QWEN_Q4_VARIANT = "qwen/qwen3.6-35b-a3b@q4_k_m"
 _ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
 _INFERENCE_LOCK = threading.Lock()
+_MAX_LOADING_STATUS_PREFIX_CHARS = 4_096
+_MAX_LOADING_STATUS_LINES = 64
+_MAX_LOADING_STATUS_SUFFIX_CHARS = 32
 
 
 class LocalQwenError(RuntimeError):
@@ -28,7 +31,9 @@ class LmsQwenCompletion:
     This adapter never uses an HTTP model API and passes ``--dont-fetch-catalog``.
     It verifies the on-disk and loaded model identities before each completion,
     requires LM Studio to expose one inference slot, and serializes all calls
-    through a process-wide lock.
+    through a process-wide lock. Chat stdout must contain one JSON object,
+    optionally after a bounded sequence of loading-status lines for that exact
+    model; ambiguous prefixes or trailing payloads fail closed.
 
     LM Studio's CLI accepts the prompt as a command-line argument. On operating
     systems where process arguments are visible to other local users, callers
@@ -73,6 +78,71 @@ class LmsQwenCompletion:
     @staticmethod
     def _clean_output(value: str) -> str:
         return _ANSI_ESCAPE.sub("", value).replace("\r", "").strip()
+
+    def _frame_chat_output(self, value: str) -> str:
+        """Return one JSON object after a narrowly recognized CLI status prefix."""
+
+        object_start = value.find("{")
+        if object_start < 0:
+            raise LocalQwenError(
+                "local Qwen chat output did not contain a JSON object"
+            )
+        prefix = value[:object_start]
+        candidate = value[object_start:]
+        if prefix:
+            if (
+                len(prefix) > _MAX_LOADING_STATUS_PREFIX_CHARS
+                or not prefix.endswith("\n")
+            ):
+                raise LocalQwenError(
+                    "local Qwen chat output had an invalid status prefix"
+                )
+            lines = prefix.splitlines()
+            if not lines or len(lines) > _MAX_LOADING_STATUS_LINES:
+                raise LocalQwenError(
+                    "local Qwen chat output had an invalid status prefix"
+                )
+            expected = f"Loading {self.model_key}"
+            for line in lines:
+                if not line.startswith(expected):
+                    raise LocalQwenError(
+                        "local Qwen chat output had an unrecognized status prefix"
+                    )
+                suffix = line[len(expected) :]
+                if (
+                    len(suffix) > _MAX_LOADING_STATUS_SUFFIX_CHARS
+                    or (suffix and not suffix.startswith(" "))
+                    or any(
+                        character in '{}[]"\'`\\'
+                        or ord(character) < 32
+                        or (
+                            character.isascii()
+                            and character.isalnum()
+                        )
+                        for character in suffix
+                    )
+                ):
+                    raise LocalQwenError(
+                        "local Qwen chat output had an invalid status prefix"
+                    )
+        invalid_json = False
+        try:
+            decoded, end = json.JSONDecoder().raw_decode(candidate)
+        except (ValueError, RecursionError):
+            invalid_json = True
+        if invalid_json:
+            raise LocalQwenError(
+                "local Qwen chat output was not valid JSON"
+            )
+        if not isinstance(decoded, dict):
+            raise LocalQwenError(
+                "local Qwen chat output was not a JSON object"
+            )
+        if candidate[end:].strip():
+            raise LocalQwenError(
+                "local Qwen chat output contained trailing data"
+            )
+        return candidate[:end]
 
     def _run(self, arguments: list[str], *, timeout: float = 30.0) -> str:
         creation_flags = (
@@ -194,4 +264,4 @@ class LmsQwenCompletion:
             _INFERENCE_LOCK.release()
         if len(output) > self.max_output_chars:
             raise LocalQwenError("local Qwen output exceeded the configured limit")
-        return output
+        return self._frame_chat_output(output)

@@ -53,6 +53,96 @@ def test_cli_adapter_verifies_exact_qwen_q4_and_returns_clean_output(tmp_path) -
     assert run.call_args_list[-1].kwargs["timeout"] == 120.0
 
 
+def test_cli_adapter_frames_bounded_known_loading_status_prefix(tmp_path) -> None:
+    executable = tmp_path / "lms.exe"
+    executable.write_bytes(b"placeholder")
+    adapter = LmsQwenCompletion(executable)
+    response = (
+        f"Loading {QWEN_MODEL_KEY} ⠙\n"
+        f"Loading {QWEN_MODEL_KEY} â ¹\n"
+        '{"items":[{"text":"brace } inside a string"}]}'
+    )
+
+    with patch.object(
+        LmsQwenCompletion,
+        "preflight",
+        return_value={},
+    ), patch.object(
+        LmsQwenCompletion,
+        "_run",
+        return_value=response,
+    ):
+        assert adapter("extract this") == (
+            '{"items":[{"text":"brace } inside a string"}]}'
+        )
+
+
+def test_cli_adapter_rejects_ambiguous_chat_framing_without_leaking_it(
+    tmp_path,
+) -> None:
+    executable = tmp_path / "lms.exe"
+    executable.write_bytes(b"placeholder")
+    adapter = LmsQwenCompletion(executable)
+    secret = "secret-status-value"
+    invalid_outputs = (
+        f"{secret}\n{{\"items\":[]}}",
+        'Loading another/model ⠙\n{"items":[]}',
+        f"Loading {QWEN_MODEL_KEY} {secret}\n{{\"items\":[]}}",
+        f"Loading {QWEN_MODEL_KEY} {{{secret}}}\n{{\"items\":[]}}",
+        '{"items":[]} trailing',
+        '{"items":[]}{"items":[]}',
+        '{"items":] }',
+        '{"value":' + "9" * 5_000 + "}",
+        "[]",
+    )
+
+    with patch.object(
+        LmsQwenCompletion,
+        "preflight",
+        return_value={},
+    ):
+        for output in invalid_outputs:
+            with patch.object(
+                LmsQwenCompletion,
+                "_run",
+                return_value=output,
+            ), pytest.raises(LocalQwenError) as raised:
+                adapter("extract this")
+            assert secret not in str(raised.value)
+            assert raised.value.__cause__ is None
+            assert raised.value.__context__ is None
+
+
+def test_cli_adapter_bounds_loading_status_prefix_shape(tmp_path) -> None:
+    executable = tmp_path / "lms.exe"
+    executable.write_bytes(b"placeholder")
+    adapter = LmsQwenCompletion(executable)
+    too_many_lines = (
+        "\n".join(f"Loading {QWEN_MODEL_KEY}" for _ in range(65))
+        + '\n{"items":[]}'
+    )
+    too_long = (
+        "\n".join(
+            f"Loading {QWEN_MODEL_KEY} {'x' * 32}"
+            for _ in range(64)
+        )
+        + '\n{"items":[]}'
+    )
+
+    with patch.object(
+        LmsQwenCompletion,
+        "preflight",
+        return_value={},
+    ):
+        for output in (too_many_lines, too_long):
+            with patch.object(
+                LmsQwenCompletion,
+                "_run",
+                return_value=output,
+            ), pytest.raises(LocalQwenError, match="invalid status prefix"):
+                adapter("extract this")
+
+
 def test_cli_adapter_rejects_wrong_model_identity_and_quantization(tmp_path) -> None:
     executable = tmp_path / "lms.exe"
     executable.write_bytes(b"placeholder")

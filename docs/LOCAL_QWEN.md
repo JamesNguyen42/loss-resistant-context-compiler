@@ -62,6 +62,16 @@ model state. A process-wide nonblocking lock serializes inference. The command
 has a hard subprocess timeout, disables reasoning output, passes
 `--dont-fetch-catalog`, and strips terminal escape sequences.
 
+LM Studio can print model-loading progress on chat stdout. The adapter accepts
+only up to 64 bounded lines beginning with
+`Loading qwen/qwen3.6-35b-a3b`, followed immediately by one JSON object. It
+removes no other prefix and rejects malformed JSON, a non-object top level,
+ambiguous status text, a second object, or any non-whitespace trailing data.
+Raw stdout is bounded before framing, and framing errors do not include the
+captured content in exceptions. This narrow rule recovers availability for the
+observed CLI behavior without turning arbitrary prose stripping into a trust
+boundary.
+
 The default compiler policy is loss-resistant degradation: a timeout, process
 failure, invalid model envelope, oversized response, or wholly unusable
 candidate set produces deterministic recovered memory and an explicit
@@ -92,8 +102,9 @@ validator rejected 7 model candidates. This is an integration diagnostic, not
 a model-quality, latency, cost, or external-system performance claim.
 
 Automated tests mock the CLI boundary and cover exact identity, quantization,
-loaded-state and single-slot checks, ANSI removal, timeouts, and refusal of a
-different configuration. They do not require the model in CI.
+loaded-state and single-slot checks, ANSI removal, timeouts, bounded loading
+prefixes, ambiguous/trailing output, and refusal of a different configuration.
+They do not require the model in CI.
 
 ## Unique-literal response mode
 

@@ -269,8 +269,10 @@ no seed or temperature setting, so one captured draw per mode remains subject
 to sampling noise. The retained run also demonstrates that LM Studio can emit
 loading-status text on stdout before an otherwise structured response. Strict
 whole-output JSON parsing safely rejected that capture instead of guessing at
-framing, but reduced availability and recall; any future prefix-tolerant
-transport must remain bounded and reject ambiguous or trailing payloads.
+framing, but reduced availability and recall. The current adapter, added after
+that frozen run, accepts only a bounded exact-model loading prefix followed by
+one JSON object and rejects ambiguous or trailing payloads. The historical
+report is not rescored.
 
 Manifest replay requires the retained corpus at its recorded absolute path and
 checks its canonical digest, file digest, dataset id, and case count. The

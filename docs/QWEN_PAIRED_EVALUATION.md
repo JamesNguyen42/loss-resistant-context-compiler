@@ -190,7 +190,9 @@ mismatches, and eight authority, tool-role, or correction violations. One
 otherwise successful `h-n-authority-08` CLI invocation was degraded as
 `invalid_json` because LM Studio model-loading spinner lines preceded the JSON
 on stdout. The report retains those bytes; the harness did not silently strip
-or retry them.
+or retry them. A later adapter hardening accepts only a bounded exact-model
+loading prefix followed by one unambiguous JSON object. It is covered with
+synthetic transport fixtures and does not alter or rescore this frozen result.
 
 Both modes completed 64 CLI invocations without a caught transport exception.
 Coordinate calls took 131.374205 seconds in aggregate and literal calls

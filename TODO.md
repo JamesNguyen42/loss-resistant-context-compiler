@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 863 tests (858 passing and 5 skipped locally); CI covers Python
+- [x] Collect 866 tests (861 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -471,10 +471,12 @@ than most related technology” within the exact dated evaluation scope.
   final verification failures, and one coordinate-mode JSON contamination
   event; see the
   [paired result audit](docs/QWEN_PAIRED_EVALUATION.md).
-- [ ] Harden LM Studio stdout framing against bounded non-JSON status prefixes
+- [x] Harden LM Studio stdout framing against bounded non-JSON status prefixes
   without accepting ambiguous or trailing payloads. Specify and test the
   transport rule independently; do not rerun or rescore the observed paired
-  corpus as evidence for that follow-up.
+  corpus as evidence for that follow-up. The adapter now accepts only a bounded
+  exact-model loading prefix plus one JSON object; synthetic tests preserve the
+  original report.
 - [ ] Never weaken deterministic recovery merely to improve model-only metrics.
 
 ### Temporal and semantic state
@@ -693,14 +695,12 @@ The next chat should start here unless new evidence changes the priority:
 
 1. preserve and replay the completed held-out paired result without tuning its
    corpus, validators, recovery, scoring, or recorded metrics;
-2. specify and test fail-closed LM Studio stdout framing using synthetic
-   transport fixtures, including the retained loading-spinner failure shape;
-3. resolve the remaining `TBD` fields in the external-comparison protocol;
-4. define inclusion rules and freeze the initial related-system set;
-5. add the first reproducible no-paid-service external adapter;
-6. run the interchange self-test and adapter on a small diagnostic corpus;
-7. design the privacy/licensing and annotation protocol for natural histories;
-8. freeze a full natural corpus only after the diagnostic path is reliable;
-9. record all results without changing the claim boundary.
+2. resolve the remaining `TBD` fields in the external-comparison protocol;
+3. define inclusion rules and freeze the initial related-system set;
+4. add the first reproducible no-paid-service external adapter;
+5. run the interchange self-test and adapter on a small diagnostic corpus;
+6. design the privacy/licensing and annotation protocol for natural histories;
+7. freeze a full natural corpus only after the diagnostic path is reliable;
+8. record all results without changing the claim boundary.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) before changing code or benchmark rules.

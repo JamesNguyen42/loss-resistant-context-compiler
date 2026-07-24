@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 863 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 866 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -189,7 +189,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 863 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 866 regression tests.
 
 ## In development
 
@@ -732,8 +732,10 @@ compiler = ContextCompiler(
 ```
 
 The adapter disables catalog fetching and does not use an HTTP model API.
-LM Studio passes the prompt as a process argument, so run content redaction
-before using it and separately minimize metadata. See
+It accepts only one JSON object after an optional bounded exact-model loading
+prefix and rejects ambiguous or trailing stdout. LM Studio passes the prompt as
+a process argument, so run content redaction before using it and separately
+minimize metadata. See
 [Local Qwen integration](docs/LOCAL_QWEN.md).
 
 `CompilationPolicy(verify=False)` is an explicitly unsafe diagnostic mode. It
@@ -848,7 +850,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 863 tests are collected (858 pass and 5
+Current local snapshot (2026-07-24): 866 tests are collected (861 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

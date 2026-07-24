@@ -23,7 +23,7 @@ changing or interpreting the recorded comparison.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 863 collected: 858 passing, 5 skipped |
+| Tests at this snapshot | 866 collected: 861 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -472,7 +472,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 863 tests are collected: 858 pass and 5 platform/optional checks are skipped.
+- 866 tests are collected: 861 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all five schemas are included.
@@ -506,6 +506,11 @@ audited. Any selected superseded item independently fails verification as
   call latency was 1.968 seconds; model-service cost was USD 0.00. The
   self-hashed raw-output report replays offline; see
   `docs/QWEN_PHRASE_EVALUATION.md`.
+- The local LM Studio chat transport now tolerates only a bounded sequence of
+  exact-model loading-status lines before one JSON object. It rejects arbitrary
+  prefixes, malformed/non-object JSON, multiple objects, and trailing data
+  without echoing captured output. Synthetic fixtures cover the failure shape;
+  no completed Qwen report was rerun or rescored.
 - Opt-in `LiteralModelExtractor` removes model-supplied offset arithmetic from
   the trust boundary without accepting paraphrases. Its separate strict schema
   accepts exact text and unique source ids, derives Python-character spans only
@@ -829,6 +834,10 @@ lower quantile before results are observed.
   observed literal recall gain came with 13 model-only false positives, a
   37.5% primary negative-case error rate, and four final verification failures;
   it is a tradeoff diagnostic, not evidence of production superiority.
+- The transport hardening added after the paired run prevents the observed
+  loading-prefix shape from becoming an availability failure, but it cannot
+  retroactively change the frozen metrics and does not improve semantic
+  selection or typing.
 - Local controls are simple and are not state-of-the-art substitutes.
 - Atom recall is a proxy for agent success, not task completion.
 - Bootstrap intervals do not cover benchmark design bias.
@@ -873,23 +882,19 @@ currently implement this transaction manager.
 
 ## Exact next step
 
-The known in-process safety paths and internal benchmark estimands are closed,
-and the frozen model diagnostic is recorded. The highest-value next work is
-transport hardening followed by the external and natural-history evidence path:
+The known in-process safety paths, internal benchmark estimands, frozen model
+diagnostic, and narrow LM Studio stdout framing are complete. The highest-value
+next work is the external and natural-history evidence path:
 
 1. preserve the paired report and its four verification failures without
    post-result tuning or rescoring;
-2. specify fail-closed LM Studio stdout framing and cover bounded status
-   prefixes, ambiguous JSON, and trailing payloads with synthetic tests;
-3. keep any transport fix independent from the observed corpus and do not
-   rerun that corpus as claim-bearing evidence;
-4. resolve every `TBD` in the versioned draft external protocol without looking
+2. resolve every `TBD` in the versioned draft external protocol without looking
    at comparative results;
-5. freeze the initial comparison set and pinned revisions;
-6. freeze containment or accounting for a pre-existing inference service
+3. freeze the initial comparison set and pinned revisions;
+4. freeze containment or accounting for a pre-existing inference service
    outside the now-bounded adapter process tree;
-7. add the first reproducible, no-paid-service external adapter;
-8. define the natural-history privacy, licensing, and annotation protocol.
+5. add the first reproducible, no-paid-service external adapter;
+6. define the natural-history privacy, licensing, and annotation protocol.
 
 The detailed ordered backlog is in [TODO.md](../TODO.md).
 
