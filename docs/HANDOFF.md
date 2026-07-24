@@ -27,7 +27,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 895 collected: 890 passing, 5 skipped |
+| Tests at this snapshot | 899 collected: 893 passing, 6 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -489,7 +489,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 895 tests are collected: 890 pass and 5 platform/optional checks are skipped.
+- 899 tests are collected: 893 pass and 6 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all seven schemas are included.
@@ -634,6 +634,10 @@ audited. Any selected superseded item independently fails verification as
   JSONL upgrades on a new append, readers observe the old or complete new
   archive, pre-replacement failures preserve committed history, and temporary
   files are cleaned.
+- Archive reads require a stable single-link regular `events.jsonl`, use
+  no-follow flags where available, compare pre-open/open identity, and retry a
+  bounded atomic-replacement race. Tests reject directories, hard links,
+  symlinks, and FIFOs without opening the special target.
 - Archive writers contend on a persistent advisory-lock marker rather than its
   existence. Same-process and real subprocess tests prove live-writer timeout
   and automatic lock release after forced process termination. Cleanup also

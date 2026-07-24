@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
+import stat
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -30,6 +32,7 @@ LEGACY_ARCHIVE_SCHEMA = "ctxc-source-archive-legacy-jsonl"
 ARCHIVE_GENESIS_SHA256 = "0" * 64
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_ARCHIVE_OPEN_ATTEMPTS = 3
 _SOURCE_RECORD_FIELDS = frozenset(
     {
         "id",
@@ -232,21 +235,10 @@ class SourceArchive:
         return list(state.records)
 
     def _load_state(self) -> _ArchiveState:
-        if not self.events_path.exists():
-            return _ArchiveState((), ARCHIVE_ENTRY_SCHEMA, ARCHIVE_GENESIS_SHA256)
         try:
-            if self.events_path.stat().st_size > self.source_limits.max_input_bytes:
-                raise SourceLimitError(
-                    f"archive exceeds {self.source_limits.max_input_bytes} bytes"
-                )
-            with self.events_path.open("r", encoding="utf-8", newline="") as stream:
-                raw = _read_limited_text(
-                    stream,
-                    max_input_bytes=self.source_limits.max_input_bytes,
-                    max_line_chars=self.source_limits.max_line_chars,
-                    label="archive",
-                    limit_error=SourceLimitError,
-                )
+            raw = self._read_events_text()
+            if raw is None:
+                return _ArchiveState((), ARCHIVE_ENTRY_SCHEMA, ARCHIVE_GENESIS_SHA256)
             values = self._decode_lines(raw)
             if not values:
                 return _ArchiveState((), ARCHIVE_ENTRY_SCHEMA, ARCHIVE_GENESIS_SHA256)
@@ -258,6 +250,91 @@ class SourceArchive:
             raise
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise ValueError(f"invalid archive: {exc}") from exc
+
+    def _read_events_text(self) -> str | None:
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOINHERIT", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        for attempt in range(_ARCHIVE_OPEN_ATTEMPTS):
+            try:
+                candidate_stat = self.events_path.lstat()
+            except FileNotFoundError:
+                return None
+            if not stat.S_ISREG(candidate_stat.st_mode):
+                raise ValueError(
+                    f"archive events path must be a regular file: {self.events_path}"
+                )
+            if candidate_stat.st_nlink != 1:
+                raise ValueError(
+                    f"archive events path must not have hard links: {self.events_path}"
+                )
+            try:
+                descriptor = os.open(self.events_path, flags)
+            except FileNotFoundError:
+                if attempt + 1 < _ARCHIVE_OPEN_ATTEMPTS:
+                    continue
+                raise ValueError(
+                    f"archive events path changed while opening: {self.events_path}"
+                ) from None
+            except PermissionError:
+                raise
+            except OSError as exc:
+                raise ValueError(
+                    f"archive events path could not be opened safely: {self.events_path}"
+                ) from exc
+            try:
+                opened_stat = os.fstat(descriptor)
+                if not stat.S_ISREG(opened_stat.st_mode):
+                    raise ValueError(
+                        f"archive events path must be a regular file: {self.events_path}"
+                    )
+                if opened_stat.st_nlink != 1:
+                    raise ValueError(
+                        "archive events path must not have hard links: "
+                        f"{self.events_path}"
+                    )
+                if (
+                    candidate_stat.st_dev,
+                    candidate_stat.st_ino,
+                ) != (
+                    opened_stat.st_dev,
+                    opened_stat.st_ino,
+                ):
+                    if attempt + 1 < _ARCHIVE_OPEN_ATTEMPTS:
+                        continue
+                    raise ValueError(
+                        f"archive events path changed while opening: {self.events_path}"
+                    )
+                if opened_stat.st_size > self.source_limits.max_input_bytes:
+                    raise SourceLimitError(
+                        f"archive exceeds {self.source_limits.max_input_bytes} bytes"
+                    )
+                os.set_inheritable(descriptor, False)
+                stream = os.fdopen(
+                    descriptor,
+                    "r",
+                    encoding="utf-8",
+                    newline="",
+                )
+                descriptor = -1
+                with stream:
+                    return _read_limited_text(
+                        stream,
+                        max_input_bytes=self.source_limits.max_input_bytes,
+                        max_line_chars=self.source_limits.max_line_chars,
+                        label="archive",
+                        limit_error=SourceLimitError,
+                    )
+            finally:
+                if descriptor >= 0:
+                    os.close(descriptor)
+        raise ValueError(
+            f"archive events path changed while opening: {self.events_path}"
+        )
 
     def _decode_lines(self, raw: str) -> list[Any]:
         values: list[Any] = []

@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 895 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 899 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -191,7 +191,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 895 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 899 regression tests.
 
 ## In development
 
@@ -461,6 +461,14 @@ ownership is the kernel lock, not file existence, and descriptor close or
 process death releases it. The tradeoff is O(archive size) work and temporary
 disk space per append, and the filesystem must implement local advisory locks
 and atomic replacement correctly.
+
+Archive reads refuse a symlink, hard-linked file, directory, FIFO, device, or
+other non-regular `events.jsonl`. They open without following links where the
+OS supports it, compare the pre-open and open file identities, and retry a
+bounded number of times if an atomic replacement lands between those checks.
+This keeps a hostile special file from turning verification into an unbounded
+read or redirecting it to an aliased file. It does not authenticate the parent
+directory or protect against a filesystem administrator.
 
 Each new-format line is a canonical `ctxc-source-archive-entry-0.1` envelope
 whose SHA-256 binds its position, preceding entry hash, and complete canonical
@@ -923,7 +931,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 895 tests are collected (890 pass and 5
+Current local snapshot (2026-07-24): 899 tests are collected (893 pass and 6
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

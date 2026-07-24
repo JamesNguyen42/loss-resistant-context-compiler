@@ -682,6 +682,13 @@ overwritten through the API, and archive loads revalidate the chain, exact
 entry shape, source ordering, each content hash, and each canonical record
 hash, including timestamp and metadata.
 
+The `events.jsonl` read boundary requires one regular file with a single hard
+link. It rejects symlinks and special files before opening, requests
+no-follow/non-inheritable descriptor behavior where the OS exposes it,
+rechecks the open descriptor's type/link count, and compares pre-open and
+post-open file identity. A bounded retry handles an ordinary atomic replacement
+between inspection and open without weakening the alias check.
+
 Under the lock, each logical append reloads and validates the bounded archive,
 sorts the combined history by sequence, and atomically installs the complete
 JSONL file. Readers therefore observe either the previous complete history or
