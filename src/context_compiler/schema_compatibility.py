@@ -78,6 +78,7 @@ def artifact_schema_registry() -> dict[str, Any]:
                 "writable": True,
                 "compatible_omissions": [
                     "compiler_metadata.metrics",
+                    "compiler_metadata.compilation_limits",
                 ],
             }
         ],

@@ -8,9 +8,14 @@ from collections.abc import Callable, Iterable
 
 from .extractors import ExtractionResult, Extractor, RuleBasedExtractor
 from .limits import (
+    CompilationLimitError,
+    CompilationLimits,
     SourceLimitError,
     SourceLimits,
+    _CompilationWorkBudget,
     add_source_size,
+    bounded_json_utf8_size,
+    resolve_compilation_limits,
     resolve_source_limits,
     source_value_size,
 )
@@ -61,6 +66,7 @@ class ContextCompiler:
         token_counter: TokenCounter | None = None,
         token_counter_id: str | None = None,
         source_limits: SourceLimits | None = None,
+        compilation_limits: CompilationLimits | None = None,
     ) -> None:
         if token_counter is None and token_counter_id is not None:
             raise ValueError("token_counter_id requires token_counter")
@@ -68,7 +74,16 @@ class ContextCompiler:
             not isinstance(token_counter_id, str) or not token_counter_id.strip()
         ):
             raise TypeError("token_counter_id must be a non-empty string")
-        self.extractor = extractor if extractor is not None else RuleBasedExtractor()
+        self.compilation_limits = resolve_compilation_limits(
+            compilation_limits
+        )
+        self.extractor = (
+            extractor
+            if extractor is not None
+            else RuleBasedExtractor(
+                max_items=self.compilation_limits.max_extractor_items
+            )
+        )
         self.policy = policy if policy is not None else CompilationPolicy()
         self.safety_extractor = safety_extractor
         self._custom_token_counter = token_counter
@@ -104,10 +119,25 @@ class ContextCompiler:
         # These built-in passes are deliberately not constructor seams. Custom
         # extractors may add coverage, but cannot reduce the obligation against
         # which verified output is certified.
-        recovery_extractor = RuleBasedExtractor()
-        certification_extractor = RuleBasedExtractor(protected_only=True)
-        recovery = recovery_extractor.extract(ordered)
-        certification = certification_extractor.extract(ordered)
+        recovery_extractor = RuleBasedExtractor(
+            max_items=self.compilation_limits.max_extractor_items
+        )
+        certification_extractor = RuleBasedExtractor(
+            protected_only=True,
+            max_items=self.compilation_limits.max_extractor_items,
+        )
+        recovery = self._validated_extraction(
+            recovery_extractor.extract(ordered),
+            label="built-in recovery extractor",
+        )
+        certification = self._validated_extraction(
+            certification_extractor.extract(ordered),
+            label="built-in certification extractor",
+        )
+        total_candidate_items = len(recovery.items) + len(
+            certification.items
+        )
+        self._validate_total_candidate_items(total_candidate_items)
         safety_results: list[tuple[str, ExtractionResult]] = [
             (recovery_extractor.name, recovery)
         ]
@@ -123,8 +153,11 @@ class ContextCompiler:
         if self.safety_extractor is not None:
             try:
                 custom_safety = self._validated_extraction(
-                    self.safety_extractor.extract(ordered)
+                    self.safety_extractor.extract(ordered),
+                    label=f"additive safety extractor {custom_safety_name!r}",
                 )
+            except CompilationLimitError:
+                raise
             except Exception as exc:
                 custom_safety_failure = {
                     "extractor": custom_safety_name,
@@ -138,13 +171,20 @@ class ContextCompiler:
                     )
                 )
             else:
+                total_candidate_items += len(custom_safety.items)
+                self._validate_total_candidate_items(total_candidate_items)
                 safety_results.append((custom_safety_name, custom_safety))
                 custom_safety_rejections = custom_safety.rejected
 
         primary_failure: dict[str, str] | None = None
         primary_degradation: dict[str, str] | None = None
         try:
-            primary = self._validated_extraction(self.extractor.extract(ordered))
+            primary = self._validated_extraction(
+                self.extractor.extract(ordered),
+                label=f"primary extractor {primary_name!r}",
+            )
+        except CompilationLimitError:
+            raise
         except Exception as exc:
             if self.policy.fail_on_primary_extractor_error:
                 raise RuntimeError(
@@ -164,6 +204,8 @@ class ContextCompiler:
                     message=PRIMARY_EXTRACTOR_FAILED_MESSAGE,
                 )
             )
+        total_candidate_items += len(primary.items)
+        self._validate_total_candidate_items(total_candidate_items)
         if primary_failure is None and primary.metadata.get("degraded") is True:
             raw_reason = primary.metadata.get("failure_reason")
             reason = (
@@ -190,24 +232,47 @@ class ContextCompiler:
         if source_digest(ordered) != trusted_source_digest:
             raise ValueError("source history changed during extraction")
 
+        work_budget = _CompilationWorkBudget(
+            self.compilation_limits.max_item_work
+        )
         items = list(primary.items)
+        self._validate_resolved_collection(
+            items,
+            phase="primary extraction",
+        )
         if self.policy.recover_missed_protected:
             for extractor_name, safety in safety_results:
                 for candidate in safety.items:
-                    if not self._span_kind_present(candidate, items):
+                    if not self._span_kind_present(
+                        candidate,
+                        items,
+                        work_budget=work_budget,
+                    ):
                         recovered_candidate = MemoryItem.from_dict(candidate.to_dict())
                         recovered_candidate.tags = sorted(
                             set(recovered_candidate.tags) | {"verifier-recovered"}
                         )
                         recovered_candidate.metadata["recovered_by"] = extractor_name
                         items.append(recovered_candidate)
+                        self._validate_resolved_collection(
+                            items,
+                            phase="protected recovery",
+                        )
 
-        items = resolve_temporal_state(items)
+        items = resolve_temporal_state(
+            items,
+            limits=self.compilation_limits,
+            work_budget=work_budget,
+        )
         # Count replayable recovered ledger items after temporal resolution.
         # Pre-resolution insertions may merge, so reporting insertion attempts
         # would make a freshly compiled artifact fail independent replay.
         recovered = sum("verifier-recovered" in item.tags for item in items)
-        selected_ids = self._select(items, ordered)
+        selected_ids = self._select(
+            items,
+            ordered,
+            work_budget=work_budget,
+        )
 
         # Build once with placeholder stats so prompt rendering and its schema
         # overhead are included in the active token accounting.
@@ -248,6 +313,7 @@ class ContextCompiler:
                 "recovered_items": recovered,
                 "loss_policy": "protected-items-never-drop",
                 "source_limits": self.source_limits.to_dict(),
+                "compilation_limits": self.compilation_limits.to_dict(),
                 "policy": {
                     "token_budget": self.policy.token_budget,
                     "minimum_compression_ratio": self.policy.minimum_compression_ratio,
@@ -299,6 +365,7 @@ class ContextCompiler:
                 budget_overflow=result.compression.budget_overflow,
                 compression_target_met=result.compression.target_met,
                 initial_issues=initial_issues,
+                work_budget=work_budget,
             )
         else:
             result.verification = VerificationReport(
@@ -423,25 +490,122 @@ class ContextCompiler:
         return sorted(prepared, key=lambda source: source.sequence)
 
     @staticmethod
-    def _span_kind_present(candidate: MemoryItem, items: list[MemoryItem]) -> bool:
-        return any(
-            memory_item_covers_candidate(candidate, item)
-            for item in items
-        )
+    def _span_kind_present(
+        candidate: MemoryItem,
+        items: list[MemoryItem],
+        *,
+        work_budget: _CompilationWorkBudget,
+    ) -> bool:
+        for item in items:
+            work_budget.consume(1, phase="protected recovery")
+            if memory_item_covers_candidate(candidate, item):
+                return True
+        return False
 
-    @staticmethod
-    def _validated_extraction(result: ExtractionResult) -> ExtractionResult:
+    def _validated_extraction(
+        self,
+        result: ExtractionResult,
+        *,
+        label: str,
+    ) -> ExtractionResult:
         if not isinstance(result, ExtractionResult):
             raise TypeError("extractor must return ExtractionResult")
         if not all(isinstance(item, MemoryItem) for item in result.items):
             raise TypeError("extractor result items must be MemoryItem values")
+        if len(result.items) > self.compilation_limits.max_extractor_items:
+            raise CompilationLimitError(
+                f"{label} exceeds "
+                f"{self.compilation_limits.max_extractor_items} memory items"
+            )
         if not isinstance(result.rejected, list) or not all(
             isinstance(rejection, dict) for rejection in result.rejected
         ):
             raise TypeError("extractor rejections must be dictionaries")
+        if (
+            len(result.rejected)
+            > self.compilation_limits.max_extractor_rejections
+        ):
+            raise CompilationLimitError(
+                f"{label} exceeds "
+                f"{self.compilation_limits.max_extractor_rejections} "
+                "rejections"
+            )
         if not isinstance(result.metadata, dict):
             raise TypeError("extractor metadata must be an object")
+
+        item_bytes = 2
+        provenance_spans = 0
+        for index, item in enumerate(result.items):
+            provenance_spans += len(item.provenance)
+            if (
+                provenance_spans
+                > self.compilation_limits.max_provenance_spans
+            ):
+                raise CompilationLimitError(
+                    f"{label} exceeds "
+                    f"{self.compilation_limits.max_provenance_spans} "
+                    "provenance spans"
+                )
+            try:
+                item_payload = item.to_dict()
+            except (RecursionError, TypeError, ValueError, OverflowError) as exc:
+                raise CompilationLimitError(
+                    f"{label} item {index} cannot be measured as canonical JSON"
+                ) from exc
+            item_size = bounded_json_utf8_size(
+                item_payload,
+                max_bytes=self.compilation_limits.max_extractor_bytes,
+                max_depth=128,
+                label=f"{label} item {index}",
+                limit_error=CompilationLimitError,
+            )
+            item_bytes += item_size + (1 if index else 0)
+            if item_bytes > self.compilation_limits.max_extractor_bytes:
+                raise CompilationLimitError(
+                    f"{label} items exceed "
+                    f"{self.compilation_limits.max_extractor_bytes} "
+                    "canonical UTF-8 JSON bytes"
+                )
+
+        bounded_json_utf8_size(
+            {
+                "rejected": result.rejected,
+                "metadata": result.metadata,
+            },
+            max_bytes=(
+                self.compilation_limits.max_extractor_auxiliary_bytes
+            ),
+            max_depth=128,
+            label=f"{label} auxiliary data",
+            limit_error=CompilationLimitError,
+        )
         return result
+
+    def _validate_total_candidate_items(self, count: int) -> None:
+        if count > self.compilation_limits.max_total_candidate_items:
+            raise CompilationLimitError(
+                "combined extractor candidates exceed "
+                f"{self.compilation_limits.max_total_candidate_items} items"
+            )
+
+    def _validate_resolved_collection(
+        self,
+        items: list[MemoryItem],
+        *,
+        phase: str,
+    ) -> None:
+        if len(items) > self.compilation_limits.max_resolved_items:
+            raise CompilationLimitError(
+                f"{phase} exceeds "
+                f"{self.compilation_limits.max_resolved_items} resolved items"
+            )
+        provenance_spans = sum(len(item.provenance) for item in items)
+        if provenance_spans > self.compilation_limits.max_provenance_spans:
+            raise CompilationLimitError(
+                f"{phase} exceeds "
+                f"{self.compilation_limits.max_provenance_spans} "
+                "provenance spans"
+            )
 
     @staticmethod
     def _extractor_name(extractor: Extractor) -> str:
@@ -470,7 +634,13 @@ class ContextCompiler:
             f"{item.kind.value}:\n{render_prompt_item(item)}\n"
         )
 
-    def _select(self, items: list[MemoryItem], sources: list[SourceRecord]) -> list[str]:
+    def _select(
+        self,
+        items: list[MemoryItem],
+        sources: list[SourceRecord],
+        *,
+        work_budget: _CompilationWorkBudget,
+    ) -> list[str]:
         source_text = "\n".join(source.content for source in sources)
         source_tokens = self._count_tokens(source_text)
         target_budget = math.floor(
@@ -491,12 +661,16 @@ class ContextCompiler:
         optional = [item for item in eligible if not item.protected]
         # Old discarded attempts remain useful but lose to current decisions and
         # facts. Recency breaks ties rather than dominating semantic priority.
+        optional_costs: dict[str, int] = {}
+        for item in optional:
+            work_budget.consume(1, phase="selection item costing")
+            optional_costs[item.id] = self._item_cost(item)
         optional.sort(
             key=lambda item: (
                 item.priority,
                 item.confidence,
                 item.source_sequence,
-                -self._item_cost(item),
+                -optional_costs[item.id],
             ),
             reverse=True,
         )
@@ -513,6 +687,10 @@ class ContextCompiler:
             effective_budget = min(effective_budget, target_budget)
         for item in optional:
             trial = [*chosen, item]
+            work_budget.consume(
+                len(trial),
+                phase="selection prompt rendering",
+            )
             rendered = render_typed_memory(trial, [value.id for value in trial])
             if self._count_tokens(rendered) <= effective_budget:
                 chosen.append(item)

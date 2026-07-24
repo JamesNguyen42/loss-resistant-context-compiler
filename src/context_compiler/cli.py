@@ -23,9 +23,12 @@ from .io import (
 from .isolation import CompilationIsolationError
 from .limits import (
     DEFAULT_ARTIFACT_LIMITS,
+    DEFAULT_COMPILATION_LIMITS,
     DEFAULT_SOURCE_LIMITS,
     ArtifactLimitError,
     ArtifactLimits,
+    CompilationLimitError,
+    CompilationLimits,
     SourceLimitError,
     SourceLimits,
 )
@@ -59,6 +62,21 @@ def _source_limits(args: argparse.Namespace) -> SourceLimits:
         max_record_bytes=args.max_source_record_bytes,
         max_total_record_bytes=args.max_total_source_bytes,
         max_json_depth=args.max_source_json_depth,
+    )
+
+
+def _compilation_limits(args: argparse.Namespace) -> CompilationLimits:
+    return CompilationLimits(
+        max_extractor_items=args.max_extractor_items,
+        max_extractor_rejections=args.max_extractor_rejections,
+        max_extractor_bytes=args.max_extractor_bytes,
+        max_extractor_auxiliary_bytes=(
+            args.max_extractor_auxiliary_bytes
+        ),
+        max_total_candidate_items=args.max_total_candidate_items,
+        max_resolved_items=args.max_resolved_items,
+        max_provenance_spans=args.max_compilation_provenance_spans,
+        max_item_work=args.max_compilation_item_work,
     )
 
 
@@ -98,7 +116,12 @@ def _command_name(args: argparse.Namespace) -> str:
 def _error_identity(exc: BaseException) -> tuple[str, str]:
     if isinstance(
         exc,
-        (ArtifactLimitError, RedactionLimitError, SourceLimitError),
+        (
+            ArtifactLimitError,
+            CompilationLimitError,
+            RedactionLimitError,
+            SourceLimitError,
+        ),
     ):
         return "resource_limit", "resource_limit_exceeded"
     if isinstance(exc, TimeoutError):
@@ -297,6 +320,7 @@ def _compile(args: argparse.Namespace) -> int:
         result = ContextCompiler(
             policy=policy,
             source_limits=source_limits,
+            compilation_limits=_compilation_limits(args),
         ).compile(
             sources,
             timeout_seconds=args.compile_timeout_seconds,
@@ -637,6 +661,61 @@ def _add_source_limit_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_compilation_limit_arguments(
+    parser: argparse.ArgumentParser,
+) -> None:
+    parser.add_argument(
+        "--max-extractor-items",
+        type=int,
+        default=DEFAULT_COMPILATION_LIMITS.max_extractor_items,
+        help="maximum memory items returned by one extractor",
+    )
+    parser.add_argument(
+        "--max-extractor-rejections",
+        type=int,
+        default=DEFAULT_COMPILATION_LIMITS.max_extractor_rejections,
+        help="maximum rejection records returned by one extractor",
+    )
+    parser.add_argument(
+        "--max-extractor-bytes",
+        type=int,
+        default=DEFAULT_COMPILATION_LIMITS.max_extractor_bytes,
+        help="maximum canonical UTF-8 JSON bytes across one extractor's items",
+    )
+    parser.add_argument(
+        "--max-extractor-auxiliary-bytes",
+        type=int,
+        default=(
+            DEFAULT_COMPILATION_LIMITS.max_extractor_auxiliary_bytes
+        ),
+        help="maximum canonical bytes in one extractor's rejections and metadata",
+    )
+    parser.add_argument(
+        "--max-total-candidate-items",
+        type=int,
+        default=DEFAULT_COMPILATION_LIMITS.max_total_candidate_items,
+        help="maximum candidates retained across all extractor passes",
+    )
+    parser.add_argument(
+        "--max-resolved-items",
+        type=int,
+        default=DEFAULT_COMPILATION_LIMITS.max_resolved_items,
+        help="maximum memory items after recovery and temporal resolution",
+    )
+    parser.add_argument(
+        "--max-compilation-provenance-spans",
+        type=int,
+        default=DEFAULT_COMPILATION_LIMITS.max_provenance_spans,
+        help="maximum provenance spans during compilation",
+    )
+    parser.add_argument(
+        "--max-compilation-item-work",
+        type=int,
+        default=DEFAULT_COMPILATION_LIMITS.max_item_work,
+        help="maximum item-comparison/render work units during compilation",
+    )
+
+
 def _add_artifact_limit_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--max-artifact-bytes",
@@ -743,6 +822,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     _add_source_limit_arguments(compile_parser)
+    _add_compilation_limit_arguments(compile_parser)
     _add_error_format_argument(compile_parser)
     compile_parser.set_defaults(handler=_compile)
 

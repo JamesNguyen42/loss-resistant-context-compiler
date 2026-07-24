@@ -27,7 +27,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 912 collected: 905 passing, 7 skipped |
+| Tests at this snapshot | 931 collected: 924 passing, 7 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -246,11 +246,12 @@ source construction validates initial hashes
     -> built-in protected-only certification extraction
     -> optional additive custom safety extraction
     -> primary extraction with validation, bounds, and fallback policy
+    -> combined candidate/item/provenance ceiling checks
     -> source-set digest integrity recheck
-    -> canonicalization and deduplication
-    -> correction, revocation, unresolved, and conflict resolution
-    -> budget-aware active-item selection
-    -> independent invariant verification
+    -> item/provenance-bounded canonicalization and deduplication
+    -> work-budgeted correction, revocation, unresolved, and conflict resolution
+    -> work-budgeted active-item selection
+    -> work-budgeted independent invariant verification
     -> recursive sealing and canonical snapshot digest
     -> complete JSON ledger and/or verified compact typed-memory prompt
     -> optional append-only cold source archive
@@ -270,13 +271,13 @@ counters are deterministic, apart from timestamps and measured duration.
 | `src/context_compiler/models.py` | Enums, immutable and identity-bounded source records, sealable items, frozen reports, policy, rendering, hashes |
 | `src/context_compiler/extractors.py` | Rule extraction, constraint atomization, coordinate and unique-literal model adapters, authority checks |
 | `src/context_compiler/local_qwen.py` | Exact local Qwen Q4 LM Studio CLI preflight, timeout, and single-slot adapter |
-| `src/context_compiler/resolver.py` | Deduplication, corrections, revocations, unresolved closure, conflicts |
-| `src/context_compiler/compiler.py` | End-to-end orchestration, recovery, selection, compression accounting |
+| `src/context_compiler/resolver.py` | Bounded deduplication, corrections, revocations, unresolved closure, conflicts |
+| `src/context_compiler/compiler.py` | End-to-end orchestration, expansion limits, recovery, selection, compression accounting |
 | `src/context_compiler/isolation.py` | Whole-compile subprocess deadline, strict result transfer, and sealed reconstruction |
 | `src/context_compiler/process_tree.py` | POSIX process-group and Windows Job Object ownership/termination |
-| `src/context_compiler/verifier.py` | Independent coverage, provenance, support, authority, and state checks |
+| `src/context_compiler/verifier.py` | Independent work-bounded coverage, provenance, support, authority, and state checks |
 | `src/context_compiler/io.py` | Input decoding, strict artifact shape validation, replay verification |
-| `src/context_compiler/limits.py` | Shared source/artifact byte, line, depth, canonical-size, and collection limits |
+| `src/context_compiler/limits.py` | Shared source/compilation/artifact byte, work, depth, canonical-size, and collection limits |
 | `src/context_compiler/atomic.py` | Shared same-directory replace-or-create UTF-8 transactions and durability helpers |
 | `src/context_compiler/file_lock.py` | Cross-platform persistent advisory-file locking |
 | `src/context_compiler/archive.py` | Logically append-only local archive, canonical entry chain, expected-head preconditions, legacy migration, advisory locking, atomic commits, loading, and verification |
@@ -478,7 +479,9 @@ The complete JSON artifact is the audit format. It contains all items,
 selection ids, source count and source-set digest, policy, compression report,
 verification report, optional versioned compilation metrics, and artifact
 self-hash. New compiles emit `compilation-metrics-0.1` under
-`compiler_metadata.metrics`; older schema-1.0 artifacts may omit it.
+`compiler_metadata.metrics` plus the effective `CompilationLimits` under
+`compiler_metadata.compilation_limits`; older schema-1.0 artifacts may omit
+either additive field.
 Independent replay reconciles source, recovery, certification, selection,
 status, conflict, protected-budget, and verification counts. Primary-extractor
 volume and elapsed time are measured but not independently reproducible. The
@@ -495,7 +498,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 912 tests are collected: 905 pass and 7 platform/optional checks are skipped.
+- 931 tests are collected: 924 pass and 7 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all seven schemas are included.
@@ -585,6 +588,13 @@ audited. Any selected superseded item independently fails verification as
   canonical-size limits. Adversarial tests cover UTF-8 boundaries, oversized
   paths and lines, deep/ambiguous/non-finite JSON, high-count generators, huge
   tool schemas, binary-looking output, and atomic archive refusal.
+- Compilation expansion is separately fail-closed: each extractor has
+  item/rejection/canonical-item/auxiliary-byte ceilings; all passes share
+  candidate, resolved-item, provenance, and item-work ceilings. Built-in rule
+  extraction checks incrementally, and recovery, temporal matching, conflict
+  pairs, selection rendering, and verifier pair searches debit one budget.
+  Resource violations abort rather than truncate protected state and are
+  covered by direct, artifact-shape, verifier, and CLI regressions.
 - Serialized source/artifact path loaders additionally require a stable
   regular file, reject symlinks/directories/FIFOs, compare pre-open/open and
   post-read identity/content metadata, request nonblocking/no-follow opens,
@@ -619,7 +629,7 @@ audited. Any selected superseded item independently fails verification as
   post-resolution recovery, conflicts, protected-budget pressure, verification
   outcomes, and compile duration. `ctxc inspect` exposes it; replay rejects
   rehashed deterministic-count forgeries while preserving compatibility with
-  older schema-1.0 artifacts that omit metrics.
+  older schema-1.0 artifacts that omit metrics or compilation limits.
 - `ContextCompiler.compile(..., timeout_seconds=N)` and
   `ctxc compile --compile-timeout-seconds N` isolate a materialized,
   serializable compile in a POSIX process group or Windows Job Object. Tests
@@ -863,10 +873,11 @@ lower quantile before results are observed.
 
 - Batch compilation reparses the supplied history.
 - Source, archive, and compiled-artifact input is bounded by default.
-  Whole-compile duration has an opt-in isolated deadline; direct in-process
-  compilation remains uncapped, and generic completion callables still need a
-  shorter transport deadline to degrade into deterministic fallback rather
-  than aborting the whole isolated run.
+  In-process ledger expansion and major item-pair work are also bounded, but
+  the deterministic work unit is not a wall-clock or RSS cap. Whole-compile
+  duration has an opt-in isolated deadline, and generic completion callables
+  still need a shorter transport deadline to degrade into deterministic
+  fallback rather than aborting the whole isolated run.
 - Stdout cannot be transactional, and Windows has no portable parent-directory
   `fsync`; atomic file replacement still depends on destination filesystem
   semantics.

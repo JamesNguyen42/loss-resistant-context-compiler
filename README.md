@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 912 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 931 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -137,6 +137,9 @@ The repository currently includes:
   physical line length, JSON depth, canonical size, schema collections, and
   fixed source-id/role/timestamp ceilings that bound derived-field
   amplification;
+- fail-closed compilation expansion limits for each extractor's item,
+  rejection, canonical-byte, and auxiliary output; combined candidates,
+  resolved items, provenance spans, and shared comparison/render work;
 - shared strict regular-file loading for benchmark reports, corpora, external
   candidates, and run manifests, with byte/line/depth limits plus duplicate-key
   and non-finite-number rejection;
@@ -193,7 +196,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 912 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 931 regression tests.
 
 ## In development
 
@@ -541,6 +544,29 @@ after the bounded read.
 Gzip bytes are rejected as invalid UTF-8 and are never decompressed. Direct
 text streams remain the caller's trust boundary.
 
+Compilation itself has a separate default-on expansion contract. Crossing one
+of these limits aborts; protected items are never truncated to make the job
+fit:
+
+| Boundary | Default | CLI override |
+| --- | ---: | --- |
+| Items from one extractor | 10,000 | `--max-extractor-items` |
+| Rejections from one extractor | 10,000 | `--max-extractor-rejections` |
+| Canonical item bytes from one extractor | 64 MiB | `--max-extractor-bytes` |
+| Rejection/metadata bytes from one extractor | 16 MiB | `--max-extractor-auxiliary-bytes` |
+| Candidates retained across all passes | 30,000 | `--max-total-candidate-items` |
+| Items after recovery/resolution | 20,000 | `--max-resolved-items` |
+| Provenance spans during compilation | 100,000 | `--max-compilation-provenance-spans` |
+| Item comparison/render work units | 5,000,000 | `--max-compilation-item-work` |
+
+`CompilationLimits` exposes the same values to `ContextCompiler`. Built-in
+rule extraction checks its item ceiling incrementally. Caller-supplied
+extractors are trusted code and can consume resources before returning, but
+their returned shape is bounded before recovery, resolution, selection, or
+verification. Item-work accounting covers protected recovery, correction and
+unresolved resolution, conflict-pair search, selection rendering, and the
+quadratic independent-verification paths.
+
 `ctxc verify`, `ctxc inspect`, and `ctxc diff` also decode compiled artifacts
 strictly and bound each input independently:
 
@@ -572,10 +598,10 @@ not proof that either input is authentic or true.
 
 `artifact_schema_registry()` and `artifact_schema_support(version)` expose the
 same compatibility policy as `ctxc schema`. The only current reader/writer
-version is `1.0`; the optional absence of
-`compiler_metadata.metrics` is the one documented additive compatibility case
-within that version. Unknown artifact versions are never inferred or silently
-migrated.
+version is `1.0`; `compiler_metadata.metrics` and
+`compiler_metadata.compilation_limits` are the two documented optional
+additive fields within that version. Unknown artifact versions are never
+inferred or silently migrated.
 
 The default JSON output contains the complete typed ledger and is the format to
 retain for audit. It carries `artifact_sha256`, which `ctxc verify`
@@ -586,10 +612,13 @@ report with that replay. New artifacts include optional
 `compilation-metrics-0.1` telemetry under `compiler_metadata.metrics`;
 `ctxc inspect` surfaces it, and replay reconciles every field derivable from
 the sources and typed ledger. Schema-1.0 artifacts created before this addition
-remain valid without metrics. Primary-extractor volume and elapsed time are
-measured evidence and can only be shape-checked during replay. A self-hash is
-an integrity check, not a signature; an attacker who can rewrite both an
-artifact and its expected trust anchors is outside this guarantee.
+remain valid without metrics or recorded compilation limits. New artifacts
+record the exact `CompilationLimits` used; replay validates their shape and
+item/provenance ceilings, but the self-reported values are not proof of host
+resource enforcement. Primary-extractor volume and elapsed time are measured
+evidence and can only be shape-checked during replay. A self-hash is an
+integrity check, not a signature; an attacker who can rewrite both an artifact
+and its expected trust anchors is outside this guarantee.
 `--active-only` intentionally omits unselected ledger entries for compact
 transport. Its artifact is marked `ledger_complete: false`;
 independent `ctxc verify` rejects it with `incomplete_ledger` because omitted
@@ -630,6 +659,7 @@ issue/rejection data in normal command output.
 
 ```python
 from context_compiler import (
+    CompilationLimits,
     CompilationPolicy,
     ContextCompiler,
     SourceLimits,
@@ -655,6 +685,7 @@ sources = [
 compiler = ContextCompiler(
     policy=CompilationPolicy(token_budget=800, minimum_compression_ratio=5.0),
     source_limits=SourceLimits(max_records=10_000, max_input_bytes=16 * 1024 * 1024),
+    compilation_limits=CompilationLimits(max_extractor_items=5_000),
 )
 memory = compiler.compile(sources)
 validate_artifact_envelope(memory.to_dict())
@@ -951,7 +982,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 912 tests are collected (905 pass and 7
+Current local snapshot (2026-07-24): 931 tests are collected (924 pass and 7
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

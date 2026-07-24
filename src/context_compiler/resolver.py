@@ -6,6 +6,11 @@ import re
 from collections import defaultdict
 from collections.abc import Iterable
 
+from .limits import (
+    CompilationLimitError,
+    CompilationLimits,
+    _CompilationWorkBudget,
+)
 from .models import MemoryItem, MemoryKind, MemoryStatus, stable_hash_parts
 
 _TOKEN = re.compile(
@@ -149,6 +154,23 @@ _STOPWORDS = {
     "we",
     "with",
 }
+
+
+def _validate_resolution_collection(
+    items: list[MemoryItem],
+    *,
+    limits: CompilationLimits,
+    phase: str,
+) -> None:
+    if len(items) > limits.max_resolved_items:
+        raise CompilationLimitError(
+            f"{phase} exceeds {limits.max_resolved_items} resolved items"
+        )
+    provenance_spans = sum(len(item.provenance) for item in items)
+    if provenance_spans > limits.max_provenance_spans:
+        raise CompilationLimitError(
+            f"{phase} exceeds {limits.max_provenance_spans} provenance spans"
+        )
 
 
 def normalize_text(text: str) -> str:
@@ -304,7 +326,12 @@ def _make_replacement(correction: MemoryItem, prior: MemoryItem) -> MemoryItem:
     )
 
 
-def resolve_corrections(items: list[MemoryItem]) -> list[MemoryItem]:
+def resolve_corrections(
+    items: list[MemoryItem],
+    *,
+    limits: CompilationLimits,
+    work_budget: _CompilationWorkBudget,
+) -> list[MemoryItem]:
     """Link explicit corrections to earlier state without guessing silently.
 
     A high-confidence match supersedes one earlier item and emits a current
@@ -327,19 +354,18 @@ def resolve_corrections(items: list[MemoryItem]) -> list[MemoryItem]:
             and "explicit-correction-label" not in correction.tags
         ):
             continue
-        earlier = [
-            item
-            for item in state
-            if item.kind in candidates_by_kind
-            and item.source_sequence < correction.source_sequence
-            and item.status == MemoryStatus.ACTIVE
-        ]
-        ranked = sorted(
-            (
-                (_replacement_score(correction, prior), prior)
-                for prior in earlier
-                if _has_replacement_evidence(correction, prior)
-            ),
+        ranked: list[tuple[float, MemoryItem]] = []
+        for prior in state:
+            work_budget.consume(1, phase="correction resolution")
+            if (
+                prior.kind not in candidates_by_kind
+                or prior.source_sequence >= correction.source_sequence
+                or prior.status != MemoryStatus.ACTIVE
+                or not _has_replacement_evidence(correction, prior)
+            ):
+                continue
+            ranked.append((_replacement_score(correction, prior), prior))
+        ranked.sort(
             key=lambda pair: (pair[0], pair[1].source_sequence),
             reverse=True,
         )
@@ -356,14 +382,16 @@ def resolve_corrections(items: list[MemoryItem]) -> list[MemoryItem]:
         correction.supersedes.append(prior.id)
         correction.supersedes = sorted(set(correction.supersedes))
         correction.metadata["supersession_score"] = round(best_score, 4)
-        replacements = [
-            item
-            for item in state
-            if item.id != correction.id
-            and item.kind == prior.kind
-            and item.source_sequence == correction.source_sequence
-            and "correction-derived" in item.tags
-        ]
+        replacements: list[MemoryItem] = []
+        for item in state:
+            work_budget.consume(1, phase="correction replacement lookup")
+            if (
+                item.id != correction.id
+                and item.kind == prior.kind
+                and item.source_sequence == correction.source_sequence
+                and "correction-derived" in item.tags
+            ):
+                replacements.append(item)
         if _REVOCATION.search(correction.text):
             continue
         if replacements:
@@ -371,10 +399,26 @@ def resolve_corrections(items: list[MemoryItem]) -> list[MemoryItem]:
             replacement.supersedes = sorted(set(replacement.supersedes) | {prior.id})
         else:
             state.append(_make_replacement(correction, prior))
-    return canonicalize(state)
+            _validate_resolution_collection(
+                state,
+                limits=limits,
+                phase="correction resolution",
+            )
+    resolved = canonicalize(state)
+    _validate_resolution_collection(
+        resolved,
+        limits=limits,
+        phase="correction canonicalization",
+    )
+    return resolved
 
 
-def resolve_unresolved(items: list[MemoryItem]) -> list[MemoryItem]:
+def resolve_unresolved(
+    items: list[MemoryItem],
+    *,
+    limits: CompilationLimits,
+    work_budget: _CompilationWorkBudget,
+) -> list[MemoryItem]:
     """Close a prior open question only with a later explicit confirmed fact."""
 
     ordered = sorted(items, key=lambda value: (value.source_sequence, value.id))
@@ -394,6 +438,7 @@ def resolve_unresolved(items: list[MemoryItem]) -> list[MemoryItem]:
         resolution_tokens = significant_tokens(resolution.text)
         ranked: list[tuple[float, MemoryItem]] = []
         for question in ordered:
+            work_budget.consume(1, phase="unresolved-state resolution")
             if (
                 question.kind != MemoryKind.UNRESOLVED
                 or question.status != MemoryStatus.ACTIVE
@@ -416,7 +461,13 @@ def resolve_unresolved(items: list[MemoryItem]) -> list[MemoryItem]:
         question.status = MemoryStatus.SUPERSEDED
         resolution.supersedes = sorted(set(resolution.supersedes) | {question.id})
         resolution.tags = sorted(set(resolution.tags) | {"resolves-protected"})
-    return canonicalize(ordered)
+    resolved = canonicalize(ordered)
+    _validate_resolution_collection(
+        resolved,
+        limits=limits,
+        phase="unresolved-state canonicalization",
+    )
+    return resolved
 
 
 def _proposition_shape(item: MemoryItem) -> tuple[frozenset[str], bool, frozenset[str]]:
@@ -507,7 +558,12 @@ def _numeric_conflict(
     return bool(left_subject and left_subject == right_subject)
 
 
-def mark_conflicts(items: list[MemoryItem]) -> list[MemoryItem]:
+def mark_conflicts(
+    items: list[MemoryItem],
+    *,
+    limits: CompilationLimits,
+    work_budget: _CompilationWorkBudget,
+) -> list[MemoryItem]:
     """Flag clear unresolved contradictions; never pick a winner implicitly."""
 
     additions: list[MemoryItem] = []
@@ -521,10 +577,12 @@ def mark_conflicts(items: list[MemoryItem]) -> list[MemoryItem]:
             by_kind[item.kind].append(item)
 
     seen_pairs: set[tuple[str, str]] = set()
+    provenance_spans = sum(len(item.provenance) for item in items)
     for kind_items in by_kind.values():
         for index, left in enumerate(kind_items):
             left_words, left_negated, left_numbers = _proposition_shape(left)
             for right in kind_items[index + 1 :]:
+                work_budget.consume(1, phase="conflict detection")
                 if _different_scopes(left, right):
                     continue
                 right_words, right_negated, right_numbers = _proposition_shape(right)
@@ -550,23 +608,51 @@ def mark_conflicts(items: list[MemoryItem]) -> list[MemoryItem]:
                 left.conflicts_with = sorted(set(left.conflicts_with) | {right.id})
                 right.conflicts_with = sorted(set(right.conflicts_with) | {left.id})
                 text = f'Unresolved source conflict: "{left.text}" versus "{right.text}"'
+                if len(items) + len(additions) >= limits.max_resolved_items:
+                    raise CompilationLimitError(
+                        "conflict detection exceeds "
+                        f"{limits.max_resolved_items} resolved items"
+                    )
+                conflict_provenance = [
+                    *left.provenance,
+                    *right.provenance,
+                ]
+                provenance_spans += len(conflict_provenance)
+                if provenance_spans > limits.max_provenance_spans:
+                    raise CompilationLimitError(
+                        "conflict detection exceeds "
+                        f"{limits.max_provenance_spans} provenance spans"
+                    )
                 additions.append(
                     MemoryItem(
                         id=f"m-{stable_hash_parts('conflict', pair[0], pair[1])}",
                         kind=MemoryKind.UNRESOLVED,
                         text=text,
-                        provenance=[*left.provenance, *right.provenance],
+                        provenance=conflict_provenance,
                         priority=100,
                         confidence=1.0,
                         tags=["detected-conflict"],
                         conflicts_with=list(pair),
                         metadata={
-                            "source_sequence": max(left.source_sequence, right.source_sequence),
+                            "source_sequence": max(
+                                left.source_sequence,
+                                right.source_sequence,
+                            ),
                             "source_role": ",".join(
                                 sorted(
                                     {
-                                        str(left.metadata.get("source_role", "unknown")),
-                                        str(right.metadata.get("source_role", "unknown")),
+                                        str(
+                                            left.metadata.get(
+                                                "source_role",
+                                                "unknown",
+                                            )
+                                        ),
+                                        str(
+                                            right.metadata.get(
+                                                "source_role",
+                                                "unknown",
+                                            )
+                                        ),
                                     }
                                 )
                             ),
@@ -574,9 +660,39 @@ def mark_conflicts(items: list[MemoryItem]) -> list[MemoryItem]:
                         },
                     )
                 )
-    return canonicalize([*items, *additions])
+    resolved = canonicalize([*items, *additions])
+    _validate_resolution_collection(
+        resolved,
+        limits=limits,
+        phase="conflict canonicalization",
+    )
+    return resolved
 
 
-def resolve_temporal_state(items: list[MemoryItem]) -> list[MemoryItem]:
-    corrected = resolve_corrections(canonicalize(items))
-    return mark_conflicts(resolve_unresolved(corrected))
+def resolve_temporal_state(
+    items: list[MemoryItem],
+    *,
+    limits: CompilationLimits,
+    work_budget: _CompilationWorkBudget,
+) -> list[MemoryItem]:
+    canonical = canonicalize(items)
+    _validate_resolution_collection(
+        canonical,
+        limits=limits,
+        phase="initial canonicalization",
+    )
+    corrected = resolve_corrections(
+        canonical,
+        limits=limits,
+        work_budget=work_budget,
+    )
+    unresolved = resolve_unresolved(
+        corrected,
+        limits=limits,
+        work_budget=work_budget,
+    )
+    return mark_conflicts(
+        unresolved,
+        limits=limits,
+        work_budget=work_budget,
+    )

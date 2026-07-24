@@ -114,6 +114,39 @@ runtime. Callers can allocate an oversized object before passing it to the
 library, and custom extractors, token counters, and whole compilation still
 need separate host-level limits.
 
+### Compilation expansion limits
+
+`CompilationLimits` is an immutable contract applied after source preflight
+and before an extractor result can enter temporal state. Defaults cap each
+extractor at 10,000 items, 10,000 rejections, 64 MiB of canonical item JSON,
+and 16 MiB of rejection/metadata JSON. The simultaneously retained primary,
+recovery, certification, and additive-safety results may contain at most
+30,000 candidates. Recovery and temporal resolution may retain at most 20,000
+items and 100,000 provenance spans.
+
+A shared five-million-unit work budget counts pairwise or repeated-item work
+across protected recovery, correction matching, unresolved-state matching,
+conflict detection, selection costing/rendering, and independent verification.
+Built-in `RuleBasedExtractor` receives the item ceiling and checks on every
+append, so one large source cannot first materialize an unbounded built-in
+result. Caller extractors are measured for canonical item and auxiliary JSON
+before their result is accepted. A resource-limit exception is not converted
+to ordinary extractor fallback; compilation aborts instead of silently
+dropping protected candidates.
+
+The effective values are recorded in
+`compiler_metadata.compilation_limits`. That additive field is optional when
+reading older schema-1.0 artifacts, but when present its exact positive-integer
+shape and item/provenance claims are validated. It is self-reported evidence,
+not an external resource attestation.
+
+The work unit is a deterministic implementation guard, not a wall-clock or RSS
+unit. Arbitrary extractor code runs before it returns an `ExtractionResult`;
+regex/token processing, Python object construction, custom token counters, and
+native allocations are not fully described by item comparisons. Use the
+whole-compile deadline and host process-memory controls for adversarial or
+untrusted implementations.
+
 ### Optional content secret preprocessing
 
 `redaction.py` is an explicit pre-compilation stage. It scans

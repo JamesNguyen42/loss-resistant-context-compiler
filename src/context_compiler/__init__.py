@@ -26,7 +26,14 @@ from .extractors import (
 )
 from .io import validate_artifact_envelope
 from .isolation import CompilationIsolationError
-from .limits import ArtifactLimitError, ArtifactLimits, SourceLimitError, SourceLimits
+from .limits import (
+    ArtifactLimitError,
+    ArtifactLimits,
+    CompilationLimitError,
+    CompilationLimits,
+    SourceLimitError,
+    SourceLimits,
+)
 from .local_qwen import LmsQwenCompletion, LocalQwenError
 from .models import (
     COMPILATION_METRICS_SCHEMA,
@@ -77,6 +84,8 @@ __all__ = [
     "MAX_SOURCE_ROLE_CHARS",
     "MAX_SOURCE_TIMESTAMP_CHARS",
     "CompilationIsolationError",
+    "CompilationLimitError",
+    "CompilationLimits",
     "CompilationMetrics",
     "CompilationPolicy",
     "CompiledMemory",

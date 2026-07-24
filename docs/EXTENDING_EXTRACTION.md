@@ -148,6 +148,15 @@ files, or use the network. The compiler validates the returned outer shape,
 reruns source digests, verifies item provenance and authority, and retains its
 built-in safety passes; it is not a sandbox for the extractor.
 
+`CompilationLimits` bounds each returned result's item count, rejection count,
+canonical item bytes, and rejection/metadata bytes before the result enters
+recovery or resolution. All passes also share total-candidate, resolved-item,
+provenance, and item-work ceilings. A limit violation aborts rather than being
+treated as an ordinary provider failure, so protected state is not silently
+truncated. These checks cannot recover CPU or memory that arbitrary extractor
+code consumed before returning; use `timeout_seconds` and host isolation when
+the implementation itself is not trusted.
+
 The ordinary-item contract is intentionally extractive:
 
 - cite existing immutable `SourceRecord` ids;
@@ -187,6 +196,8 @@ Before deploying a pack, test:
 - trusted versus untrusted tool facts;
 - negation, numbers, units, corrections, and conflicts;
 - malformed component results and exceptions;
+- oversized item/rejection/metadata output and the intended
+  `CompilationLimits` policy;
 - isolated compilation/pickling when deadlines are used;
 - clean-wheel imports; and
 - full artifact replay with separately retained source records.

@@ -15,10 +15,13 @@ from typing import Any, TextIO
 
 from .extractors import RuleBasedExtractor
 from .limits import (
+    DEFAULT_COMPILATION_LIMITS,
     ArtifactLimitError,
     ArtifactLimits,
+    CompilationLimits,
     SourceLimitError,
     SourceLimits,
+    _CompilationWorkBudget,
     add_source_size,
     resolve_artifact_limits,
     resolve_source_limits,
@@ -126,6 +129,18 @@ _SOURCE_LIMIT_FIELDS = frozenset(
         "max_record_bytes",
         "max_total_record_bytes",
         "max_json_depth",
+    }
+)
+_COMPILATION_LIMIT_FIELDS = frozenset(
+    {
+        "max_extractor_items",
+        "max_extractor_rejections",
+        "max_extractor_bytes",
+        "max_extractor_auxiliary_bytes",
+        "max_total_candidate_items",
+        "max_resolved_items",
+        "max_provenance_spans",
+        "max_item_work",
     }
 )
 _COMPILATION_METRICS_FIELDS = frozenset(
@@ -639,6 +654,40 @@ def _validate_source_limits_shape(
             )
 
 
+def _validate_compilation_limits_shape(
+    compiler_metadata: Any,
+    issues: list[dict[str, Any]],
+) -> CompilationLimits | None:
+    if not isinstance(compiler_metadata, dict):
+        return None
+    raw_limits = compiler_metadata.get("compilation_limits")
+    if raw_limits is None:
+        return None
+    if not isinstance(raw_limits, dict):
+        _shape_issue(
+            issues,
+            "invalid_compilation_limits",
+            "Artifact compiler_metadata.compilation_limits must be a JSON object.",
+        )
+        return None
+    _check_exact_fields(
+        raw_limits,
+        _COMPILATION_LIMIT_FIELDS,
+        label="Artifact compiler_metadata.compilation_limits",
+        code="invalid_compilation_limits",
+        issues=issues,
+    )
+    try:
+        return CompilationLimits(**raw_limits)
+    except (TypeError, ValueError) as exc:
+        _shape_issue(
+            issues,
+            "invalid_compilation_limits",
+            f"Artifact compiler_metadata.compilation_limits is invalid: {exc}.",
+        )
+        return None
+
+
 def _validate_compilation_metrics_shape(
     compiler_metadata: Any,
     issues: list[dict[str, Any]],
@@ -765,9 +814,33 @@ def _validate_artifact_shape(
     _validate_verification_shape(artifact.get("verification"), issues)
     _validate_compression_shape(artifact.get("compression"), issues)
     _validate_policy_shape(artifact.get("compiler_metadata"), issues)
-    _validate_source_limits_shape(artifact.get("compiler_metadata"), issues)
+    compiler_metadata = artifact.get("compiler_metadata")
+    _validate_source_limits_shape(compiler_metadata, issues)
+    compilation_limits = _validate_compilation_limits_shape(
+        compiler_metadata,
+        issues,
+    )
+    if compilation_limits is not None and isinstance(raw_items, list):
+        if len(raw_items) > compilation_limits.max_resolved_items:
+            _shape_issue(
+                issues,
+                "invalid_compilation_limits",
+                "Artifact items exceed recorded max_resolved_items.",
+            )
+        provenance_spans = sum(
+            len(item.get("provenance", []))
+            for item in raw_items
+            if isinstance(item, dict)
+            and isinstance(item.get("provenance"), list)
+        )
+        if provenance_spans > compilation_limits.max_provenance_spans:
+            _shape_issue(
+                issues,
+                "invalid_compilation_limits",
+                "Artifact provenance exceeds recorded max_provenance_spans.",
+            )
     return _validate_compilation_metrics_shape(
-        artifact.get("compiler_metadata"),
+        compiler_metadata,
         issues,
     )
 
@@ -1735,10 +1808,41 @@ def verify_artifact_dict(
                 )
             )
 
-    protected_candidates = RuleBasedExtractor(protected_only=True).extract(sources).items
+    replay_max_items = resolved_artifact_limits.max_items
+    replay_max_work = DEFAULT_COMPILATION_LIMITS.max_item_work
+    if isinstance(compiler_metadata, dict):
+        raw_compilation_limits = compiler_metadata.get(
+            "compilation_limits"
+        )
+        if isinstance(raw_compilation_limits, dict):
+            recorded_max_items = raw_compilation_limits.get(
+                "max_extractor_items"
+            )
+            if _is_integer(recorded_max_items, minimum=1):
+                replay_max_items = min(
+                    replay_max_items,
+                    recorded_max_items,
+                )
+            recorded_max_work = raw_compilation_limits.get(
+                "max_item_work"
+            )
+            if _is_integer(recorded_max_work, minimum=1):
+                replay_max_work = min(
+                    replay_max_work,
+                    recorded_max_work,
+                )
+    replay_work_budget = _CompilationWorkBudget(replay_max_work)
+    protected_candidates = RuleBasedExtractor(
+        protected_only=True,
+        max_items=replay_max_items,
+    ).extract(sources).items
     recovery_candidate_count: int | None = None
     if compilation_metrics_present and compilation_metrics_valid:
-        recovery_candidate_count = len(RuleBasedExtractor().extract(sources).items)
+        recovery_candidate_count = len(
+            RuleBasedExtractor(max_items=replay_max_items).extract(
+                sources
+            ).items
+        )
     replayed_recovered = sum(
         "verifier-recovered" in item.tags for item in decoded_items
     )
@@ -1751,6 +1855,7 @@ def verify_artifact_dict(
         budget_overflow=expected_budget_overflow,
         compression_target_met=expected_target_met,
         initial_issues=replay_issues,
+        work_budget=replay_work_budget,
     )
     embedded_verification = artifact.get("verification")
     if not isinstance(embedded_verification, dict):

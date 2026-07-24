@@ -16,10 +16,13 @@ well-formed version is not treated as approximately compatible. Artifact
 inspection, diffing, and independent replay reject it before trusting its
 contents.
 
-Within `1.0`, `compiler_metadata.metrics` is an optional additive field. Older
-`1.0` artifacts that omit it remain readable and replayable. When metrics are
-present, their schema and replayable fields are validated. No other omitted,
-renamed, or reinterpreted field is implied by this exception.
+Within `1.0`, `compiler_metadata.metrics` and
+`compiler_metadata.compilation_limits` are optional additive fields. Older
+`1.0` artifacts that omit them remain readable and replayable. When metrics
+are present, their schema and replayable fields are validated. When compilation
+limits are present, their exact positive-integer shape and retained
+item/provenance ceilings are checked. No other omitted, renamed, or
+reinterpreted field is implied by these exceptions.
 
 The current `1.0` reader also enforces the shared 1,024-character source-id
 resource ceiling. It rejects an oversized id instead of truncating, rewriting,

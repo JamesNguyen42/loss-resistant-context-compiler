@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 912 tests (905 passing and 7 skipped locally); CI covers Python
+- [x] Collect 931 tests (924 passing and 7 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -600,6 +600,10 @@ than most related technology” within the exact dated evaluation scope.
 - [x] Add shared configurable limits for source bytes, record count, line
   length, canonical record size, JSON depth, and archive size. Model response
   size and candidate count are also bounded.
+- [x] Add fail-closed compilation expansion limits for per-extractor
+  items/rejections/canonical and auxiliary bytes; total candidates, resolved
+  items, provenance spans, and shared recovery/resolution/conflict/selection/
+  verification item work. Abort rather than truncate protected state.
 - [x] Add strict, configurable artifact limits for raw/canonical bytes, line
   length, JSON depth, item/selection counts, provenance spans, and embedded
   verification issues across CLI and direct replay.
@@ -645,7 +649,7 @@ than most related technology” within the exact dated evaluation scope.
   post-resolution recovery additions, conflicts, verification outcomes, and
   compile latency; surface them through `ctxc inspect` and independently
   reconcile all replayable fields while accepting older schema-1.0 artifacts
-  that omit the optional metrics record.
+  that omit the optional metrics and compilation-limit records.
 - [x] Make `ctxc inspect` fail closed on malformed, unsupported, internally
   inconsistent, or stale-self-hash artifact envelopes; expose the same bounded
   source-independent validation through the Python API.

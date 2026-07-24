@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Protocol, runtime_checkable
 
+from .limits import CompilationLimitError
 from .models import (
     MAX_SOURCE_ID_CHARS,
     MemoryItem,
@@ -26,6 +27,33 @@ class ExtractionResult:
     items: list[MemoryItem] = field(default_factory=list)
     rejected: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+class _BoundedMemoryItems(list[MemoryItem]):
+    def __init__(
+        self,
+        maximum: int | None,
+        *,
+        label: str,
+        protected_only: bool = False,
+    ) -> None:
+        super().__init__()
+        self.maximum = maximum
+        self.label = label
+        self.protected_only = protected_only
+
+    def append(self, item: MemoryItem) -> None:
+        if self.protected_only and not item.protected:
+            return
+        if self.maximum is not None and len(self) >= self.maximum:
+            raise CompilationLimitError(
+                f"{self.label} exceeds {self.maximum} memory items"
+            )
+        super().append(item)
+
+    def extend(self, values: Iterable[MemoryItem]) -> None:
+        for value in values:
+            self.append(value)
 
 
 @runtime_checkable
@@ -540,22 +568,54 @@ class RuleBasedExtractor:
 
     name = "rules-v1"
 
-    def __init__(self, *, protected_only: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        protected_only: bool = False,
+        max_items: int | None = None,
+    ) -> None:
+        if max_items is not None and (
+            isinstance(max_items, bool)
+            or not isinstance(max_items, int)
+        ):
+            raise TypeError("max_items must be an integer or null")
+        if max_items is not None and max_items <= 0:
+            raise ValueError("max_items must be positive")
         self.protected_only = protected_only
+        self.max_items = max_items
 
     def extract(self, sources: list[SourceRecord]) -> ExtractionResult:
-        items: list[MemoryItem] = []
+        items = _BoundedMemoryItems(
+            self.max_items,
+            label=f"{self.name} extraction",
+            protected_only=self.protected_only,
+        )
         for source in sorted(sources, key=lambda value: value.sequence):
-            items.extend(self._extract_source(source))
-        if self.protected_only:
-            items = [item for item in items if item.protected]
+            remaining = (
+                None
+                if self.max_items is None
+                else self.max_items - len(items)
+            )
+            items.extend(self._extract_source(source, max_items=remaining))
         return ExtractionResult(
             items=items,
-            metadata={"extractor": self.name, "protected_only": self.protected_only},
+            metadata={
+                "extractor": self.name,
+                "protected_only": self.protected_only,
+            },
         )
 
-    def _extract_source(self, source: SourceRecord) -> list[MemoryItem]:
-        results: list[MemoryItem] = []
+    def _extract_source(
+        self,
+        source: SourceRecord,
+        *,
+        max_items: int | None,
+    ) -> list[MemoryItem]:
+        results = _BoundedMemoryItems(
+            max_items,
+            label=f"{self.name} extraction",
+            protected_only=self.protected_only,
+        )
         covered: set[tuple[int, int, MemoryKind]] = set()
         active_section: MemoryKind | None = None
 

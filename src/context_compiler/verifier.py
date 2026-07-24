@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
+from .limits import _CompilationWorkBudget
 from .models import (
     IssueSeverity,
     MemoryItem,
@@ -114,8 +115,16 @@ def _span_identity(item: MemoryItem) -> set[tuple[str, int, int]]:
     return {(span.source_id, span.start, span.end) for span in item.provenance}
 
 
-def _candidate_retained(candidate: MemoryItem, retained: Iterable[MemoryItem]) -> bool:
+def _candidate_retained(
+    candidate: MemoryItem,
+    retained: Iterable[MemoryItem],
+    *,
+    work_budget: _CompilationWorkBudget | None = None,
+    phase: str = "protected retention verification",
+) -> bool:
     for item in retained:
+        if work_budget is not None:
+            work_budget.consume(1, phase=phase)
         if item.status == MemoryStatus.DISCARDED:
             continue
         if memory_item_covers_candidate(candidate, item):
@@ -223,20 +232,32 @@ def _valid_resolution_edge(resolution: MemoryItem, question: MemoryItem) -> bool
     return score >= 0.55
 
 
-def _valid_correction_derived(item: MemoryItem, items: list[MemoryItem]) -> bool:
+def _valid_correction_derived(
+    item: MemoryItem,
+    items: list[MemoryItem],
+    *,
+    work_budget: _CompilationWorkBudget | None = None,
+) -> bool:
     if item.kind == MemoryKind.USER_CORRECTION:
         return False
     item_spans = _span_identity(item)
-    return any(
-        candidate.kind == MemoryKind.USER_CORRECTION
-        and candidate.source_sequence == item.source_sequence
-        and item_spans <= _span_identity(candidate)
-        and (
-            _CORRECTION_MARKER.search(candidate.text)
-            or "explicit-correction-label" in candidate.tags
-        )
-        for candidate in items
-    )
+    for candidate in items:
+        if work_budget is not None:
+            work_budget.consume(
+                1,
+                phase="correction-derived verification",
+            )
+        if (
+            candidate.kind == MemoryKind.USER_CORRECTION
+            and candidate.source_sequence == item.source_sequence
+            and item_spans <= _span_identity(candidate)
+            and (
+                _CORRECTION_MARKER.search(candidate.text)
+                or "explicit-correction-label" in candidate.tags
+            )
+        ):
+            return True
+    return False
 
 
 def _structured_labeled_correction(correction: MemoryItem, prior: MemoryItem) -> bool:
@@ -310,6 +331,7 @@ def verify_memory(
     budget_overflow: int = 0,
     compression_target_met: bool = True,
     initial_issues: Iterable[VerificationIssue] = (),
+    work_budget: _CompilationWorkBudget | None = None,
 ) -> VerificationReport:
     """Verify structural loss-resistance independently of extraction."""
 
@@ -612,7 +634,11 @@ def verify_memory(
         correction_state_tags = {"correction-derived", "current-value"} & set(item.tags)
         if correction_state_tags and (
             correction_state_tags != {"correction-derived", "current-value"}
-            or not _valid_correction_derived(item, items)
+            or not _valid_correction_derived(
+                item,
+                items,
+                work_budget=work_budget,
+            )
         ):
             issues.append(
                 VerificationIssue(
@@ -692,45 +718,70 @@ def verify_memory(
     for item in items:
         if item.status != MemoryStatus.SUPERSEDED:
             continue
-        superseders = [
-            candidate
-            for candidate in items
-            if item.id in candidate.supersedes
-            and candidate.status in {MemoryStatus.ACTIVE, MemoryStatus.CONFLICTING}
-        ]
-        valid_correction = any(
-            candidate.kind == MemoryKind.USER_CORRECTION
-            and _candidate_retained(candidate, protected_by_span)
-            and candidate.source_sequence > item.source_sequence
-            and (
-                _CORRECTION_MARKER.search(candidate.text)
-                or "explicit-correction-label" in candidate.tags
-            )
-            and (
-                len(
-                    set(_support_tokens(candidate.text))
-                    & set(_support_tokens(item.text))
+        superseders: list[MemoryItem] = []
+        for candidate in items:
+            if work_budget is not None:
+                work_budget.consume(
+                    1,
+                    phase="supersession-edge verification",
                 )
-                >= 2
-                or (
-                    "explicit-correction-label" in candidate.tags
-                    and _structured_labeled_correction(candidate, item)
+            if (
+                item.id in candidate.supersedes
+                and candidate.status
+                in {MemoryStatus.ACTIVE, MemoryStatus.CONFLICTING}
+            ):
+                superseders.append(candidate)
+        valid_correction = False
+        valid_resolution = False
+        for candidate in superseders:
+            if work_budget is not None:
+                work_budget.consume(
+                    1,
+                    phase="supersession-evidence verification",
                 )
-                or (
-                    _REVOCATION.search(candidate.text)
-                    and bool(
+            if (
+                not valid_correction
+                and candidate.kind == MemoryKind.USER_CORRECTION
+                and _candidate_retained(
+                    candidate,
+                    protected_by_span,
+                    work_budget=work_budget,
+                    phase="correction retention verification",
+                )
+                and candidate.source_sequence > item.source_sequence
+                and (
+                    _CORRECTION_MARKER.search(candidate.text)
+                    or "explicit-correction-label" in candidate.tags
+                )
+                and (
+                    len(
                         set(_support_tokens(candidate.text))
                         & set(_support_tokens(item.text))
                     )
+                    >= 2
+                    or (
+                        "explicit-correction-label" in candidate.tags
+                        and _structured_labeled_correction(
+                            candidate,
+                            item,
+                        )
+                    )
+                    or (
+                        _REVOCATION.search(candidate.text)
+                        and bool(
+                            set(_support_tokens(candidate.text))
+                            & set(_support_tokens(item.text))
+                        )
+                    )
                 )
-            )
-            for candidate in superseders
-        )
-        valid_resolution = any(
-            "resolves-protected" in candidate.tags
-            and _valid_resolution_edge(candidate, item)
-            for candidate in superseders
-        )
+            ):
+                valid_correction = True
+            if (
+                not valid_resolution
+                and "resolves-protected" in candidate.tags
+                and _valid_resolution_edge(candidate, item)
+            ):
+                valid_resolution = True
         if not valid_correction and not valid_resolution:
             issues.append(
                 VerificationIssue(
@@ -743,7 +794,11 @@ def verify_memory(
 
     protected_retained = 0
     for candidate in protected_candidates:
-        if _candidate_retained(candidate, retained):
+        if _candidate_retained(
+            candidate,
+            retained,
+            work_budget=work_budget,
+        ):
             protected_retained += 1
         else:
             issues.append(

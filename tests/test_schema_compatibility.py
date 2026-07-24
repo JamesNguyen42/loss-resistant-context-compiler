@@ -28,6 +28,7 @@ def test_registry_freezes_the_exact_reader_writer_window() -> None:
                 "writable": True,
                 "compatible_omissions": [
                     "compiler_metadata.metrics",
+                    "compiler_metadata.compilation_limits",
                 ],
             }
         ],
@@ -102,7 +103,8 @@ def test_registry_returns_fresh_mutable_containers() -> None:
     second = artifact_schema_registry()
     assert second["readable_versions"] == ["1.0"]
     assert second["versions"][0]["compatible_omissions"] == [
-        "compiler_metadata.metrics"
+        "compiler_metadata.metrics",
+        "compiler_metadata.compilation_limits",
     ]
 
 

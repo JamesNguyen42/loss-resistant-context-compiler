@@ -36,7 +36,8 @@
     "compiler_metadata": {
       "type": "object",
       "properties": {
-        "metrics": {"$ref": "#/$defs/compilationMetrics"}
+        "metrics": {"$ref": "#/$defs/compilationMetrics"},
+        "compilation_limits": {"$ref": "#/$defs/compilationLimits"}
       }
     },
     "artifact_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
@@ -172,6 +173,33 @@
         "token_budget": {"type": "integer", "minimum": 1},
         "budget_overflow": {"type": "integer", "minimum": 0},
         "target_met": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "compilationLimits": {
+      "type": "object",
+      "required": [
+        "max_extractor_items",
+        "max_extractor_rejections",
+        "max_extractor_bytes",
+        "max_extractor_auxiliary_bytes",
+        "max_total_candidate_items",
+        "max_resolved_items",
+        "max_provenance_spans",
+        "max_item_work"
+      ],
+      "properties": {
+        "max_extractor_items": {"type": "integer", "minimum": 1},
+        "max_extractor_rejections": {"type": "integer", "minimum": 1},
+        "max_extractor_bytes": {"type": "integer", "minimum": 1},
+        "max_extractor_auxiliary_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_total_candidate_items": {"type": "integer", "minimum": 1},
+        "max_resolved_items": {"type": "integer", "minimum": 1},
+        "max_provenance_spans": {"type": "integer", "minimum": 1},
+        "max_item_work": {"type": "integer", "minimum": 1}
       },
       "additionalProperties": false
     },

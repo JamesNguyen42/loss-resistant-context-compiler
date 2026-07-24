@@ -14,6 +14,10 @@ class SourceLimitError(ValueError):
     """Raised when source history exceeds a configured resource boundary."""
 
 
+class CompilationLimitError(ValueError):
+    """Raised when compilation exceeds a configured work or output boundary."""
+
+
 class ArtifactLimitError(ValueError):
     """Raised when a compiled artifact exceeds a configured boundary."""
 
@@ -63,6 +67,59 @@ class SourceLimits:
 
 
 DEFAULT_SOURCE_LIMITS = SourceLimits()
+
+
+@dataclass(frozen=True, slots=True)
+class CompilationLimits:
+    """Hard limits applied while source records become a compiled ledger.
+
+    These bounds abort compilation rather than dropping protected items.
+    Extractor item and byte limits apply independently to each built-in or
+    caller-supplied result. The total-candidate limit accounts for the primary,
+    recovery, certification, and optional additive-safety results retained
+    together before temporal resolution.
+    """
+
+    max_extractor_items: int = 10_000
+    max_extractor_rejections: int = 10_000
+    max_extractor_bytes: int = 64 * _MIB
+    max_extractor_auxiliary_bytes: int = 16 * _MIB
+    max_total_candidate_items: int = 30_000
+    max_resolved_items: int = 20_000
+    max_provenance_spans: int = 100_000
+    max_item_work: int = 5_000_000
+
+    def __post_init__(self) -> None:
+        for name in (
+            "max_extractor_items",
+            "max_extractor_rejections",
+            "max_extractor_bytes",
+            "max_extractor_auxiliary_bytes",
+            "max_total_candidate_items",
+            "max_resolved_items",
+            "max_provenance_spans",
+            "max_item_work",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer")
+            if value <= 0:
+                raise ValueError(f"{name} must be positive")
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "max_extractor_items": self.max_extractor_items,
+            "max_extractor_rejections": self.max_extractor_rejections,
+            "max_extractor_bytes": self.max_extractor_bytes,
+            "max_extractor_auxiliary_bytes": self.max_extractor_auxiliary_bytes,
+            "max_total_candidate_items": self.max_total_candidate_items,
+            "max_resolved_items": self.max_resolved_items,
+            "max_provenance_spans": self.max_provenance_spans,
+            "max_item_work": self.max_item_work,
+        }
+
+
+DEFAULT_COMPILATION_LIMITS = CompilationLimits()
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,12 +176,39 @@ def resolve_source_limits(limits: SourceLimits | None) -> SourceLimits:
     return limits
 
 
+def resolve_compilation_limits(
+    limits: CompilationLimits | None,
+) -> CompilationLimits:
+    if limits is None:
+        return DEFAULT_COMPILATION_LIMITS
+    if not isinstance(limits, CompilationLimits):
+        raise TypeError("compilation limits must be a CompilationLimits value")
+    return limits
+
+
 def resolve_artifact_limits(limits: ArtifactLimits | None) -> ArtifactLimits:
     if limits is None:
         return DEFAULT_ARTIFACT_LIMITS
     if not isinstance(limits, ArtifactLimits):
         raise TypeError("artifact limits must be an ArtifactLimits value")
     return limits
+
+
+@dataclass(slots=True)
+class _CompilationWorkBudget:
+    maximum: int
+    used: int = 0
+
+    def consume(self, amount: int, *, phase: str) -> None:
+        if amount < 0:
+            raise ValueError("compilation work amount cannot be negative")
+        updated = self.used + amount
+        if updated > self.maximum:
+            raise CompilationLimitError(
+                f"compilation item work exceeds {self.maximum} operations "
+                f"during {phase}"
+            )
+        self.used = updated
 
 
 def _json_string_utf8_size(value: str, add: Any) -> None:
