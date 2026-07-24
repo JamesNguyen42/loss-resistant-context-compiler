@@ -304,9 +304,9 @@ def test_verifier_reports_effective_limits_and_rejects_forged_limit_shape() -> N
 def test_archive_size_limit_refuses_append_without_partial_write(tmp_path: Path) -> None:
     first = source(0, "goal: first")
     second = source(1, "goal: second")
-    first_payload = (
-        json.dumps(first.to_dict(), ensure_ascii=False, separators=(",", ":")) + "\n"
-    ).encode("utf-8")
+    sizing_archive = SourceArchive(tmp_path / "sizing-archive")
+    assert sizing_archive.append([first]) == 1
+    first_payload = sizing_archive.events_path.read_bytes()
     limits = replace(
         DEFAULT_SOURCE_LIMITS,
         max_input_bytes=len(first_payload),

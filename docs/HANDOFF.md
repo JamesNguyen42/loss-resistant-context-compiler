@@ -27,7 +27,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 885 collected: 880 passing, 5 skipped |
+| Tests at this snapshot | 893 collected: 888 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -202,9 +202,11 @@ artifact serialization, so state different from the verified state is refused.
 ### Integrity is not authenticity
 
 Hashes detect changes relative to trusted values. They do not prove authorship,
-role authenticity, freshness, or freedom from malicious source content.
-Artifacts and their source set need an independent trust anchor in adversarial
-storage.
+role authenticity, freshness, or freedom from malicious source content. The
+archive chain supplies a current head and optional expected-head precondition,
+but valid-prefix rollback detection depends on retaining that head outside the
+archive. Artifacts and source state need an independent trust anchor in
+adversarial storage.
 
 ## Closed fail-closed defects
 
@@ -271,7 +273,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `src/context_compiler/limits.py` | Shared source/artifact byte, line, depth, canonical-size, and collection limits |
 | `src/context_compiler/atomic.py` | Shared same-directory replace-or-create UTF-8 transactions and durability helpers |
 | `src/context_compiler/file_lock.py` | Cross-platform persistent advisory-file locking |
-| `src/context_compiler/archive.py` | Logically append-only local archive, advisory locking, atomic commits, loading, and verification |
+| `src/context_compiler/archive.py` | Logically append-only local archive, canonical entry chain, expected-head preconditions, legacy migration, advisory locking, atomic commits, loading, and verification |
 | `src/context_compiler/artifact_diff.py` | Integrity-gated deterministic artifact comparison and self-hashed diff reports |
 | `src/context_compiler/artifact_inspection.py` | Versioned bounded artifact summaries and control-character-safe terminal rendering |
 | `src/context_compiler/schema_compatibility.py` | Machine-readable artifact reader/writer window and no-silent-migration policy |
@@ -303,8 +305,8 @@ ctxc inspect ARTIFACT --format text --show-items
 ctxc diff BEFORE_ARTIFACT AFTER_ARTIFACT [--summary-only]
 ctxc schema [--artifact-version VERSION]
 ctxc redact HISTORY -o REDACTED.jsonl --report REPORT.json
-ctxc archive append ARCHIVE HISTORY
-ctxc archive verify ARCHIVE
+ctxc archive append ARCHIVE HISTORY [--expected-chain-head HEAD]
+ctxc archive verify ARCHIVE [--expected-chain-head HEAD]
 ```
 
 Important compile options:
@@ -317,7 +319,8 @@ Important compile options:
   and verified prompt rendering;
 - `--active-only`;
 - `--no-recovery`;
-- `--archive`;
+- `--archive` and its optional externally retained
+  `--archive-expected-chain-head` precondition;
 - `--max-source-bytes`, `--max-source-records`,
   `--max-source-line-chars`, `--max-source-record-bytes`,
   `--max-total-source-bytes`, and `--max-source-json-depth`;
@@ -368,6 +371,8 @@ Primary exported objects:
 - `LmsQwenCompletion`;
 - `LocalQwenError`;
 - `SourceArchive`;
+- `ArchiveReport`, `ARCHIVE_ENTRY_SCHEMA`, `ARCHIVE_REPORT_SCHEMA`,
+  `ARCHIVE_GENESIS_SHA256`, and `LEGACY_ARCHIVE_SCHEMA`;
 - `SourceLimits`;
 - `SourceLimitError`;
 - `ArtifactLimits`;
@@ -481,7 +486,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 885 tests are collected: 880 pass and 5 platform/optional checks are skipped.
+- 893 tests are collected: 888 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all five schemas are included.
@@ -615,9 +620,14 @@ audited. Any selected superseded item independently fails verification as
   failures preserve the old file and remove temporary files; POSIX tests also
   preserve existing regular-file modes.
 - Archive appends use the same atomic writer under the exclusive lock and
-  install a fully validated, bounded, sequence-sorted event log. Tests prove
-  readers observe the old or complete new archive, pre-replacement failures
-  preserve committed history, and temporary files are cleaned.
+  install a fully validated, bounded, sequence-sorted event log. Canonical
+  entry envelopes bind position, prior-entry hash, and the complete source;
+  append/verify expose an optional externally retained expected-head check.
+  Tests prove field/link/order tampering is rejected, a retained newer head
+  detects valid-prefix rollback and blocks stale append, legacy raw-source
+  JSONL upgrades on a new append, readers observe the old or complete new
+  archive, pre-replacement failures preserve committed history, and temporary
+  files are cleaned.
 - Archive writers contend on a persistent advisory-lock marker rather than its
   existence. Same-process and real subprocess tests prove live-writer timeout
   and automatic lock release after forced process termination. Cleanup also
@@ -824,7 +834,9 @@ lower quantile before results are observed.
 - The redaction report reveals source ids, coordinates, and masked lengths; its
   self-hash is not a signature.
 - Local archive append-only behavior is not filesystem-enforced.
-- Hashes are not signatures and do not prevent rollback.
+- Archive hashes are not signatures; standalone verification accepts a valid
+  older prefix, while rollback detection requires a separately protected
+  expected head.
 
 ### Scale and availability
 

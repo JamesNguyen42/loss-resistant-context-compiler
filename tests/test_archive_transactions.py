@@ -22,7 +22,7 @@ def source(sequence: int) -> SourceRecord:
 
 def physical_sequences(path: Path) -> list[int]:
     return [
-        json.loads(line)["sequence"]
+        json.loads(line)["source"]["sequence"]
         for line in path.read_text(encoding="utf-8").splitlines()
         if line
     ]

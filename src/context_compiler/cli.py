@@ -128,7 +128,10 @@ def _error_identity(exc: BaseException) -> tuple[str, str]:
         )
     ):
         return "invalid_input", "invalid_json"
-    if any(marker in message for marker in ("hash mismatch", "digest mismatch")):
+    if any(
+        marker in message
+        for marker in ("hash mismatch", "digest mismatch", "chain head mismatch")
+    ):
         return "integrity", "integrity_check_failed"
     if any(
         marker in message
@@ -274,10 +277,15 @@ def _emit_compile_event(
 def _compile(args: argparse.Namespace) -> int:
     try:
         source_limits = _source_limits(args)
+        if args.archive_expected_chain_head is not None and not args.archive:
+            raise ValueError("--archive-expected-chain-head requires --archive")
         sources = _input_sources(args.input, source_limits)
         if args.archive:
             archive = SourceArchive(args.archive, source_limits=source_limits)
-            archive.append(sources)
+            archive.append(
+                sources,
+                expected_chain_head=args.archive_expected_chain_head,
+            )
             sources = archive.load()
         policy = CompilationPolicy(
             token_budget=args.token_budget,
@@ -363,16 +371,22 @@ def _archive_append(args: argparse.Namespace) -> int:
         source_limits = _source_limits(args)
         sources = _input_sources(args.input, source_limits)
         archive = SourceArchive(args.archive, source_limits=source_limits)
-        appended = archive.append(sources)
+        appended = archive.append(
+            sources,
+            expected_chain_head=args.expected_chain_head,
+        )
         report = archive.verify()
     except (OSError, TypeError, ValueError, json.JSONDecodeError, TimeoutError) as exc:
         _write_error(args, exc)
         return 2
     value = {
+        "schema": report.schema,
         "passed": report.passed,
         "appended": appended,
         "records": report.records,
         "source_digest": report.digest,
+        "archive_schema": report.archive_schema,
+        "chain_head_sha256": report.chain_head_sha256,
         "issues": list(report.issues),
     }
     _write_output(json.dumps(value, indent=2), args.output)
@@ -384,14 +398,17 @@ def _archive_verify(args: argparse.Namespace) -> int:
         report = SourceArchive(
             args.archive,
             source_limits=_source_limits(args),
-        ).verify()
-    except OSError as exc:
+        ).verify(expected_chain_head=args.expected_chain_head)
+    except (OSError, TypeError, ValueError) as exc:
         _write_error(args, exc)
         return 2
     value = {
+        "schema": report.schema,
         "passed": report.passed,
         "records": report.records,
         "source_digest": report.digest,
+        "archive_schema": report.archive_schema,
+        "chain_head_sha256": report.chain_head_sha256,
         "issues": list(report.issues),
     }
     _write_output(json.dumps(value, indent=2), args.output)
@@ -704,6 +721,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--archive",
         help="append input to this immutable source archive, then compile the full archive",
     )
+    compile_parser.add_argument(
+        "--archive-expected-chain-head",
+        help=(
+            "require this externally retained archive chain head before appending; "
+            "must be 64 lowercase hexadecimal characters"
+        ),
+    )
     _add_source_limit_arguments(compile_parser)
     _add_error_format_argument(compile_parser)
     compile_parser.set_defaults(handler=_compile)
@@ -849,12 +873,26 @@ def build_parser() -> argparse.ArgumentParser:
     archive_append.add_argument("archive")
     archive_append.add_argument("input", help="history path or - for stdin")
     archive_append.add_argument("-o", "--output")
+    archive_append.add_argument(
+        "--expected-chain-head",
+        help=(
+            "require this externally retained chain head before appending; "
+            "must be 64 lowercase hexadecimal characters"
+        ),
+    )
     _add_source_limit_arguments(archive_append)
     _add_error_format_argument(archive_append)
     archive_append.set_defaults(handler=_archive_append)
     archive_verify = archive_subparsers.add_parser("verify", help="verify archive hashes and shape")
     archive_verify.add_argument("archive")
     archive_verify.add_argument("-o", "--output")
+    archive_verify.add_argument(
+        "--expected-chain-head",
+        help=(
+            "compare against this externally retained chain head; "
+            "must be 64 lowercase hexadecimal characters"
+        ),
+    )
     _add_source_limit_arguments(archive_verify)
     _add_error_format_argument(archive_verify)
     archive_verify.set_defaults(handler=_archive_verify)

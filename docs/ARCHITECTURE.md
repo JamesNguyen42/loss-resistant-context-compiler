@@ -664,14 +664,18 @@ artifact contract or its self-hash.
 
 ## Cold source archive
 
-`SourceArchive` stores newline-delimited source records in `events.jsonl`. A
-persistent `.append.lock` regular file carries an exclusive OS advisory lock
-that serializes writers. The marker stays on disk, but only kernel lock
-ownership means a writer is active; descriptor close and process death release
-ownership automatically. Timeouts are finite and non-negative, and a
-non-regular lock path is refused. Existing ids and sequences cannot be
-overwritten through the API, and archive loads revalidate each content hash and
-canonical record hash, including timestamp and metadata.
+`SourceArchive` stores newline-delimited
+`ctxc-source-archive-entry-0.1` envelopes in `events.jsonl`. Each canonical
+entry binds its zero-based physical position, the preceding entry SHA-256, and
+the complete canonical source record; the first entry links to the all-zero
+genesis value. A persistent `.append.lock` regular file carries an exclusive OS
+advisory lock that serializes writers. The marker stays on disk, but only
+kernel lock ownership means a writer is active; descriptor close and process
+death release ownership automatically. Timeouts are finite and non-negative,
+and a non-regular lock path is refused. Existing ids and sequences cannot be
+overwritten through the API, and archive loads revalidate the chain, exact
+entry shape, source ordering, each content hash, and each canonical record
+hash, including timestamp and metadata.
 
 Under the lock, each logical append reloads and validates the bounded archive,
 sorts the combined history by sequence, and atomically installs the complete
@@ -681,10 +685,15 @@ intentionally costs O(archive size) serialization and temporary space per
 append.
 
 The archive is append-only by convention and API behavior, not by filesystem
-enforcement. It is neither hash-chained nor signed. Anyone able to rewrite the
-archive and every trusted digest can rewrite history. Use filesystem access
-control, backups, or an external signed/WORM store when adversarial tampering is
-in scope.
+enforcement. `ArchiveReport` exposes the current chain head, and append or
+verify can compare it with an externally retained expected head. That
+precondition catches stale writers and detects restoration of an older valid
+prefix when the newer head is retained separately. Legacy raw-source JSONL is
+readable and upgrades atomically on the first new append. The chain is not
+signed: anyone able to rewrite the archive can recompute it, and standalone
+verification cannot distinguish an internally valid older prefix from the
+latest state. Protect the head independently or use an external signed/WORM
+store when adversarial tampering is in scope.
 
 ## Extension points
 

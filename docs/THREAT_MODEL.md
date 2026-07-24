@@ -54,7 +54,7 @@ to verify it, hashes cannot recover the original truth.
 | Forged compilation telemetry | New metrics use an exact versioned shape inside the artifact hash; replay recomputes source, recovery, selection, status, conflict, protected-budget, and verification counts | Primary-extractor volume and elapsed duration are compilation-time observations that replay cannot independently reconstruct; hashes do not prove who measured them |
 | Hidden performance regression | CI runs a fixed-digest, self-hashed profile with median latency, input-doubling growth, and exclusive `tracemalloc` peak ceilings | Shared-runner timing is noisy; `tracemalloc` is not RSS and misses native allocations; the small profile does not characterize production or million-event scale |
 | Custom-tokenizer mismatch | A named counter records `custom:<id>`; independent verification requires the same callback and stable id and recomputes all compression fields | The id is a caller-managed label, not code signing or proof that two implementations are identical |
-| Partial or conflicting archive write through the API | Persistent OS advisory lock released on descriptor close/process death, id/sequence collision rejection, load-time hash validation, and bounded full-file atomic replacement; readers observe an old or new complete log | A filesystem administrator can rewrite/delete files; advisory locks and rename durability may not be reliable on every network filesystem |
+| Partial, conflicting, or rolled-back archive state through the API | Persistent OS advisory lock released on descriptor close/process death, id/sequence collision rejection, canonical entry hash chaining, optional externally retained head preconditions, load-time hash validation, and bounded full-file atomic replacement; readers observe an old or new complete log | Standalone verification accepts a valid older prefix; rollback detection requires a separately protected newer head. A filesystem administrator can recompute/rewrite/delete files; advisory locks and rename durability may not be reliable on every network filesystem |
 | Truncated or raced transactional file output | CLI files, archives, reports, corpora, and manifests flush and `fsync` the complete payload in a same-directory temporary file before atomic install; failed pre-install writes preserve the old destination, and manifests use exclusive no-clobber installation | Stdout is non-transactional; Windows lacks portable directory `fsync`; rename, hard-link, and durability guarantees depend on filesystem semantics |
 | Budget pressure removes requirements | Protected kinds bypass optional selection; overflow is explicit or strict-fail | Enough protected content can exceed the downstream model’s hard context window |
 | Source resource exhaustion | Shared positive limits cap serialized source/archive bytes, physical line length, JSON depth, record count, per-record and total canonical size across loaders, compiler, verifier, and archive; strict JSON rejects ambiguous/non-finite input | Python objects may already be allocated before a direct API call; configured maxima are not process-RSS limits |
@@ -125,8 +125,12 @@ canonical selected prompt and compression statistics and compares the embedded
 verification report with an independent replay. Those checks expose internally
 inconsistent rewrites; they do not provide an external trust anchor.
 
-For adversarial storage, keep trusted digests outside the archive or use a
-signed, monotonically versioned, write-once store. The prompt uses only a
+The archive's rolling entry chain binds physical order and exposes a current
+head. Supplying a separately retained head to verify or the next append detects
+an older valid prefix and stale state, but the self-hashed chain does not
+authenticate its author or prevent a privileged rewriter from recomputing the
+entire file. For adversarial storage, protect the head outside the archive or
+use a signed, monotonically versioned, write-once store. The prompt uses only a
 ten-hex-character digest prefix for compact lookup; use the JSON artifact’s
 full digest for integrity comparison.
 

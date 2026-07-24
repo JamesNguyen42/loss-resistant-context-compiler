@@ -1,6 +1,13 @@
 """Loss-resistant, provenance-linked context compilation for long-running agents."""
 
-from .archive import SourceArchive
+from .archive import (
+    ARCHIVE_ENTRY_SCHEMA,
+    ARCHIVE_GENESIS_SHA256,
+    ARCHIVE_REPORT_SCHEMA,
+    LEGACY_ARCHIVE_SCHEMA,
+    ArchiveReport,
+    SourceArchive,
+)
 from .artifact_diff import ARTIFACT_DIFF_SCHEMA, diff_artifacts
 from .artifact_inspection import (
     ARTIFACT_INSPECTION_SCHEMA,
@@ -53,6 +60,10 @@ from .schema_compatibility import (
 )
 
 __all__ = [
+    "ARCHIVE_ENTRY_SCHEMA",
+    "ARCHIVE_GENESIS_SHA256",
+    "ARCHIVE_REPORT_SCHEMA",
+    "ArchiveReport",
     "ArtifactLimitError",
     "ArtifactLimits",
     "ARTIFACT_DIFF_SCHEMA",
@@ -75,6 +86,7 @@ __all__ = [
     "LmsQwenCompletion",
     "LocalQwenError",
     "LiteralModelExtractor",
+    "LEGACY_ARCHIVE_SCHEMA",
     "ProvenanceSpan",
     "REDACTION_REPORT_SCHEMA",
     "REDACTION_VERIFICATION_SCHEMA",

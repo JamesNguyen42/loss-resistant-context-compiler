@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 885 tests (880 passing and 5 skipped locally); CI covers Python
+- [x] Collect 893 tests (888 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -579,7 +579,10 @@ than most related technology” within the exact dated evaluation scope.
 - [ ] Define encryption-at-rest and access-control guidance for source archives.
 - [ ] Add external signatures or trusted manifests for artifacts and source
   digests.
-- [ ] Add monotonic versions or hash chaining for rollback detection.
+- [x] Add canonical source-archive entry hash chaining and optional
+  externally retained head checks for stale-state and valid-prefix rollback
+  detection; document that standalone self-hashes remain recomputable and do
+  not replace a protected monotonic/signature anchor.
 - [ ] Define safe retention, deletion, and backup workflows.
 - [ ] Add security tests for path traversal, archive races, oversized JSON,
   decompression bombs, and hostile metadata.

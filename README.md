@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 885 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 893 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -157,8 +157,9 @@ The repository currently includes:
 - a fail-closed JSON inspector plus a bounded terminal item view with escaped
   control/format characters, provenance coordinates, status, conflicts, and
   active-selection state;
-- a logically append-only local source archive with integrity checks, exclusive
-  locking, and bounded old-or-new atomic commits;
+- a logically append-only local source archive with canonical entry hash
+  chaining, optional externally retained head checks, exclusive locking,
+  legacy migration, and bounded old-or-new atomic commits;
 - the `ctxc compile`, `verify`, `inspect`, `diff`, `schema`, and `archive`
   commands;
 - LRCBench, external-candidate import/export, history-weighted paired bootstrap
@@ -190,7 +191,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 885 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 893 regression tests.
 
 ## In development
 
@@ -460,6 +461,28 @@ ownership is the kernel lock, not file existence, and descriptor close or
 process death releases it. The tradeoff is O(archive size) work and temporary
 disk space per append, and the filesystem must implement local advisory locks
 and atomic replacement correctly.
+
+Each new-format line is a canonical `ctxc-source-archive-entry-0.1` envelope
+whose SHA-256 binds its position, preceding entry hash, and complete canonical
+source record. `archive append` and `archive verify` return the current
+`chain_head_sha256`. Retain that head outside the archive, then supply it as a
+precondition on the next operation:
+
+```console
+ctxc archive verify .context-archive --expected-chain-head HEAD
+ctxc archive append .context-archive next.jsonl --expected-chain-head HEAD
+ctxc compile next.jsonl --archive .context-archive \
+  --archive-expected-chain-head HEAD
+```
+
+The append response contains the replacement head to retain for the following
+operation. A valid older prefix passes standalone structural verification, but
+fails when checked against a later externally retained head. Raw legacy source
+JSONL remains readable; the first non-idempotent append upgrades the complete
+file atomically. The chain is an integrity and stale-state check, not a
+signature, trusted timestamp, or filesystem access control. Anyone able to
+rewrite the archive can recompute it, so rollback detection depends on keeping
+the expected head in a separately protected location.
 
 `ctxc compile` also accepts `-` for stdin. Inputs may be a JSON list, an object
 containing `sources`, `events`, or `messages`, or JSONL. Each record accepts
@@ -895,7 +918,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 885 tests are collected (880 pass and 5
+Current local snapshot (2026-07-24): 893 tests are collected (888 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
