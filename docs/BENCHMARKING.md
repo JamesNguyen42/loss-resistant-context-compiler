@@ -340,12 +340,39 @@ all margins in its evidence digest. **External-inclusive does not mean state of
 the art or “better than most.”** The dated inclusion protocol and downstream
 evidence requirements below still apply.
 
+## Bounded CI performance gate
+
+LRCBench measures memory quality and compression; its run duration is recorded
+but is not a performance threshold. CI therefore runs a separate fixed profile:
+
+```console
+python -m benchmarks.performance_gate --check \
+  --json-out ctxc-performance.json
+```
+
+Profile `ci-compile-v1` uses SHA-256-bound, item-dense deterministic source
+prefixes. After a 32-event warmup, it measures three compiles at 128 and 256
+events and uses each median. The committed limits are 2 seconds, 8 seconds,
+8x growth across the doubling, and 64 MiB of peak Python allocations observed
+by `tracemalloc` during a separate largest-input compile. The
+`ctxc-performance-gate-0.1` report records raw trials, environment, limits,
+violations, and its own canonical digest. The growth denominator has a recorded
+1 ms floor so sub-resolution first samples do not create meaningless ratios.
+
+The gate times compilation after source records are materialized.
+`tracemalloc` is deliberately run separately because tracing changes timing;
+it does not measure full process RSS or native allocations. Thresholds are
+broad shared-runner regression tripwires, not a portable service-level
+objective or evidence about 10,000-to-1,000,000-event behavior. Changing the
+workload requires a new profile version, workload digest, thresholds, tests,
+and documentation together.
+
 ## Current local snapshot
 
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 362 tests: 357 passed and 5 platform/optional checks were
+The suite collected 378 tests: 373 passed and 5 platform/optional checks were
 skipped. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |

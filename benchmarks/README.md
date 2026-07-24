@@ -193,6 +193,33 @@ system and requires wins against a strict majority. Run
 round-trip plus negative checks for hash mismatch, missing cases, and budget
 overflow.
 
+## CI performance regression gate
+
+Run the separate bounded compiler profile from the repository root:
+
+```console
+python -m benchmarks.performance_gate --check \
+  --json-out ctxc-performance.json
+```
+
+`ci-compile-v1` warms up on 32 events, then records three compile trials for
+fixed 128- and 256-event item-dense prefixes. The warmup and both measured
+inputs have committed workload SHA-256 values. `--check` returns nonzero if
+either median exceeds its committed ceiling, if latency grows by more than 8x
+while the input doubles, or if `tracemalloc` observes more than 64 MiB of
+Python allocations during the largest compile. The versioned
+`ctxc-performance-gate-0.1` output includes every trial, environment,
+thresholds, violations, and a canonical `report_sha256`. Growth uses a
+recorded 1 ms denominator floor to avoid amplifying sub-resolution baseline
+noise.
+
+The profile excludes source construction from the timer. `tracemalloc` is not
+process RSS and does not see every native allocation. Shared-runner timing,
+virtualization, and load remain sources of noise, so the ceilings are
+deliberately broad. This gate catches major regressions; it does not satisfy
+the separate roadmap item to characterize latency and peak RSS from 10,000 to
+1,000,000 events.
+
 `--external-baseline` remains available for direct interchange diagnostics,
 but a registered system without a validated run manifest is an invalid
 certificate non-win. A failed manifest contributes its exact bounded-run
@@ -223,7 +250,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 362 tests alongside it: 357 passed and 5
+The suite collected 378 tests alongside it: 373 passed and 5
 platform/optional checks were skipped.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |

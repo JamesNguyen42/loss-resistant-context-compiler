@@ -475,6 +475,19 @@ comparison metadata, and reconciles per-history counts/rates/aggregates when
 raw histories are retained. This is an integrity and consistency check, not an
 authentication mechanism.
 
+`benchmarks/performance_gate.py` is a distinct operational regression boundary,
+not part of the LRCBench quality certificate. Its fixed `ci-compile-v1` warmup
+and measured source prefixes are each committed by SHA-256. It performs
+warmup, median latency trials at two sizes, an input-doubling growth check, and
+a separate exclusive `tracemalloc` peak measurement. The versioned report
+includes the environment, thresholds, observations, violations, and
+`report_sha256`; CI enforces it with `--check`.
+
+The performance timer starts after immutable source construction.
+`tracemalloc` captures Python allocations made during compile, not process RSS
+or all native allocation. The broad limits are intended to reject catastrophic
+regressions without treating shared-runner noise as product evidence.
+
 `benchmarks/json_io.py` supplies the underlying benchmark evidence boundary.
 It opens only regular files, checks size before and during reads, rejects
 duplicate/non-finite or excessively deep JSON, and returns the exact serialized

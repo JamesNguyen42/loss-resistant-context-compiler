@@ -61,10 +61,17 @@ jobs:
           --histories 24
           --json-out lrcbench-24.json
           --include-histories
+      - name: Run the bounded compiler performance gate
+        run: >-
+          python -m benchmarks.performance_gate
+          --check
+          --json-out ctxc-performance.json
       - name: Upload auditable benchmark evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: lrcbench-24-python-3.11
-          path: lrcbench-24.json
+          path: |
+            lrcbench-24.json
+            ctxc-performance.json
           if-no-files-found: warn

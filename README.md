@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 362 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 378 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
@@ -158,7 +158,9 @@ The repository currently includes:
   and valid or failed manifests that feed per-system certificate decisions;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
-- cross-version CI, linting, wheel/schema checks, and 362 regression tests.
+- a fixed-digest, versioned CI compile-performance gate with latency-growth and
+  traced-Python-memory ceilings;
+- cross-version CI, linting, wheel/schema checks, and 378 regression tests.
 
 ## In development
 
@@ -699,6 +701,7 @@ gold-free corpus for a separately run system:
 python -m benchmarks --self-test
 python -m benchmarks --histories 24 --export-corpus lrcbench-corpus.json
 python -m benchmarks --verify-report lrcbench-24.json
+python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
 ```
 
 Benchmark JSON reports and corpus exports use the same flushed, `fsync`ed
@@ -713,6 +716,17 @@ duration, Python/platform, tokenizer/model identity, baseline revisions,
 model-service cost, and failures. The certificate `evidence_sha256` remains the
 deterministic metric digest; `report_sha256` additionally binds the
 run-specific envelope.
+
+The `ctxc-performance-gate-0.1` CI profile compiles fixed 128- and 256-event
+item-dense histories three times after a warmup. It fails on a median above
+2 or 8 seconds respectively, growth above 8x when the source count doubles,
+or more than 64 MiB of Python allocations observed by `tracemalloc` during
+the largest compile. A 1 ms denominator floor keeps sub-resolution first
+samples from producing meaningless growth ratios. The warmup and measured
+prefixes are bound by committed per-size SHA-256 values, and the JSON result is
+self-hashed. These deliberately generous ceilings are regression tripwires for
+the GitHub Python 3.11 job, not production latency, RSS, or million-event
+scalability claims.
 
 `--verify-report` strictly decodes a bounded regular UTF-8 file, rejects
 duplicate keys, non-finite numbers, excessive depth/size, and unknown fields,
@@ -751,7 +765,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 362 tests are collected (357 pass and 5
+Current local snapshot (2026-07-24): 378 tests are collected (373 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

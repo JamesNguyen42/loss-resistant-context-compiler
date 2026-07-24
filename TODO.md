@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 362 tests (357 passing and 5 skipped locally); CI covers Python
+- [x] Collect 378 tests (373 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -557,7 +557,8 @@ than most related technology” within the exact dated evaluation scope.
 - [x] Publish the exact artifact reader/writer support window through
   `ctxc-artifact-schema-compatibility-0.1`; document and test that unknown
   versions fail closed and that no automatic or silent migration exists.
-- [ ] Add reproducible performance regression thresholds to CI.
+- [x] Add a versioned, fixed-digest CI compile profile with median-latency,
+  doubling-growth, and traced-Python-memory ceilings plus a self-hashed report.
 
 ### Packaging and release
 

@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 362 collected: 357 passing, 5 skipped |
+| Tests at this snapshot | 378 collected: 373 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -255,6 +255,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `benchmarks/json_io.py` | Shared bounded regular-file hashing and strict JSON decoding for benchmark evidence |
 | `benchmarks/report_verifier.py` | Bounded strict saved-report verification and deterministic replay |
 | `benchmarks/external_runner.py` | Shell-free adapter process limits, validation, and self-hashed run manifests |
+| `benchmarks/performance_gate.py` | Fixed-digest CI compile latency/growth/traced-memory regression gate |
 | `benchmarks/protocols/` | Versioned external comparison protocol; v1 is still a non-claim-bearing draft |
 | `schemas/` | Source, model extraction, and compiled artifact contracts |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
@@ -368,6 +369,7 @@ and enforces a subprocess timeout. See [Local Qwen integration](LOCAL_QWEN.md).
 | Artifact inspection schema | `ctxc-artifact-inspection-0.1` |
 | Compile completion event schema | `ctxc-event-0.1` |
 | CLI diagnostic schema | `ctxc-diagnostic-0.1` |
+| Performance gate report | `ctxc-performance-gate-0.1` |
 | LRCBench report version | `lrcbench-0.2` |
 | LRCBench corpus schema | `lrcbench-corpus-0.3` |
 | LRCBench candidate schema | `lrcbench-candidate-output-0.2` |
@@ -421,11 +423,14 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 362 tests are collected: 357 pass and 5 platform/optional checks are skipped.
+- 378 tests are collected: 373 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
 - CI runs the external-candidate interchange self-test.
+- CI enforces `ci-compile-v1` through a self-hashed
+  `ctxc-performance-gate-0.1` report: three-trial medians at 128/256 events,
+  doubling growth, and a separate exclusive `tracemalloc` peak.
 - Gold-free corpus exports carry a canonical `corpus_sha256`.
 - Model-output JSON rejects duplicate object keys, non-standard NaN/infinity,
   overflowed non-finite floats, forged fields/roles, invalid spans, reserved
@@ -522,6 +527,9 @@ audited. Any selected superseded item independently fails verification as
   retries, and zero model-service cost; incomplete controls are a per-system
   non-win.
 - CI runs a 24-history fail-closed benchmark certificate.
+- The performance profile is a broad shared-runner tripwire, not an SLO: it
+  excludes source construction, `tracemalloc` is not RSS, and the separate
+  10,000-to-1,000,000-event characterization remains open.
 
 ### Recorded local benchmark
 
@@ -746,6 +754,7 @@ python -m pytest -q
 python -m ruff check src tests benchmarks
 python -m compileall -q src benchmarks tests
 python -m benchmarks --self-test
+python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
 python -m benchmarks --histories 24 --json-out lrcbench-24.json --include-histories
 python -c "
 import pathlib, subprocess, sys, tempfile, zipfile
