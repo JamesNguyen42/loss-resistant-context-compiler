@@ -843,7 +843,10 @@ case sequentially in a fresh process, records a hashed per-case audit trail,
 and merges only fully validated outputs. Manifest replay reconstructs every
 one-case corpus from the retained parent, verifies its exact canonical and file
 digests, and requires executed cases to be the ordered parent-corpus prefix
-with runner-owned temporary paths. Whole-corpus mode is diagnostic-only.
+with runner-owned temporary paths. For a complete run, it also rebuilds each
+one-case candidate envelope from the matching raw merged case and registered
+producer, then checks that semantic payload digest against the per-case audit.
+Whole-corpus mode is diagnostic-only.
 Current claim-eligible runner manifests retain the dependency lock, adapter
 entrypoint, and a bounded recursive inventory of its immutable source root, and
 identify the environment as `sha256:<dependency-lock-sha256>`. Reload rehashes

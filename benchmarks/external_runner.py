@@ -48,7 +48,7 @@ from .lrcbench import (
     decode_external_candidate,
 )
 
-RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.11"
+RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.12"
 _SYSTEM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 _REVISION_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 _ENVIRONMENT_ID_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -669,6 +669,7 @@ class CaseRunRecord:
     corpus_sha256: str
     corpus_file_sha256: str
     candidate_sha256: str | None
+    candidate_payload_sha256: str | None
     candidate_bytes: int | None
     exit_code: int | None
     termination_reason: str | None
@@ -2358,6 +2359,16 @@ def _validated_case_runs(value: object) -> list[dict[str, Any]]:
         candidate_sha256 = raw_record["candidate_sha256"]
         if candidate_sha256 is not None and not _is_sha256(candidate_sha256):
             raise ExternalRunnerError(f"{context} candidate_sha256 is invalid")
+        candidate_payload_sha256 = raw_record[
+            "candidate_payload_sha256"
+        ]
+        if (
+            candidate_payload_sha256 is not None
+            and not _is_sha256(candidate_payload_sha256)
+        ):
+            raise ExternalRunnerError(
+                f"{context} candidate_payload_sha256 is invalid"
+            )
         exit_code = raw_record["exit_code"]
         if exit_code is not None and (
             isinstance(exit_code, bool) or not isinstance(exit_code, int)
@@ -2374,8 +2385,21 @@ def _validated_case_runs(value: object) -> list[dict[str, Any]]:
             raise ExternalRunnerError(f"{context} successful process has a termination reason")
         if raw_record["candidate_valid"] and not raw_record["process_succeeded"]:
             raise ExternalRunnerError(f"{context} valid candidate came from a failed process")
-        if raw_record["candidate_valid"] and (candidate_bytes is None or candidate_sha256 is None):
-            raise ExternalRunnerError(f"{context} valid candidate lacks file evidence")
+        if raw_record["candidate_valid"] and (
+            candidate_bytes is None
+            or candidate_sha256 is None
+            or candidate_payload_sha256 is None
+        ):
+            raise ExternalRunnerError(
+                f"{context} valid candidate lacks file or payload evidence"
+            )
+        if (
+            not raw_record["candidate_valid"]
+            and candidate_payload_sha256 is not None
+        ):
+            raise ExternalRunnerError(
+                f"{context} invalid candidate has payload evidence"
+            )
         decoded.append(raw_record)
     return decoded
 
@@ -2906,6 +2930,27 @@ def load_external_run_manifest(
             raise ExternalRunnerError(
                 "manifest candidate system does not match the registered system"
             )
+        if isolation_mode == "per_case":
+            candidate_payload = candidate_file.value
+            candidate_cases = candidate_payload["cases"]
+            producer = decoded_identity.to_candidate_producer()
+            for index, (record, raw_candidate_case) in enumerate(
+                zip(case_runs, candidate_cases, strict=True)
+            ):
+                expected_case_payload_sha256 = candidate_document(
+                    dataset_sha256=expected_dataset_sha256,
+                    system=system,
+                    cases=[raw_candidate_case],
+                    producer=producer,
+                )["candidate_payload_sha256"]
+                if (
+                    record["candidate_payload_sha256"]
+                    != expected_case_payload_sha256
+                ):
+                    raise ExternalRunnerError(
+                        "run manifest case_runs"
+                        f"[{index}] candidate payload evidence is inconsistent"
+                    )
         if not expected_claim_controls:
             failure_reason = (
                 "run manifest lacks complete claim controls: exact-Qwen identity, "
@@ -3630,6 +3675,39 @@ def run_external_cases(
                 adapter_integrity_failure = (
                     "adapter_runtime_evidence_modified"
                 )
+            case_candidate_payload: dict[str, Any] | None = None
+            case_candidate_payload_sha256: str | None = None
+            if (
+                adapter_integrity_failure is None
+                and case_manifest.ready_for_scoring
+            ):
+                try:
+                    case_candidate_document = load_strict_json_file(
+                        case_candidate_path,
+                        limits=_candidate_json_limits(
+                            limits.max_candidate_bytes
+                        ),
+                        label="per-case external candidate",
+                    )
+                    if (
+                        case_candidate_document.file_sha256
+                        != case_manifest.candidate_sha256
+                        or case_candidate_document.byte_count
+                        != case_manifest.candidate_bytes
+                    ):
+                        raise ExternalRunnerError(
+                            "validated case output changed before aggregation"
+                        )
+                    case_candidate_payload = case_candidate_document.value
+                    case_candidate_payload_sha256 = (
+                        case_candidate_payload[
+                            "candidate_payload_sha256"
+                        ]
+                    )
+                except StrictJsonError as exc:
+                    raise ExternalRunnerError(
+                        f"validated case output could not be reread: {exc}"
+                    ) from exc
             case_run = CaseRunRecord(
                 case_id=case.id,
                 command=case_manifest.command,
@@ -3640,6 +3718,9 @@ def run_external_cases(
                 corpus_sha256=case_manifest.corpus_sha256,
                 corpus_file_sha256=case_manifest.corpus_file_sha256,
                 candidate_sha256=case_manifest.candidate_sha256,
+                candidate_payload_sha256=(
+                    case_candidate_payload_sha256
+                ),
                 candidate_bytes=case_manifest.candidate_bytes,
                 exit_code=case_manifest.exit_code,
                 termination_reason=(
@@ -3667,30 +3748,7 @@ def run_external_cases(
             case_runs.append(case_run)
             aggregate_stdout_bytes += case_run.stdout_bytes
             aggregate_stderr_bytes += case_run.stderr_bytes
-            if (
-                adapter_integrity_failure is None
-                and case_manifest.ready_for_scoring
-            ):
-                try:
-                    case_candidate_document = load_strict_json_file(
-                        case_candidate_path,
-                        limits=_candidate_json_limits(limits.max_candidate_bytes),
-                        label="per-case external candidate",
-                    )
-                    if (
-                        case_candidate_document.file_sha256
-                        != case_manifest.candidate_sha256
-                        or case_candidate_document.byte_count
-                        != case_manifest.candidate_bytes
-                    ):
-                        raise ExternalRunnerError(
-                            "validated case output changed before aggregation"
-                        )
-                    case_candidate_payload = case_candidate_document.value
-                except StrictJsonError as exc:
-                    raise ExternalRunnerError(
-                        f"validated case output could not be reread: {exc}"
-                    ) from exc
+            if case_candidate_payload is not None:
                 candidate_cases.append(case_candidate_payload["cases"][0])
 
         if adapter_integrity_failure is not None:

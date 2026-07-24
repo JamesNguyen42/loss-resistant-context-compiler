@@ -272,7 +272,10 @@ absolute path, revalidates both the corpus self-digest and exact file digest,
 requires the recorded case count to match, reconstructs each deterministic
 one-case corpus, and verifies the ordered executed prefix, exact self/file
 digests, and runner-owned temporary path layout before any candidate is scored.
-It also rehashes the retained dependency lock and requires its digest to define
+For a complete run, it also reconstructs every normalized one-case candidate
+envelope from the registered producer and corresponding raw merged case, then
+matches its self-digest to the case audit. It also rehashes the retained
+dependency lock and requires its digest to define
 the recorded `environment_id`. The retained adapter entrypoint must be one of
 the exact command arguments and an exact record in the bounded recursive
 inventory of `--adapter-source-root`. Loader replay rehashes every regular file
@@ -308,7 +311,7 @@ Revision, environment, model, context, tokenizer, inference concurrency,
 retries, and service cost are also recorded. Claim-bearing manifests require
 per-case isolation, an enforced process-tree memory limit, complete identity
 fields, the exact Qwen Q4 model, one inference slot, and zero model-service
-cost. Current `lrcbench-external-run-manifest-0.11` claim metadata requires an
+cost. Current `lrcbench-external-run-manifest-0.12` claim metadata requires an
 immutable adapter revision, `environment_id` equal to
 `sha256:<dependency-lock-sha256>`, the exact retained lock bytes, context length
 8192, the evaluator tokenizer, zero retries, the exact

@@ -273,11 +273,14 @@ change-and-restore races between observations; reviewed isolated execution
 remains necessary.
 
 The default external runner gives every case a fresh sequential process and
-records its exact command and outcome. POSIX `RLIMIT_AS` and Windows Job Objects
-bound the adapter process tree; Windows processes are assigned while suspended
-and verified in the job before adapter code resumes. These controls limit
-cross-case contamination and resource exhaustion, but they are not a
-filesystem sandbox and do not establish network isolation. Claim-bearing
+records its exact command and outcome. It retains each valid one-case
+candidate's semantic self-digest and, on complete-run reload, reconstructs
+that envelope from the matching raw merged case and registered producer. POSIX
+`RLIMIT_AS` and Windows Job Objects bound the adapter process tree; Windows
+processes are assigned while suspended and verified in the job before adapter
+code resumes. These controls limit cross-case contamination and resource
+exhaustion, but they are not a filesystem sandbox and do not establish network
+isolation. Claim-bearing
 manifests must retain a bounded host firewall, container, or network-namespace
 policy artifact; the runner hashes it before and after execution and reload
 checks the same file. A self-consistent file still does not prove that the host

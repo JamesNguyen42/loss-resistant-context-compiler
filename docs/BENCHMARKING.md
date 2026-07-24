@@ -327,8 +327,11 @@ reopens its absolute path, verifies its canonical self-digest and exact file
 digest, checks the recorded case count, and reconstructs every deterministic
 one-case corpus before returning the candidate for full benchmark-side
 decoding. Executed records must be the ordered parent-corpus prefix and match
-the exact self/file digests plus runner-owned temporary path layout. It also
-rehashes the retained dependency lock;
+the exact self/file digests plus runner-owned temporary path layout. A complete
+run must also retain each validated one-case candidate self-digest. Replay
+rebuilds that envelope from the registered producer and matching raw merged
+case, rejecting a substituted or reordered case payload. It also rehashes the
+retained dependency lock;
 claim controls require `environment_id` to equal
 `sha256:<dependency-lock-sha256>`. The retained adapter entrypoint must appear
 in the recorded command and in the bounded recursive inventory of
@@ -369,7 +372,7 @@ cost. Missing per-case isolation, no enforced process-tree memory limit,
 unrecorded identity, a model other than the exact local Qwen Q4 build,
 concurrency other than one, or nonzero model service cost is a
 certificate-invalid non-win even when the candidate interchange itself is
-valid. In current runner schema `lrcbench-external-run-manifest-0.11`, a
+valid. In current runner schema `lrcbench-external-run-manifest-0.12`, a
 claim-eligible identity requires an immutable adapter revision, environment id
 `sha256:<dependency-lock-sha256>`, the exact retained lock bytes, the exact
 8192-context Qwen model, evaluator tokenizer, one slot, zero retries, zero

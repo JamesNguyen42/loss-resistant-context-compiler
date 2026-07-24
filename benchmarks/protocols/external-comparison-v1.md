@@ -247,7 +247,11 @@ per-process and aggregate limits, and only then resumes adapter code.
 Manifest replay reconstructs each one-case corpus from the retained parent
 export. Attempted cases must be its exact ordered prefix, and every record must
 match the reconstructed canonical digest, serialized file digest, and
-runner-owned temporary corpus/candidate path layout.
+runner-owned temporary corpus/candidate path layout. Every validated case also
+retains its normalized candidate-envelope self-digest. Complete-run replay
+rebuilds that envelope from the registered producer and corresponding raw
+merged case, so a per-case payload cannot be substituted or reordered behind a
+different retained merged output.
 
 The entrypoint and source-tree digests prevent a free-form adapter revision
 from substituting an unregistered source set or command. The source root must
@@ -281,7 +285,7 @@ Whole-corpus isolation, no enforced adapter memory limit, incomplete identity
 metadata, any model other than the exact Qwen Q4 variant, inference concurrency
 other than one, or nonzero model-service cost makes the system a certificate
 non-win. Claim-eligible runner schema
-`lrcbench-external-run-manifest-0.11` also requires an immutable adapter
+`lrcbench-external-run-manifest-0.12` also requires an immutable adapter
 revision, retained dependency-lock bytes matching the canonical `sha256:`
 environment identity, a retained command-referenced adapter entrypoint covered
 by a bounded immutable source tree, a hashed resolved runtime, a portable

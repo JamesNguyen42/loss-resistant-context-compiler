@@ -1324,6 +1324,21 @@ def test_per_case_runner_uses_one_validated_corpus_case_per_process(tmp_path) ->
     ]
     assert all(record.command[-1] == record.case_id for record in manifest.case_runs)
     assert len({record.corpus_sha256 for record in manifest.case_runs}) == 3
+    assert [
+        record.candidate_payload_sha256
+        for record in manifest.case_runs
+    ] == [
+        _canonical_sha256(
+            {
+                "schema": CANDIDATE_SCHEMA,
+                "dataset_sha256": payload["dataset_sha256"],
+                "system": payload["system"],
+                "producer": payload["producer"],
+                "cases": [raw_case],
+            }
+        )
+        for raw_case in payload["cases"]
+    ]
 
 
 def test_per_case_runner_retains_failure_and_continues_later_cases(tmp_path) -> None:
@@ -1359,7 +1374,9 @@ def test_per_case_runner_retains_failure_and_continues_later_cases(tmp_path) -> 
     assert len(manifest.case_runs) == 2
     assert manifest.case_runs[0].exit_code == 7
     assert not manifest.case_runs[0].process_succeeded
+    assert manifest.case_runs[0].candidate_payload_sha256 is None
     assert manifest.case_runs[1].candidate_valid
+    assert manifest.case_runs[1].candidate_payload_sha256 is not None
     assert manifest.termination_reason == ("case_failure:history-000:nonzero_exit")
     assert not manifest.ready_for_scoring
     assert not candidate_path.exists()
@@ -2117,6 +2134,30 @@ def test_rehashed_inconsistent_case_audit_record_is_rejected(tmp_path) -> None:
     ):
         load_external_run_manifest(
             corpus_manifest_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
+    candidate_payload = json.loads(json.dumps(original_payload))
+    candidate_payload["case_runs"][0][
+        "candidate_payload_sha256"
+    ] = "f" * 64
+    candidate_payload.pop("manifest_sha256")
+    candidate_payload["manifest_sha256"] = _canonical_sha256(
+        candidate_payload
+    )
+    candidate_manifest_path = (
+        tmp_path / "candidate-evidence-manifest.json"
+    )
+    candidate_manifest_path.write_text(
+        json.dumps(candidate_payload),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="case_runs\\[0\\] candidate payload evidence is inconsistent",
+    ):
+        load_external_run_manifest(
+            candidate_manifest_path,
             expected_dataset_sha256=document["dataset_sha256"],
         )
 

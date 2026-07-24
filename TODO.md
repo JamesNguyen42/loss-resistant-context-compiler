@@ -344,6 +344,8 @@ Acceptance:
 - [x] Reconstruct every one-case corpus during manifest replay and require the
   case audit to be the ordered parent-corpus prefix with exact self/file
   digests and runner-owned temporary path structure.
+- [x] Retain every validated one-case candidate self-digest and reconcile it
+  with the matching raw case in the retained merged candidate during replay.
 - [x] Count the final rendered output and provenance ledger under the same
   evaluator-owned tokenizer and token budget for every system; external
   candidates receive a canonical typed-claim/provenance sidecar, and tests show
