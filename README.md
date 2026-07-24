@@ -27,14 +27,14 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 102 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 152 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
 | Production readiness | Not production-ready |
-| Confirmed fail-closed blockers | Four P0 paths documented below |
+| Confirmed fail-closed blockers | The four identified in-process P0 paths are closed |
 
 The local benchmark result is meaningful evidence that the current design can
 beat simple truncation and extraction policies on its own adversarial corpus.
@@ -112,26 +112,28 @@ The repository currently includes:
 - conservative correction, revocation, conflict, and unresolved-state
   resolution;
 - budget-aware selection that never silently drops protected items;
-- verification and independent artifact replay, subject to the confirmed P0
-  gaps below;
+- sealed compiled snapshots with recursive immutability, an integrity digest,
+  verification, and independent artifact replay;
+- non-replaceable built-in deterministic recovery and protected-item
+  certification passes;
+- bounded model-output parsing, deterministic provider-failure fallback, and
+  an opt-in strict provider-failure policy;
 - a portable JSON artifact, compact prompt renderer, and three JSON Schemas;
 - an append-only local source archive with integrity checks and locking;
 - the `ctxc compile`, `verify`, `inspect`, and `archive` commands;
-- LRCBench, external-candidate import/export, paired bootstrap gates, and
-  auditable JSON reports;
-- cross-version CI, linting, wheel/schema checks, and 102 regression tests.
+- LRCBench, external-candidate import/export, history-weighted paired bootstrap
+  gates, per-system decisions, and auditable JSON reports;
+- gold-free corpus self-digests plus a bounded, shell-free external runner whose
+  valid and failed manifests feed per-system certificate decisions;
+- an API-free, single-inference adapter for the exact local
+  `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
+- cross-version CI, linting, wheel/schema checks, and 152 regression tests.
 
 ## In development
 
 The next phase is mainly evidence, generalization, and integration rather than
 adding more claims to the README:
 
-- seal verified memory against post-verification mutation;
-- make the built-in protected-item certification pass non-replaceable;
-- fall back to deterministic extraction with an explicit warning when a model
-  provider fails;
-- prevent superseded state from entering a prompt labeled verified, or isolate
-  it in an explicitly non-executable audit view;
 - run matched external systems through the existing candidate interchange;
 - add held-out natural coding-agent histories with independent annotations;
 - measure end-to-end task completion on public long-horizon suites;
@@ -146,31 +148,26 @@ The ordered engineering backlog is in [TODO.md](TODO.md). The current design
 state, base revision, non-negotiable decisions, code map, and restart procedure
 for a new chat are in [docs/HANDOFF.md](docs/HANDOFF.md).
 
-### Confirmed P0 safety gaps
+### Closed P0 safety paths
 
-Four in-process paths are known to violate the intended fail-closed contract
-and must be fixed before a production release:
+The four identified in-process fail-closed defects now have regression-tested
+controls:
 
-1. `CompiledMemory` and `MemoryItem` are mutable after verification. Changing
-   an item can change `to_prompt()` output while the old report still says
-   `passed: true`.
-2. A caller can replace both the primary and `safety_extractor` with empty
-   extractors. The current verifier then derives an empty protected obligation
-   and can certify an empty prompt even when the source contains a constraint.
-3. A primary model extractor exception occurs before the deterministic safety
-   pass. A provider timeout therefore propagates instead of producing verified
-   deterministic fallback memory with a degradation warning.
-4. `include_superseded=True` can select obsolete state into a prompt while both
-   compile-time and independent artifact verification still pass.
+1. verified `CompiledMemory` snapshots and their items are recursively sealed;
+   prompt and artifact rendering recheck a canonical snapshot digest;
+2. built-in deterministic recovery and protected-item certification execute
+   independently of caller-supplied extractors and cannot be replaced;
+3. primary extractor failures and wholly unusable outputs fall back to
+   deterministic recovery with explicit verification warnings, while
+   `fail_on_primary_extractor_error=True` provides strict behavior;
+4. selecting superseded state is audit-only and makes verification fail, so it
+   cannot enter a prompt labeled verified.
 
-The benchmark also has two claim-level blockers: it issues one certificate
-against a single strongest baseline rather than computing strict-majority
-per-system wins, and its aggregate and bootstrap efficiency/loss calculations
-need one preregistered, consistent estimand before external publication.
-
-These defects are recorded as the first items in [TODO.md](TODO.md), including
-their reproduction cases. They do not invalidate the recorded deterministic
-local run, but they prevent a general safety or external-superiority claim.
+LRCBench also now uses one history-weighted memory estimand for point estimates
+and paired bootstrap bounds, records per-system decisions, and applies a strict
+majority rule to an explicitly registered external comparison set. External
+systems and natural-history task outcomes still have not been run, so the
+external-superiority claim remains unestablished.
 
 ## Intended use
 
@@ -216,9 +213,8 @@ and SHA-256 digest.
 
 ## Current guarantees
 
-At compilation time, for inputs the extractors recognize and compiled objects
-that have not subsequently been mutated, the current implementation enforces
-these structural properties:
+At compilation time, for inputs the extractors recognize, the current
+implementation enforces these structural properties:
 
 - every memory item has source provenance;
 - goals, constraints, user corrections, unresolved questions, exact errors,
@@ -248,7 +244,10 @@ these structural properties:
   metadata; quote, source-set, and artifact digests make changes visible when
   checked against an independently trusted source set;
 - source metadata is deep-copied, restricted to finite canonical JSON values,
-  and recursively immutable after `SourceRecord` construction.
+  and recursively immutable after `SourceRecord` construction;
+- the final compiled ledger, verification report, statistics, selection, and
+  compiler metadata are recursively sealed, and prompt/artifact rendering
+  rechecks a canonical snapshot digest.
 
 These are implementation invariants, not a proof of semantic completeness.
 The rule extractor is deliberately conservative and heuristic. Upstream roles
@@ -307,9 +306,7 @@ report with that replay. A self-hash is an integrity check, not a signature;
 an attacker who can rewrite both an artifact and its expected trust anchors is
 outside this guarantee.
 `--active-only` intentionally omits unselected ledger entries for compact
-transport. It emits only selected items; selected superseded items remain
-possible when the diagnostic `--include-superseded` option is also set. Its
-artifact is marked `ledger_complete: false`;
+transport. Its artifact is marked `ledger_complete: false`;
 independent `ctxc verify` rejects it with `incomplete_ledger` because omitted
 protected coverage cannot receive a full certificate.
 
@@ -319,8 +316,8 @@ Important compile options:
 - `--minimum-compression R`: target source/active ratio, default `5.0`;
 - `--strict-budget`: fail instead of reporting a protected-item overflow;
 - `--require-target`: return a failure status if the compression target misses;
-- `--include-superseded`: include superseded items in active selection;
-  diagnostic-only until the verified-stale-state P0 issue is fixed;
+- `--include-superseded`: include superseded items for diagnosis; verification
+  deliberately fails and verified prompt rendering is refused;
 - `--no-recovery`: disable the independent full deterministic recovery pass;
 - `--format json|prompt`: choose the output representation;
 - `--active-only`: emit a compact, intentionally incomplete non-audit ledger.
@@ -393,11 +390,40 @@ that can return the documented JSON envelope. This adapter is deliberately
 extractive: each ordinary candidate must equal a complete atomic cited span,
 and exact candidates must equal every cited span. It does not accept model
 paraphrases. Invalid kinds, roles, tags, and spans are rejected before they
-enter memory. After the completion callable returns, the full deterministic
-rule recovery pass runs by default, and protected-only candidates define the
-independent coverage certificate. Provider exceptions currently propagate
-before fallback; this is a confirmed P0 gap. The callable and any data it sends
-remain the integrator’s security and privacy responsibility.
+enter memory. The built-in deterministic recovery and protected-item
+certification passes run independently of the provider. Provider exceptions,
+invalid envelopes, oversized responses, and wholly unusable candidate sets
+produce deterministic fallback memory plus an explicit warning by default.
+Set `CompilationPolicy(fail_on_primary_extractor_error=True)` when provider
+failure must abort instead. `ModelExtractor` bounds response size and candidate
+count, but custom completion adapters remain responsible for enforcing their
+own deadlines and transport-level cancellation. The callable and any data it
+sends remain the integrator’s security and privacy responsibility.
+
+For the exact locally installed Qwen build approved for this repository, the
+API-free LM Studio CLI adapter verifies the model identity, Q4 quantization,
+loaded state, and a single inference slot before every call:
+
+```python
+from context_compiler import ContextCompiler, LmsQwenCompletion, ModelExtractor
+
+complete = LmsQwenCompletion(
+    r"C:\path\to\.lmstudio\bin\lms.exe",
+    timeout_seconds=120,
+)
+compiler = ContextCompiler(
+    extractor=ModelExtractor(
+        complete,
+        model_id=complete.model_id,
+        max_response_chars=1_000_000,
+        max_candidates=10_000,
+    )
+)
+```
+
+The adapter disables catalog fetching and does not use an HTTP model API.
+LM Studio passes the prompt as a process argument, so redact secrets before
+using it. See [Local Qwen integration](docs/LOCAL_QWEN.md).
 
 `CompilationPolicy(verify=False)` is an explicitly unsafe diagnostic mode. It
 returns a failed report with `verification_not_performed`; normal
@@ -447,9 +473,15 @@ python -m benchmarks --self-test
 python -m benchmarks --histories 24 --export-corpus lrcbench-corpus.json
 ```
 
-External outputs can be imported with repeatable `--external-baseline`
-options. See [Benchmarking](docs/BENCHMARKING.md) for the strict schema and
-claim scope.
+External outputs can be imported directly with repeatable
+`--external-baseline` for diagnostics. A counted registered comparison also
+requires a validated `--external-run-manifest`; otherwise it is an invalid
+non-win. Every intended participant must be preregistered with
+`--expected-external-system`, including missing or failed systems. See
+[Benchmarking](docs/BENCHMARKING.md) for the strict schema and claim scope.
+`python -m benchmarks.external_runner` supplies a shell-free, timeout- and
+output-bounded adapter process wrapper with a self-hashed manifest and complete
+candidate validation. It is not a filesystem or network sandbox.
 
 LRCBench requires exact gold-atom offsets for credited provenance. A candidate
 cannot cite a broad enclosing source span to obtain recall credit for a smaller
@@ -462,16 +494,16 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-23): all 102 tests pass, and the recorded default
+Current local snapshot (2026-07-24): all 152 tests pass, and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
-`9dd650433b9d1a018951a7a4745ba31907f6314965e44aee01ea9ecca24389ae`
+`421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`
 produced 100% compiler critical recall, exact recall, provenance validity,
 semantic-support accuracy, authority accuracy, and history-perfect rate; 0%
 stale-claim and unresolved-to-fact rates; and 32.60x corpus compression. The
-strongest bundled extractive baseline recorded 88.1% critical recall, 83.6%
-exact recall, 100% provenance and semantic-support validity, 0% authority
-accuracy, a 100% stale-claim rate, 0% perfect histories, and 30.13x
+bundled extractive baseline recorded 88.2% history-weighted critical recall,
+83.6% exact recall, 100% provenance and semantic-support validity, 0%
+authority accuracy, a 100% stale-claim rate, 0% perfect histories, and 30.13x
 compression. The reviewed JSON evidence is
 [docs/results/lrcbench-local.json](docs/results/lrcbench-local.json).
 
@@ -487,7 +519,9 @@ the commands above for the current revision and environment.
 - [Benchmark design and the exact 50% bar](docs/BENCHMARKING.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Related work](docs/RELATED_WORK.md)
+- [Exact local Qwen integration](docs/LOCAL_QWEN.md)
 - [LRCBench harness notes](benchmarks/README.md)
+- [Draft external comparison protocol](benchmarks/protocols/external-comparison-v1.md)
 - JSON Schemas:
   [source event](schemas/source-event.schema.json),
   [model extraction](schemas/model-extraction.schema.json), and

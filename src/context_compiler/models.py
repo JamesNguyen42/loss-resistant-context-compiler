@@ -19,6 +19,17 @@ from enum import StrEnum
 from typing import Any
 
 SCHEMA_VERSION = "1.0"
+PRIMARY_EXTRACTOR_FAILED_MESSAGE = (
+    "The primary extractor failed; verified deterministic recovery was used."
+)
+PRIMARY_EXTRACTOR_DEGRADED_MESSAGE = (
+    "The primary extractor returned unusable output; verified deterministic "
+    "recovery was used."
+)
+ADDITIVE_SAFETY_EXTRACTOR_FAILED_MESSAGE = (
+    "The additive safety extractor failed; built-in deterministic "
+    "certification remained active."
+)
 
 
 class _FrozenDict(dict):
@@ -26,7 +37,7 @@ class _FrozenDict(dict):
 
     @staticmethod
     def _immutable(*_args: Any, **_kwargs: Any) -> None:
-        raise TypeError("source metadata is immutable")
+        raise TypeError("verified state is immutable")
 
     __setitem__ = _immutable
     __delitem__ = _immutable
@@ -46,7 +57,7 @@ class _FrozenList(list):
 
     @staticmethod
     def _immutable(*_args: Any, **_kwargs: Any) -> None:
-        raise TypeError("source metadata is immutable")
+        raise TypeError("verified state is immutable")
 
     __setitem__ = _immutable
     __delitem__ = _immutable
@@ -423,6 +434,12 @@ class MemoryItem:
     supersedes: list[str] = field(default_factory=list)
     conflicts_with: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    _sealed: bool = field(default=False, init=False, repr=False, compare=False)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if getattr(self, "_sealed", False):
+            raise TypeError("verified memory item is immutable")
+        object.__setattr__(self, name, value)
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not self.id:
@@ -461,6 +478,19 @@ class MemoryItem:
         self.provenance = list(self.provenance)
         self.metadata = copy.deepcopy(self.metadata)
 
+    def seal(self) -> MemoryItem:
+        """Recursively freeze this item after it has passed resolution and verification."""
+
+        if self._sealed:
+            return self
+        object.__setattr__(self, "provenance", _FrozenList(self.provenance))
+        object.__setattr__(self, "tags", _FrozenList(self.tags))
+        object.__setattr__(self, "supersedes", _FrozenList(self.supersedes))
+        object.__setattr__(self, "conflicts_with", _FrozenList(self.conflicts_with))
+        object.__setattr__(self, "metadata", _freeze_json(self.metadata))
+        object.__setattr__(self, "_sealed", True)
+        return self
+
     @property
     def protected(self) -> bool:
         return self.kind in PROTECTED_KINDS or "resolves-protected" in self.tags
@@ -485,7 +515,7 @@ class MemoryItem:
             "tags": list(self.tags),
             "supersedes": list(self.supersedes),
             "conflicts_with": list(self.conflicts_with),
-            "metadata": copy.deepcopy(self.metadata),
+            "metadata": _thaw_json(self.metadata),
             "provenance": [span.to_dict() for span in self.provenance],
         }
 
@@ -596,7 +626,7 @@ class VerificationIssue:
         }
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class VerificationReport:
     passed: bool
     issues: list[VerificationIssue] = field(default_factory=list)
@@ -605,6 +635,9 @@ class VerificationReport:
     provenance_valid: int = 0
     provenance_total: int = 0
     recovered_items: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "issues", _FrozenList(self.issues))
 
     @property
     def protected_recall(self) -> float:
@@ -648,9 +681,20 @@ class CompilationPolicy:
     include_discarded: bool = True
     verify: bool = True
     recover_missed_protected: bool = True
+    fail_on_primary_extractor_error: bool = False
     chars_per_token: float = 4.0
 
     def __post_init__(self) -> None:
+        for name in (
+            "fail_on_budget_overflow",
+            "include_superseded",
+            "include_discarded",
+            "verify",
+            "recover_missed_protected",
+            "fail_on_primary_extractor_error",
+        ):
+            if not isinstance(getattr(self, name), bool):
+                raise TypeError(f"{name} must be a boolean")
         if isinstance(self.token_budget, bool) or not isinstance(self.token_budget, int):
             raise TypeError("token_budget must be an integer")
         if self.token_budget <= 0:
@@ -673,7 +717,7 @@ class CompilationPolicy:
             raise ValueError("chars_per_token must be positive")
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class CompressionStats:
     source_chars: int
     active_chars: int
@@ -708,13 +752,74 @@ class CompiledMemory:
     verification: VerificationReport
     compression: CompressionStats
     compiler_metadata: dict[str, Any] = field(default_factory=dict)
+    _snapshot_sha256: str = field(default="", init=False, repr=False, compare=False)
+    _sealed: bool = field(default=False, init=False, repr=False, compare=False)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if getattr(self, "_sealed", False):
+            raise TypeError("compiled memory is immutable")
+        object.__setattr__(self, name, value)
+
+    def _snapshot_payload(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "compiled_at": self.compiled_at,
+            "source_digest": self.source_digest,
+            "source_count": self.source_count,
+            "items": [item.to_dict() for item in self.items],
+            "selected_item_ids": list(self.selected_item_ids),
+            "verification": self.verification.to_dict(),
+            "compression": self.compression.to_dict(),
+            "compiler_metadata": _thaw_json(self.compiler_metadata),
+        }
+
+    def _compute_snapshot_sha256(self) -> str:
+        canonical = json.dumps(
+            self._snapshot_payload(),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def _assert_snapshot_integrity(self) -> None:
+        if self._sealed and self._compute_snapshot_sha256() != self._snapshot_sha256:
+            raise ValueError("compiled memory changed after verification")
+
+    def seal(self) -> CompiledMemory:
+        """Freeze every verified field and bind renderers to the final snapshot."""
+
+        if self._sealed:
+            self._assert_snapshot_integrity()
+            return self
+        object.__setattr__(
+            self,
+            "items",
+            _FrozenList(item.seal() for item in self.items),
+        )
+        object.__setattr__(
+            self,
+            "selected_item_ids",
+            _FrozenList(self.selected_item_ids),
+        )
+        object.__setattr__(
+            self,
+            "compiler_metadata",
+            _freeze_json(self.compiler_metadata),
+        )
+        object.__setattr__(self, "_snapshot_sha256", self._compute_snapshot_sha256())
+        object.__setattr__(self, "_sealed", True)
+        return self
 
     @property
     def active_items(self) -> list[MemoryItem]:
+        self._assert_snapshot_integrity()
         selected = set(self.selected_item_ids)
         return [item for item in self.items if item.id in selected]
 
     def by_kind(self, *, selected_only: bool = True) -> dict[MemoryKind, list[MemoryItem]]:
+        self._assert_snapshot_integrity()
         grouped: dict[MemoryKind, list[MemoryItem]] = {kind: [] for kind in MemoryKind}
         items = self.active_items if selected_only else self.items
         for item in items:
@@ -722,6 +827,7 @@ class CompiledMemory:
         return {kind: values for kind, values in grouped.items() if values}
 
     def to_dict(self, *, include_all_items: bool = True) -> dict[str, Any]:
+        self._assert_snapshot_integrity()
         chosen = self.items if include_all_items else self.active_items
         payload = {
             "schema_version": self.schema_version,
@@ -733,7 +839,7 @@ class CompiledMemory:
             "selected_item_ids": list(self.selected_item_ids),
             "verification": self.verification.to_dict(),
             "compression": self.compression.to_dict(),
-            "compiler_metadata": copy.deepcopy(self.compiler_metadata),
+            "compiler_metadata": _thaw_json(self.compiler_metadata),
         }
         canonical = json.dumps(
             payload,
@@ -763,6 +869,7 @@ class CompiledMemory:
         if not self.verification.passed and not allow_unverified:
             raise ValueError("refusing to render active context from unverified memory")
 
+        self._assert_snapshot_integrity()
         return render_typed_memory(self.items, self.selected_item_ids)
 
 

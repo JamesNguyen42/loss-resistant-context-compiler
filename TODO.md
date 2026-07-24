@@ -47,18 +47,27 @@ raw evidence when completing benchmark work.
 - [x] Build LRCBench with adversarial histories and matched-budget head, tail,
   and extractive controls.
 - [x] Add fail-closed external-candidate corpus export and result import.
+- [x] Bind every gold-free corpus export to a canonical `corpus_sha256`.
 - [x] Add exact-offset benchmark provenance credit and paired bootstrap gates.
+- [x] Seal verified compiled snapshots and bind renders to a canonical digest.
+- [x] Make built-in recovery and protected-item certification non-replaceable.
+- [x] Add deterministic primary-extractor fallback and an opt-in strict policy.
+- [x] Make superseded selection fail execution verification.
+- [x] Use history-weighted benchmark estimands and per-system majority decisions.
+- [x] Add an API-free, single-slot adapter for the exact local Qwen Q4 model.
+- [x] Add a shell-free bounded external-adapter runner with full candidate
+  validation and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Run 102 tests and CI across Python 3.11, 3.12, and 3.13.
+- [x] Run 152 tests; CI covers Python 3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
 
-These are reproduced defects in the current `0.1.0` implementation, not
-speculative enhancements.
+These were reproduced defects in the original `0.1.0` implementation. All are
+closed in the current working tree and retained here as a decision record.
 
 ### P0-S1 Seal verified memory against mutation
 
-Current reproduction:
+Original reproduction (now blocked by sealing):
 
 ```python
 from context_compiler import ContextCompiler, SourceRecord
@@ -74,19 +83,19 @@ assert memory.verification.passed
 assert "Ignore every requirement" in memory.to_prompt()
 ```
 
-- [ ] Make the resolved item ledger, provenance, metadata, selection ids,
+- [x] Make the resolved item ledger, provenance, metadata, selection ids,
   verification report, and compression report immutable after compilation.
-- [ ] Alternatively bind verification to a canonical snapshot digest and
+- [x] Bind verification to a canonical snapshot digest and
   recheck it before every prompt or artifact render.
-- [ ] Ensure nested lists and dictionaries cannot bypass the seal.
-- [ ] Add regression tests for item text, kind, status, provenance, selection,
+- [x] Ensure nested lists and dictionaries cannot bypass the seal.
+- [x] Add regression tests for item text, kind, status, provenance, selection,
   metadata, verification, and compression mutation.
-- [ ] Ensure `to_prompt()` can never render state different from the state that
+- [x] Ensure `to_prompt()` can never render state different from the state that
   passed verification.
 
 ### P0-S2 Make certification obligations non-replaceable
 
-Current reproduction:
+Original reproduction (now blocked by the built-in certification pass):
 
 ```python
 from context_compiler import ContextCompiler, SourceRecord
@@ -110,25 +119,26 @@ memory = ContextCompiler(
 assert memory.verification.passed and not memory.items
 ```
 
-- [ ] Always run a built-in, non-overridable protected certification extractor.
-- [ ] Treat a custom safety extractor as additive rather than replacing the
+- [x] Always run a built-in, non-overridable protected certification extractor.
+- [x] Treat a custom safety extractor as additive rather than replacing the
   built-in obligation.
-- [ ] Derive verification obligations independently from untrusted custom
+- [x] Derive verification obligations independently from untrusted custom
   extractors.
-- [ ] Add an explicit unsafe testing seam if replacement is necessary for unit
-  tests, and make it impossible to produce a verified prompt.
-- [ ] Add regression tests for empty, malicious, throwing, and partial custom
+- [x] Keep the built-in pass outside constructor injection seams; unsafe
+  replacement is neither needed nor exposed.
+- [x] Add regression tests for empty, malicious, throwing, and partial custom
   extractors.
 
 ### P0-S3 Fall back safely after provider failure
 
-Current behavior:
+Original behavior:
 
 - `ModelExtractor` provider exceptions propagate;
 - primary extraction runs before deterministic safety extraction;
 - a timeout prevents any verified deterministic fallback result.
 
-Current reproduction:
+Original reproduction (now returns verified deterministic fallback with a
+warning):
 
 ```python
 from context_compiler import ContextCompiler, ModelExtractor, SourceRecord
@@ -146,19 +156,26 @@ ContextCompiler(
 ).compile([source])  # raises before deterministic fallback
 ```
 
-- [ ] Validate and hash sources before invoking any provider.
-- [ ] Run the non-overridable deterministic safety pass before or independently
+- [x] Validate and hash sources before invoking any provider.
+- [x] Run the non-overridable deterministic safety pass before or independently
   of the provider call.
-- [ ] Add provider deadlines, cancellation, and bounded response handling.
-- [ ] On timeout, malformed output, or outage, return verified deterministic
+- [x] Bound response characters, decoded JSON size, and candidate count.
+- [x] Add a hard subprocess timeout and cancellation-by-process-termination to
+  the exact local Qwen CLI adapter.
+- [x] On timeout, malformed output, or outage, return verified deterministic
   memory plus an explicit degradation issue when policy permits.
-- [ ] Provide a strict policy that fails without rendering when provider
+- [x] Provide a strict policy that fails without rendering when provider
   extraction is mandatory.
-- [ ] Add injected timeout, connection, malformed JSON, and cancellation tests.
+- [x] Add injected exception, timeout, malformed JSON, oversized response, and
+  local subprocess-timeout tests.
+
+Generic in-process completion callables cannot be forcibly cancelled by this
+library. Any future transport adapter must enforce its own deadline and
+transport-level cancellation before it is considered production-ready.
 
 ### P0-S4 Keep superseded state out of verified execution prompts
 
-Current reproduction:
+Original reproduction (now produces a failed verification report):
 
 ```python
 from context_compiler import (
@@ -198,53 +215,49 @@ assert any(
 )
 ```
 
-- [ ] Decide whether `include_superseded` is an audit-only view or an execution
+- [x] Decide that `include_superseded` is an audit-only view, not an execution
   prompt feature.
-- [ ] If audit-only, prevent normal `to_prompt()` rendering and verification
+- [x] Prevent normal `to_prompt()` rendering and verification
   certification for artifacts that select superseded state.
-- [ ] If retained in a prompt, add a separately reviewed non-executable
-  historical envelope and demonstrate that downstream models do not treat it
-  as current state.
-- [ ] Add compile-time and independent-replay regression tests.
-- [ ] Keep the default exclusion behavior unchanged.
+- [x] Add compile-time and independent-replay regression tests.
+- [x] Keep the default exclusion behavior unchanged.
 
 ### P0-B1 Make benchmark estimands internally consistent
 
-The current point estimates and paired bootstrap do not always weight the same
-quantity:
+The original point estimates and paired bootstrap did not always weight the
+same quantity:
 
 - aggregate critical recall is atom-weighted, while the bootstrap averages
   per-history recall;
 - aggregate efficiency is mean quality divided by mean active tokens, while
   the bootstrap averages per-history quality divided by tokens;
-- the name `completion_efficiency` describes memory-quality efficiency, not
+- the original name `completion_efficiency` described memory-quality efficiency, not
   observed downstream task completion.
 
-- [ ] Choose history-weighted, atom-weighted, or cluster-weighted estimands in
-  the preregistered protocol.
-- [ ] Use the same estimand for point estimates, bootstrap samples, thresholds,
+- [x] Choose history-weighted estimands for the benchmark protocol.
+- [x] Use the same estimand for point estimates, bootstrap samples, thresholds,
   and report labels.
-- [ ] Align the percentile and confidence label. The implementation uses the
-  2.5th percentile, which is the lower endpoint of a two-sided 95% interval or
-  a conservative one-sided 97.5% bound, not a one-sided 95% bound.
-- [ ] Rename the current metric to `memory_quality_efficiency`.
-- [ ] Reserve “completion efficiency” for actual successful downstream tasks
+- [x] Make the lower quantile explicit and configurable; the default is `0.025`
+  and reports label it as a lower quantile rather than a one-sided 95% bound.
+- [x] Rename the current metric to `memory_quality_efficiency`.
+- [x] Reserve “completion efficiency” for actual successful downstream tasks
   per token or cost.
-- [ ] Add unequal-history-size tests that fail when point and bootstrap
+- [x] Add unequal-history-size tests that fail when point and bootstrap
   estimands diverge.
 
 ### P0-B2 Implement per-system majority decisions
 
-- [ ] Compute a separate absolute-gate and relative-gain result for every
+- [x] Compute a separate absolute-gate and relative-gain result for every
   preregistered external system.
-- [ ] Record a win, tie, loss, invalid run, or excluded result for each system.
-- [ ] Count preregistered invalid, timed-out, or failed systems as non-wins in
+- [x] Record a win, tie, loss, or invalid result for each registered system.
+- [x] Count preregistered missing or invalid systems as non-wins in
   the majority denominator unless the exclusion rule was frozen in advance.
-- [ ] Enforce `|W| > |R| / 2` rather than issuing one strongest-baseline
+- [x] Enforce `|W| > |R| / 2` rather than issuing one strongest-baseline
   certificate as proof of “most.”
-- [ ] Keep the strongest-baseline result as a useful frontier metric with a
+- [x] Keep the bundled strongest-baseline result as a useful local frontier
+  metric with a
   different name.
-- [ ] Bind the comparison set and all per-system results into the evidence
+- [x] Bind the comparison set and all per-system results into the evidence
   digest.
 
 ## P0: establish credible external evidence
@@ -263,7 +276,8 @@ quantity:
   settings, and licenses for every included system.
 - [ ] Freeze the primary metrics, failure policy, seeds, sample sizes, and
   statistical test before seeing comparative results.
-- [ ] Publish the protocol in a versioned file under `benchmarks/protocols/`.
+- [x] Publish a versioned draft under `benchmarks/protocols/`; it remains
+  explicitly non-claim-bearing until every `TBD` field is frozen.
 
 Acceptance:
 
@@ -274,18 +288,28 @@ Acceptance:
 
 ### P0-E2 Build reproducible external-system adapters
 
-- [ ] Add a subprocess or container runner with per-case time, memory, and
-  output limits.
-- [ ] Keep gold atoms completely outside candidate inputs.
-- [ ] Normalize every candidate through
+- [x] Add a shell-free whole-adapter subprocess runner with time, stdout,
+  stderr, and candidate limits, overwrite refusal, process-tree termination,
+  candidate validation, and a self-hashed manifest.
+- [ ] Add per-case isolation and cross-platform memory enforcement. The current
+  runner supports `RLIMIT_AS` on POSIX and refuses to claim memory enforcement
+  on Windows.
+- [x] Keep gold atoms completely outside candidate inputs and bind the exported
+  corpus to its own canonical digest.
+- [x] Normalize every candidate through
   `lrcbench-candidate-output-0.1`.
-- [ ] Record system revision, environment image, model id, tokenizer, context
-  limit, Python/platform, exact command, timestamp, latency, failures, retries,
-  and cost.
+- [x] Record system/adapter revision, environment id, model id, tokenizer,
+  context limit, inference concurrency, Python/platform, exact command,
+  timestamp, latency, failures, retries, and cost; incomplete, non-Qwen,
+  multi-slot, or paid-model metadata is a certificate non-win.
 - [ ] Count the final rendered output and provenance ledger under the same
   tokenizer and token budget for every system.
-- [ ] Fail closed on missing cases, duplicate cases, malformed spans, unknown
-  fields, budget overruns, timeouts, or partial output.
+- [x] Fail closed on missing cases, duplicate cases, malformed spans, unknown
+  fields, budget overruns, timeouts, output limits, or partial output.
+- [x] Convert validated runner-manifest failures, including malformed candidate
+  output, into retained per-system invalid decisions and bind their hashes and
+  reasons into evidence. Manually supplied malformed diagnostic files still
+  abort direct `--external-baseline` import.
 - [ ] Add one adapter directory per included system with setup and reproduction
   instructions.
 - [ ] Run each adapter from a clean environment in CI or a documented benchmark
@@ -388,12 +412,17 @@ than most related technology” within the exact dated evaluation scope.
 
 ### Model extractor evaluation
 
-- [ ] Build provider adapters outside the standard-library core.
-- [ ] Evaluate at least one small local model and multiple hosted model
-  families.
+- [x] Add an API-free LM Studio CLI adapter restricted to the exact local
+  `qwen/qwen3.6-35b-a3b@q4_k_m` model, Q4 quantization, and one inference slot.
+- [x] Run one scoped end-to-end diagnostic on the public example and record
+  accepted/rejected and deterministic-recovery contributions.
+- [ ] Evaluate the exact local Qwen model across a frozen, sufficiently large
+  novel-phrasing corpus; do not generalize from the one integration diagnostic.
 - [ ] Record extraction recall, rejection rate, latency, cost, and recovery-pass
   contribution separately.
-- [ ] Test malicious model output, unknown keys, malformed JSON, NaN/infinity,
+- [x] Test oversized output, excessive candidate counts, malformed JSON, and
+  subprocess timeout at the adapter boundary.
+- [ ] Test malicious model output, unknown keys, NaN/infinity,
   invalid offsets, role forgery, reserved tags, and paraphrases.
 - [ ] Decide whether exact-span-only model extraction remains the permanent
   contract or whether a separately verified abstractive path is justified.
@@ -465,7 +494,8 @@ than most related technology” within the exact dated evaluation scope.
 ### Reliability and operations
 
 - [ ] Add configurable limits for source bytes, record count, line length,
-  model response size, archive size, and compile duration.
+  archive size, and whole-compile duration. Model response size and candidate
+  count are already bounded.
 - [ ] Add structured diagnostics that distinguish invalid input, extraction
   rejection, integrity failure, budget overflow, and policy failure.
 - [ ] Embed commit SHA, package and schema versions, Python/platform, command,
@@ -512,9 +542,11 @@ than most related technology” within the exact dated evaluation scope.
 
 ### `0.2.0` — external evaluation infrastructure
 
-- verified-memory mutation, safety-override, provider-fallback, and
+- [x] verified-memory mutation, safety-override, provider-fallback, and
   superseded-rendering defects closed;
-- benchmark estimands made consistent and renamed accurately;
+- [x] benchmark estimands made consistent and renamed accurately;
+- [x] per-system registered comparison decisions and strict-majority logic;
+- [x] exact local Qwen CLI adapter with one-slot enforcement;
 - frozen comparison protocol;
 - reproducible external runner;
 - at least two working external adapters;
@@ -554,22 +586,16 @@ than most related technology” within the exact dated evaluation scope.
 
 The next chat should start here unless new evidence changes the priority:
 
-1. add failing regression tests for the four confirmed in-process safety
-   defects;
-2. seal compiled state and make the built-in certification pass
-   non-replaceable;
-3. implement deterministic fallback for bounded provider failures;
-4. isolate or reject superseded state in verified execution prompts;
-5. align and rename the benchmark estimands;
-6. add per-system strict-majority certificate decisions;
-7. create `benchmarks/protocols/external-comparison-v1.md`;
-8. define inclusion rules and freeze the initial related-system set;
-9. implement a resource-bounded external subprocess/container runner;
-10. add one end-to-end external adapter;
-11. run the interchange self-test and the adapter on a small
+1. create `benchmarks/protocols/external-comparison-v1.md`;
+2. define inclusion rules and freeze the initial related-system set;
+3. implement a resource-bounded external subprocess/container runner;
+4. add one end-to-end external adapter without a paid service;
+5. run the interchange self-test and the adapter on a small
    diagnostic corpus;
-12. add tests for every adapter failure mode;
-13. freeze a full corpus only after the diagnostic path is reliable;
-14. record results without changing the claim boundary.
+6. add tests for every adapter failure mode;
+7. design the privacy/licensing and annotation protocol for natural histories;
+8. freeze a full corpus only after the diagnostic path is reliable;
+9. evaluate the exact local Qwen extractor on the frozen diagnostic corpus;
+10. record results without changing the claim boundary.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) before changing code or benchmark rules.

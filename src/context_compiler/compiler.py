@@ -5,8 +5,11 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Iterable
 
-from .extractors import Extractor, RuleBasedExtractor
+from .extractors import ExtractionResult, Extractor, RuleBasedExtractor
 from .models import (
+    ADDITIVE_SAFETY_EXTRACTOR_FAILED_MESSAGE,
+    PRIMARY_EXTRACTOR_DEGRADED_MESSAGE,
+    PRIMARY_EXTRACTOR_FAILED_MESSAGE,
     SCHEMA_VERSION,
     CompilationPolicy,
     CompiledMemory,
@@ -32,10 +35,11 @@ TokenCounter = Callable[[str], int]
 class ContextCompiler:
     """Compile verbose histories into typed, verifiable active context.
 
-    A provider-specific model extractor may improve semantic coverage, and an
-    independent rule-based safety pass runs by default after primary extraction
-    succeeds. Provider exceptions currently propagate before that pass; this
-    alpha limitation is tracked as a P0 item in the project roadmap.
+    Built-in deterministic recovery and certification passes run before an
+    optional primary extractor. A primary provider failure therefore degrades
+    to verified deterministic memory unless strict failure policy is enabled.
+    A caller-supplied safety extractor is additive and cannot replace the
+    built-in certification obligation.
     """
 
     def __init__(
@@ -53,26 +57,117 @@ class ContextCompiler:
             not isinstance(token_counter_id, str) or not token_counter_id.strip()
         ):
             raise TypeError("token_counter_id must be a non-empty string")
-        self.extractor = extractor or RuleBasedExtractor()
-        self.policy = policy or CompilationPolicy()
-        self.safety_extractor = safety_extractor or RuleBasedExtractor()
+        self.extractor = extractor if extractor is not None else RuleBasedExtractor()
+        self.policy = policy if policy is not None else CompilationPolicy()
+        self.safety_extractor = safety_extractor
         self._custom_token_counter = token_counter
         self._token_counter_id = token_counter_id.strip() if token_counter_id else None
 
     def compile(self, sources: Iterable[SourceRecord | dict]) -> CompiledMemory:
         ordered = self._prepare_sources(sources)
-        primary = self.extractor.extract(ordered)
-        safety = self.safety_extractor.extract(ordered)
+        trusted_source_digest = source_digest(ordered)
+
+        # These built-in passes are deliberately not constructor seams. Custom
+        # extractors may add coverage, but cannot reduce the obligation against
+        # which verified output is certified.
+        recovery_extractor = RuleBasedExtractor()
+        certification_extractor = RuleBasedExtractor(protected_only=True)
+        recovery = recovery_extractor.extract(ordered)
+        certification = certification_extractor.extract(ordered)
+        safety_results: list[tuple[str, ExtractionResult]] = [
+            (recovery_extractor.name, recovery)
+        ]
+        primary_name = self._extractor_name(self.extractor)
+        initial_issues: list[VerificationIssue] = []
+        custom_safety_failure: dict[str, str] | None = None
+        custom_safety_rejections: list[dict] = []
+        custom_safety_name = (
+            self._extractor_name(self.safety_extractor)
+            if self.safety_extractor is not None
+            else None
+        )
+        if self.safety_extractor is not None:
+            try:
+                custom_safety = self._validated_extraction(
+                    self.safety_extractor.extract(ordered)
+                )
+            except Exception as exc:
+                custom_safety_failure = {
+                    "extractor": custom_safety_name,
+                    "exception_type": type(exc).__name__,
+                }
+                initial_issues.append(
+                    VerificationIssue(
+                        code="additive_safety_extractor_failed",
+                        severity=IssueSeverity.WARNING,
+                        message=ADDITIVE_SAFETY_EXTRACTOR_FAILED_MESSAGE,
+                    )
+                )
+            else:
+                safety_results.append((custom_safety_name, custom_safety))
+                custom_safety_rejections = custom_safety.rejected
+
+        primary_failure: dict[str, str] | None = None
+        primary_degradation: dict[str, str] | None = None
+        try:
+            primary = self._validated_extraction(self.extractor.extract(ordered))
+        except Exception as exc:
+            if self.policy.fail_on_primary_extractor_error:
+                raise RuntimeError(
+                    f"primary extractor {primary_name!r} failed"
+                ) from exc
+            primary_failure = {
+                "extractor": primary_name,
+                "exception_type": type(exc).__name__,
+            }
+            primary = ExtractionResult(
+                metadata={"extractor": primary_name, "degraded": True}
+            )
+            initial_issues.append(
+                VerificationIssue(
+                    code="primary_extractor_failed",
+                    severity=IssueSeverity.WARNING,
+                    message=PRIMARY_EXTRACTOR_FAILED_MESSAGE,
+                )
+            )
+        if primary_failure is None and primary.metadata.get("degraded") is True:
+            raw_reason = primary.metadata.get("failure_reason")
+            reason = (
+                raw_reason
+                if isinstance(raw_reason, str) and raw_reason
+                else "unusable_output"
+            )
+            primary_degradation = {
+                "extractor": primary_name,
+                "reason": reason,
+            }
+            initial_issues.append(
+                VerificationIssue(
+                    code="primary_extractor_degraded",
+                    severity=IssueSeverity.WARNING,
+                    message=PRIMARY_EXTRACTOR_DEGRADED_MESSAGE,
+                )
+            )
+
+        # Recheck after every caller-controlled extractor. A custom extractor
+        # must not mutate even a deliberately forged SourceRecord before the
+        # verified result is bound to the preflight source digest.
+        if source_digest(ordered) != trusted_source_digest:
+            raise ValueError("source history changed during extraction")
 
         items = list(primary.items)
         recovered = 0
         if self.policy.recover_missed_protected:
-            for candidate in safety.items:
-                if not self._span_kind_present(candidate, items):
-                    candidate.tags = sorted(set(candidate.tags) | {"verifier-recovered"})
-                    candidate.metadata["recovered_by"] = self.safety_extractor.name
-                    items.append(candidate)
-                    recovered += 1
+            for extractor_name, safety in safety_results:
+                for candidate in safety.items:
+                    if not self._span_kind_present(candidate, items):
+                        recovered_candidate = MemoryItem.from_dict(candidate.to_dict())
+                        recovered_candidate.tags = sorted(
+                            set(recovered_candidate.tags) | {"verifier-recovered"}
+                        )
+                        recovered_candidate.metadata["recovered_by"] = extractor_name
+                        items.append(recovered_candidate)
+                        recovered += 1
 
         items = resolve_temporal_state(items)
         selected_ids = self._select(items, ordered)
@@ -94,16 +189,25 @@ class ContextCompiler:
         result = CompiledMemory(
             schema_version=SCHEMA_VERSION,
             compiled_at=utc_now(),
-            source_digest=source_digest(ordered),
+            source_digest=trusted_source_digest,
             source_count=len(ordered),
             items=items,
             selected_item_ids=selected_ids,
             verification=VerificationReport(passed=True),
             compression=placeholder,
             compiler_metadata={
-                "extractor": self.extractor.name,
-                "safety_extractor": self.safety_extractor.name,
+                "extractor": primary_name,
+                "safety_extractor": recovery_extractor.name,
+                "certification_extractor": certification_extractor.name,
+                "additive_safety_extractor": (
+                    custom_safety_name
+                ),
                 "primary_rejections": primary.rejected,
+                "primary_extractor_metadata": primary.metadata,
+                "primary_failure": primary_failure,
+                "primary_degradation": primary_degradation,
+                "additive_safety_rejections": custom_safety_rejections,
+                "additive_safety_failure": custom_safety_failure,
                 "recovered_items": recovered,
                 "loss_policy": "protected-items-never-drop",
                 "policy": {
@@ -122,6 +226,9 @@ class ContextCompiler:
                     "include_superseded": self.policy.include_superseded,
                     "include_discarded": self.policy.include_discarded,
                 },
+                "fail_on_primary_extractor_error": (
+                    self.policy.fail_on_primary_extractor_error
+                ),
             },
         )
         active_prompt = result.to_prompt()
@@ -149,15 +256,17 @@ class ContextCompiler:
                 sources=ordered,
                 items=items,
                 selected_item_ids=selected_ids,
-                protected_candidates=[item for item in safety.items if item.protected],
+                protected_candidates=certification.items,
                 recovered_items=recovered,
                 budget_overflow=result.compression.budget_overflow,
                 compression_target_met=result.compression.target_met,
+                initial_issues=initial_issues,
             )
         else:
             result.verification = VerificationReport(
                 passed=False,
                 issues=[
+                    *initial_issues,
                     VerificationIssue(
                         code="verification_not_performed",
                         severity=IssueSeverity.ERROR,
@@ -165,7 +274,7 @@ class ContextCompiler:
                     )
                 ],
             )
-        return result
+        return result.seal()
 
     @staticmethod
     def _prepare_sources(sources: Iterable[SourceRecord | dict]) -> list[SourceRecord]:
@@ -197,6 +306,32 @@ class ContextCompiler:
             <= {(span.source_id, span.start, span.end) for span in item.provenance}
             for item in items
         )
+
+    @staticmethod
+    def _validated_extraction(result: ExtractionResult) -> ExtractionResult:
+        if not isinstance(result, ExtractionResult):
+            raise TypeError("extractor must return ExtractionResult")
+        if not all(isinstance(item, MemoryItem) for item in result.items):
+            raise TypeError("extractor result items must be MemoryItem values")
+        if not isinstance(result.rejected, list) or not all(
+            isinstance(rejection, dict) for rejection in result.rejected
+        ):
+            raise TypeError("extractor rejections must be dictionaries")
+        if not isinstance(result.metadata, dict):
+            raise TypeError("extractor metadata must be an object")
+        return result
+
+    @staticmethod
+    def _extractor_name(extractor: Extractor) -> str:
+        """Return a stable diagnostic name without trusting a custom property."""
+
+        try:
+            name = extractor.name
+        except Exception:
+            name = None
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+        return type(extractor).__name__
 
     def _count_tokens(self, text: str) -> int:
         if self._custom_token_counter is not None:

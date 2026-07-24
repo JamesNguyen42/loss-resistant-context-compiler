@@ -1,8 +1,9 @@
 {
-  "benchmark": "lrcbench-0.1",
+  "benchmark": "lrcbench-0.2",
   "candidate_schema": "lrcbench-candidate-output-0.1",
   "certificate": {
     "baseline_quality": 0.0,
+    "bootstrap_lower_quantile": 0.025,
     "candidate": "compiler",
     "candidate_quality": 1.0,
     "claim": "Local-scope certificate: compiler clears a paired 50% frontier over extractive using critical-semantic-loss-reduction; no external state-of-the-art baseline was supplied.",
@@ -11,19 +12,63 @@
       "head",
       "tail"
     ],
-    "completion_efficiency_gain": null,
-    "completion_efficiency_margin_lower_95": 0.0011994547490433894,
-    "critical_loss_margin_lower_95": 0.04434742647058824,
+    "comparisons": [
+      {
+        "critical_loss_margin_lower": 0.04434742647058824,
+        "critical_semantic_loss_reduction": 1.0,
+        "decision": "win",
+        "external": false,
+        "gain_basis": "critical-semantic-loss-reduction",
+        "memory_quality_efficiency_gain": null,
+        "memory_quality_efficiency_margin_lower": 0.0011994547490433894,
+        "reasons": [],
+        "system": "extractive"
+      },
+      {
+        "critical_loss_margin_lower": 0.5,
+        "critical_semantic_loss_reduction": 1.0,
+        "decision": "invalid",
+        "external": false,
+        "gain_basis": "critical-semantic-loss-reduction",
+        "memory_quality_efficiency_gain": null,
+        "memory_quality_efficiency_margin_lower": 0.0011994547490433894,
+        "reasons": [
+          "baseline critical recall is degenerate"
+        ],
+        "system": "head"
+      },
+      {
+        "critical_loss_margin_lower": 0.5,
+        "critical_semantic_loss_reduction": 1.0,
+        "decision": "invalid",
+        "external": false,
+        "gain_basis": "critical-semantic-loss-reduction",
+        "memory_quality_efficiency_gain": null,
+        "memory_quality_efficiency_margin_lower": 0.0011994547490433894,
+        "reasons": [
+          "baseline critical recall is degenerate"
+        ],
+        "system": "tail"
+      }
+    ],
+    "critical_loss_margin_lower": 0.04434742647058824,
     "critical_semantic_loss_reduction": 1.0,
-    "evidence_sha256": "7cf6654a17ded24aa0344c9e7fa90077be21f906d3ecf0ce88f9099aaebdb507",
+    "evidence_sha256": "7594aeeaa124d08e58a4a5a490ac97e772facc654bf53f88fbb4f7208b85509b",
     "external_baselines": [],
+    "external_majority_passed": null,
+    "external_manifests": [],
+    "external_required_wins": 0,
+    "external_wins": 0,
     "gain_basis": "critical-semantic-loss-reduction",
     "issued": true,
+    "memory_quality_efficiency_gain": null,
+    "memory_quality_efficiency_margin_lower": 0.0011994547490433894,
     "reasons": [],
     "scope": "local-bundled-only",
     "strongest_baseline": "extractive"
   },
   "config": {
+    "bootstrap_lower_quantile": 0.025,
     "bootstrap_samples": 2000,
     "histories": 32,
     "messages_per_history": 72,
@@ -32,8 +77,8 @@
     "seed": 56056,
     "token_budget": 900
   },
-  "corpus_schema": "lrcbench-corpus-0.1",
-  "dataset_sha256": "9dd650433b9d1a018951a7a4745ba31907f6314965e44aee01ea9ecca24389ae",
+  "corpus_schema": "lrcbench-corpus-0.2",
+  "dataset_sha256": "421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761",
   "systems": [
     {
       "active_tokens": 26423,
@@ -45,6 +90,7 @@
       "exact_literal_recall": 1.0,
       "histories": 32,
       "history_perfect_rate": 1.0,
+      "memory_quality_efficiency": 0.0012120701549594686,
       "per_history": [
         {
           "active_tokens": 791,
@@ -1187,6 +1233,7 @@
       "exact_literal_recall": 0.0,
       "histories": 32,
       "history_perfect_rate": 0.0,
+      "memory_quality_efficiency": 0.0,
       "per_history": [
         {
           "active_tokens": 900,
@@ -2329,6 +2376,7 @@
       "exact_literal_recall": 0.0,
       "histories": 32,
       "history_perfect_rate": 0.0,
+      "memory_quality_efficiency": 0.0,
       "per_history": [
         {
           "active_tokens": 900,
@@ -3467,10 +3515,11 @@
       "authority_violation_rate": 0.03673938002296211,
       "budget_compliance_rate": 1.0,
       "corpus_compression_ratio": 30.12773697096887,
-      "critical_atom_recall": 0.8806818181818182,
+      "critical_atom_recall": 0.8818933823529411,
       "exact_literal_recall": 0.8359375,
       "histories": 32,
       "history_perfect_rate": 0.0,
+      "memory_quality_efficiency": 0.0,
       "per_history": [
         {
           "active_tokens": 892,

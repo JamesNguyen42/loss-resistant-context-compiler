@@ -44,10 +44,11 @@ $env:PYTHONPATH = "src"
 python -m benchmarks --histories 24 --export-corpus lrcbench-corpus.json
 ```
 
-The export has schema `lrcbench-corpus-0.1`, the full benchmark config,
-`dataset_sha256`, and ordered `source_events` for every case. It never
-contains gold atoms. An external adapter must return a document with this
-shape:
+The export has schema `lrcbench-corpus-0.2`, the full benchmark config,
+`dataset_sha256`, a `corpus_sha256` over the complete gold-free export, and
+ordered `source_events` for every case. It never contains gold atoms. The
+corpus decoder rejects any source or configuration change that does not match
+that self-digest. An external adapter must return a document with this shape:
 
 ```json
 {
@@ -87,6 +88,45 @@ adding a canonical claim/provenance ledger, so metadata cannot be free.
 Unknown fields, wrong hashes, missing or extra cases, invalid spans, duplicate
 system names, and any over-budget case fail closed before a report is emitted.
 
+Run an adapter through the standard shell-free bounded process wrapper:
+
+```powershell
+python -m benchmarks.external_runner `
+  --system acon `
+  --corpus lrcbench-corpus.json `
+  --candidate-out acon-output.json `
+  --manifest-out acon-manifest.json `
+  --timeout-seconds 300 `
+  --max-stdout-bytes 1000000 `
+  --max-stderr-bytes 1000000 `
+  --max-candidate-bytes 20000000 `
+  --adapter-revision REVISION `
+  --environment-id ENVIRONMENT_LOCK_OR_IMAGE_DIGEST `
+  --model-id qwen/qwen3.6-35b-a3b@q4_k_m `
+  --model-context-length 8192 `
+  --tokenizer-id character-estimate-v1 `
+  --inference-concurrency 1 `
+  --retry-count 0 `
+  --model-service-cost-usd 0 `
+  -- ADAPTER_COMMAND {corpus} {candidate} {system}
+```
+
+Placeholders are replaced as individual arguments without invoking a shell.
+The runner refuses existing output files, monitors time and output sizes,
+rechecks that the corpus file did not change during execution, validates the
+complete candidate interchange, and records hashes, limits, process status,
+platform, command, and validation outcome in a self-hashed manifest. POSIX runs
+may also specify `--max-memory-mb`; the runner refuses to claim memory-limit
+enforcement on Windows. This is a process wrapper, not a filesystem or network
+sandbox, so execute only reviewed adapter code in an appropriately isolated
+environment.
+
+Revision, environment, model, context, tokenizer, inference concurrency,
+retries, and service cost are also recorded. Missing identity fields, a
+different model, concurrency other than one, or nonzero model service cost
+leaves the candidate useful for diagnostics but makes the registered
+certificate comparison invalid.
+
 Evaluation also recomputes active tokens from the final rendered string for
 every bundled or programmatic candidate. A valid character span alone is not
 semantic support: ordered content tokens, numeric identifiers, negation, and
@@ -101,15 +141,25 @@ must match those used for the corpus export:
 
 ```powershell
 python -m benchmarks --histories 24 `
-  --external-baseline acon-output.json `
-  --external-baseline foldagent-output.json
+  --expected-external-system acon `
+  --expected-external-system foldagent `
+  --external-run-manifest acon-manifest.json `
+  --external-run-manifest foldagent-manifest.json
 ```
 
-All supplied external candidates join the bundled controls, and the
-certificate faces the baseline with the strongest critical-atom recall. Run
+Every intended participant must be registered with
+`--expected-external-system`. A missing registered output is retained as an
+invalid non-win; an unexpected supplied system is rejected. The certificate
+computes a separate win, tie, loss, or invalid decision for each registered
+system and requires wins against a strict majority. Run
 `python -m benchmarks --self-test` for a deterministic export/import
 round-trip plus negative checks for hash mismatch, missing cases, and budget
 overflow.
+
+`--external-baseline` remains available for direct interchange diagnostics,
+but a registered system without a validated run manifest is an invalid
+certificate non-win. A failed manifest contributes its exact bounded-run
+failure reason to the per-system decision and evidence digest.
 
 The certificate fails closed. It requires at least 24 histories in every
 registered adversarial stratum, near-perfect critical and exact recall,
@@ -118,27 +168,30 @@ unresolved-to-fact promotions, unsupported claims, or unsupported critical
 claims, at least 5x compression,
 no budget overrun, a 90% history-perfect rate, and both an aggregate and paired
 bootstrap result establishing either at least 50% less critical semantic loss
-or at least 50% more quality per active token than the strongest baseline. The
+or at least 50% more quality per active token than the compared system. Critical
+recall, exact recall, quality, and memory-quality efficiency use history-weighted
+point estimates, matching the paired history bootstrap. The lower quantile is
+configurable and defaults to `0.025`. The
 bounded 0-to-1 quality score is deliberately not used for relative gain: doing
 so would make a perfect candidate unable to beat a baseline above 0.667 by 50%.
 A failed run exits with status 2; this means the evidence does not support the
 claim, not that the harness crashed.
 
-Without `--external-baseline`, reports and claims are explicitly labeled
+Without a registered external set, reports and claims are explicitly labeled
 `local-bundled-only`; that certificate compares only the included controls
-and must not be presented as a state-of-the-art comparison. With at least one
-validated external candidate, the scope is `external-inclusive`.
+and must not be presented as a state-of-the-art comparison. With a registered
+external set, the scope is `external-inclusive`.
 
 ## Recorded local snapshot
 
-The reviewed 2026-07-23 default run covers 32 histories and dataset SHA-256
-`9dd650433b9d1a018951a7a4745ba31907f6314965e44aee01ea9ecca24389ae`.
-All 102 tests passed alongside it.
+The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
+`421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
+All 152 tests passed alongside it.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Compiler | 100% | 100% | 100% | 100% | 100% | 0% | 0% | 100% | 32.60x |
-| Extractive | 88.1% | 83.6% | 100% | 100% | 0% | 100% | 0% | 0% | 30.13x |
+| Extractive | 88.2% | 83.6% | 100% | 100% | 0% | 100% | 0% | 0% | 30.13x |
 
 See the [recorded JSON report](../docs/results/lrcbench-local.json). Its
 certificate scope is `local-bundled-only`; these numbers contain no external
@@ -147,3 +200,7 @@ system result.
 Use `--json-out benchmarks/result.json --include-histories` to retain auditable
 per-history measurements. Generated result files should not be treated as
 source fixtures unless intentionally reviewed and committed.
+
+The dated inclusion, failure, estimand, and freeze rules are in the
+[draft external comparison protocol](protocols/external-comparison-v1.md).
+It remains explicitly non-claim-bearing while required fields are `TBD`.

@@ -14,7 +14,7 @@ import math
 import random
 import re
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import fmean
@@ -22,8 +22,8 @@ from typing import Any
 
 from context_compiler import CompilationPolicy, ContextCompiler, MemoryKind, SourceRecord
 
-BENCHMARK_VERSION = "lrcbench-0.1"
-CORPUS_SCHEMA = "lrcbench-corpus-0.1"
+BENCHMARK_VERSION = "lrcbench-0.2"
+CORPUS_SCHEMA = "lrcbench-corpus-0.2"
 CANDIDATE_SCHEMA = "lrcbench-candidate-output-0.1"
 REQUIRED_BASELINES = ("head", "tail", "extractive")
 BUNDLED_SYSTEMS = ("compiler", *REQUIRED_BASELINES)
@@ -91,8 +91,26 @@ class BenchmarkConfig:
     minimum_compression: float = 5.0
     seed: int = 56_056
     bootstrap_samples: int = 2_000
+    bootstrap_lower_quantile: float = 0.025
 
     def __post_init__(self) -> None:
+        for name in (
+            "histories",
+            "messages_per_history",
+            "noise_lines_per_message",
+            "token_budget",
+            "seed",
+            "bootstrap_samples",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer")
+        for name in ("minimum_compression", "bootstrap_lower_quantile"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError(f"{name} must be numeric")
+            if not math.isfinite(float(value)):
+                raise ValueError(f"{name} must be finite")
         if self.histories < 1:
             raise ValueError("histories must be positive")
         if self.messages_per_history < 24:
@@ -105,6 +123,8 @@ class BenchmarkConfig:
             raise ValueError("minimum_compression must be at least 1")
         if self.bootstrap_samples < 100:
             raise ValueError("bootstrap_samples must be at least 100")
+        if not 0.0 < self.bootstrap_lower_quantile < 0.5:
+            raise ValueError("bootstrap_lower_quantile must be between 0 and 0.5")
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,6 +226,7 @@ class AggregateMetrics:
     budget_compliance_rate: float
     corpus_compression_ratio: float
     quality_score: float
+    memory_quality_efficiency: float
     source_tokens: int
     active_tokens: int
     histories: int
@@ -218,6 +239,13 @@ class AggregateMetrics:
 
 
 @dataclass(frozen=True, slots=True)
+class RunManifestEvidence:
+    system: str
+    manifest_sha256: str
+    failure_reason: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class GainCertificate:
     issued: bool
     candidate: str
@@ -226,15 +254,34 @@ class GainCertificate:
     baseline_quality: float
     gain_basis: str | None
     critical_semantic_loss_reduction: float | None
-    completion_efficiency_gain: float | None
-    critical_loss_margin_lower_95: float
-    completion_efficiency_margin_lower_95: float
+    memory_quality_efficiency_gain: float | None
+    critical_loss_margin_lower: float | None
+    memory_quality_efficiency_margin_lower: float | None
+    bootstrap_lower_quantile: float
     evidence_sha256: str
     scope: str
     compared_baselines: tuple[str, ...]
     external_baselines: tuple[str, ...]
+    external_wins: int
+    external_required_wins: int
+    external_majority_passed: bool | None
+    external_manifests: tuple[RunManifestEvidence, ...]
+    comparisons: tuple[SystemComparison, ...]
     reasons: tuple[str, ...]
     claim: str
+
+
+@dataclass(frozen=True, slots=True)
+class SystemComparison:
+    system: str
+    external: bool
+    decision: str
+    gain_basis: str | None
+    critical_semantic_loss_reduction: float | None
+    memory_quality_efficiency_gain: float | None
+    critical_loss_margin_lower: float | None
+    memory_quality_efficiency_margin_lower: float | None
+    reasons: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -615,7 +662,7 @@ def corpus_document(
 ) -> dict[str, object]:
     """Return the exact source corpus without evaluator-only gold atoms."""
 
-    return {
+    document: dict[str, object] = {
         "schema": CORPUS_SCHEMA,
         "benchmark": BENCHMARK_VERSION,
         "dataset_sha256": digest,
@@ -629,6 +676,19 @@ def corpus_document(
             for case in cases
         ],
     }
+    document["corpus_sha256"] = _canonical_sha256(document)
+    return document
+
+
+def _canonical_sha256(value: object) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _strict_object(value: object, context: str) -> dict[str, Any]:
@@ -656,6 +716,158 @@ def _strict_int(value: object, context: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ExternalBaselineError(f"{context} must be an integer")
     return value
+
+
+def decode_corpus_document(
+    payload: object,
+    *,
+    source_label: str = "<corpus>",
+) -> tuple[BenchmarkConfig, tuple[HistoryCase, ...], str]:
+    """Validate a gold-free corpus export for an external adapter."""
+
+    document = _strict_object(payload, source_label)
+    _strict_keys(
+        document,
+        required={
+            "schema",
+            "benchmark",
+            "dataset_sha256",
+            "corpus_sha256",
+            "config",
+            "cases",
+        },
+        allowed={
+            "schema",
+            "benchmark",
+            "dataset_sha256",
+            "corpus_sha256",
+            "config",
+            "cases",
+        },
+        context=source_label,
+    )
+    if document["schema"] != CORPUS_SCHEMA:
+        raise ExternalBaselineError(
+            f"{source_label} schema must be {CORPUS_SCHEMA!r}"
+        )
+    if document["benchmark"] != BENCHMARK_VERSION:
+        raise ExternalBaselineError(
+            f"{source_label} benchmark must be {BENCHMARK_VERSION!r}"
+        )
+    dataset_sha256 = document["dataset_sha256"]
+    corpus_sha256 = document["corpus_sha256"]
+    if (
+        not isinstance(dataset_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", dataset_sha256) is None
+    ):
+        raise ExternalBaselineError(
+            f"{source_label} dataset_sha256 must be lowercase SHA-256"
+        )
+    if (
+        not isinstance(corpus_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", corpus_sha256) is None
+    ):
+        raise ExternalBaselineError(
+            f"{source_label} corpus_sha256 must be lowercase SHA-256"
+        )
+    unsigned = dict(document)
+    unsigned.pop("corpus_sha256")
+    try:
+        actual_corpus_sha256 = _canonical_sha256(unsigned)
+    except (TypeError, ValueError) as exc:
+        raise ExternalBaselineError(
+            f"{source_label} is not canonical finite JSON"
+        ) from exc
+    if actual_corpus_sha256 != corpus_sha256:
+        raise ExternalBaselineError(f"{source_label} corpus_sha256 mismatch")
+
+    raw_config = _strict_object(document["config"], f"{source_label}.config")
+    expected_config_keys = {
+        "histories",
+        "messages_per_history",
+        "noise_lines_per_message",
+        "token_budget",
+        "minimum_compression",
+        "seed",
+        "bootstrap_samples",
+        "bootstrap_lower_quantile",
+    }
+    _strict_keys(
+        raw_config,
+        required=expected_config_keys,
+        allowed=expected_config_keys,
+        context=f"{source_label}.config",
+    )
+    try:
+        config = BenchmarkConfig(**raw_config)
+    except (TypeError, ValueError) as exc:
+        raise ExternalBaselineError(
+            f"{source_label}.config is invalid: {exc}"
+        ) from exc
+
+    raw_cases = document["cases"]
+    if not isinstance(raw_cases, list):
+        raise ExternalBaselineError(f"{source_label}.cases must be an array")
+    cases: list[HistoryCase] = []
+    seen_case_ids: set[str] = set()
+    for index, raw_case in enumerate(raw_cases):
+        context = f"{source_label}.cases[{index}]"
+        case = _strict_object(raw_case, context)
+        _strict_keys(
+            case,
+            required={"case_id", "strata", "source_events"},
+            allowed={"case_id", "strata", "source_events"},
+            context=context,
+        )
+        case_id = case["case_id"]
+        if not isinstance(case_id, str) or not case_id:
+            raise ExternalBaselineError(f"{context}.case_id must be non-empty")
+        if case_id in seen_case_ids:
+            raise ExternalBaselineError(
+                f"{source_label} repeats case {case_id!r}"
+            )
+        seen_case_ids.add(case_id)
+        strata = case["strata"]
+        if (
+            not isinstance(strata, list)
+            or not all(isinstance(value, str) and value for value in strata)
+            or len(strata) != len(set(strata))
+        ):
+            raise ExternalBaselineError(
+                f"{context}.strata must be unique non-empty strings"
+            )
+        raw_sources = case["source_events"]
+        if not isinstance(raw_sources, list) or not raw_sources:
+            raise ExternalBaselineError(
+                f"{context}.source_events must be a non-empty array"
+            )
+        try:
+            sources = tuple(
+                SourceRecord.from_dict(value, default_sequence=source_index)
+                for source_index, value in enumerate(raw_sources)
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ExternalBaselineError(
+                f"{context}.source_events are invalid: {exc}"
+            ) from exc
+        if len({source.id for source in sources}) != len(sources):
+            raise ExternalBaselineError(f"{context} repeats a source id")
+        if len({source.sequence for source in sources}) != len(sources):
+            raise ExternalBaselineError(f"{context} repeats a source sequence")
+        cases.append(
+            HistoryCase(
+                id=case_id,
+                sources=tuple(sorted(sources, key=lambda source: source.sequence)),
+                gold_atoms=(),
+                strata=tuple(strata),
+            )
+        )
+    if len(cases) != config.histories:
+        raise ExternalBaselineError(
+            f"{source_label} contains {len(cases)} cases; config expects "
+            f"{config.histories}"
+        )
+    return config, tuple(cases), dataset_sha256
 
 
 def _canonical_external_render(
@@ -1304,8 +1516,10 @@ def _aggregate(system: str, histories: Sequence[HistoryMetrics]) -> AggregateMet
     active_tokens = sum(item.active_tokens for item in histories)
     return AggregateMetrics(
         system=system,
-        critical_atom_recall=ratio("critical_recalled", "critical_total", empty=1.0),
-        exact_literal_recall=ratio("exact_recalled", "exact_total", empty=1.0),
+        # Claim-bearing comparison estimands are history-weighted so the point
+        # estimates and paired history bootstrap measure the same quantity.
+        critical_atom_recall=fmean(item.critical_atom_recall for item in histories),
+        exact_literal_recall=fmean(item.exact_literal_recall for item in histories),
         provenance_validity=ratio("valid_claims", "claim_total", empty=0.0),
         unresolved_to_fact_rate=ratio(
             "unresolved_promotions", "unresolved_total", empty=0.0
@@ -1327,6 +1541,9 @@ def _aggregate(system: str, histories: Sequence[HistoryMetrics]) -> AggregateMet
         budget_compliance_rate=fmean(float(item.budget_compliant) for item in histories),
         corpus_compression_ratio=source_tokens / max(1, active_tokens),
         quality_score=fmean(item.quality_score for item in histories),
+        memory_quality_efficiency=fmean(
+            item.quality_score / max(1, item.active_tokens) for item in histories
+        ),
         source_tokens=source_tokens,
         active_tokens=active_tokens,
         histories=len(histories),
@@ -1341,7 +1558,17 @@ def _paired_lower_bound(
     samples: int,
     seed: int,
     basis: str,
+    quantile: float,
 ) -> float:
+    if len(candidate.per_history) != len(baseline.per_history) or any(
+        left.case_id != right.case_id
+        for left, right in zip(
+            candidate.per_history,
+            baseline.per_history,
+            strict=False,
+        )
+    ):
+        raise ValueError("paired bootstrap requires identical ordered history ids")
     rng = random.Random(seed ^ 0x5EED_CE57)
     count = len(candidate.per_history)
     margins: list[float] = []
@@ -1355,7 +1582,7 @@ def _paired_lower_bound(
                 1.0 - baseline.per_history[index].critical_atom_recall for index in indices
             )
             margin = 0.5 * baseline_loss - candidate_loss
-        elif basis == "completion-efficiency":
+        elif basis == "memory-quality-efficiency":
             candidate_efficiency = fmean(
                 candidate.per_history[index].quality_score
                 / max(1, candidate.per_history[index].active_tokens)
@@ -1371,7 +1598,110 @@ def _paired_lower_bound(
             raise ValueError(f"unknown bootstrap basis: {basis}")
         margins.append(margin)
     margins.sort()
-    return margins[max(0, math.floor(0.025 * (len(margins) - 1)))]
+    return margins[max(0, math.floor(quantile * (len(margins) - 1)))]
+
+
+def _make_system_comparison(
+    config: BenchmarkConfig,
+    candidate: AggregateMetrics,
+    baseline: AggregateMetrics | None,
+    *,
+    system: str,
+    external: bool,
+    candidate_gate_reasons: Sequence[str] = (),
+    system_reasons: Sequence[str] = (),
+) -> SystemComparison:
+    if baseline is None:
+        return SystemComparison(
+            system=system,
+            external=external,
+            decision="invalid",
+            gain_basis=None,
+            critical_semantic_loss_reduction=None,
+            memory_quality_efficiency_gain=None,
+            critical_loss_margin_lower=None,
+            memory_quality_efficiency_margin_lower=None,
+            reasons=tuple(system_reasons)
+            or ("no valid candidate output was supplied for this registered system",),
+        )
+
+    candidate_loss = 1.0 - candidate.critical_atom_recall
+    baseline_loss = 1.0 - baseline.critical_atom_recall
+    loss_reduction = (
+        (baseline_loss - candidate_loss) / baseline_loss if baseline_loss > 0 else None
+    )
+    efficiency_gain = (
+        candidate.memory_quality_efficiency / baseline.memory_quality_efficiency - 1.0
+        if baseline.memory_quality_efficiency > 0
+        else None
+    )
+    loss_lower = _paired_lower_bound(
+        candidate,
+        baseline,
+        samples=config.bootstrap_samples,
+        seed=config.seed,
+        basis="critical-loss",
+        quantile=config.bootstrap_lower_quantile,
+    )
+    efficiency_lower = _paired_lower_bound(
+        candidate,
+        baseline,
+        samples=config.bootstrap_samples,
+        seed=config.seed,
+        basis="memory-quality-efficiency",
+        quantile=config.bootstrap_lower_quantile,
+    )
+    loss_qualifies = (
+        baseline_loss >= 0.01
+        and loss_reduction is not None
+        and loss_reduction >= 0.50
+        and loss_lower > 0.0
+    )
+    efficiency_qualifies = (
+        efficiency_gain is not None
+        and efficiency_gain >= 0.50
+        and efficiency_lower > 0.0
+    )
+    gain_basis = None
+    if loss_qualifies and efficiency_qualifies:
+        gain_basis = "critical-semantic-loss-reduction+memory-quality-efficiency"
+    elif loss_qualifies:
+        gain_basis = "critical-semantic-loss-reduction"
+    elif efficiency_qualifies:
+        gain_basis = "memory-quality-efficiency"
+
+    reasons = [*candidate_gate_reasons, *system_reasons]
+    if baseline.critical_atom_recall < 0.10:
+        reasons.append("baseline critical recall is degenerate")
+    if baseline.budget_compliance_rate != 1.0:
+        reasons.append("baseline exceeded the matched budget")
+    if reasons:
+        decision = "invalid"
+    elif gain_basis is not None:
+        decision = "win"
+    elif (
+        candidate.critical_atom_recall < baseline.critical_atom_recall
+        and candidate.memory_quality_efficiency
+        < baseline.memory_quality_efficiency
+    ):
+        decision = "loss"
+    else:
+        decision = "tie"
+    if decision in {"tie", "loss"}:
+        reasons.append(
+            "candidate did not establish a paired 50% gain on either registered basis"
+        )
+    return SystemComparison(
+        system=system,
+        external=external,
+        decision=decision,
+        gain_basis=gain_basis,
+        critical_semantic_loss_reduction=loss_reduction,
+        memory_quality_efficiency_gain=efficiency_gain,
+        critical_loss_margin_lower=loss_lower,
+        memory_quality_efficiency_margin_lower=efficiency_lower,
+        reasons=tuple(reasons),
+    )
 
 
 def _make_certificate(
@@ -1380,12 +1710,14 @@ def _make_certificate(
     cases: Sequence[HistoryCase],
     results: Sequence[AggregateMetrics],
     external_systems: Sequence[str] = (),
+    external_failures: Mapping[str, str] | None = None,
+    external_manifest_sha256: Mapping[str, str] | None = None,
 ) -> GainCertificate:
+    external_failures = dict(external_failures or {})
+    external_manifest_sha256 = dict(external_manifest_sha256 or {})
     by_name = {result.system: result for result in results}
     candidate = by_name["compiler"]
     baselines = [result for result in results if result.system != "compiler"]
-    # The semantic-loss claim must face the baseline with the best critical
-    # recall, even when that baseline fails another safety dimension.
     strongest = max(
         baselines,
         key=lambda result: (
@@ -1395,47 +1727,13 @@ def _make_certificate(
             result.system,
         ),
     )
-    candidate_loss = 1.0 - candidate.critical_atom_recall
-    baseline_loss = 1.0 - strongest.critical_atom_recall
-    loss_reduction = (
-        (baseline_loss - candidate_loss) / baseline_loss if baseline_loss > 0 else None
-    )
-    candidate_efficiency = candidate.quality_score / max(
-        1.0, candidate.active_tokens / candidate.histories
-    )
-    baseline_efficiency = strongest.quality_score / max(
-        1.0, strongest.active_tokens / strongest.histories
-    )
-    efficiency_gain = (
-        candidate_efficiency / baseline_efficiency - 1.0
-        if baseline_efficiency > 0
-        else None
-    )
-    loss_lower = _paired_lower_bound(
-        candidate,
-        strongest,
-        samples=config.bootstrap_samples,
-        seed=config.seed,
-        basis="critical-loss",
-    )
-    efficiency_lower = _paired_lower_bound(
-        candidate,
-        strongest,
-        samples=config.bootstrap_samples,
-        seed=config.seed,
-        basis="completion-efficiency",
-    )
     strata = Counter(stratum for case in cases for stratum in case.strata)
-    reasons: list[str] = []
+    candidate_gate_reasons: list[str] = []
     checks = (
         (config.histories >= 24, "at least 24 histories are required"),
         (
             all(strata[name] >= 24 for name in REQUIRED_STRATA),
             "every required adversarial stratum needs at least 24 histories",
-        ),
-        (
-            strongest.critical_atom_recall >= 0.10,
-            "the strongest baseline has degenerate critical recall",
         ),
         (candidate.critical_atom_recall >= 0.98, "critical atom recall is below 0.98"),
         (candidate.exact_literal_recall >= 0.99, "exact literal recall is below 0.99"),
@@ -1462,58 +1760,100 @@ def _make_certificate(
             candidate.corpus_compression_ratio >= config.minimum_compression,
             "candidate missed the compression floor",
         ),
-        (
-            all(result.budget_compliance_rate == 1.0 for result in results),
-            "a compared system exceeded the matched budget",
-        ),
     )
     for passed, reason in checks:
         if not passed:
-            reasons.append(reason)
-    loss_qualifies = (
-        baseline_loss >= 0.01
-        and loss_reduction is not None
-        and loss_reduction >= 0.50
-        and loss_lower > 0.0
+            candidate_gate_reasons.append(reason)
+
+    external_names = tuple(sorted(set(external_systems)))
+    comparison_names = sorted(
+        {result.system for result in baselines} | set(external_names)
     )
-    efficiency_qualifies = (
-        efficiency_gain is not None
-        and efficiency_gain >= 0.50
-        and efficiency_lower > 0.0
-    )
-    if not (loss_qualifies or efficiency_qualifies):
-        reasons.append(
-            "neither critical semantic-loss reduction nor completion efficiency establishes "
-            "a paired 50% gain"
+    comparisons = tuple(
+        _make_system_comparison(
+            config,
+            candidate,
+            by_name.get(name),
+            system=name,
+            external=name in external_names,
+            candidate_gate_reasons=candidate_gate_reasons,
+            system_reasons=(
+                (external_failures[name],)
+                if name in external_failures
+                else ()
+            ),
         )
-    gain_basis = None
-    if loss_qualifies and efficiency_qualifies:
-        gain_basis = "critical-semantic-loss-reduction+completion-efficiency"
-    elif loss_qualifies:
-        gain_basis = "critical-semantic-loss-reduction"
-    elif efficiency_qualifies:
-        gain_basis = "completion-efficiency"
+        for name in comparison_names
+    )
+    comparison_by_name = {comparison.system: comparison for comparison in comparisons}
+    frontier = comparison_by_name[strongest.system]
+    external_comparisons = [
+        comparison for comparison in comparisons if comparison.external
+    ]
+    external_wins = sum(
+        comparison.decision == "win" for comparison in external_comparisons
+    )
+    external_required_wins = (
+        len(external_comparisons) // 2 + 1 if external_comparisons else 0
+    )
+    external_majority_passed = (
+        external_wins >= external_required_wins if external_comparisons else None
+    )
+
+    reasons = list(candidate_gate_reasons)
+    if external_comparisons:
+        if not external_majority_passed:
+            reasons.append(
+                "compiler did not win against a strict majority of the registered "
+                "external comparison set"
+            )
+        issued = not reasons
+        winning_bases = {
+            comparison.gain_basis
+            for comparison in external_comparisons
+            if comparison.decision == "win" and comparison.gain_basis is not None
+        }
+        gain_basis = "+".join(sorted(winning_bases)) or None
+        scope = "external-inclusive"
+    else:
+        if frontier.decision != "win":
+            reasons.extend(frontier.reasons)
+        issued = not reasons
+        gain_basis = frontier.gain_basis
+        scope = "local-bundled-only"
+
     evidence = {
         "benchmark": BENCHMARK_VERSION,
+        "config": asdict(config),
         "dataset": digest,
-        "scope": "external-inclusive" if external_systems else "local-bundled-only",
-        "compared_baselines": sorted(result.system for result in baselines),
+        "scope": scope,
         "candidate": candidate.summary_dict(),
-        "strongest_baseline": strongest.summary_dict(),
-        "critical_semantic_loss_reduction": loss_reduction,
-        "completion_efficiency_gain": efficiency_gain,
-        "critical_loss_margin_lower_95": loss_lower,
-        "completion_efficiency_margin_lower_95": efficiency_lower,
+        "systems": [
+            result.summary_dict()
+            for result in sorted(results, key=lambda value: value.system)
+        ],
+        "comparisons": [asdict(comparison) for comparison in comparisons],
+        "external_comparison_set": list(external_names),
+        "external_wins": external_wins,
+        "external_required_wins": external_required_wins,
+        "external_run_manifests": [
+            {
+                "system": name,
+                "manifest_sha256": external_manifest_sha256[name],
+                "failure_reason": external_failures.get(name),
+            }
+            for name in sorted(external_manifest_sha256)
+        ],
     }
     evidence_sha = hashlib.sha256(
         json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    issued = not reasons
-    scope = "external-inclusive" if external_systems else "local-bundled-only"
-    if issued and external_systems:
+    if issued and external_comparisons:
         claim = (
-            f"External-inclusive certificate: compiler clears a paired 50% frontier over "
-            f"{strongest.system} under matched budgets using {gain_basis}."
+            "External-inclusive certificate: compiler independently clears a paired "
+            f"50% gain against {external_wins}/{len(external_comparisons)} registered "
+            f"systems, exceeding the strict-majority threshold of "
+            f"{external_required_wins}."
         )
     elif issued:
         claim = (
@@ -1521,7 +1861,7 @@ def _make_certificate(
             f"{strongest.system} using {gain_basis}; no external state-of-the-art "
             "baseline was supplied."
         )
-    elif external_systems:
+    elif external_comparisons:
         claim = "No external-inclusive 50%-better claim is warranted by this run."
     else:
         claim = (
@@ -1535,14 +1875,29 @@ def _make_certificate(
         candidate_quality=candidate.quality_score,
         baseline_quality=strongest.quality_score,
         gain_basis=gain_basis,
-        critical_semantic_loss_reduction=loss_reduction,
-        completion_efficiency_gain=efficiency_gain,
-        critical_loss_margin_lower_95=loss_lower,
-        completion_efficiency_margin_lower_95=efficiency_lower,
+        critical_semantic_loss_reduction=frontier.critical_semantic_loss_reduction,
+        memory_quality_efficiency_gain=frontier.memory_quality_efficiency_gain,
+        critical_loss_margin_lower=frontier.critical_loss_margin_lower,
+        memory_quality_efficiency_margin_lower=(
+            frontier.memory_quality_efficiency_margin_lower
+        ),
+        bootstrap_lower_quantile=config.bootstrap_lower_quantile,
         evidence_sha256=evidence_sha,
         scope=scope,
-        compared_baselines=tuple(sorted(result.system for result in baselines)),
-        external_baselines=tuple(sorted(external_systems)),
+        compared_baselines=tuple(comparison_names),
+        external_baselines=external_names,
+        external_wins=external_wins,
+        external_required_wins=external_required_wins,
+        external_majority_passed=external_majority_passed,
+        external_manifests=tuple(
+            RunManifestEvidence(
+                system=name,
+                manifest_sha256=external_manifest_sha256[name],
+                failure_reason=external_failures.get(name),
+            )
+            for name in sorted(external_manifest_sha256)
+        ),
+        comparisons=comparisons,
         reasons=tuple(reasons),
         claim=claim,
     )
@@ -1552,9 +1907,26 @@ def run_benchmark(
     config: BenchmarkConfig | None = None,
     *,
     external_baseline_paths: Sequence[Path | str] = (),
+    external_manifest_paths: Sequence[Path | str] = (),
+    expected_external_systems: Sequence[str] = (),
     corpus_export_path: Path | str | None = None,
 ) -> BenchmarkReport:
     config = config or BenchmarkConfig()
+    expected = tuple(expected_external_systems)
+    if len(expected) != len(set(expected)) or any(
+        not isinstance(name, str) or not _SYSTEM_RE.fullmatch(name) for name in expected
+    ):
+        raise ExternalBaselineError(
+            "expected external system names must be unique valid identifiers"
+        )
+    reserved = {"compiler", "head", "tail", "extractive"}
+    if reserved & set(expected):
+        raise ExternalBaselineError("expected external system names collide with built-ins")
+    if (external_baseline_paths or external_manifest_paths) and not expected:
+        raise ExternalBaselineError(
+            "external candidate scoring requires an explicitly registered "
+            "expected external comparison set"
+        )
     cases = generate_histories(config)
     digest = dataset_digest(cases, config)
     if corpus_export_path is not None:
@@ -1565,12 +1937,54 @@ def run_benchmark(
             + "\n",
             encoding="utf-8",
         )
+    manifest_candidate_paths: list[Path] = []
+    external_failures: dict[str, str] = {}
+    external_manifest_sha256: dict[str, str] = {}
+    if external_manifest_paths:
+        from .external_runner import ExternalRunnerError, load_external_run_manifest
+
+        for manifest_path in external_manifest_paths:
+            try:
+                reference = load_external_run_manifest(
+                    manifest_path,
+                    expected_dataset_sha256=digest,
+                )
+            except ExternalRunnerError as exc:
+                raise ExternalBaselineError(
+                    f"invalid external run manifest {manifest_path}: {exc}"
+                ) from exc
+            if reference.system in external_manifest_sha256:
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} has multiple run manifests"
+                )
+            external_manifest_sha256[reference.system] = reference.manifest_sha256
+            if reference.candidate_path is not None:
+                manifest_candidate_paths.append(reference.candidate_path)
+            if reference.failure_reason is not None:
+                external_failures[reference.system] = reference.failure_reason
+    for name in expected:
+        if name not in external_manifest_sha256:
+            external_failures[name] = "no validated external run manifest was supplied"
+
     external = load_external_candidates(
-        [Path(path) for path in external_baseline_paths],
+        [
+            *[Path(path) for path in external_baseline_paths],
+            *manifest_candidate_paths,
+        ],
         cases=cases,
         dataset_sha256=digest,
         token_budget=config.token_budget,
     )
+    unexpected = (
+        (set(external) | set(external_manifest_sha256)) - set(expected)
+        if expected
+        else set()
+    )
+    if unexpected:
+        raise ExternalBaselineError(
+            "external outputs were not preregistered: " + ", ".join(sorted(unexpected))
+        )
+    external_comparison_set = tuple(sorted(expected))
     runners: dict[str, Callable[[Sequence[SourceRecord]], CandidateOutput]] = {
         "compiler": lambda sources: _compiler_output(sources, config),
         "head": lambda sources: _truncate_baseline(
@@ -1595,7 +2009,9 @@ def run_benchmark(
         digest,
         cases,
         aggregates,
-        external_systems=tuple(sorted(external)),
+        external_systems=external_comparison_set,
+        external_failures=external_failures,
+        external_manifest_sha256=external_manifest_sha256,
     )
     return BenchmarkReport(BENCHMARK_VERSION, config, digest, tuple(aggregates), certificate)
 
@@ -1616,9 +2032,30 @@ def run_interchange_self_test() -> dict[str, object]:
     if digest != dataset_digest(repeat, config):
         raise AssertionError("dataset generation is not deterministic")
     corpus = corpus_document(cases, config, digest)
+    decoded_config, decoded_cases, decoded_digest = decode_corpus_document(
+        corpus,
+        source_label="<roundtrip-corpus>",
+    )
+    if (
+        decoded_config != config
+        or decoded_digest != digest
+        or [case.id for case in decoded_cases] != [case.id for case in cases]
+    ):
+        raise AssertionError("corpus round-trip changed benchmark identity")
     for case_value in corpus["cases"]:
         if set(case_value) != {"case_id", "strata", "source_events"}:
             raise AssertionError("corpus export leaked evaluator-only fields")
+    tampered_corpus = json.loads(json.dumps(corpus))
+    tampered_corpus["cases"][0]["source_events"][0]["content"] += "tampered"
+    try:
+        decode_corpus_document(
+            tampered_corpus,
+            source_label="<tampered-corpus>",
+        )
+    except ExternalBaselineError:
+        pass
+    else:
+        raise AssertionError("tampered corpus passed its export digest")
 
     payload_cases: list[dict[str, object]] = []
     for case in cases:
@@ -1679,8 +2116,10 @@ def run_interchange_self_test() -> dict[str, object]:
     return {
         "passed": True,
         "dataset_sha256": digest,
+        "corpus_sha256": corpus["corpus_sha256"],
         "cases": len(cases),
         "schema": CANDIDATE_SCHEMA,
+        "corpus_schema": CORPUS_SCHEMA,
     }
 
 
@@ -1711,10 +2150,30 @@ def _summary(report: BenchmarkReport) -> str:
             f"dataset_sha256: {report.dataset_sha256}",
             f"certificate_scope: {report.certificate.scope}",
             f"compared_baselines: {', '.join(report.certificate.compared_baselines)}",
+            (
+                "bootstrap_lower_quantile: "
+                f"{report.certificate.bootstrap_lower_quantile:.3f}"
+            ),
             f"certificate: {'ISSUED' if report.certificate.issued else 'NOT ISSUED'}",
             report.certificate.claim,
         )
     )
+    if report.certificate.comparisons:
+        rows.append("per-system decisions:")
+        rows.extend(
+            f"- {comparison.system}: {comparison.decision}"
+            + (
+                f" ({comparison.gain_basis})"
+                if comparison.gain_basis is not None
+                else ""
+            )
+            + (
+                f" - {'; '.join(comparison.reasons)}"
+                if comparison.reasons
+                else ""
+            )
+            for comparison in report.certificate.comparisons
+        )
     if report.certificate.reasons:
         rows.extend(f"- {reason}" for reason in report.certificate.reasons)
     return "\n".join(rows)
@@ -1729,6 +2188,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--minimum-compression", type=float, default=5.0)
     parser.add_argument("--seed", type=int, default=56_056)
     parser.add_argument("--bootstrap-samples", type=int, default=2_000)
+    parser.add_argument("--bootstrap-lower-quantile", type=float, default=0.025)
     parser.add_argument("--json-out", type=Path)
     parser.add_argument(
         "--export-corpus",
@@ -1741,6 +2201,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="append",
         default=[],
         help="score a dataset-bound external candidate JSON file; repeatable",
+    )
+    parser.add_argument(
+        "--external-run-manifest",
+        type=Path,
+        action="append",
+        default=[],
+        help=(
+            "load a bounded-run manifest; valid candidates are scored and failed "
+            "runs remain registered invalid non-wins"
+        ),
+    )
+    parser.add_argument(
+        "--expected-external-system",
+        action="append",
+        default=[],
+        help=(
+            "register an external system in the strict-majority denominator; "
+            "repeatable, and missing outputs count as invalid non-wins"
+        ),
     )
     parser.add_argument("--include-histories", action="store_true")
     parser.add_argument(
@@ -1760,11 +2239,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         minimum_compression=args.minimum_compression,
         seed=args.seed,
         bootstrap_samples=args.bootstrap_samples,
+        bootstrap_lower_quantile=args.bootstrap_lower_quantile,
     )
     try:
         report = run_benchmark(
             config,
             external_baseline_paths=args.external_baseline,
+            external_manifest_paths=args.external_run_manifest,
+            expected_external_systems=args.expected_external_system,
             corpus_export_path=args.export_corpus,
         )
     except (ExternalBaselineError, OSError) as exc:

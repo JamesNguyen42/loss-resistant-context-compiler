@@ -703,6 +703,48 @@ _MODEL_CANDIDATE_REQUIRED_KEYS = frozenset({"kind", "text", "provenance"})
 _MODEL_PROVENANCE_KEYS = frozenset({"source_id", "start", "end"})
 
 
+def _bounded_json_size(value: Any, limit: int) -> int:
+    """Return a conservative JSON-size bound without stringifying huge values."""
+
+    total = 0
+    stack = [value]
+    seen_containers: set[int] = set()
+    while stack:
+        current = stack.pop()
+        if isinstance(current, dict):
+            identity = id(current)
+            if identity in seen_containers:
+                return limit + 1
+            seen_containers.add(identity)
+            total += 2 + max(0, len(current) - 1)
+            for key, entry in current.items():
+                stack.append(key)
+                stack.append(entry)
+                total += 1
+        elif isinstance(current, list):
+            identity = id(current)
+            if identity in seen_containers:
+                return limit + 1
+            seen_containers.add(identity)
+            total += 2 + max(0, len(current) - 1)
+            stack.extend(current)
+        elif isinstance(current, str):
+            # Six characters per code point covers worst-case JSON \uXXXX
+            # escaping and avoids constructing another potentially huge value.
+            total += 2 + (6 * len(current))
+        elif current is None or isinstance(current, bool):
+            total += 5
+        elif isinstance(current, int):
+            total += max(1, math.ceil(current.bit_length() * math.log10(2))) + 1
+        elif isinstance(current, float):
+            total += 24
+        else:
+            total += 16
+        if total > limit:
+            return total
+    return total
+
+
 class ModelExtractor:
     """Adapter for any model/provider exposed as a simple completion callable.
 
@@ -713,8 +755,37 @@ class ModelExtractor:
 
     name = "model-json-v1"
 
-    def __init__(self, complete: Callable[[str], str | dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        complete: Callable[[str], str | dict[str, Any]],
+        *,
+        model_id: str = "unspecified",
+        max_response_chars: int = 1_000_000,
+        max_candidates: int = 10_000,
+    ) -> None:
+        if not isinstance(model_id, str) or not model_id.strip():
+            raise TypeError("model_id must be a non-empty string")
+        for name, value in (
+            ("max_response_chars", max_response_chars),
+            ("max_candidates", max_candidates),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer")
+            if value <= 0:
+                raise ValueError(f"{name} must be positive")
         self.complete = complete
+        self.model_id = model_id.strip()
+        self.max_response_chars = max_response_chars
+        self.max_candidates = max_candidates
+
+    def _metadata(self, **values: Any) -> dict[str, Any]:
+        return {
+            "extractor": self.name,
+            "model_id": self.model_id,
+            "max_response_chars": self.max_response_chars,
+            "max_candidates": self.max_candidates,
+            **values,
+        }
 
     def extract(self, sources: list[SourceRecord]) -> ExtractionResult:
         payload = {
@@ -730,10 +801,36 @@ class ModelExtractor:
             ],
         }
         raw = self.complete(json.dumps(payload, ensure_ascii=False))
+        if isinstance(raw, str) and len(raw) > self.max_response_chars:
+            return ExtractionResult(
+                rejected=[{"reason": "response_too_large"}],
+                metadata=self._metadata(
+                    degraded=True,
+                    failure_reason="response_too_large",
+                ),
+            )
         try:
             decoded = json.loads(raw) if isinstance(raw, str) else raw
-        except (json.JSONDecodeError, TypeError) as exc:
-            return ExtractionResult(rejected=[{"reason": "invalid_json", "detail": str(exc)}])
+        except (RecursionError, TypeError, ValueError) as exc:
+            return ExtractionResult(
+                rejected=[{"reason": "invalid_json", "detail": str(exc)}],
+                metadata=self._metadata(
+                    degraded=True,
+                    failure_reason="invalid_json",
+                ),
+            )
+        if (
+            not isinstance(raw, str)
+            and _bounded_json_size(decoded, self.max_response_chars)
+            > self.max_response_chars
+        ):
+            return ExtractionResult(
+                rejected=[{"reason": "response_too_large"}],
+                metadata=self._metadata(
+                    degraded=True,
+                    failure_reason="response_too_large",
+                ),
+            )
 
         source_map = {source.id: source for source in sources}
         accepted: list[MemoryItem] = []
@@ -743,7 +840,21 @@ class ModelExtractor:
             or set(decoded) != _MODEL_ENVELOPE_KEYS
             or not isinstance(decoded.get("items"), list)
         ):
-            return ExtractionResult(rejected=[{"reason": "invalid_envelope"}])
+            return ExtractionResult(
+                rejected=[{"reason": "invalid_envelope"}],
+                metadata=self._metadata(
+                    degraded=True,
+                    failure_reason="invalid_envelope",
+                ),
+            )
+        if len(decoded["items"]) > self.max_candidates:
+            return ExtractionResult(
+                rejected=[{"reason": "too_many_candidates"}],
+                metadata=self._metadata(
+                    degraded=True,
+                    failure_reason="too_many_candidates",
+                ),
+            )
 
         for index, candidate in enumerate(decoded["items"]):
             try:
@@ -752,10 +863,18 @@ class ModelExtractor:
                 rejected.append({"index": index, "reason": "invalid_candidate", "detail": str(exc)})
                 continue
             accepted.append(item)
+        metadata = self._metadata(candidates=len(decoded["items"]))
+        if rejected and not accepted:
+            metadata.update(
+                {
+                    "degraded": True,
+                    "failure_reason": "all_candidates_rejected",
+                }
+            )
         return ExtractionResult(
             items=accepted,
             rejected=rejected,
-            metadata={"extractor": self.name, "candidates": len(decoded["items"])},
+            metadata=metadata,
         )
 
     def _decode_candidate(

@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 102 passing |
+| Tests at this snapshot | 152 passing |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -23,11 +23,12 @@ claims.
 | External systems evaluated | None |
 | External 50%-better claim | Not established |
 | Downstream task completion evidence | None yet |
-| Confirmed fail-closed blockers | Four reproduced P0 paths |
+| Confirmed fail-closed blockers | Four identified in-process paths closed |
 
-The implementation baseline before this documentation handoff was commit
-`32ea078e60d039e94750e9172a548ddbe923dc26`. Use `git log -1` and
-`git status -sb` to establish the newer exact state after pulling.
+The clean starting baseline for this work was commit
+`7a0d4545be839d05161e993e8eecd5b0b03ee311`. The safety, benchmark, local-Qwen,
+test, and documentation work described here may still be uncommitted. Always
+use `git log -1` and `git status -sb` to establish the exact state.
 
 ## Original objective
 
@@ -62,6 +63,9 @@ component evidence but cannot substitute for downstream completion.
 - Preserve unrelated working-tree changes if any appear in future sessions.
 - Do not claim external superiority without matched external and downstream
   evidence.
+- For current project-side model work, use only the exact local
+  `qwen/qwen3.6-35b-a3b@q4_k_m` Q4 build, with one inference slot, no model API,
+  no other AI model, and no paid service.
 - A failed certificate is a valid result and must not be hidden or reframed as
   success.
 - Protected commitments may overflow a budget, but they must never disappear
@@ -164,8 +168,9 @@ Normal prompt rendering requires a passing verification report.
 failed report. The Python `allow_unverified=True` escape hatch must not be used
 in an agent execution path.
 
-This is the intended contract, but current `0.1.0` objects remain mutable after
-verification. The confirmed defect is documented below and in `TODO.md`.
+The completed snapshot is recursively sealed after verification. A canonical
+snapshot digest is rechecked before active-item access, prompt rendering, and
+artifact serialization, so state different from the verified state is refused.
 
 ### Integrity is not authenticity
 
@@ -174,89 +179,47 @@ role authenticity, freshness, or freedom from malicious source content.
 Artifacts and their source set need an independent trust anchor in adversarial
 storage.
 
-## Confirmed open safety defects
+## Closed fail-closed defects
 
-The following defects were reproduced against the implementation baseline.
-They are the first work items for the next engineering session.
+Four defects reproduced against the clean starting baseline are now closed:
 
-### Verified state can be mutated
+- verified memory, nested metadata, provenance, selection, reports, and
+  statistics are sealed; a canonical digest detects reflective bypasses before
+  rendering;
+- built-in full deterministic recovery and protected-only certification are
+  created inside every compile and cannot be replaced by custom extractors;
+- custom safety extraction is additive, and its failure becomes an explicit
+  warning without disabling built-in coverage;
+- primary exceptions and wholly unusable model outputs fall back to
+  deterministic memory with a warning by default, while
+  `fail_on_primary_extractor_error=True` preserves strict abort behavior;
+- selecting any superseded item produces `selected_superseded_item` and fails
+  both compile-time and independent replay verification.
 
-`MemoryItem` and `CompiledMemory` are mutable. `to_prompt()` checks the old
-`verification.passed` value and then renders current mutable items. A caller can
-change an item after compilation and render changed text under the stale
-passing report.
-
-Required direction:
-
-- freeze the complete verified snapshot; or
-- bind verification to a canonical snapshot digest and recheck it on render;
-- cover nested mutation and every rendered field with regression tests.
-
-### The safety obligation can be replaced
-
-`ContextCompiler` accepts a caller-supplied `safety_extractor`. If both primary
-and safety extractors return no items, the verifier receives no protected
-candidates and can certify an empty prompt despite an explicit source
-constraint.
-
-Required direction:
-
-- always run a built-in non-overridable protected scanner;
-- let custom safety extractors add obligations, never subtract them;
-- prevent test-only unsafe seams from producing a verified prompt.
-
-### A provider failure prevents deterministic fallback
-
-Primary extraction runs before safety extraction, and provider exceptions are
-not converted into a degraded result. A `TimeoutError` therefore exits before
-the rule pass can return verified fallback memory.
-
-Required direction:
-
-- validate sources and run deterministic safety independently;
-- bound provider calls with deadlines and response limits;
-- return verified rule memory plus an explicit degradation issue when policy
-  permits;
-- retain a strict mode that fails without rendering when model extraction is
-  mandatory.
-
-### Superseded state can enter a verified prompt
-
-With `CompilationPolicy(include_superseded=True)`, obsolete items can be
-selected into the prompt while compile-time and independent artifact
-verification both pass. The prompt labels the item `status: superseded`, but
-this still reintroduces stale state into active model context.
-
-Required direction:
-
-- make the option audit-only and refuse verified execution rendering; or
-- isolate history in a separately reviewed non-executable envelope;
-- add compile and artifact-replay regressions.
-
-These defects do not change the stored deterministic LRCBench output, but they
-block a general fail-closed or production-safety claim.
+The corresponding regressions are in `tests/test_p0_safety.py`. These controls
+close the known in-process paths; they do not make the package
+production-ready or prove semantic completeness.
 
 ## Processing pipeline
 
-The following is the current order, not the desired post-P0 design:
+The current order is:
 
 ```text
 source construction validates initial hashes
-    -> source ordering and id/sequence uniqueness checks
-    -> primary extraction
-    -> configured safety extraction
+    -> source ordering, uniqueness, and source-set digest preflight
+    -> built-in full deterministic recovery extraction
+    -> built-in protected-only certification extraction
+    -> optional additive custom safety extraction
+    -> primary extraction with validation, bounds, and fallback policy
+    -> source-set digest integrity recheck
     -> canonicalization and deduplication
     -> correction, revocation, unresolved, and conflict resolution
     -> budget-aware active-item selection
-    -> source-digest integrity recheck
     -> independent invariant verification
-    -> complete JSON ledger and/or compact typed-memory prompt
+    -> recursive sealing and canonical snapshot digest
+    -> complete JSON ledger and/or verified compact typed-memory prompt
     -> optional append-only cold source archive
 ```
-
-The intended fix moves a non-overridable protected scan and integrity recheck
-before any provider call, then treats provider output as optional additive
-coverage.
 
 The compiler is synchronous and provider-neutral. It is deterministic when all
 supplied extractors and token counters are deterministic.
@@ -265,8 +228,9 @@ supplied extractors and token counters are deterministic.
 
 | Path | Responsibility |
 | --- | --- |
-| `src/context_compiler/models.py` | Enums, immutable source records, mutable items, policy, reports, rendering, hashes |
+| `src/context_compiler/models.py` | Enums, immutable source records, sealable items, frozen reports, policy, rendering, hashes |
 | `src/context_compiler/extractors.py` | Rule extraction, constraint atomization, model adapter, authority checks |
+| `src/context_compiler/local_qwen.py` | Exact local Qwen Q4 LM Studio CLI preflight, timeout, and single-slot adapter |
 | `src/context_compiler/resolver.py` | Deduplication, corrections, revocations, unresolved closure, conflicts |
 | `src/context_compiler/compiler.py` | End-to-end orchestration, recovery, selection, compression accounting |
 | `src/context_compiler/verifier.py` | Independent coverage, provenance, support, authority, and state checks |
@@ -274,6 +238,8 @@ supplied extractors and token counters are deterministic.
 | `src/context_compiler/archive.py` | Append-only local archive, locking, loading, and verification |
 | `src/context_compiler/cli.py` | `ctxc` command-line interface and exit codes |
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
+| `benchmarks/external_runner.py` | Shell-free adapter process limits, validation, and self-hashed run manifests |
+| `benchmarks/protocols/` | Versioned external comparison protocol; v1 is still a non-claim-bearing draft |
 | `schemas/` | Source, model extraction, and compiled artifact contracts |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
 | `.github/workflows/ci.yml` | Cross-version tests, lint, wheel checks, interchange, benchmark |
@@ -296,7 +262,8 @@ Important compile options:
 - `--minimum-compression`;
 - `--strict-budget`;
 - `--require-target`;
-- `--include-superseded`, diagnostic-only until P0-S4 is fixed;
+- `--include-superseded`, audit-only; selecting stale state fails verification
+  and verified prompt rendering;
 - `--active-only`;
 - `--no-recovery`;
 - `--archive`.
@@ -323,6 +290,8 @@ Primary exported objects:
 - `CompiledMemory`;
 - `RuleBasedExtractor`;
 - `ModelExtractor`;
+- `LmsQwenCompletion`;
+- `LocalQwenError`;
 - `SourceArchive`;
 - `VerificationReport`.
 
@@ -332,6 +301,11 @@ and id or fail with `unverifiable_token_counter`.
 The CLI has no way to receive a Python callback, so custom-token artifacts must
 use `verify_artifact_dict()` through the Python API. `ctxc verify` correctly
 fails such artifacts as unverifiable.
+
+`LmsQwenCompletion` is restricted to
+`qwen/qwen3.6-35b-a3b@q4_k_m`, verifies Q4 quantization and one loaded
+inference slot, uses the API-free LM Studio CLI with catalog fetching disabled,
+and enforces a subprocess timeout. See [Local Qwen integration](LOCAL_QWEN.md).
 
 ## Naming and version map
 
@@ -344,7 +318,9 @@ fails such artifacts as unverifiable.
 | CLI command | `ctxc` |
 | Package version | `0.1.0` |
 | Compiled artifact schema | `1.0` |
-| LRCBench/candidate schema family | `0.1` |
+| LRCBench report version | `lrcbench-0.2` |
+| LRCBench corpus schema | `lrcbench-corpus-0.2` |
+| LRCBench candidate schema | `lrcbench-candidate-output-0.1` |
 | Installed schema directory | `share/lossless-context-compiler/schemas` |
 
 The resistant/lossless distribution-name difference is unresolved and is a
@@ -379,20 +355,28 @@ source history; verification and provenance rehydration require the separately
 retained source events.
 
 `--active-only` intentionally emits only selected items and marks
-`ledger_complete: false`. A selected superseded item is still emitted if the
-diagnostic `include_superseded` option is enabled. Independent verification
-rejects the incomplete ledger for a full certificate because omitted protected
-coverage cannot be audited.
+`ledger_complete: false`. Independent verification rejects the incomplete
+ledger for a full certificate because omitted protected coverage cannot be
+audited. Any selected superseded item independently fails verification as
+`selected_superseded_item`.
 
 ## Current evidence
 
 ### Regression and packaging
 
-- 102 tests pass.
+- 152 tests pass.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
 - CI runs the external-candidate interchange self-test.
+- Gold-free corpus exports carry a canonical `corpus_sha256`.
+- The external runner has deterministic fixture coverage for valid output,
+  timeout, output overflow, invalid candidates, corpus mutation, digest
+  validation, and overwrite refusal.
+- Claim-bearing runner manifests require recorded adapter/environment identity,
+  the exact local Qwen Q4 model, one inference slot, context and tokenizer ids,
+  retries, and zero model-service cost; incomplete identity is a per-system
+  non-win.
 - CI runs a 24-history fail-closed benchmark certificate.
 
 ### Recorded local benchmark
@@ -409,8 +393,9 @@ Configuration:
 - 5x minimum compression;
 - seed `56056`;
 - 2,000 paired bootstrap samples;
+- bootstrap lower quantile `0.025`;
 - dataset SHA-256
-  `9dd650433b9d1a018951a7a4745ba31907f6314965e44aee01ea9ecca24389ae`.
+  `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
 
 Compiler result:
 
@@ -424,9 +409,9 @@ Compiler result:
 - 100% perfect histories;
 - 32.60x corpus compression.
 
-Strongest bundled extractive control:
+Bundled extractive control:
 
-- 88.1% critical recall;
+- 88.2% history-weighted critical recall;
 - 83.6% exact recall;
 - 100% provenance validity;
 - 100% semantic-support accuracy;
@@ -435,8 +420,10 @@ Strongest bundled extractive control:
 - 0% perfect histories;
 - 30.13x compression.
 
-The local certificate was issued using critical-semantic-loss reduction. Its
-scope is `local-bundled-only`.
+The local frontier certificate was issued using critical-semantic-loss
+reduction. Its scope is `local-bundled-only`. Per-system decisions are recorded
+for every bundled baseline; the strict-majority external decision remains
+inapplicable because no external comparison set was run.
 
 ### What this evidence does not prove
 
@@ -485,20 +472,21 @@ Its certificate requires:
 - at least 90% perfect histories;
 - matched budget compliance;
 - at least 5x compression;
-- a 50% paired relative-gain point estimate and positive 2.5th-percentile
-  paired bootstrap margin.
+- a 50% paired relative-gain point estimate and positive configured lower-
+  quantile paired bootstrap margin; the current default quantile is `0.025`.
 
-With external candidate outputs, the strongest imported or bundled competitor
-becomes the comparison baseline. “Most” still requires separately winning
-against a strict majority of a preregistered dated set.
+Critical recall, exact recall, and memory-quality efficiency use the same
+history-weighted estimand for point estimates and paired bootstrap samples.
+External runs must explicitly register the comparison set. Every system gets a
+separate win, tie, loss, or invalid decision; a missing registered output is an
+invalid non-win, and “most” requires `|W| > |R| / 2`.
 
 Those are current alpha component-certificate gates. The final product gate is
 stricter: zero observed protected and exact misses on frozen synthetic and
 natural cohorts, real-token compression on every cohort, and at least 50%
 task-failure reduction or 1.5x successful completions per total token or cost
-against the strict majority. The current 2.5th percentile is the lower endpoint
-of a two-sided 95% interval, not a one-sided 95% bound; the external protocol
-must freeze and label the intended quantile correctly.
+against the strict majority. The external protocol must freeze the configured
+lower quantile before results are observed.
 
 ## Known limitations
 
@@ -533,13 +521,18 @@ must freeze and label the intended quantile correctly.
 - The recorded histories are generated templates, not natural production
   prevalence.
 - The optional model extractor is not exercised in the recorded benchmark.
+- The exact local Qwen adapter has only one public-example integration
+  diagnostic; that is not a model-quality evaluation.
 - Local controls are simple and are not state-of-the-art substitutes.
 - Atom recall is a proxy for agent success, not task completion.
 - Bootstrap intervals do not cover benchmark design bias.
-- Aggregate critical loss and memory-quality efficiency currently use different
-  weighting from their paired bootstrap calculations.
-- The current certificate selects one strongest baseline; it does not implement
-  the strict-majority per-external-system decision required for “most.”
+- A malformed provided candidate file currently aborts the run rather than
+  producing a per-system invalid aggregate when passed directly. The
+  claim-bearing manifest path converts bounded runner failures into retained
+  invalid decisions with the manifest hash and reason bound into evidence.
+- The bounded runner is not a filesystem or network sandbox. POSIX supports an
+  address-space limit; Windows claim-bearing use still needs a reviewed
+  cross-platform memory-limiting sandbox.
 
 ## Safe host-side compaction transaction
 
@@ -553,11 +546,12 @@ context is removed. A safe integration should perform this transaction:
 4. independently verify the complete artifact against the trusted source set;
 5. reject or escalate verification failure, strict overflow, missing tokenizer,
    provider failure, or unsupported schema;
-6. atomically install only the verified prompt and artifact;
-7. retain the source archive, trust anchor, and a rollback pointer;
-8. optionally compose a recent uncompressed tail under a separate tested host
+6. render the prompt and artifact from the same sealed, digest-checked snapshot;
+7. atomically install only that verified prompt and artifact;
+8. retain the source archive, trust anchor, and a rollback pointer;
+9. optionally compose a recent uncompressed tail under a separate tested host
    policy;
-9. remove old active context only after the verified replacement is durable.
+10. remove old active context only after the verified replacement is durable.
 
 Recent-tail composition, atomic installation, rollback, retention, redaction,
 and trust-anchor storage are host responsibilities. The package does not
@@ -565,21 +559,18 @@ currently implement this transaction manager.
 
 ## Exact next step
 
-The highest-value next work is not another extractor regex. Close the four
-confirmed safety defects, align the benchmark estimands, and then freeze the
-external evaluation path:
+The known in-process safety paths and internal benchmark estimands are closed.
+The highest-value next work is the external and natural-history evidence path:
 
-1. write failing regression tests for mutation, safety replacement, provider
-   timeout, and selected superseded state;
-2. seal verified state;
-3. make the built-in protected scanner non-replaceable;
-4. add bounded deterministic provider fallback;
-5. isolate or reject superseded state in verified execution prompts;
-6. align and rename the certificate estimands;
-7. add per-system strict-majority decisions;
-8. write the dated comparison inclusion protocol;
-9. implement the external runner and first adapter;
-10. run a diagnostic cohort before freezing claim-bearing evidence.
+1. resolve every `TBD` in the versioned draft external protocol without looking
+   at comparative results;
+2. freeze the initial comparison set and pinned revisions;
+3. add per-case isolation and cross-platform memory limits to the existing
+   bounded runner;
+4. add the first reproducible, no-paid-service external adapter;
+5. define the natural-history privacy, licensing, and annotation protocol;
+6. run a small diagnostic corpus before freezing claim-bearing evidence;
+7. evaluate the exact local Qwen extractor across that frozen diagnostic corpus.
 
 The detailed ordered backlog is in [TODO.md](../TODO.md).
 
@@ -622,6 +613,7 @@ python -m benchmarks `
   --minimum-compression 5 `
   --seed 56056 `
   --bootstrap-samples 2000 `
+  --bootstrap-lower-quantile 0.025 `
   --json-out docs/results/lrcbench-local.json `
   --include-histories
 ```
@@ -649,8 +641,8 @@ First read README.md, TODO.md, docs/HANDOFF.md, docs/ARCHITECTURE.md,
 docs/BENCHMARKING.md, and docs/THREAT_MODEL.md. Inspect the current branch,
 diff, tests, and recorded evidence before changing anything. Preserve the
 fail-closed provenance, authority, protected-retention, and claim-boundary
-rules. Start with the highest-priority incomplete P0 work in TODO.md, validate
-it empirically, and do not claim external superiority without the required
+rules. Start with the highest-priority incomplete P0 evidence work in TODO.md,
+validate it empirically, and do not claim external superiority without the required
 matched evidence. Keep all GitHub authorship and commits solely under
 JamesNguyen42.
 ```
@@ -662,12 +654,22 @@ JamesNguyen42.
 - Treat goals, constraints, corrections, unresolved questions, exact errors,
   and exact references as protected.
 - Run deterministic recovery even when a model extractor is enabled.
+- Keep built-in recovery and protected certification non-replaceable; custom
+  safety extraction is additive only.
 - Reject model paraphrases from the trusted typed ledger.
 - Treat tool output as untrusted for durable state by default.
 - Retain superseded and conflicting state for audit.
 - Surface protected overflow instead of silently dropping commitments.
 - Refuse normal prompt rendering when verification fails.
+- Seal verified snapshots and recheck their canonical digest before rendering.
+- Treat provider output as optional by default with explicit deterministic
+  fallback warnings; retain an opt-in strict failure policy.
+- Treat superseded selection as audit-only and fail execution verification.
 - Keep the runtime provider-neutral and standard-library-only.
+- Restrict the included LM Studio adapter to the exact local Qwen Q4 model and
+  one inference slot; do not use a model API.
+- Use history-weighted memory estimands and explicit per-system majority
+  decisions in LRCBench.
 - Use LRCBench certificates as scoped evidence, never universal product claims.
 - Require real downstream task completion and external comparisons for the
   original 50%-better target.

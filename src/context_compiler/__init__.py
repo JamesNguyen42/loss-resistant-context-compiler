@@ -3,6 +3,7 @@
 from .archive import SourceArchive
 from .compiler import ContextCompiler
 from .extractors import ModelExtractor, RuleBasedExtractor
+from .local_qwen import LmsQwenCompletion, LocalQwenError
 from .models import (
     CompilationPolicy,
     CompiledMemory,
@@ -22,6 +23,8 @@ __all__ = [
     "MemoryKind",
     "MemoryStatus",
     "ModelExtractor",
+    "LmsQwenCompletion",
+    "LocalQwenError",
     "ProvenanceSpan",
     "RuleBasedExtractor",
     "SourceArchive",

@@ -11,18 +11,22 @@ the evidence needed to audit that prompt.
 
 ```mermaid
 flowchart LR
-    A["Ordered SourceRecord events"] --> B["Primary extractor"]
-    A --> C["Full deterministic rule recovery extractor"]
+    A["Ordered SourceRecord events"] --> P["Integrity preflight"]
+    P --> C["Built-in full deterministic recovery"]
+    C --> K["Built-in protected-only certification"]
+    K --> S["Optional additive safety extractor"]
+    S --> B["Primary extractor with fallback policy"]
     A -. optional .-> H["Append-only SourceArchive"]
     B --> D["Recovery and canonicalization"]
     C --> D
+    S --> D
     D --> E["Correction and conflict resolver"]
     E --> F["Budget-aware selector"]
-    A --> K["Protected-only certification extraction"]
     F --> G["Independent invariant verifier"]
     K --> G
-    G --> I["JSON artifact"]
-    G --> J["Typed-memory prompt"]
+    G --> Z["Seal snapshot and bind digest"]
+    Z --> I["JSON artifact"]
+    Z --> J["Typed-memory prompt"]
     H -. resolves spans .-> I
 ```
 
@@ -74,7 +78,9 @@ quote, and the quote hash matches.
 Each item has a stable id, kind, text, one or more provenance spans, status,
 priority, confidence, exactness flag, tags, temporal links, and metadata. The
 schema rejects empty text, missing provenance, out-of-range priorities, and
-out-of-range confidence.
+out-of-range confidence. Resolution may mutate an item only while compiling.
+Finalization recursively freezes provenance, tags, temporal links, and metadata;
+subsequent attribute or nested mutation is rejected.
 
 Supported kinds are:
 
@@ -131,7 +137,9 @@ offsets, role authority, and reserved tags are validated before acceptance. It
 reconstructs quotes from source offsets instead of trusting model-supplied quote
 text. Ordinary candidate text must equal a complete atomic cited source span;
 exact candidates must equal every cited span. The adapter intentionally rejects
-model paraphrases and truncated clauses rather than trying to prove them.
+model paraphrases and truncated clauses rather than trying to prove them. Raw
+response characters, conservative decoded JSON size, and candidate count are
+bounded before candidates enter the compiler.
 
 Model extraction does not authenticate upstream roles or protect source text
 sent to the model provider. A consumer that enables it must treat the callable
@@ -148,6 +156,17 @@ subset of this independent output as the certification obligation; serialized
 artifact verification independently reruns
 `RuleBasedExtractor(protected_only=True)` for that obligation. Recovery can be
 disabled explicitly, but doing so removes deterministic fallback coverage.
+
+Both built-in rule passes are constructed inside every `compile()` and are not
+replaceable through constructor seams. A supplied `safety_extractor` is
+additive. Its exception becomes a verification warning without subtracting
+built-in obligations. A primary extractor exception or wholly unusable result
+produces deterministic fallback memory and an explicit warning by default;
+`CompilationPolicy(fail_on_primary_extractor_error=True)` instead aborts.
+Custom completion callables remain responsible for their own deadlines. The
+included `LmsQwenCompletion` adapter provides a subprocess timeout and is
+restricted to the exact local `qwen/qwen3.6-35b-a3b@q4_k_m` build with one
+inference slot and no HTTP model API.
 
 When an authoritative sentence is both a correction and a new constraint,
 fact, decision, or unresolved state, rule extraction emits two items over the
@@ -181,9 +200,9 @@ Opposite settings in different recognized environments, such as development
 and production, remain separately active instead of becoming a false conflict.
 
 The old item remains in the full ledger for audit. It is omitted from active
-selection by default unless `include_superseded=True`. That option currently
-allows a passing artifact and prompt containing labeled obsolete state; treat
-it as diagnostic-only until P0-S4 in [`TODO.md`](../TODO.md) is fixed.
+selection by default. `include_superseded=True` is audit-only: a selected
+superseded item creates a `selected_superseded_item` verification error, and
+normal prompt rendering is refused.
 
 These operations are lexical heuristics. Paraphrases with little token overlap
 may remain unlinked, and superficially similar propositions may need user
@@ -225,6 +244,7 @@ Compilation-time `verify_memory()` checks:
 - role authority for commitments, decisions, unresolved state, and facts;
 - uncertain or unconfirmed evidence incorrectly typed as a confirmed fact;
 - supported correction, resolution, and symmetric conflict graph edges;
+- refusal of any selected superseded item;
 - retention of all protected safety candidates;
 - selection of every active protected item;
 - budget overflow and compression-target status.
@@ -271,6 +291,12 @@ excluding the digest field itself. This self-hash detects accidental changes
 and supports comparison to a separately trusted digest; it is not a signature
 and an attacker can recompute it after rewriting an artifact.
 
+Before it is returned, the compiled item ledger, selected ids, verification
+report, compression statistics, and compiler metadata are recursively sealed.
+A canonical in-memory snapshot digest binds this state. Active-item access and
+prompt or artifact rendering recheck the digest, catching even mutation
+attempts that bypass ordinary attribute guards through reflection.
+
 Draft 2020-12 JSON Schemas document the public interchange shapes:
 
 - [source event](../schemas/source-event.schema.json);
@@ -313,6 +339,7 @@ in scope.
 
 - Supply any `Extractor` implementation with `name` and `extract(sources)`.
 - Use `ModelExtractor` with any JSON-capable model provider.
+- Use `LmsQwenCompletion` for the exact local Qwen Q4 LM Studio CLI path.
 - Supply an exact tokenizer through `token_counter`; add a stable
   `token_counter_id` and pass both to `verify_artifact_dict()` for portable
   independent replay.
@@ -320,12 +347,10 @@ in scope.
 - Store or transmit `CompiledMemory.to_dict()` without tying consumers to a
   particular underlying LLM.
 
-The current `safety_extractor` constructor seam can replace rather than extend
-the built-in protected scanner. Until the P0 issue in
-[`TODO.md`](../TODO.md) is fixed, do not pass a custom safety extractor in a
-production path. Provider exceptions also occur before the default safety pass,
-so hosts must currently treat model extraction failure as a compile failure,
-not as verified fallback.
+The `safety_extractor` constructor seam only adds candidates and obligations;
+it cannot replace either built-in rule pass. Model output is likewise optional
+by default and cannot remove deterministic coverage. Set the strict primary
+failure policy only when a model result is a hard application requirement.
 
 New extractors should be evaluated against adversarial role injection,
 uncertainty, corrections, duplicate symbols, exact literals, and invalid spans

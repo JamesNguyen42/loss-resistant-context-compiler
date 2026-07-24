@@ -185,6 +185,58 @@ class ModelResponseValidationTests(unittest.TestCase):
         self.assertFalse(item.exact)
         self.assertEqual(item.tags, ["provider-tag"])
 
+    def test_response_and_candidate_limits_are_strictly_validated(self) -> None:
+        for name, kwargs in (
+            ("max_response_chars", {"max_response_chars": 0}),
+            ("max_candidates", {"max_candidates": 0}),
+        ):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "positive"):
+                ModelExtractor(lambda _: {"items": []}, **kwargs)
+        with self.assertRaisesRegex(TypeError, "integer"):
+            ModelExtractor(lambda _: {"items": []}, max_response_chars=True)
+
+    def test_oversized_string_and_decoded_responses_fail_closed(self) -> None:
+        for response in ('{"items":[]}', {"items": []}):
+            with self.subTest(response_type=type(response).__name__):
+                result = ModelExtractor(
+                    lambda _, value=response: value,  # type: ignore[arg-type,return-value]
+                    max_response_chars=5,
+                ).extract([self.source])
+                self.assertEqual(result.items, [])
+                self.assertEqual(result.rejected, [{"reason": "response_too_large"}])
+                self.assertTrue(result.metadata["degraded"])
+
+    def test_candidate_count_is_bounded_before_candidate_decoding(self) -> None:
+        result = ModelExtractor(
+            lambda _: {"items": [self.candidate(), self.candidate()]},
+            max_candidates=1,
+        ).extract([self.source])
+
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.rejected, [{"reason": "too_many_candidates"}])
+        self.assertEqual(result.metadata["failure_reason"], "too_many_candidates")
+
+    def test_cyclic_decoded_response_is_rejected_without_unbounded_traversal(self) -> None:
+        response: dict = {"items": []}
+        response["cycle"] = response
+
+        result = ModelExtractor(lambda _: response).extract([self.source])
+
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.rejected, [{"reason": "response_too_large"}])
+
+    def test_json_integer_decoder_limit_becomes_degraded_output(self) -> None:
+        raw = '{"items":[' + ("9" * 5_000) + "]}"
+
+        result = ModelExtractor(
+            lambda _: raw,
+            max_response_chars=10_000,
+        ).extract([self.source])
+
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.rejected[0]["reason"], "invalid_json")
+        self.assertEqual(result.metadata["failure_reason"], "invalid_json")
+
 
 if __name__ == "__main__":
     unittest.main()

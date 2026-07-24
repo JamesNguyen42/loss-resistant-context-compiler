@@ -35,23 +35,24 @@ to verify it, hashes cannot recover the original truth.
 
 | Threat | Current control | Residual risk |
 | --- | --- | --- |
-| Omission of an explicit protected commitment | In the default configuration, clause atomization, deterministic recovery, and a protected-only certification obligation | Novel syntax may evade both rule passes; a caller can currently replace the safety extractor and empty the obligation |
-| Post-verification item mutation | No complete control in `0.1.0` | Mutable items can change rendered prompt text while a stale report remains passed |
-| Primary model-provider failure | The exception prevents prompt creation | Deterministic fallback does not currently run because primary extraction runs first |
+| Omission of an explicit protected commitment | Non-replaceable built-in clause atomization, full deterministic recovery, and protected-only certification; custom safety extraction is additive | Novel syntax may evade both built-in rule passes |
+| Post-verification item mutation | The final snapshot is recursively sealed and prompt/artifact rendering rechecks a canonical digest | Full Python-process compromise can bypass application controls; reflective mutation is detected at the next checked access but cannot be prevented from corrupting process memory |
+| Primary model-provider failure | Built-in passes run independently; exceptions or wholly unusable output produce deterministic fallback plus a warning by default, with an opt-in strict failure policy | Generic in-process callables must enforce their own deadline and cancellation; fallback can lose novel phrasing found only by the model |
 | Tool-output prompt injection | Goals, constraints, and corrections require `user`, `system`, or `developer`; decisions and unresolved state reject tool provenance; facts reject tool provenance unless the host sets `metadata.trusted_for_state: true` | Spoofed upstream roles or host-supplied trust metadata defeat the gate; errors and references still preserve untrusted tool literals |
 | Memory text closes its prompt envelope | Selected items are JSON-encoded and `<`, `>`, and `&` are escaped inside an explicitly untrusted envelope | Syntactic containment does not stop a model from semantically following quoted instructions |
 | Fabricated model provenance | Model spans are rebuilt from known source ids and offsets; ordinary text must equal a complete atomic cited span, and paraphrases are rejected | A real literal can still be assigned an incorrect non-authority-gated type that passes lexical checks |
 | Hallucinated model claim | Exact atomic extraction, role checks, ordered token support, numeric/negation checks, and consistent evidence polarity | Literal support is not logical entailment or proof that a memory kind is pragmatically correct |
 | Uncertainty promoted to fact | Rule ordering favors unresolved; verifier rejects facts citing uncertainty without confirmation markers | Novel uncertainty phrasing or mixed confirmed/uncertain spans can be misclassified |
 | Exact literal corruption | Exact items must equal every cited source quote | Correctly copied source text can itself be false or malicious |
-| Stale requirement treated as current | Explicit corrections supersede linked earlier items; recognized revocations retire them without inventing replacement state; old state remains auditable | Novel correction wording can remain unlinked; `include_superseded=True` currently permits a verified prompt containing labeled obsolete state |
+| Stale requirement treated as current | Explicit corrections supersede linked earlier items; recognized revocations retire them without inventing replacement state; selecting a superseded item fails verification | Novel correction wording can remain unlinked and appear as a separate active claim |
 | Conflicting state silently resolved | Clear polarity/numeric conflicts mark both claims conflicting and add an unresolved item | Semantic contradictions outside the lexical heuristic can be missed |
 | Source/artifact modification | Source metadata is canonical-JSON-only and recursively immutable; canonical record hashes bind timestamp and metadata as well as content; higher-level digests and artifact replay bind derived structures | Hashes provide integrity comparison, not authorship, freshness, signatures, or rollback protection; an attacker can recompute an artifact self-hash |
 | Custom-tokenizer mismatch | A named counter records `custom:<id>`; independent verification requires the same callback and stable id and recomputes all compression fields | The id is a caller-managed label, not code signing or proof that two implementations are identical |
 | Archive overwrite through the API | Append-only path, exclusive local lock, id/sequence collision rejection, `fsync`, load-time hash validation | A filesystem administrator can rewrite/delete files; locks may not be reliable on every network filesystem |
 | Budget pressure removes requirements | Protected kinds bypass optional selection; overflow is explicit or strict-fail | Enough protected content can exceed the downstream model’s hard context window |
-| Resource exhaustion | Positive configuration bounds and finite operations | Input size, line length, record count, archive size, and model latency are not globally capped |
-| Secret disclosure | None beyond caller-controlled storage and provider choice | Source quotes, metadata, artifacts, prompts, benchmark JSON, and model calls can expose secrets |
+| Resource exhaustion | Positive configuration bounds, bounded model responses/candidate counts, and a hard timeout in the local Qwen subprocess adapter | Input size, line length, record count, archive size, whole-compile duration, and generic completion-callable latency are not globally capped |
+| Secret disclosure | None beyond caller-controlled storage and provider choice | Source quotes, metadata, artifacts, prompts, benchmark JSON, and model calls can expose secrets; the LM Studio CLI prompt is visible in process arguments on some hosts |
+| External benchmark adapter escape | The standard runner avoids a shell, limits time/output, terminates the spawned process tree, validates candidates, and hashes a manifest | It is not a filesystem or network sandbox; reviewed code and an isolated host/container remain necessary, and cross-platform memory enforcement is incomplete |
 
 ## Authority model
 
@@ -118,6 +119,8 @@ Before ingestion:
 - remove or tokenize secrets and sensitive personal data;
 - minimize metadata;
 - decide whether an external model provider may receive the history;
+- remember that the included LM Studio CLI passes the prompt as a process
+  argument that local process monitors or other users may observe;
 - protect archives and generated artifacts with appropriate host controls;
 - define deletion and backup policies outside this package.
 
@@ -137,13 +140,13 @@ failed report with `verification_not_performed`. Normal Python and CLI prompt
 rendering refuse that result. The Python-only `allow_unverified=True` override
 must not be used in an agent execution path.
 
-Four P0 fail-closed gaps remain in `0.1.0`: post-verification ledger mutation,
-replacement of the configured safety extractor, model-provider exceptions
-before deterministic fallback, and verified rendering with selected superseded
-state. Until they are fixed, treat compiled objects as immutable by convention,
-do not override `safety_extractor`, treat provider exceptions as a failed
-compile, and do not use `include_superseded` in an agent execution path. See
-[`TODO.md`](../TODO.md) for reproductions and acceptance criteria.
+The four known in-process fail-closed gaps are closed: compiled snapshots are
+sealed and digest-checked, built-in safety passes cannot be replaced, provider
+failure degrades explicitly to deterministic memory by default, and selected
+superseded state fails verification. Keep `include_superseded` out of execution
+paths because it is intentionally audit-only. For applications where model
+extraction is mandatory, set `fail_on_primary_extractor_error=True` and handle
+the exception without rendering or silently truncating.
 
 Custom token accounting is portable only when compilation uses both
 `token_counter` and a stable `token_counter_id`, and artifact verification is
@@ -162,6 +165,11 @@ The LRCBench certificate can be gamed by overfitting to its generator, changing
 baselines, tuning after observing gold cases, or reporting only favorable
 seeds. The report digest detects changes only relative to recorded inputs; it
 does not guarantee experimental fairness.
+
+Gold-free corpus exports now carry their own canonical `corpus_sha256`, and the
+external runner verifies it before execution. That detects accidental or
+unanchored export changes; it is still a self-hash, not a signature or proof
+that the evaluator supplied the intended corpus.
 
 Most importantly, a local certificate is **not proof against external
 technology**. External claims require preregistered systems, matched resources,

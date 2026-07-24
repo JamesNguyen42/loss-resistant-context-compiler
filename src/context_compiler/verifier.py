@@ -314,10 +314,11 @@ def verify_memory(
     recovered_items: int,
     budget_overflow: int = 0,
     compression_target_met: bool = True,
+    initial_issues: Iterable[VerificationIssue] = (),
 ) -> VerificationReport:
     """Verify structural loss-resistance independently of extraction."""
 
-    issues: list[VerificationIssue] = []
+    issues = list(initial_issues)
     source_map = {source.id: source for source in sources}
     item_map = {item.id: item for item in items}
     selected_ids = set(selected_item_ids)
@@ -352,6 +353,18 @@ def verify_memory(
         )
 
     for item in items:
+        if item.id in selected_ids and item.status == MemoryStatus.SUPERSEDED:
+            issues.append(
+                VerificationIssue(
+                    code="selected_superseded_item",
+                    severity=IssueSeverity.ERROR,
+                    message=(
+                        "Superseded state is audit history and cannot enter a "
+                        "verified execution prompt."
+                    ),
+                    item_id=item.id,
+                )
+            )
         if item.protected and item.status == MemoryStatus.DISCARDED:
             issues.append(
                 VerificationIssue(

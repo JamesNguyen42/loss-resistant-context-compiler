@@ -10,7 +10,17 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from .extractors import RuleBasedExtractor
-from .models import MemoryItem, SourceRecord, render_typed_memory, source_digest
+from .models import (
+    ADDITIVE_SAFETY_EXTRACTOR_FAILED_MESSAGE,
+    PRIMARY_EXTRACTOR_DEGRADED_MESSAGE,
+    PRIMARY_EXTRACTOR_FAILED_MESSAGE,
+    IssueSeverity,
+    MemoryItem,
+    SourceRecord,
+    VerificationIssue,
+    render_typed_memory,
+    source_digest,
+)
 from .verifier import verify_memory
 
 _ARTIFACT_FIELDS = frozenset(
@@ -953,6 +963,58 @@ def verify_artifact_dict(
                         }
                     )
 
+    replay_issues: list[VerificationIssue] = []
+    if isinstance(compiler_metadata, dict):
+        for metadata_key, code, message, required_fields in (
+            (
+                "primary_failure",
+                "primary_extractor_failed",
+                PRIMARY_EXTRACTOR_FAILED_MESSAGE,
+                {"extractor", "exception_type"},
+            ),
+            (
+                "primary_degradation",
+                "primary_extractor_degraded",
+                PRIMARY_EXTRACTOR_DEGRADED_MESSAGE,
+                {"extractor", "reason"},
+            ),
+            (
+                "additive_safety_failure",
+                "additive_safety_extractor_failed",
+                ADDITIVE_SAFETY_EXTRACTOR_FAILED_MESSAGE,
+                {"extractor", "exception_type"},
+            ),
+        ):
+            failure = compiler_metadata.get(metadata_key)
+            if failure is None:
+                continue
+            if (
+                not isinstance(failure, dict)
+                or set(failure) != required_fields
+                or not all(
+                    isinstance(failure.get(name), str) and failure[name]
+                    for name in required_fields
+                )
+            ):
+                issues.append(
+                    {
+                        "code": "invalid_compiler_metadata",
+                        "item_id": None,
+                        "message": (
+                            f"compiler_metadata.{metadata_key} must contain "
+                            "its required non-empty string fields."
+                        ),
+                    }
+                )
+                continue
+            replay_issues.append(
+                VerificationIssue(
+                    code=code,
+                    severity=IssueSeverity.WARNING,
+                    message=message,
+                )
+            )
+
     protected_candidates = RuleBasedExtractor(protected_only=True).extract(sources).items
     replayed_recovered = sum(
         "verifier-recovered" in item.tags for item in decoded_items
@@ -965,6 +1027,7 @@ def verify_artifact_dict(
         recovered_items=replayed_recovered,
         budget_overflow=expected_budget_overflow,
         compression_target_met=expected_target_met,
+        initial_issues=replay_issues,
     )
     embedded_verification = artifact.get("verification")
     if not isinstance(embedded_verification, dict):
