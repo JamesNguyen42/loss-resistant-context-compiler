@@ -86,6 +86,27 @@ The later `LiteralModelExtractor` unique-literal prompt is not evaluated by
 that frozen report. Reuse of the observed corpus for it is post-hoc; a new
 claim-bearing run needs a separately frozen corpus and report protocol.
 
+## Model-free unique-literal offset ablation
+
+`python -m benchmarks.qwen_literal_ablation` strictly verifies the frozen Qwen
+report, discards only captured integer coordinates, retains candidate text and
+cited source ids, and deterministically replays the transformed outputs through
+`LiteralModelExtractor`. It makes no model call and marks both
+`claim_bearing: false` and `target_prompt_evaluated: false`.
+
+```console
+python -m benchmarks.qwen_literal_ablation \
+  --verify-report docs/results/qwen-literal-offset-ablation-v1.json
+```
+
+The saved self-hashed report transformed all 65 candidates, accepted 38, and
+rejected 27. Literal-only output recorded 24 TP, 14 FP, and 16 FN: 63.1579%
+precision, 60% recall, and 61.5385% F1. Recovery produced a final 40 TP,
+20 FP, and 0 FN, but two cases failed independent verification. This isolates
+the benefit of deterministic coordinate derivation while showing that exact
+copying does not solve semantic selection or kind assignment. See
+[the evidence and claim boundary](../docs/QWEN_PHRASE_EVALUATION.md#post-hoc-unique-literal-offset-ablation).
+
 ## External baselines
 
 The bundled baselines are deterministic controls, not claims about the current
@@ -303,7 +324,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 832 tests alongside it: 827 passed and 5
+The suite collected 849 tests alongside it: 844 passed and 5
 platform/optional checks were skipped.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |

@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 832 tests (827 passing and 5 skipped locally); CI covers Python
+- [x] Collect 849 tests (844 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -451,6 +451,12 @@ than most related technology” within the exact dated evaluation scope.
   contract for now. Permit deterministic unique-literal offset derivation as a
   separate schema, but do not add an abstractive path without new evidence and
   an independently verified semantic-support design.
+- [x] Replay the frozen 64-case Qwen captures through unique-literal validation
+  as an explicitly post-hoc, zero-model-call offset ablation. Bind the
+  transformation and results in a
+  [self-hashed report](docs/results/qwen-literal-offset-ablation-v1.json), and
+  preserve its 14 literal-only false positives and 2 final verification
+  failures as limitations rather than claim-bearing evidence.
 - [ ] Evaluate `LiteralModelExtractor` on a newly frozen corpus and prompt;
   treat replay against the already observed 64-case Qwen corpus as post-hoc
   exploration only.
@@ -670,16 +676,18 @@ than most related technology” within the exact dated evaluation scope.
 
 The next chat should start here unless new evidence changes the priority:
 
-1. create `benchmarks/protocols/external-comparison-v1.md`;
-2. define inclusion rules and freeze the initial related-system set;
-3. implement a resource-bounded external subprocess/container runner;
-4. add one end-to-end external adapter without a paid service;
-5. run the interchange self-test and the adapter on a small
-   diagnostic corpus;
-6. add tests for every adapter failure mode;
-7. design the privacy/licensing and annotation protocol for natural histories;
-8. freeze a full corpus only after the diagnostic path is reliable;
-9. evaluate the exact local Qwen extractor on the frozen diagnostic corpus;
-10. record results without changing the claim boundary.
+1. freeze a new held-out corpus, unique-literal prompt digest, report schema,
+   and analysis plan before observing any live model output;
+2. run the exact local Qwen Q4 model sequentially with one inference slot,
+   capture every prompt/output, and retain weak or failed results unchanged;
+3. replay the report offline and compare coordinate and unique-literal modes
+   without weakening deterministic recovery or semantic admission;
+4. resolve the remaining `TBD` fields in the external-comparison protocol;
+5. define inclusion rules and freeze the initial related-system set;
+6. add the first reproducible no-paid-service external adapter;
+7. run the interchange self-test and adapter on a small diagnostic corpus;
+8. design the privacy/licensing and annotation protocol for natural histories;
+9. freeze a full natural corpus only after the diagnostic path is reliable;
+10. record all results without changing the claim boundary.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) before changing code or benchmark rules.

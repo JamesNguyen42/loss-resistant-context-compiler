@@ -21,7 +21,7 @@ the model response or provenance-derivation contract.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 832 collected: 827 passing, 5 skipped |
+| Tests at this snapshot | 849 collected: 844 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -29,6 +29,7 @@ the model response or provenance-derivation contract.
 | Novel English diagnostic | 64 cases: 85.3659% precision, 87.5% recall |
 | Exact local Qwen phrase evaluation | 64 calls: 5% model-only recall, 96.9231% candidate rejection, 87.5% final recall |
 | Unique-literal model extraction | Opt-in; derives only unique exact spans and keeps the coordinate contract unchanged |
+| Post-hoc Qwen offset ablation | 0 calls: 63.1579% literal-only precision, 60% recall, 2 final verification failures; not claim-bearing |
 | Common content-secret preprocessing | Opt-in, fixed-detector, offset-preserving, replayable |
 | External systems evaluated | None |
 | External 50%-better claim | Not established |
@@ -274,6 +275,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `benchmarks/external_runner.py` | Shell-free adapter process limits, validation, and self-hashed run manifests |
 | `benchmarks/performance_gate.py` | Fixed-digest CI compile latency/growth/traced-memory regression gate |
 | `benchmarks/qwen_phrase_eval.py` | Sequential exact-Qwen prompt/output capture, model-only/recovery scoring, and offline replay |
+| `benchmarks/qwen_literal_ablation.py` | Model-free frozen-output offset ablation, literal replay, self-hashed report, and strict regeneration |
 | `benchmarks/protocols/` | Versioned external comparison protocol; v1 is still a non-claim-bearing draft |
 | `schemas/` | Source, coordinate/unique-literal model extraction, compiled artifact, and redaction-report contracts |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
@@ -466,7 +468,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 832 tests are collected: 827 pass and 5 platform/optional checks are skipped.
+- 849 tests are collected: 844 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all five schemas are included.
@@ -509,6 +511,15 @@ audited. Any selected superseded item independently fails verification as
   one post-hoc public-example smoke compile verified with 10 admitted model
   items, 1 rejection, and 4 recoveries, but retained no replayable raw output.
   See `docs/LITERAL_MODEL_EXTRACTION.md`.
+- A deterministic post-hoc ablation strictly verifies the frozen exact-Qwen
+  report, discards only the 65 captured coordinate pairs, and replays retained
+  candidate text/source ids through `LiteralModelExtractor` with zero model
+  calls. It accepted 38/65 candidates and recorded 24 TP, 14 FP, and 16 FN
+  before recovery (63.1579% precision, 60% recall). Final recall reached 100%,
+  but precision was 66.6667% and two cases failed confirmation-evidence
+  verification. The self-hashed report explicitly says the target prompt was
+  not evaluated and the analysis is not claim-bearing; see
+  `docs/results/qwen-literal-offset-ablation-v1.json`.
 - Public `DomainLabelExtractor`, `CompositeExtractor`, `Extractor`, and
   `ExtractionResult` APIs provide bounded exact-label domain packs and strict
   composition without changing the global regex vocabulary. Configuration is
@@ -791,6 +802,11 @@ lower quantile before results are observed.
   negatives elicited a candidate. The corpus is locally authored,
   non-independent, English-only, single-message, and not representative of
   production traffic.
+- Replaying those already observed outputs through unique-literal validation
+  is explicitly post-hoc. The model-free ablation improved literal-only recall
+  to 60% but reduced precision to 63.1579%, admitted 14 false positives, and
+  left 2 final verification failures. It did not evaluate the new prompt and
+  cannot substitute for a newly frozen live evaluation.
 - Local controls are simple and are not state-of-the-art substitutes.
 - Atom recall is a proxy for agent success, not task completion.
 - Bootstrap intervals do not cover benchmark design bias.
@@ -838,17 +854,19 @@ currently implement this transaction manager.
 The known in-process safety paths and internal benchmark estimands are closed.
 The highest-value next work is the external and natural-history evidence path:
 
-1. resolve every `TBD` in the versioned draft external protocol without looking
+1. freeze a new held-out corpus, unique-literal prompt digest, report schema,
+   and analysis plan before observing any live target-prompt output;
+2. run the exact local Qwen Q4 build sequentially with one inference slot,
+   retain every output, and publish weak or failed results unchanged;
+3. replay the new report offline and compare coordinate and unique-literal
+   modes without weakening deterministic recovery or semantic admission;
+4. resolve every `TBD` in the versioned draft external protocol without looking
    at comparative results;
-2. freeze the initial comparison set and pinned revisions;
-3. freeze containment or accounting for a pre-existing inference service
+5. freeze the initial comparison set and pinned revisions;
+6. freeze containment or accounting for a pre-existing inference service
    outside the now-bounded adapter process tree;
-4. add the first reproducible, no-paid-service external adapter;
-5. define the natural-history privacy, licensing, and annotation protocol;
-6. run a small diagnostic corpus before freezing claim-bearing evidence;
-7. decide whether the observed exact-span failure rate justifies prompt-only
-   iteration on a new preregistered corpus or a separately verified abstractive
-   path; never tune against the completed 64-case report.
+7. add the first reproducible, no-paid-service external adapter;
+8. define the natural-history privacy, licensing, and annotation protocol.
 
 The detailed ordered backlog is in [TODO.md](../TODO.md).
 
@@ -866,6 +884,8 @@ python -m compileall -q src benchmarks tests
 python -m benchmarks --self-test
 python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
 python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json
+python -m benchmarks.qwen_phrase_eval --verify-report docs/results/qwen-novel-english-phrases-v1.json
+python -m benchmarks.qwen_literal_ablation --verify-report docs/results/qwen-literal-offset-ablation-v1.json
 python -m benchmarks --histories 24 --json-out lrcbench-24.json --include-histories
 python -c "
 import pathlib, subprocess, sys, tempfile, zipfile
@@ -878,7 +898,7 @@ with tempfile.TemporaryDirectory() as directory:
     wheels = list(pathlib.Path(directory).glob('*.whl'))
     assert len(wheels) == 1, wheels
     names = zipfile.ZipFile(wheels[0]).namelist()
-    assert sum(name.endswith('.schema.json') for name in names) == 3
+    assert sum(name.endswith('.schema.json') for name in names) == 5
 "
 ```
 

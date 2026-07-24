@@ -114,6 +114,53 @@ content-secret preprocessing before this boundary, minimize metadata and
 source ids separately, and do not treat unique-literal derivation as
 redaction.
 
+## Post-hoc offset ablation
+
+The saved outputs from the first exact-Qwen coordinate run can be transformed
+without calling a model:
+
+```console
+python -m benchmarks.qwen_literal_ablation \
+  --verify-report docs/results/qwen-literal-offset-ablation-v1.json
+```
+
+The analyzer first verifies the frozen source report with SHA-256
+`db2e054537e366056a8fd482f1a8e17b8fa0d02163a08ea79ef3c682af79c171`.
+For every strict captured candidate, it retains kind, text, optional candidate
+fields, and cited source ids; discards only integer coordinate values; then
+replays the transformed response through `LiteralModelExtractor` and the full
+compiler. Repeated source ids are stable-order deduplicated and counted. No
+captured candidate, kind, text, or source identity is invented.
+
+The reviewed
+[`qwen-literal-offset-ablation-v1.json`](results/qwen-literal-offset-ablation-v1.json)
+report has SHA-256
+`a321f20c4a7c13f76a99ab85e7af699f02f9498b11a59f56278991c9cf0de97c`.
+It records `claim_bearing: false`, `target_prompt_evaluated: false`, zero live
+model calls, no network model API, and USD 0.00 model-service cost.
+
+| Boundary | Result |
+| --- | ---: |
+| Captured / transformed candidates | 65 / 65 |
+| Coordinate pairs ignored | 65 |
+| Accepted / rejected literal candidates | 38 / 27 |
+| Literal-only atoms | 24 TP, 14 FP, 16 FN |
+| Literal-only precision / recall / F1 | 63.1579% / 60% / 61.5385% |
+| Deterministic recovery additions / true positives | 22 / 16 |
+| Final atoms | 40 TP, 20 FP, 0 FN |
+| Final precision / recall / F1 | 66.6667% / 100% / 80% |
+| Final exact matches | 46 / 64 |
+| Final verification failures | 2 |
+
+Compared with the coordinate validator, literal validation admitted 36 more
+candidates and gained 22 true positives, but also admitted 14 false positives
+and lost 36.8421 percentage points of model-only precision. The two final
+verification failures were single-source model-labeled `confirmed_fact`
+items without confirmation evidence. This result supports the narrow
+engineering diagnosis that coordinate arithmetic caused many original
+rejections; it simultaneously shows that semantic choice and type assignment
+remain unresolved.
+
 ## Claim boundary
 
 Unique literal location removes an unnecessary coordinate-generation task from
@@ -134,8 +181,10 @@ response was not retained, so it demonstrates only that the live local adapter
 and new schema interoperate. It is not replayable quality or performance
 evidence.
 
-Current evidence therefore supports only the engineering statement that
-unique, exact source literals can be converted into hashed Python-character
-spans without trusting model arithmetic. It does not support provider
-generalization, production readiness, downstream task improvement, or a
-comparison with another memory system.
+The replayable offset ablation above is stronger diagnostic evidence than that
+smoke test, but it is still post-hoc and never sent the unique-literal prompt
+to Qwen. Current evidence therefore supports only the engineering statement
+that unique, exact source literals can be converted into hashed
+Python-character spans without trusting model arithmetic. It does not support
+provider generalization, production readiness, downstream task improvement,
+or a comparison with another memory system.

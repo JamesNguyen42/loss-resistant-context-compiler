@@ -211,3 +211,53 @@ coordinate arithmetic while retaining exact literal admission. It was designed
 in response to these observed failures. Results from replaying or rerunning
 this already seen corpus with that interface are necessarily post-hoc and
 cannot replace a separately frozen evaluation.
+
+## Post-hoc unique-literal offset ablation
+
+The repository retains one explicitly non-claim-bearing analysis of those
+already observed outputs. `benchmarks.qwen_literal_ablation` first verifies the
+complete frozen Qwen report, then transforms each strict captured candidate by
+retaining its kind, text, optional fields, and cited source ids while
+discarding only the model-supplied integer `start` and `end` values. It replays
+the transformed response through `LiteralModelExtractor` and the full
+compiler. It does not call Qwen, evaluate the unique-literal prompt, alter the
+frozen corpus, or repair candidate semantics.
+
+Verify the saved analysis offline:
+
+```console
+python -m benchmarks.qwen_literal_ablation \
+  --verify-report docs/results/qwen-literal-offset-ablation-v1.json
+```
+
+The reviewed report is
+[`qwen-literal-offset-ablation-v1.json`](results/qwen-literal-offset-ablation-v1.json).
+Its SHA-256 is
+`a321f20c4a7c13f76a99ab85e7af699f02f9498b11a59f56278991c9cf0de97c`;
+it binds the frozen source-report hash, every raw-output hash, transformed
+response and hypothetical target-prompt hash, per-case result, aggregate, and
+the statements `claim_bearing: false`, `target_prompt_evaluated: false`, and
+`live_model_calls: 0`.
+
+| Boundary | Result |
+| --- | ---: |
+| Source / transformed candidates | 65 / 65 |
+| Coordinate pairs ignored | 65 |
+| Accepted / rejected literal candidates | 38 / 27 |
+| Literal-only atoms | 24 TP, 14 FP, 16 FN |
+| Literal-only precision / recall / F1 | 63.1579% / 60% / 61.5385% |
+| Change from coordinate model-only | +22 TP, +14 FP, -22 FN |
+| Deterministic recovery additions | 22, including 16 expected atoms after a primary miss |
+| Final atoms | 40 TP, 20 FP, 0 FN |
+| Final precision / recall / F1 | 66.6667% / 100% / 80% |
+| Final exact matches | 46 / 64 |
+| Final verification failures | 2 |
+| Model calls / network model API / service cost | 0 / no / USD 0.00 |
+
+Removing coordinate arithmetic admitted far more useful candidates, but it
+also admitted semantic false positives and two single-source
+`confirmed_fact` labels that failed independent confirmation-evidence
+verification. The result therefore diagnoses two distinct problems: generated
+offsets were a major failure source, and exact copying alone does not make
+model selection or typing trustworthy. A new held-out corpus and prompt must
+be frozen before any claim-bearing live comparison.

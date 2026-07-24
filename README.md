@@ -27,12 +27,13 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 832 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 849 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Novel English diagnostic | 64 local cases; 85.37% precision and 87.5% recall |
 | Exact local Qwen phrase evaluation | 64 calls; 5% model-only recall, 96.92% candidate rejection, 87.5% final recall |
+| Post-hoc Qwen offset ablation | 0 calls; 63.16% literal-only precision, 60% recall, and 2 final verification failures; non-claim-bearing |
 | Named external comparisons | Not run |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
@@ -148,7 +149,7 @@ The repository currently includes:
 - an opt-in whole-compile deadline that runs materialized inputs in an isolated
   POSIX process group or Windows Job Object, terminates the owned descendant
   tree on timeout, and reconstructs successful output from bounded strict JSON;
-- a portable JSON artifact, compact prompt renderer, and four JSON Schemas;
+- a portable JSON artifact, compact prompt renderer, and five JSON Schemas;
 - a machine-readable artifact reader/writer registry with an explicit
   no-silent-migration policy;
 - a fail-closed JSON inspector plus a bounded terminal item view with escaped
@@ -174,12 +175,16 @@ The repository currently includes:
   binds every ModelExtractor prompt/output, separates strict model-only
   acceptance from deterministic recovery, records rejection/latency/zero-cost
   evidence, and replays saved outputs without model access;
+- a model-free, self-hashed post-hoc ablation that discards only captured
+  model offsets, retains candidate text and cited source ids, replays the
+  result through `LiteralModelExtractor`, and labels the target prompt as
+  unevaluated;
 - public, bounded domain-label and strict extractor-composition hooks that do
   not accept caller-supplied regexes or replace built-in recovery;
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 832 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 849 regression tests.
 
 ## In development
 
@@ -838,7 +843,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 832 tests are collected (827 pass and 5
+Current local snapshot (2026-07-24): 849 tests are collected (844 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
@@ -872,6 +877,19 @@ accepted-layer 100% negative accuracy reflects validator rejection rather than
 model restraint. See the [frozen protocol and result audit](docs/QWEN_PHRASE_EVALUATION.md)
 and [replayable captured-output report](docs/results/qwen-novel-english-phrases-v1.json).
 
+An explicitly post-hoc, model-free ablation then replayed those same 65 saved
+candidates after discarding only their integer `start`/`end` values and
+retaining candidate text plus cited source ids. Unique-literal validation
+accepted 38 candidates and rejected 27. Literal-only output recorded 24 TP,
+14 FP, and 16 FN: 63.1579% precision, 60% recall, and 61.5385% F1. Recovery
+raised final recall to 100%, but final precision was only 66.6667% and two
+compiles failed verification because model-labeled confirmed facts lacked
+confirmation evidence. The run made zero model calls and did not evaluate the
+new prompt, so it isolates offset arithmetic but is not claim-bearing evidence
+for `LiteralModelExtractor`. See the
+[method boundary](docs/QWEN_PHRASE_EVALUATION.md#post-hoc-unique-literal-offset-ablation)
+and [self-hashed replay](docs/results/qwen-literal-offset-ablation-v1.json).
+
 These local generated results are **not an external-system comparison** and do
 not establish the requested 50% advantage over most related technology. Rerun
 the commands above for the current revision and environment.
@@ -885,6 +903,7 @@ the commands above for the current revision and environment.
 - [Benchmark design and the exact 50% bar](docs/BENCHMARKING.md)
 - [Novel English phrase diagnostic](docs/PHRASE_EVALUATION.md)
 - [Exact local Qwen phrase-evaluation protocol](docs/QWEN_PHRASE_EVALUATION.md)
+- [Post-hoc Qwen literal-offset ablation evidence](docs/results/qwen-literal-offset-ablation-v1.json)
 - [Unique-literal model extraction](docs/LITERAL_MODEL_EXTRACTION.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Compiled-artifact schema compatibility](docs/SCHEMA_COMPATIBILITY.md)

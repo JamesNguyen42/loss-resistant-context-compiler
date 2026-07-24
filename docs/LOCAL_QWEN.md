@@ -158,3 +158,10 @@ validator rejection rather than model restraint. See
 [Exact local Qwen phrase evaluation](QWEN_PHRASE_EVALUATION.md) for commands,
 the recorded evidence, exact mismatch audit, raw-output privacy, replay, and
 claim limits.
+
+The same saved outputs also support a model-free, explicitly post-hoc offset
+ablation. It discards captured coordinates, retains candidate text and source
+ids, and replays them through `LiteralModelExtractor`; it does not send that
+extractor's prompt to Qwen. The replay measured 63.1579% literal-only
+precision, 60% recall, and two final verification failures. See
+[the post-hoc method and result](QWEN_PHRASE_EVALUATION.md#post-hoc-unique-literal-offset-ablation).

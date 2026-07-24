@@ -253,6 +253,14 @@ frozen corpus unless a separate privacy review authorizes other inputs.
 Recorded wall-clock latency is shape- and aggregate-checked but cannot be
 independently reproduced offline.
 
+The unique-literal offset ablation verifies that exact frozen source report,
+retains the captured candidate text and cited source ids, discards only
+coordinate values, and deterministically regenerates its own self-hashed
+report. It makes no model call and labels the target prompt unevaluated.
+Regeneration proves consistency with the checked-in captures and current
+validator code, not that the captures came from Qwen or that post-hoc metrics
+generalize.
+
 Manifest replay requires the retained corpus at its recorded absolute path and
 checks its canonical digest, file digest, dataset id, and case count. The
 manifest is still only a self-hash: anyone able to replace the corpus,
