@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ import pytest
 
 from benchmarks.phrase_eval import PhraseCorpus, load_phrase_corpus
 from benchmarks.qwen_phrase_eval import (
+    DEFAULT_QWEN_PHRASE_REPORT,
     EVALUATION_MAX_CANDIDATES,
     EVALUATION_MAX_OUTPUT_CHARS,
     EVALUATION_TIMEOUT_SECONDS,
@@ -469,6 +471,92 @@ def test_loader_and_cli_verify_saved_report_without_lms(
     assert output["schema"] == QWEN_PHRASE_VERIFICATION_SCHEMA
     assert output["verified"] is True
     assert output["model_calls"] == 64
+
+
+def test_committed_exact_qwen_report_replays_without_model(
+    corpus: PhraseCorpus,
+) -> None:
+    report = load_qwen_phrase_report(DEFAULT_QWEN_PHRASE_REPORT)
+    verification = verify_qwen_phrase_report(report, corpus)
+
+    assert verification == {
+        "schema": QWEN_PHRASE_VERIFICATION_SCHEMA,
+        "verified": True,
+        "corpus_sha256": corpus.corpus_sha256,
+        "report_sha256": (
+            "db2e054537e366056a8fd482f1a8e17b8fa0d02163a08ea79ef3c682af79c171"
+        ),
+        "case_count": 64,
+        "model_id": QWEN_Q4_VARIANT,
+        "model_calls": 64,
+        "network_model_api": False,
+        "model_service_cost_usd": 0.0,
+    }
+    assert report["run"]["repository_commit"] == (
+        "f79fe2bdd39e046d79fc41491f8ada87e8b42438"
+    )
+    assert report["run"]["repository_dirty"] is False
+    model_only = report["metrics"]["model_only"]
+    assert {
+        name: model_only[name]
+        for name in (
+            "predicted_atoms",
+            "true_positives",
+            "false_positives",
+            "false_negatives",
+            "precision",
+            "recall",
+            "f1",
+        )
+    } == {
+        "predicted_atoms": 2,
+        "true_positives": 2,
+        "false_positives": 0,
+        "false_negatives": 38,
+        "precision": 1.0,
+        "recall": 0.05,
+        "f1": 0.095238,
+    }
+    assert report["metrics"]["candidates"] == {
+        "reported_candidates": 65,
+        "accepted_candidates": 2,
+        "rejected_candidates": 63,
+        "candidate_rejection_rate": 0.969231,
+        "rejection_events": 63,
+        "rejection_reasons": {"invalid_candidate": 63},
+        "degraded_cases": 62,
+    }
+    assert report["metrics"]["deterministic_recovery"]["recall_gain"] == 0.825
+    assert report["metrics"]["final_compiler"]["precision"] == 0.853659
+    assert report["metrics"]["final_compiler"]["recall"] == 0.875
+    assert report["metrics"]["final_compiler"]["verification_failures"] == 0
+    assert all(case["primary"]["candidate_count"] >= 1 for case in report["cases"])
+    assert sum(
+        case["primary"]["candidate_count"]
+        for case in report["cases"]
+        if not case["expected"]
+    ) == 24
+    rejection_details = Counter(
+        rejection["detail"]
+        for case in report["cases"]
+        for rejection in case["primary"]["rejections"]
+    )
+    assert rejection_details == {
+        "provenance span exceeds source content": 28,
+        "exact candidate text must equal its source literal": 14,
+        "candidate text must equal a cited source literal": 12,
+        (
+            "constraint requires provenance exclusively from an authoritative role"
+        ): 4,
+        "confirmed_fact cannot be sourced from untrusted tool output": 1,
+        (
+            "user_correction requires provenance exclusively from an "
+            "authoritative role"
+        ): 1,
+        "decision cannot be sourced from tool output": 1,
+        "candidate source literal is not an atomic clause": 1,
+        "unresolved cannot be sourced from tool output": 1,
+    }
 
 
 def test_loader_rejects_duplicate_keys(

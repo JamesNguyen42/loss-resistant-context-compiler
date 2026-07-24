@@ -71,10 +71,16 @@ python -m benchmarks.qwen_phrase_eval \
   --verify-report docs/results/qwen-novel-english-phrases-v1.json
 ```
 
-The harness and verifier are frozen; the first live report is pending in this
-checkpoint. Raw outputs make validator replay possible but can expose source
-text, so this path is intended for the public corpus. See
-[the exact protocol and claim boundary](../docs/QWEN_PHRASE_EVALUATION.md).
+The pre-registered 2026-07-24 run completed 64 calls without transport errors.
+Qwen emitted 65 candidates across all 64 cases; strict validation accepted 2
+and rejected 63 (96.9231%). Model-only recall was 5%. Deterministic recovery
+added 33 expected atoms after model misses, producing 85.3659% final precision,
+87.5% final recall, and zero verification failures. Median call latency was
+1.968 seconds and model-service cost was USD 0.00. All 24 negatives elicited a
+candidate, so accepted-layer negative accuracy is principally a validation
+result. Raw outputs make replay possible but can expose source text, so this
+path is intended for the public corpus. See
+[the exact protocol and result audit](../docs/QWEN_PHRASE_EVALUATION.md).
 
 ## External baselines
 
@@ -293,7 +299,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 797 tests alongside it: 792 passed and 5
+The suite collected 798 tests alongside it: 793 passed and 5
 platform/optional checks were skipped.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |

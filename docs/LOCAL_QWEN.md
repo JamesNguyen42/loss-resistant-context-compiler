@@ -113,8 +113,14 @@ that capture to score:
 - final compiler quality and verification;
 - per-call latency and service cost.
 
-Offline report verification never calls a model. The harness is implemented
-and regression-tested; the first live 64-case report is pending in this
-checkpoint. See
+Offline report verification never calls a model. The pre-registered
+2026-07-24 run completed all 64 calls: strict validation accepted 2 of 65
+decoded candidates, for 5% model-only recall and a 96.9231% candidate
+rejection rate. Deterministic recovery raised final recall to 87.5%, with
+85.3659% precision and zero verification failures. Median call latency was
+1.968 seconds and model-service cost was USD 0.00. Every negative case
+elicited a model candidate, so its accepted-layer negative accuracy reflects
+validator rejection rather than model restraint. See
 [Exact local Qwen phrase evaluation](QWEN_PHRASE_EVALUATION.md) for commands,
-metric definitions, raw-output privacy, replay, and claim limits.
+the recorded evidence, exact mismatch audit, raw-output privacy, replay, and
+claim limits.

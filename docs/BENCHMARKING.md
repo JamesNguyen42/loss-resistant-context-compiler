@@ -372,7 +372,7 @@ and documentation together.
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 797 tests: 792 passed and 5 platform/optional checks were
+The suite collected 798 tests: 793 passed and 5 platform/optional checks were
 skipped. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |
@@ -445,6 +445,13 @@ the frozen claim cohorts and at least 5x real-token compression per cohort.
 - The optional `ModelExtractor` is not exercised by this snapshot. Its accepted
   claims are exact complete atomic source spans, not paraphrases, so LRCBench
   does not measure free-form abstractive-summary quality for this project.
+- A separate pre-registered
+  [exact-Qwen captured-output diagnostic](QWEN_PHRASE_EVALUATION.md) exercised
+  `ModelExtractor` on 64 isolated cases. It recorded 5% accepted model-only
+  recall and a 96.9231% candidate rejection rate; deterministic recovery raised
+  final recall to 87.5%. That result exposes an exact-span reliability gap but
+  remains locally authored, small, English-only, and outside LRCBench's
+  downstream comparison protocol.
 - The four-characters-per-token estimate is deterministic but not a provider
   tokenizer.
 - Local baselines are intentionally simple and are not substitutes for current

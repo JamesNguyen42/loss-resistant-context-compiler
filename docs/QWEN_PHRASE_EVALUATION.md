@@ -154,8 +154,53 @@ Those claims still require the frozen natural-history, downstream-task,
 external-system, and independent-reproduction work in
 [TODO](../TODO.md) and [Benchmarking](BENCHMARKING.md).
 
-## Current status
+## Recorded result
 
-The captured-output harness and offline verifier are implemented and
-regression-tested. The first live 64-case report has not yet been recorded in
-this checkpoint.
+The pre-registered harness was committed as
+`f79fe2bdd39e046d79fc41491f8ada87e8b42438` before the live result was
+observed. The clean-tree run started at `2026-07-24T14:46:16.094054+00:00`
+and completed all 64 sequential calls without a transport error.
+
+The reviewed evidence is
+[`qwen-novel-english-phrases-v1.json`](results/qwen-novel-english-phrases-v1.json).
+Its report SHA-256 is
+`db2e054537e366056a8fd482f1a8e17b8fa0d02163a08ea79ef3c682af79c171`.
+Offline verification reconstructs and replays all 64 prompts and outputs.
+
+| Boundary | Result |
+| --- | ---: |
+| Model-only atoms | 2 TP, 0 FP, 38 FN |
+| Model-only precision / recall / F1 | 100% / 5% / 9.5238% |
+| Model-only positive exact matches | 2 / 40 |
+| Decoded / accepted / rejected candidates | 65 / 2 / 63 |
+| Candidate rejection rate | 96.9231% |
+| Cases with degraded primary extraction | 62 / 64 |
+| Expected atoms recovered after a model miss | 33 |
+| Recall gain from deterministic recovery | 82.5 percentage points |
+| Final atoms | 35 TP, 6 FP, 5 FN |
+| Final precision / recall / F1 | 85.3659% / 87.5% / 86.4198% |
+| Final exact matches | 55 / 64 |
+| Final verification failures | 0 |
+| Mean / median / nearest-rank p95 call latency | 2.003 / 1.968 / 2.182 seconds |
+| Total measured model-call time | 128.164 seconds |
+| Model-service cost | USD 0.00 |
+
+Qwen emitted at least one candidate for every case, including every one of the
+24 semantic negatives. Consequently, its 100% accepted-layer negative
+accuracy does not mean the model withheld false claims: all 24 negative
+candidates were rejected before admission.
+
+Of the 63 rejection events, 28 cited a span beyond the source, 26 supplied text
+that did not exactly equal the cited literal, 8 violated source-role authority,
+and 1 cited a non-atomic clause. Thus 54/63 rejections (85.7143%) directly
+involved the exact-text/offset contract. This is evidence that the current
+prompted model path is not a reliable exact-span extractor on this corpus. It
+is also evidence that strict admission prevented those candidates from
+silently entering memory.
+
+The final compiler metrics exactly match the separately recorded deterministic
+phrase diagnostic: deterministic recovery, not the model path, supplied most
+of the useful coverage, and the model produced no aggregate improvement on
+this corpus. This comparison remains local, small, English-only, and
+non-independent. No production extractor, validator, recovery rule, or corpus
+annotation was changed after observing the run.

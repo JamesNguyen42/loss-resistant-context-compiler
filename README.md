@@ -27,12 +27,12 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 797 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 798 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Novel English diagnostic | 64 local cases; 85.37% precision and 87.5% recall |
-| Exact local Qwen phrase evaluation | Captured-output harness frozen; first live report pending |
+| Exact local Qwen phrase evaluation | 64 calls; 5% model-only recall, 96.92% candidate rejection, 87.5% final recall |
 | Named external comparisons | Not run |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
@@ -177,7 +177,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 797 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 798 regression tests.
 
 ## In development
 
@@ -824,7 +824,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 797 tests are collected (792 pass and 5
+Current local snapshot (2026-07-24): 798 tests are collected (793 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
@@ -845,6 +845,18 @@ verification failures. It is locally authored diagnostic evidence, not an
 independent or production-representative corpus. See
 [the method and mismatch audit](docs/PHRASE_EVALUATION.md) and the
 [self-hashed report](docs/results/novel-english-phrases-v1.json).
+
+The pre-registered exact-local-Qwen run then made 64 sequential calls against
+that corpus. Qwen emitted 65 decoded candidates across all 64 cases; the
+strict exact-span validator accepted 2 and rejected 63 (96.9231%). Accepted
+model-only output had 100% precision but only 5% recall. Deterministic recovery
+added 33 expected atoms missed by the model, raising final recall by 82.5
+percentage points to 87.5%; final precision was 85.3659%, and all compiler
+verifications passed. Median call latency was 1.968 seconds and model-service
+cost was USD 0.00. Because every negative case elicited a candidate, the
+accepted-layer 100% negative accuracy reflects validator rejection rather than
+model restraint. See the [frozen protocol and result audit](docs/QWEN_PHRASE_EVALUATION.md)
+and [replayable captured-output report](docs/results/qwen-novel-english-phrases-v1.json).
 
 These local generated results are **not an external-system comparison** and do
 not establish the requested 50% advantage over most related technology. Rerun

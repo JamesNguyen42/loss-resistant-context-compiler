@@ -61,7 +61,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 797 tests (792 passing and 5 skipped locally); CI covers Python
+- [x] Collect 798 tests (793 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -433,10 +433,13 @@ than most related technology” within the exact dated evaluation scope.
   verifier before the first corpus-scale model run. Bind every exact
   ModelExtractor prompt/output and score model-only acceptance, rejection,
   recovery, final verification, latency, and zero service cost separately.
-- [ ] Evaluate the exact local Qwen model across a frozen, sufficiently large
-  novel-phrasing corpus; do not generalize from the one integration diagnostic.
-- [ ] Record extraction recall, rejection rate, latency, cost, and recovery-pass
-  contribution separately.
+- [x] Evaluate the exact local Qwen model across the frozen 64-case
+  novel-phrasing diagnostic; do not generalize from the one integration
+  diagnostic or this locally authored corpus. Retain the
+  [captured-output report](docs/results/qwen-novel-english-phrases-v1.json).
+- [x] Record extraction recall, rejection rate, latency, cost, and recovery-pass
+  contribution separately in the
+  [exact-Qwen result audit](docs/QWEN_PHRASE_EVALUATION.md).
 - [x] Test oversized output, excessive candidate counts, malformed JSON, and
   subprocess timeout at the adapter boundary.
 - [x] Test malicious model output, duplicate and unknown keys, NaN/infinity,

@@ -19,13 +19,13 @@ changing the captured-output evaluation.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 797 collected: 792 passing, 5 skipped |
+| Tests at this snapshot | 798 collected: 793 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
 | Recorded local certificate | `ISSUED`, scope `local-bundled-only` |
 | Novel English diagnostic | 64 cases: 85.3659% precision, 87.5% recall |
-| Exact local Qwen phrase evaluation | Captured-output harness frozen; first live report pending |
+| Exact local Qwen phrase evaluation | 64 calls: 5% model-only recall, 96.9231% candidate rejection, 87.5% final recall |
 | Common content-secret preprocessing | Opt-in, fixed-detector, offset-preserving, replayable |
 | External systems evaluated | None |
 | External 50%-better claim | Not established |
@@ -462,7 +462,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 797 tests are collected: 792 pass and 5 platform/optional checks are skipped.
+- 798 tests are collected: 793 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all four schemas are included.
@@ -487,13 +487,15 @@ audited. Any selected superseded item independently fails verification as
   with zero compiler-verification failures. Strict report verification replays
   every case. The corpus is local diagnostic evidence, not independent or
   production-representative; see `docs/PHRASE_EVALUATION.md`.
-- The exact local-Qwen corpus evaluator is frozen before observing its first
-  live run. It enforces the Q4 variant, 8,192 context, one inference slot,
-  local CLI/no model API, sequential 64-case order, bounded output/candidates,
-  and zero service cost. It binds every ModelExtractor prompt/raw output,
-  separates strict model-only acceptance from deterministic recovery/final
-  verification, and replays saved outputs offline. The first live report is
-  pending; see `docs/QWEN_PHRASE_EVALUATION.md`.
+- The exact local-Qwen corpus evaluator was frozen in commit `f79fe2b` before
+  its first live result. The clean-tree run completed all 64 sequential calls
+  with no transport error. Qwen emitted 65 candidates across all cases; strict
+  validation accepted 2 and rejected 63 (96.9231%), yielding 5% model-only
+  recall. Recovery added 33 expected atoms missed by the model, raising final
+  recall to 87.5% with 85.3659% precision and no verification failures. Median
+  call latency was 1.968 seconds; model-service cost was USD 0.00. The
+  self-hashed raw-output report replays offline; see
+  `docs/QWEN_PHRASE_EVALUATION.md`.
 - Public `DomainLabelExtractor`, `CompositeExtractor`, `Extractor`, and
   `ExtractionResult` APIs provide bounded exact-label domain packs and strict
   composition without changing the global regex vocabulary. Configuration is
@@ -770,10 +772,12 @@ lower quantile before results are observed.
 - The recorded histories are generated templates, not natural production
   prevalence.
 - The optional model extractor is not exercised in the recorded benchmark.
-- The exact local Qwen adapter still has only one completed public-example
-  integration diagnostic. A frozen 64-case captured-output evaluator exists,
-  but its first live report is pending and the corpus is not independent or
-  production-representative.
+- The exact local Qwen adapter has one public-example integration diagnostic
+  and one replayable 64-case captured-output diagnostic. The model-only path
+  had 5% recall and a 96.9231% candidate rejection rate; all 24 semantic
+  negatives elicited a candidate. The corpus is locally authored,
+  non-independent, English-only, single-message, and not representative of
+  production traffic.
 - Local controls are simple and are not state-of-the-art substitutes.
 - Atom recall is a proxy for agent success, not task completion.
 - Bootstrap intervals do not cover benchmark design bias.
@@ -829,7 +833,9 @@ The highest-value next work is the external and natural-history evidence path:
 4. add the first reproducible, no-paid-service external adapter;
 5. define the natural-history privacy, licensing, and annotation protocol;
 6. run a small diagnostic corpus before freezing claim-bearing evidence;
-7. evaluate the exact local Qwen extractor across that frozen diagnostic corpus.
+7. decide whether the observed exact-span failure rate justifies prompt-only
+   iteration on a new preregistered corpus or a separately verified abstractive
+   path; never tune against the completed 64-case report.
 
 The detailed ordered backlog is in [TODO.md](../TODO.md).
 
