@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 306 tests (301 passing and 5 skipped locally); CI covers Python
+- [x] Collect 313 tests (308 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -505,8 +505,11 @@ than most related technology” within the exact dated evaluation scope.
 - [x] Add strict, configurable artifact limits for raw/canonical bytes, line
   length, JSON depth, item/selection counts, provenance spans, and embedded
   verification issues across CLI and direct replay.
-- [ ] Add a portable whole-compile deadline that cannot leave background
-  extractors running or corrupt caller state.
+- [x] Add an opt-in portable whole-compile deadline for materialized,
+  serializable jobs. Run the pipeline in an isolated POSIX process group or
+  Windows Job Object, terminate the owned descendant tree on timeout, copy
+  caller inputs across the boundary, and accept successful results only
+  through bounded strict JSON plus sealed-snapshot reconstruction.
 - [x] Add opt-in versioned JSON runtime diagnostics that distinguish resource,
   I/O, invalid JSON/type/value, integrity, timeout, and policy failures while
   retaining the default human-readable CLI contract.

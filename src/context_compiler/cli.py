@@ -17,6 +17,7 @@ from .io import (
     load_sources_path,
     verify_artifact_dict,
 )
+from .isolation import CompilationIsolationError
 from .limits import (
     DEFAULT_ARTIFACT_LIMITS,
     DEFAULT_SOURCE_LIMITS,
@@ -79,6 +80,8 @@ def _error_identity(exc: BaseException) -> tuple[str, str]:
         return "resource_limit", "resource_limit_exceeded"
     if isinstance(exc, TimeoutError):
         return "timeout", "operation_timed_out"
+    if isinstance(exc, CompilationIsolationError):
+        return "runtime", "compilation_isolation_failed"
     if isinstance(exc, FileNotFoundError):
         return "io", "path_not_found"
     if isinstance(exc, PermissionError):
@@ -162,8 +165,18 @@ def _compile(args: argparse.Namespace) -> int:
         result = ContextCompiler(
             policy=policy,
             source_limits=source_limits,
-        ).compile(sources)
-    except (OSError, TypeError, ValueError, json.JSONDecodeError, TimeoutError) as exc:
+        ).compile(
+            sources,
+            timeout_seconds=args.compile_timeout_seconds,
+        )
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        TimeoutError,
+    ) as exc:
         _write_error(args, exc)
         return 2
     if args.format == "prompt" and not result.verification.passed:
@@ -394,6 +407,14 @@ def build_parser() -> argparse.ArgumentParser:
     compile_parser.add_argument("--format", choices=("json", "prompt"), default="json")
     compile_parser.add_argument("--token-budget", type=int, default=4_000)
     compile_parser.add_argument("--minimum-compression", type=float, default=5.0)
+    compile_parser.add_argument(
+        "--compile-timeout-seconds",
+        type=float,
+        help=(
+            "run compilation in an isolated process tree and terminate it "
+            "after this whole-run deadline"
+        ),
+    )
     compile_parser.add_argument("--strict-budget", action="store_true")
     compile_parser.add_argument("--require-target", action="store_true")
     compile_parser.add_argument("--include-superseded", action="store_true")

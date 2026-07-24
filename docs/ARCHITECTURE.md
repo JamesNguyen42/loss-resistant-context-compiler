@@ -30,8 +30,16 @@ flowchart LR
     H -. resolves spans .-> I
 ```
 
-The implementation is synchronous and provider-neutral. It has no runtime
-dependencies outside the Python 3.11+ standard library.
+The default implementation is synchronous and provider-neutral. Passing
+`timeout_seconds` to `compile()` serializes a materialized list/tuple job into
+a dedicated subprocess, places that worker in a new POSIX process group or
+Windows Job Object, and applies one deadline to the complete pipeline. Timeout
+terminates the owned descendant tree. Success crosses back as bounded strict
+JSON, whose exact artifact shape and self-digest are checked before a sealed
+snapshot is reconstructed. This boundary prevents worker-side source mutation
+from changing caller objects; it is not a filesystem, network, or hostile-code
+sandbox. The project has no runtime dependencies outside the Python 3.11+
+standard library.
 
 ## Core data model
 
@@ -220,10 +228,13 @@ additive. Its exception becomes a verification warning without subtracting
 built-in obligations. A primary extractor exception or wholly unusable result
 produces deterministic fallback memory and an explicit warning by default;
 `CompilationPolicy(fail_on_primary_extractor_error=True)` instead aborts.
-Custom completion callables remain responsible for their own deadlines. The
-included `LmsQwenCompletion` adapter provides a subprocess timeout and is
-restricted to the exact local `qwen/qwen3.6-35b-a3b@q4_k_m` build with one
-inference slot and no HTTP model API.
+The optional outer compile deadline can kill the complete owned process tree,
+but custom completion callables should still enforce a shorter transport
+deadline so their timeout becomes an ordinary provider failure and allows
+deterministic fallback. The included `LmsQwenCompletion` adapter provides that
+subprocess timeout and is restricted to the exact local
+`qwen/qwen3.6-35b-a3b@q4_k_m` build with one inference slot and no HTTP model
+API.
 
 When an authoritative sentence is both a correction and a new constraint,
 fact, decision, or unresolved state, rule extraction emits two items over the

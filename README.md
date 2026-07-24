@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 306 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 313 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
@@ -133,6 +133,9 @@ The repository currently includes:
   commits, benchmark reports, corpus exports, and runner manifests, plus opt-in
   versioned JSON error diagnostics with stable resource, I/O, input, integrity,
   timeout, and policy categories;
+- an opt-in whole-compile deadline that runs materialized inputs in an isolated
+  POSIX process group or Windows Job Object, terminates the owned descendant
+  tree on timeout, and reconstructs successful output from bounded strict JSON;
 - a portable JSON artifact, compact prompt renderer, and three JSON Schemas;
 - a logically append-only local source archive with integrity checks, exclusive
   locking, and bounded old-or-new atomic commits;
@@ -145,7 +148,7 @@ The repository currently includes:
   and valid or failed manifests that feed per-system certificate decisions;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
-- cross-version CI, linting, wheel/schema checks, and 306 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 313 regression tests.
 
 ## In development
 
@@ -158,8 +161,8 @@ adding more claims to the README:
 - test the optional model extractor across providers and novel phrasing;
 - add exact provider tokenizers and framework adapters;
 - support efficient incremental compilation for live agent loops;
-- add whole-compile and generic-provider deadlines, then continue hardening
-  secrets handling, storage authenticity, and observability;
+- continue hardening generic-provider transport deadlines, secrets handling,
+  storage authenticity, and observability;
 - obtain independent reproduction before making a state-of-the-art claim.
 
 The ordered engineering backlog is in [TODO.md](TODO.md). The current design
@@ -301,6 +304,13 @@ and inspect its headline metrics:
 ctxc compile examples/auth_timeout.jsonl -o compiled-memory.json
 ctxc verify compiled-memory.json examples/auth_timeout.jsonl
 ctxc inspect compiled-memory.json
+```
+
+To place the complete compile pipeline inside a killable process-tree boundary:
+
+```console
+ctxc compile examples/auth_timeout.jsonl -o compiled-memory.json \
+  --compile-timeout-seconds 60
 ```
 
 Use an append-only local cold archive while keeping only compiled state active:
@@ -448,6 +458,24 @@ if not memory.verification.passed:
 print(memory.to_prompt())
 ```
 
+Pass `timeout_seconds` to execute the entire compiler pipeline in a dedicated
+process tree:
+
+```python
+memory = compiler.compile(sources, timeout_seconds=60)
+```
+
+Deadline mode requires `sources` to be a materialized list or tuple and the
+compiler configuration to be serializable. It copies that job into the worker,
+so extractor mutation cannot change the caller's source objects. On timeout it
+terminates the worker and owned descendants; on success it accepts only a
+bounded strict-JSON artifact, validates its shape and self-digest, and rebuilds
+a sealed snapshot. This is a cancellation and state-isolation boundary, not a
+filesystem, network, or hostile-code sandbox. Compiler configuration crosses
+the local boundary with pickle and must therefore already be trusted. An
+extractor that deliberately escapes its POSIX process group is outside the
+guarantee.
+
 For exact provider token accounting, give the compiler a stable counter name
 and give independent artifact verification the same callback and name:
 
@@ -458,10 +486,10 @@ from context_compiler.io import verify_artifact_dict
 def count_words(text: str) -> int:
     return len(text.split())
 
+artifact_limits = ArtifactLimits(max_items=50_000)
 compiler = ContextCompiler(
     token_counter=count_words,
     token_counter_id="words-v1",
-    artifact_limits=ArtifactLimits(max_items=50_000),
 )
 memory = compiler.compile(sources)
 checked = verify_artifact_dict(
@@ -469,6 +497,7 @@ checked = verify_artifact_dict(
     sources,
     token_counter=count_words,
     token_counter_id="words-v1",
+    artifact_limits=artifact_limits,
 )
 assert checked["passed"]
 ```
@@ -492,10 +521,12 @@ produce deterministic fallback memory plus an explicit warning by default.
 Set `CompilationPolicy(fail_on_primary_extractor_error=True)` when provider
 failure must abort instead. `ModelExtractor` bounds response size and candidate
 count, rejects duplicate JSON keys and non-standard or overflowed non-finite
-numbers, and validates exact object fields. Custom completion adapters remain
-responsible for enforcing their own deadlines and transport-level cancellation.
-The callable and any data it
-sends remain the integrator’s security and privacy responsibility.
+numbers, and validates exact object fields. An outer compile deadline can
+terminate the whole owned process tree, but custom completion adapters should
+still enforce a shorter transport-level deadline so provider failure can
+return deterministic fallback memory instead of aborting the complete run.
+The callable and any data it sends remain the integrator’s security and privacy
+responsibility.
 
 For the exact locally installed Qwen build approved for this repository, the
 API-free LM Studio CLI adapter verifies the model identity, Q4 quantization,
@@ -621,7 +652,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 306 tests are collected (301 pass and 5
+Current local snapshot (2026-07-24): 313 tests are collected (308 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

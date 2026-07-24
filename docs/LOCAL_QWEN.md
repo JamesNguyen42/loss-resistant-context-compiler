@@ -70,6 +70,12 @@ verification warning. Use
 must abort on provider failure. Independent built-in recovery and protected-item
 certification remain active in either mode.
 
+An optional outer `ContextCompiler.compile(..., timeout_seconds=N)` deadline
+can isolate and terminate the complete compile process tree. Keep the Qwen
+adapter's transport timeout shorter than that outer deadline; otherwise the
+outer timeout aborts the run before deterministic provider-failure fallback can
+be returned.
+
 ## Privacy boundary
 
 LM Studio's CLI receives the extraction prompt as a command-line argument.

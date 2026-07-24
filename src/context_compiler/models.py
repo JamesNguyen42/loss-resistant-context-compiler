@@ -52,6 +52,9 @@ class _FrozenDict(dict):
     def __deepcopy__(self, _memo: dict[int, Any]) -> _FrozenDict:
         return self
 
+    def __reduce__(self) -> tuple[type[_FrozenDict], tuple[dict[str, Any]]]:
+        return _FrozenDict, (dict(self),)
+
 
 class _FrozenList(list):
     """JSON-serializable list that rejects mutation after construction."""
@@ -75,6 +78,9 @@ class _FrozenList(list):
 
     def __deepcopy__(self, _memo: dict[int, Any]) -> _FrozenList:
         return self
+
+    def __reduce__(self) -> tuple[type[_FrozenList], tuple[list[Any]]]:
+        return _FrozenList, (list(self),)
 
 
 def _freeze_json(value: Any) -> Any:

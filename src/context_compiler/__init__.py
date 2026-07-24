@@ -3,6 +3,7 @@
 from .archive import SourceArchive
 from .compiler import ContextCompiler
 from .extractors import ModelExtractor, RuleBasedExtractor
+from .isolation import CompilationIsolationError
 from .limits import ArtifactLimitError, ArtifactLimits, SourceLimitError, SourceLimits
 from .local_qwen import LmsQwenCompletion, LocalQwenError
 from .models import (
@@ -22,6 +23,7 @@ __all__ = [
     "ArtifactLimitError",
     "ArtifactLimits",
     "COMPILATION_METRICS_SCHEMA",
+    "CompilationIsolationError",
     "CompilationMetrics",
     "CompilationPolicy",
     "CompiledMemory",

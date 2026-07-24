@@ -74,7 +74,28 @@ class ContextCompiler:
         self._token_counter_id = token_counter_id.strip() if token_counter_id else None
         self.source_limits = resolve_source_limits(source_limits)
 
-    def compile(self, sources: Iterable[SourceRecord | dict]) -> CompiledMemory:
+    def compile(
+        self,
+        sources: Iterable[SourceRecord | dict],
+        *,
+        timeout_seconds: float | None = None,
+    ) -> CompiledMemory:
+        """Compile sources directly or inside an owned deadline process tree."""
+
+        if timeout_seconds is None:
+            return self._compile_impl(sources)
+        from .isolation import compile_isolated
+
+        return compile_isolated(
+            self,
+            sources,
+            timeout_seconds=timeout_seconds,
+        )
+
+    def _compile_impl(
+        self,
+        sources: Iterable[SourceRecord | dict],
+    ) -> CompiledMemory:
         started = time.perf_counter()
         ordered = self._prepare_sources(sources, limits=self.source_limits)
         trusted_source_digest = source_digest(ordered)

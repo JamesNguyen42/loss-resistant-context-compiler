@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 306 collected: 301 passing, 5 skipped |
+| Tests at this snapshot | 313 collected: 308 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -223,8 +223,12 @@ source construction validates initial hashes
     -> optional append-only cold source archive
 ```
 
-The compiler is synchronous and provider-neutral. It is deterministic when all
-supplied extractors and token counters are deterministic.
+The compiler is synchronous and provider-neutral by default. Passing
+`timeout_seconds` runs a materialized, serializable job inside a dedicated
+POSIX process group or Windows Job Object, terminates its owned descendant tree
+on timeout, and returns only a bounded strict-JSON artifact reconstructed as a
+sealed snapshot. It is deterministic when all supplied extractors and token
+counters are deterministic, apart from timestamps and measured duration.
 
 ## Code map
 
@@ -235,6 +239,8 @@ supplied extractors and token counters are deterministic.
 | `src/context_compiler/local_qwen.py` | Exact local Qwen Q4 LM Studio CLI preflight, timeout, and single-slot adapter |
 | `src/context_compiler/resolver.py` | Deduplication, corrections, revocations, unresolved closure, conflicts |
 | `src/context_compiler/compiler.py` | End-to-end orchestration, recovery, selection, compression accounting |
+| `src/context_compiler/isolation.py` | Whole-compile subprocess deadline, strict result transfer, and sealed reconstruction |
+| `src/context_compiler/process_tree.py` | POSIX process-group and Windows Job Object ownership/termination |
 | `src/context_compiler/verifier.py` | Independent coverage, provenance, support, authority, and state checks |
 | `src/context_compiler/io.py` | Input decoding, strict artifact shape validation, replay verification |
 | `src/context_compiler/limits.py` | Shared source/artifact byte, line, depth, canonical-size, and collection limits |
@@ -392,7 +398,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 306 tests are collected: 301 pass and 5 platform/optional checks are skipped.
+- 313 tests are collected: 308 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -415,6 +421,12 @@ audited. Any selected superseded item independently fails verification as
   outcomes, and compile duration. `ctxc inspect` exposes it; replay rejects
   rehashed deterministic-count forgeries while preserving compatibility with
   older schema-1.0 artifacts that omit metrics.
+- `ContextCompiler.compile(..., timeout_seconds=N)` and
+  `ctxc compile --compile-timeout-seconds N` isolate a materialized,
+  serializable compile in a POSIX process group or Windows Job Object. Tests
+  prove ordinary timeout, worker-side source mutation containment, sealed
+  success reconstruction, JSON timeout diagnostics, and removal of a spawned
+  descendant before its delayed side effect.
 - CLI file outputs use flushed same-directory temporary files and atomic
   replacement. Failure-injection tests prove pre-replacement `fsync`/replace
   failures preserve the old file and remove temporary files; POSIX tests also
@@ -596,9 +608,11 @@ lower quantile before results are observed.
 ### Scale and availability
 
 - Batch compilation reparses the supplied history.
-- Source, archive, and compiled-artifact input is bounded by default, but
-  whole-compile duration, custom extractor/token-counter work, and generic
-  completion-callable latency are not globally capped.
+- Source, archive, and compiled-artifact input is bounded by default.
+  Whole-compile duration has an opt-in isolated deadline; direct in-process
+  compilation remains uncapped, and generic completion callables still need a
+  shorter transport deadline to degrade into deterministic fallback rather
+  than aborting the whole isolated run.
 - Stdout cannot be transactional, and Windows has no portable parent-directory
   `fsync`; atomic file replacement still depends on destination filesystem
   semantics.
