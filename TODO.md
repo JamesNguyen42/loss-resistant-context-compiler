@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 337 tests (332 passing and 5 skipped locally); CI covers Python
+- [x] Collect 342 tests (337 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -572,8 +572,10 @@ than most related technology” within the exact dated evaluation scope.
 
 ## P2: developer and research experience
 
-- [ ] Add an HTML or terminal inspector for item provenance, status, conflicts,
-  and selection decisions.
+- [x] Add a bounded terminal inspector for item provenance, temporal status,
+  conflicts, and selection state; escape terminal/control/format characters
+  and retain versioned `ctxc-artifact-inspection-0.1` JSON as the default
+  output.
 - [x] Add an integrity-gated `ctxc-artifact-diff-0.1` view between two
   compiled artifacts with deterministic payload/item/selection/report changes,
   incomplete-ledger scope warnings, optional item details, and a self-digest.

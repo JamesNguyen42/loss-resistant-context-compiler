@@ -124,6 +124,19 @@ canonical `artifact_sha256`. This source-independent check detects corruption
 but cannot establish authorship or replay semantic truth; those guarantees
 still require trusted source events and `verify_artifact_dict()`.
 
+Inspection defaults to versioned `ctxc-artifact-inspection-0.1` JSON.
+`ctxc inspect --format text --show-items` adds a human-readable view only after
+envelope validation. The reusable implementation lives in
+`artifact_inspection.py` and is exposed as `summarize_artifact()` and
+`render_artifact_text()`. It caps displayed items, tags/state
+links/provenance spans per item, and raw characters per rendered string. Every
+untrusted string is quoted; C0/C1 controls, Unicode format controls (including
+bidi and zero-width controls), surrogate/private categories, and Unicode
+line/paragraph separators are rendered as visible escapes. This prevents
+terminal escape execution but does not normalize ordinary printable lookalike
+characters. JSON inspection uses ASCII JSON escapes for non-ASCII code points
+while preserving decoded values.
+
 `diff_artifacts()` applies the same bounded envelope validation independently
 to both inputs and emits deterministic `ctxc-artifact-diff-0.1`. The report
 separates serialized-payload additions/removals from active-selection changes,

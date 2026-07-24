@@ -2,6 +2,11 @@
 
 from .archive import SourceArchive
 from .artifact_diff import ARTIFACT_DIFF_SCHEMA, diff_artifacts
+from .artifact_inspection import (
+    ARTIFACT_INSPECTION_SCHEMA,
+    render_artifact_text,
+    summarize_artifact,
+)
 from .compiler import ContextCompiler
 from .extractors import ModelExtractor, RuleBasedExtractor
 from .io import validate_artifact_envelope
@@ -25,6 +30,7 @@ __all__ = [
     "ArtifactLimitError",
     "ArtifactLimits",
     "ARTIFACT_DIFF_SCHEMA",
+    "ARTIFACT_INSPECTION_SCHEMA",
     "COMPILATION_METRICS_SCHEMA",
     "CompilationIsolationError",
     "CompilationMetrics",
@@ -45,6 +51,8 @@ __all__ = [
     "SourceRecord",
     "VerificationReport",
     "diff_artifacts",
+    "render_artifact_text",
+    "summarize_artifact",
     "validate_artifact_envelope",
 ]
 

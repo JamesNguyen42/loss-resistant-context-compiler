@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 337 collected: 332 passing, 5 skipped |
+| Tests at this snapshot | 342 collected: 337 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -248,6 +248,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `src/context_compiler/file_lock.py` | Cross-platform persistent advisory-file locking |
 | `src/context_compiler/archive.py` | Logically append-only local archive, advisory locking, atomic commits, loading, and verification |
 | `src/context_compiler/artifact_diff.py` | Integrity-gated deterministic artifact comparison and self-hashed diff reports |
+| `src/context_compiler/artifact_inspection.py` | Versioned bounded artifact summaries and control-character-safe terminal rendering |
 | `src/context_compiler/cli.py` | `ctxc` parsing, atomic output transactions, versioned error/completion diagnostics, and exit codes |
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
 | `benchmarks/json_io.py` | Shared bounded regular-file hashing and strict JSON decoding for benchmark evidence |
@@ -266,6 +267,7 @@ counters are deterministic, apart from timestamps and measured duration.
 ctxc compile HISTORY [--format json|prompt]
 ctxc verify ARTIFACT HISTORY
 ctxc inspect ARTIFACT
+ctxc inspect ARTIFACT --format text --show-items
 ctxc diff BEFORE_ARTIFACT AFTER_ARTIFACT [--summary-only]
 ctxc archive append ARCHIVE HISTORY
 ctxc archive verify ARCHIVE
@@ -290,6 +292,9 @@ Important compile options:
   `--max-artifact-json-depth`, `--max-artifact-items`,
   `--max-artifact-selected-items`, `--max-artifact-provenance-spans`, and
   `--max-artifact-verification-issues`;
+- `inspect --format text --show-items` exposes bounded provenance, status,
+  conflict, and selection details; `--max-display-items`,
+  `--max-display-links`, and `--max-text-chars` cap the terminal view;
 - every operation accepts `--error-format text|json`; JSON runtime errors use
   the `ctxc-diagnostic-0.1` schema.
 
@@ -323,7 +328,10 @@ Primary exported objects:
 - `ArtifactLimits`;
 - `ArtifactLimitError`;
 - `ARTIFACT_DIFF_SCHEMA`;
+- `ARTIFACT_INSPECTION_SCHEMA`;
 - `diff_artifacts`;
+- `summarize_artifact`;
+- `render_artifact_text`;
 - `validate_artifact_envelope`;
 - `VerificationReport`.
 
@@ -351,6 +359,7 @@ and enforces a subprocess timeout. See [Local Qwen integration](LOCAL_QWEN.md).
 | Package version | `0.1.0` |
 | Compiled artifact schema | `1.0` |
 | Artifact diff schema | `ctxc-artifact-diff-0.1` |
+| Artifact inspection schema | `ctxc-artifact-inspection-0.1` |
 | Compile completion event schema | `ctxc-event-0.1` |
 | CLI diagnostic schema | `ctxc-diagnostic-0.1` |
 | LRCBench report version | `lrcbench-0.2` |
@@ -406,7 +415,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 337 tests are collected: 332 pass and 5 platform/optional checks are skipped.
+- 342 tests are collected: 337 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -428,6 +437,10 @@ audited. Any selected superseded item independently fails verification as
   duplicate/missing item-selection references, and stale `artifact_sha256`
   values before reporting explicit shape/schema/self-hash health. Python
   callers can use `validate_artifact_envelope()` for the same bounded check.
+- The optional terminal inspector caps items, links, and text length and
+  visibly escapes ANSI/control bytes, Unicode format controls, and Unicode
+  line/paragraph separators. Tests cover escape injection, bidi controls,
+  truncation, conflicts, provenance, selection state, and invalid bounds.
 - `ctxc diff` validates both envelopes before emitting a deterministic,
   self-hashed `ctxc-artifact-diff-0.1` report. It separates payload and
   selection changes, summarizes report/metric changes, supports

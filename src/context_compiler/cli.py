@@ -10,13 +10,13 @@ from pathlib import Path
 
 from .archive import SourceArchive
 from .artifact_diff import diff_artifacts
+from .artifact_inspection import render_artifact_text, summarize_artifact
 from .atomic import atomic_write_text
 from .compiler import ContextCompiler
 from .io import (
     load_artifact_path,
     load_sources,
     load_sources_path,
-    validate_artifact_envelope,
     verify_artifact_dict,
 )
 from .isolation import CompilationIsolationError
@@ -399,41 +399,36 @@ def _verify(args: argparse.Namespace) -> int:
 
 def _inspect(args: argparse.Namespace) -> int:
     try:
+        if args.max_text_chars <= 0:
+            raise ValueError("max_text_chars must be a positive integer")
         artifact_limits = _artifact_limits(args)
         artifact = load_artifact_path(args.artifact, limits=artifact_limits)
-        artifact = validate_artifact_envelope(
-            artifact,
-            limits=artifact_limits,
+        rendered = (
+            render_artifact_text(
+                artifact,
+                include_items=args.show_items,
+                max_display_items=args.max_display_items,
+                max_display_links=args.max_display_links,
+                max_text_chars=args.max_text_chars,
+                limits=artifact_limits,
+            )
+            if args.inspect_format == "text"
+            else json.dumps(
+                summarize_artifact(
+                    artifact,
+                    include_items=args.show_items,
+                    max_display_items=args.max_display_items,
+                    max_display_links=args.max_display_links,
+                    limits=artifact_limits,
+                ),
+                indent=2,
+                ensure_ascii=True,
+            )
         )
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         _write_error(args, exc)
         return 2
-    items = artifact["items"]
-    selected = artifact["selected_item_ids"]
-    compiler_metadata = artifact.get("compiler_metadata")
-    metrics = (
-        compiler_metadata.get("metrics", {})
-        if isinstance(compiler_metadata, dict)
-        else {}
-    )
-    summary = {
-        "schema_version": artifact.get("schema_version"),
-        "artifact_sha256": artifact.get("artifact_sha256"),
-        "source_digest": artifact.get("source_digest"),
-        "source_count": artifact.get("source_count"),
-        "ledger_complete": artifact.get("ledger_complete"),
-        "integrity": {
-            "schema_supported": True,
-            "shape_valid": True,
-            "self_hash_valid": True,
-        },
-        "total_items": len(items),
-        "selected_items": len(selected),
-        "verification": artifact.get("verification", {}),
-        "compression": artifact.get("compression", {}),
-        "metrics": metrics,
-    }
-    _write_output(json.dumps(summary, indent=2, ensure_ascii=False), args.output)
+    _write_output(rendered, args.output)
     return 0
 
 
@@ -613,6 +608,36 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser = subparsers.add_parser("inspect", help="show artifact health and compression")
     inspect_parser.add_argument("artifact")
     inspect_parser.add_argument("-o", "--output")
+    inspect_parser.add_argument(
+        "--format",
+        dest="inspect_format",
+        choices=("json", "text"),
+        default="json",
+        help="render machine-readable JSON or control-character-safe text",
+    )
+    inspect_parser.add_argument(
+        "--show-items",
+        action="store_true",
+        help="include bounded item, provenance, status, and selection details",
+    )
+    inspect_parser.add_argument(
+        "--max-display-items",
+        type=int,
+        default=100,
+        help="maximum item details to display",
+    )
+    inspect_parser.add_argument(
+        "--max-text-chars",
+        type=int,
+        default=240,
+        help="maximum raw characters per string in text output",
+    )
+    inspect_parser.add_argument(
+        "--max-display-links",
+        type=int,
+        default=16,
+        help="maximum tags, state links, or provenance spans per item",
+    )
     _add_artifact_limit_arguments(inspect_parser)
     _add_error_format_argument(inspect_parser)
     inspect_parser.set_defaults(handler=_inspect)
