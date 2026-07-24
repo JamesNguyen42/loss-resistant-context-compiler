@@ -63,7 +63,7 @@ to verify it, hashes cannot recover the original truth.
 | Compile/provider resource exhaustion | Model responses/candidate counts are bounded; unique-literal extraction preflights aggregate cited-source search characters; the local Qwen adapter has a transport timeout; optional whole-compile isolation owns a POSIX process group or Windows Job Object and terminates its descendant tree at the deadline | Search characters are a work proxy, not a time/RSS cap; direct in-process compilation is uncapped; a deliberately daemonized POSIX child can escape its process group; deadline job configuration uses local pickle and therefore requires trusted serializable objects |
 | Common content-secret disclosure | Optional preprocessing uses nine fixed lexical detectors, length/line-boundary-preserving masks, recomputed record hashes, explicit limits, deterministic replay, and a strict self-hashed coordinate report that omits original content-secret text and hashes | Detection is heuristic; false positives and false negatives remain. Original input enters process memory first. Metadata, ids, timestamps, PII, unknown formats, report coordinates, storage, logs, and previous artifacts are outside the redaction scope |
 | Secret disclosure after redaction | Compiling the redacted source set prevents recognized content secrets from entering its items, prompt, or artifact; replay binds the exact redacted records | Source metadata and identity fields remain in record hashes and may themselves be sensitive; external providers, process arguments, archives, diffs, benchmark evidence, or host logs can still expose anything not redacted before those boundaries |
-| External benchmark adapter escape | The standard runner avoids a shell, isolates cases, limits time/output/process-tree memory on POSIX and Windows, terminates descendants, validates candidates, hashes a manifest, and binds a retained external network-policy artifact | It does not establish a filesystem or network sandbox or prove the retained policy was enforced; reviewed code and an isolated host/container remain necessary, and a pre-existing inference service is outside the process-tree memory boundary |
+| External benchmark adapter escape | The standard runner avoids a shell, isolates cases, limits time/output/process-tree memory on POSIX and Windows, terminates descendants, validates candidates, hashes a manifest, and binds retained dependency-lock and external network-policy artifacts | It does not establish a filesystem or network sandbox or prove the retained policy was enforced; reviewed code and an isolated host/container remain necessary, and a pre-existing inference service is outside the process-tree memory boundary |
 | External comparison protocol drift or cherry-picking | A strict self-hashed manifest binds the dated document, screened candidates, registered set, immutable revisions, exact model/resources, frozen datasets/statistics, runner policy, and explicit blockers; external scoring requires a frozen manifest plus exact dataset and adapter matches | The current artifact is still a draft. Self-hashes are not timestamps, signatures, or proof of result-blind decisions; an independently anchored freeze and reproduction remain necessary |
 
 ## Authority model
@@ -248,6 +248,12 @@ verifies these records, normalizes legacy adapter output, and cross-checks
 candidate identity against the retained manifest. These controls detect
 accidental or unanchored changes; they remain self-hashes, not signatures or
 proof that the named producer supplied the artifact.
+
+Claim-bearing runner manifests also retain the exact dependency lock behind
+`environment_id`. The runner hashes it before and after execution, loader
+revalidates the same absolute path, and scoring requires the digest frozen for
+that system. This binds environment identity to bytes but does not prove those
+dependencies were the ones imported by the adapter process.
 
 The default external runner gives every case a fresh sequential process and
 records its exact command and outcome. POSIX `RLIMIT_AS` and Windows Job Objects

@@ -14,6 +14,7 @@ from benchmarks.external_runner import (
     ExternalRunnerError,
     RunnerIdentity,
     RunnerLimits,
+    capture_dependency_lock_evidence,
     capture_network_isolation_evidence,
     load_external_run_manifest,
     run_external_cases,
@@ -37,6 +38,9 @@ from benchmarks.lrcbench import (
 )
 from context_compiler.local_qwen import QWEN_Q4_VARIANT
 from tests.protocol_fixtures import (
+    FIXTURE_DEPENDENCY_LOCK_CONTENT,
+    FIXTURE_DEPENDENCY_LOCK_SHA256,
+    FIXTURE_ENVIRONMENT_ID,
     FIXTURE_NETWORK_ISOLATION_CONTENT,
     FIXTURE_NETWORK_ISOLATION_MODE,
     FIXTURE_NETWORK_ISOLATION_SHA256,
@@ -44,7 +48,6 @@ from tests.protocol_fixtures import (
 )
 
 FIXTURE_ADAPTER_REVISION = "a" * 40
-FIXTURE_ENVIRONMENT_ID = "sha256:" + "b" * 64
 
 
 def corpus_producer(
@@ -129,6 +132,14 @@ def retained_network_isolation(tmp_path: Path):
     return evidence
 
 
+def retained_dependency_lock(tmp_path: Path):
+    evidence_path = tmp_path / "requirements.lock"
+    evidence_path.write_bytes(FIXTURE_DEPENDENCY_LOCK_CONTENT)
+    evidence = capture_dependency_lock_evidence(evidence_path)
+    assert evidence.evidence_sha256 == FIXTURE_DEPENDENCY_LOCK_SHA256
+    return evidence
+
+
 def test_claim_identity_requires_frozen_model_and_environment_contract() -> None:
     identity = claim_identity()
 
@@ -190,6 +201,7 @@ def test_network_isolation_evidence_is_required_and_revalidated(tmp_path) -> Non
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
         identity=claim_identity(),
+        dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=evidence,
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
@@ -226,9 +238,100 @@ def test_network_isolation_evidence_is_required_and_revalidated(tmp_path) -> Non
         candidate_path=mutating_candidate,
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
         identity=claim_identity(),
+        dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=execution_evidence,
     )
     assert mutated.termination_reason == "network_isolation_evidence_modified"
+    assert not mutated.ready_for_scoring
+
+
+def test_dependency_lock_evidence_binds_environment_and_revalidates(
+    tmp_path,
+) -> None:
+    empty_lock = tmp_path / "empty.lock"
+    empty_lock.write_bytes(b"")
+    with pytest.raises(
+        ExternalRunnerError,
+        match="dependency-lock evidence cannot be empty",
+    ):
+        capture_dependency_lock_evidence(empty_lock)
+
+    corpus_path = tmp_path / "corpus.json"
+    _config, document = write_corpus(corpus_path)
+    dependency_lock = retained_dependency_lock(tmp_path)
+    network_isolation = retained_network_isolation(tmp_path)
+    assert claim_identity().environment_id == (
+        f"sha256:{dependency_lock.evidence_sha256}"
+    )
+
+    candidate_path = tmp_path / "candidate.json"
+    manifest_path = tmp_path / "manifest.json"
+    manifest = run_external_cases(
+        valid_adapter_command(),
+        system="lock-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        identity=claim_identity(),
+        dependency_lock=dependency_lock,
+        network_isolation=network_isolation,
+    )
+    manifest_path.write_text(manifest.to_json(), encoding="utf-8")
+    assert manifest.claim_metadata_complete
+
+    Path(dependency_lock.evidence_path or "").write_text(
+        "tampered dependency lock\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="dependency-lock evidence file does not match",
+    ):
+        load_external_run_manifest(
+            manifest_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
+    mismatch_lock = retained_dependency_lock(tmp_path)
+    mismatch_candidate = tmp_path / "mismatch-candidate.json"
+    mismatch = run_external_cases(
+        valid_adapter_command(),
+        system="lock-fixture",
+        corpus_path=corpus_path,
+        candidate_path=mismatch_candidate,
+        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        identity=replace(
+            claim_identity(),
+            environment_id="sha256:" + "f" * 64,
+        ),
+        dependency_lock=mismatch_lock,
+        network_isolation=retained_network_isolation(tmp_path),
+    )
+    assert mismatch.ready_for_scoring
+    assert not mismatch.claim_metadata_complete
+
+    execution_lock = retained_dependency_lock(tmp_path)
+    mutating_candidate = tmp_path / "mutating-lock-candidate.json"
+    mutation_program = (
+        "from pathlib import Path;import sys;"
+        "Path(sys.argv[1]).write_text('changed during execution',encoding='utf-8')"
+    )
+    mutated = run_external_command(
+        [
+            sys.executable,
+            "-c",
+            mutation_program,
+            execution_lock.evidence_path,
+        ],
+        system="lock-fixture",
+        corpus_path=corpus_path,
+        candidate_path=mutating_candidate,
+        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        identity=claim_identity(),
+        dependency_lock=execution_lock,
+        network_isolation=retained_network_isolation(tmp_path),
+    )
+    assert mutated.termination_reason == "dependency_lock_evidence_modified"
     assert not mutated.ready_for_scoring
 
 
@@ -489,6 +592,7 @@ def test_per_case_candidate_mutation_before_aggregation_is_rejected(
             candidate_path=candidate_path,
             limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
             identity=claim_identity(),
+            dependency_lock=retained_dependency_lock(tmp_path),
             network_isolation=retained_network_isolation(tmp_path),
         )
 
@@ -507,6 +611,7 @@ def test_per_case_runner_executes_without_a_shell_and_validates_candidate(
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
         identity=claim_identity(),
+        dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
     )
 
@@ -543,6 +648,7 @@ def test_cli_defaults_to_claim_eligible_per_case_mode(tmp_path, capsys) -> None:
     write_corpus(corpus_path)
     candidate_path = tmp_path / "candidate.json"
     manifest_path = tmp_path / "manifest.json"
+    dependency_lock = retained_dependency_lock(tmp_path)
     network_isolation = retained_network_isolation(tmp_path)
 
     exit_code = runner_main(
@@ -559,6 +665,8 @@ def test_cli_defaults_to_claim_eligible_per_case_mode(tmp_path, capsys) -> None:
             "5",
             "--max-memory-mb",
             "256",
+            "--dependency-lock-evidence",
+            dependency_lock.evidence_path,
             "--network-isolation-mode",
             network_isolation.mode,
             "--network-isolation-evidence",
@@ -624,6 +732,7 @@ def test_per_case_runner_uses_one_validated_corpus_case_per_process(tmp_path) ->
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
         identity=claim_identity(),
+        dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
     )
 
@@ -690,6 +799,7 @@ def test_whole_corpus_mode_is_diagnostic_even_with_complete_identity(tmp_path) -
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
         identity=claim_identity(),
+        dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
@@ -720,6 +830,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=300, max_memory_mb=256),
         identity=claim_identity(),
+        dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
@@ -851,6 +962,39 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             external_protocol_path=mismatched_network_protocol,
         )
 
+    different_lock_path = tmp_path / "different-requirements.lock"
+    different_lock_path.write_text(
+        "different-package==2.0.0\n",
+        encoding="utf-8",
+    )
+    different_lock = capture_dependency_lock_evidence(different_lock_path)
+    mismatched_lock_candidate = tmp_path / "mismatched-lock-candidate.json"
+    mismatched_lock_manifest_path = tmp_path / "mismatched-lock-manifest.json"
+    mismatched_lock_manifest = run_external_cases(
+        valid_adapter_command(),
+        system="fixture-adapter",
+        corpus_path=corpus_path,
+        candidate_path=mismatched_lock_candidate,
+        limits=RunnerLimits(timeout_seconds=300, max_memory_mb=256),
+        identity=claim_identity(),
+        dependency_lock=different_lock,
+        network_isolation=retained_network_isolation(tmp_path),
+    )
+    mismatched_lock_manifest_path.write_text(
+        mismatched_lock_manifest.to_json(),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="dependency-lock evidence does not match the frozen protocol",
+    ):
+        run_benchmark(
+            config,
+            external_manifest_paths=(mismatched_lock_manifest_path,),
+            expected_external_systems=systems,
+            external_protocol_path=protocol_path,
+        )
+
     mismatched_poll_candidate = tmp_path / "mismatched-poll-candidate.json"
     mismatched_poll_manifest_path = tmp_path / "mismatched-poll-manifest.json"
     mismatched_poll_manifest = run_external_cases(
@@ -864,6 +1008,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             poll_interval_seconds=0.01,
         ),
         identity=claim_identity(),
+        dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
     )
     mismatched_poll_manifest_path.write_text(
@@ -890,6 +1035,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         candidate_path=mismatched_model_candidate,
         limits=RunnerLimits(timeout_seconds=300, max_memory_mb=256),
         identity=replace(claim_identity(), model_context_length=4096),
+        dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
     )
     mismatched_model_manifest_path.write_text(
@@ -956,6 +1102,7 @@ def test_ready_manifest_wraps_candidate_disappearance_during_validation(
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
         identity=claim_identity(),
+        dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
@@ -996,6 +1143,7 @@ def test_ready_manifest_rejects_rehashed_candidate_producer_mismatch(
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
         identity=claim_identity(),
+        dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
     )
     candidate_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
@@ -1111,6 +1259,7 @@ def test_rehashed_inconsistent_case_audit_record_is_rejected(tmp_path) -> None:
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
         identity=claim_identity(),
+        dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
     ).to_dict()
     payload = json.loads(json.dumps(original_payload))
@@ -1305,6 +1454,7 @@ def test_failed_exact_contract_manifest_becomes_a_registered_invalid_nonwin(
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=300, max_memory_mb=256),
         identity=claim_identity(),
+        dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")

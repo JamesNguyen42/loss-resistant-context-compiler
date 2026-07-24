@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 878 tests (873 passing and 5 skipped locally); CI covers Python
+- [x] Collect 879 tests (874 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -328,8 +328,9 @@ Acceptance:
   context limit, inference concurrency, Python/platform, exact command,
   timestamp, latency, failures, retries, and cost; incomplete, non-Qwen,
   multi-slot, or paid-model metadata is a certificate non-win. Current runner
-  manifests require canonical `sha256:<dependency-lock-sha256>` environment
-  identity, and scoring matches it to the frozen protocol.
+  manifests retain and rehash the actual dependency lock, require canonical
+  `sha256:<dependency-lock-sha256>` environment identity, and scoring matches
+  it to the frozen protocol.
 - [ ] Count the final rendered output and provenance ledger under the same
   tokenizer and token budget for every system.
 - [x] Fail closed on missing cases, duplicate cases, malformed spans, unknown

@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 878 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 879 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -190,7 +190,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 878 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 879 regression tests.
 
 ## In development
 
@@ -841,12 +841,13 @@ that complete set. Missing or failed systems remain non-wins. See
 and process-tree-memory-bounded adapter wrapper. Its default mode executes every
 case sequentially in a fresh process, records a hashed per-case audit trail,
 and merges only fully validated outputs. Whole-corpus mode is diagnostic-only.
-Current claim-eligible runner manifests identify the environment as
-`sha256:<dependency-lock-sha256>`; scoring requires that identity and the
-immutable adapter revision, exact model/context/tokenizer/retry contract, and
-all retained runner limits—including the 20 ms enforcement polling cadence—to
-match the frozen protocol. Claim controls also require a bounded retained
-host/container network-isolation artifact whose digest matches the protocol.
+Current claim-eligible runner manifests retain the dependency lock and identify
+the environment as `sha256:<dependency-lock-sha256>`; reload rehashes the lock,
+and scoring requires those bytes, the immutable adapter revision, exact
+model/context/tokenizer/retry contract, and all retained runner
+limits—including the 20 ms enforcement polling cadence—to match the frozen
+protocol. Claim controls also require a bounded retained host/container
+network-isolation artifact whose digest matches the protocol.
 The wrapper does not itself create a filesystem or network sandbox, and its
 memory limit does not include a pre-existing inference service outside the
 adapter process tree.
@@ -866,7 +867,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 878 tests are collected (873 pass and 5
+Current local snapshot (2026-07-24): 879 tests are collected (874 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

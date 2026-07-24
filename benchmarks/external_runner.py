@@ -45,7 +45,7 @@ from .lrcbench import (
     decode_external_candidate,
 )
 
-RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.5"
+RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.6"
 _SYSTEM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 _REVISION_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 _ENVIRONMENT_ID_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -60,6 +60,7 @@ NETWORK_ISOLATION_MODES = frozenset(
 )
 CLAIM_NETWORK_ISOLATION_MODES = NETWORK_ISOLATION_MODES - {"unverified"}
 _NETWORK_ISOLATION_EVIDENCE_MAX_BYTES = 1_000_000
+_DEPENDENCY_LOCK_EVIDENCE_MAX_BYTES = 20_000_000
 _WINDOWS_CREATE_SUSPENDED = 0x00000004
 _WINDOWS_JOB_OBJECT_LIMIT_PROCESS_MEMORY = 0x00000100
 _WINDOWS_JOB_OBJECT_LIMIT_JOB_MEMORY = 0x00000200
@@ -94,6 +95,7 @@ class ExternalRunReference:
     isolation_mode: str
     limits: RunnerLimits
     identity: RunnerIdentity
+    dependency_lock: DependencyLockEvidence
     network_isolation: NetworkIsolationEvidence
     adapter_revision: str
     environment_id: str
@@ -191,6 +193,48 @@ class RunnerLimits:
                 raise TypeError(f"{name} must be numeric")
             if not 0 < float(value) < float("inf"):
                 raise ValueError(f"{name} must be positive and finite")
+
+
+@dataclass(frozen=True, slots=True)
+class DependencyLockEvidence:
+    """Retained bytes that define the manifest's dependency environment."""
+
+    evidence_path: str | None = None
+    evidence_sha256: str | None = None
+    evidence_bytes: int | None = None
+
+    def __post_init__(self) -> None:
+        fields = (
+            self.evidence_path,
+            self.evidence_sha256,
+            self.evidence_bytes,
+        )
+        if all(value is None for value in fields):
+            return
+        if (
+            not isinstance(self.evidence_path, str)
+            or not self.evidence_path
+            or not Path(self.evidence_path).is_absolute()
+        ):
+            raise ValueError(
+                "dependency-lock evidence requires an absolute path"
+            )
+        if not _is_sha256(self.evidence_sha256):
+            raise ValueError(
+                "dependency-lock evidence requires a SHA-256 digest"
+            )
+        if (
+            isinstance(self.evidence_bytes, bool)
+            or not isinstance(self.evidence_bytes, int)
+            or self.evidence_bytes <= 0
+        ):
+            raise ValueError(
+                "dependency-lock evidence requires a positive byte count"
+            )
+
+    @property
+    def claim_evidence_complete(self) -> bool:
+        return self.evidence_path is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -294,6 +338,7 @@ class ExternalRunManifest:
     stderr_sha256: str
     limits: RunnerLimits
     identity: RunnerIdentity
+    dependency_lock: DependencyLockEvidence
     network_isolation: NetworkIsolationEvidence
     claim_metadata_complete: bool
     memory_limit_enforced: bool
@@ -400,6 +445,47 @@ def _bounded_file_matches(
     except StrictJsonError:
         return False
     return evidence.file_sha256 == expected_sha256
+
+
+def capture_dependency_lock_evidence(
+    path: Path | str | None = None,
+) -> DependencyLockEvidence:
+    """Hash the retained dependency lock that defines one claim environment."""
+
+    if path is None:
+        return DependencyLockEvidence()
+    resolved = Path(path).expanduser().resolve()
+    evidence = _bounded_file_evidence(
+        resolved,
+        max_bytes=_DEPENDENCY_LOCK_EVIDENCE_MAX_BYTES,
+        label="dependency-lock evidence",
+    )
+    if evidence.byte_count <= 0:
+        raise ExternalRunnerError("dependency-lock evidence cannot be empty")
+    return DependencyLockEvidence(
+        evidence_path=str(resolved),
+        evidence_sha256=evidence.file_sha256,
+        evidence_bytes=evidence.byte_count,
+    )
+
+
+def _dependency_lock_evidence_matches(
+    evidence: DependencyLockEvidence,
+) -> bool:
+    if not evidence.claim_evidence_complete:
+        return True
+    try:
+        observed = _bounded_file_evidence(
+            Path(evidence.evidence_path or ""),
+            max_bytes=_DEPENDENCY_LOCK_EVIDENCE_MAX_BYTES,
+            label="dependency-lock evidence",
+        )
+    except ExternalRunnerError:
+        return False
+    return (
+        observed.file_sha256 == evidence.evidence_sha256
+        and observed.byte_count == evidence.evidence_bytes
+    )
 
 
 def capture_network_isolation_evidence(
@@ -881,12 +967,16 @@ def _claim_controls_complete(
     identity: RunnerIdentity,
     limits: RunnerLimits,
     isolation_mode: str,
+    dependency_lock: DependencyLockEvidence,
     network_isolation: NetworkIsolationEvidence,
 ) -> bool:
     return (
         identity.claim_metadata_complete
         and isolation_mode == "per_case"
         and limits.max_memory_mb is not None
+        and dependency_lock.claim_evidence_complete
+        and identity.environment_id
+        == f"sha256:{dependency_lock.evidence_sha256}"
         and network_isolation.claim_evidence_complete
     )
 
@@ -1101,6 +1191,21 @@ def load_external_run_manifest(
     except (TypeError, ValueError) as exc:
         raise ExternalRunnerError(f"run manifest identity is invalid: {exc}") from exc
     try:
+        dependency_payload = payload["dependency_lock"]
+        if not isinstance(dependency_payload, dict):
+            raise TypeError("dependency_lock must be an object")
+        if set(dependency_payload) != set(DependencyLockEvidence.__dataclass_fields__):
+            raise TypeError("dependency_lock fields do not match the schema")
+        decoded_dependency_lock = DependencyLockEvidence(**dependency_payload)
+    except (TypeError, ValueError) as exc:
+        raise ExternalRunnerError(
+            f"run manifest dependency-lock evidence is invalid: {exc}"
+        ) from exc
+    if not _dependency_lock_evidence_matches(decoded_dependency_lock):
+        raise ExternalRunnerError(
+            "run manifest dependency-lock evidence file does not match"
+        )
+    try:
         network_payload = payload["network_isolation"]
         if not isinstance(network_payload, dict):
             raise TypeError("network_isolation must be an object")
@@ -1119,6 +1224,7 @@ def load_external_run_manifest(
         decoded_identity,
         decoded_limits,
         isolation_mode,
+        decoded_dependency_lock,
         decoded_network_isolation,
     )
     if payload["claim_metadata_complete"] != expected_claim_controls:
@@ -1254,8 +1360,8 @@ def load_external_run_manifest(
         if not expected_claim_controls:
             failure_reason = (
                 "run manifest lacks complete claim controls: exact-Qwen identity, "
-                "per-case isolation, an enforced memory limit, and retained "
-                "network-isolation evidence are required"
+                "per-case isolation, an enforced memory limit, retained "
+                "dependency-lock bytes, and network-isolation evidence are required"
             )
     else:
         failure_reason = (
@@ -1277,6 +1383,7 @@ def load_external_run_manifest(
         isolation_mode=isolation_mode,
         limits=decoded_limits,
         identity=decoded_identity,
+        dependency_lock=decoded_dependency_lock,
         network_isolation=decoded_network_isolation,
         adapter_revision=decoded_identity.adapter_revision,
         environment_id=decoded_identity.environment_id,
@@ -1294,6 +1401,7 @@ def run_external_command(
     case_id: str | None = None,
     limits: RunnerLimits | None = None,
     identity: RunnerIdentity | None = None,
+    dependency_lock: DependencyLockEvidence | None = None,
     network_isolation: NetworkIsolationEvidence | None = None,
     working_directory: Path | str | None = None,
     environment: Mapping[str, str] | None = None,
@@ -1308,6 +1416,11 @@ def run_external_command(
         raise ExternalRunnerError("{case_id} can only be used by the per-case isolation mode")
     limits = limits or RunnerLimits()
     identity = identity or RunnerIdentity()
+    dependency_lock = dependency_lock or DependencyLockEvidence()
+    if not _dependency_lock_evidence_matches(dependency_lock):
+        raise ExternalRunnerError(
+            "dependency-lock evidence file does not match before execution"
+        )
     network_isolation = network_isolation or NetworkIsolationEvidence()
     if not _network_isolation_evidence_matches(network_isolation):
         raise ExternalRunnerError(
@@ -1466,6 +1579,11 @@ def run_external_command(
         termination_reason = "corpus_modified"
     if (
         termination_reason is None
+        and not _dependency_lock_evidence_matches(dependency_lock)
+    ):
+        termination_reason = "dependency_lock_evidence_modified"
+    if (
+        termination_reason is None
         and not _network_isolation_evidence_matches(network_isolation)
     ):
         termination_reason = "network_isolation_evidence_modified"
@@ -1606,11 +1724,13 @@ def run_external_command(
         stderr_sha256=stderr_sha256,
         limits=limits,
         identity=identity,
+        dependency_lock=dependency_lock,
         network_isolation=network_isolation,
         claim_metadata_complete=_claim_controls_complete(
             identity,
             limits,
             "whole_corpus",
+            dependency_lock,
             network_isolation,
         ),
         memory_limit_enforced=limits.max_memory_mb is not None,
@@ -1627,6 +1747,7 @@ def run_external_cases(
     candidate_path: Path | str,
     limits: RunnerLimits | None = None,
     identity: RunnerIdentity | None = None,
+    dependency_lock: DependencyLockEvidence | None = None,
     network_isolation: NetworkIsolationEvidence | None = None,
     working_directory: Path | str | None = None,
     environment: Mapping[str, str] | None = None,
@@ -1637,6 +1758,11 @@ def run_external_cases(
         raise ExternalRunnerError("system must be a valid LRCBench identifier")
     limits = limits or RunnerLimits()
     identity = identity or RunnerIdentity()
+    dependency_lock = dependency_lock or DependencyLockEvidence()
+    if not _dependency_lock_evidence_matches(dependency_lock):
+        raise ExternalRunnerError(
+            "dependency-lock evidence file does not match before execution"
+        )
     network_isolation = network_isolation or NetworkIsolationEvidence()
     if not _network_isolation_evidence_matches(network_isolation):
         raise ExternalRunnerError(
@@ -1721,6 +1847,7 @@ def run_external_cases(
                 case_id=case.id,
                 limits=limits,
                 identity=identity,
+                dependency_lock=dependency_lock,
                 network_isolation=network_isolation,
                 working_directory=cwd,
                 environment=process_environment,
@@ -1786,6 +1913,11 @@ def run_external_cases(
         )
     ):
         termination_reason = "corpus_modified"
+    if (
+        termination_reason is None
+        and not _dependency_lock_evidence_matches(dependency_lock)
+    ):
+        termination_reason = "dependency_lock_evidence_modified"
     if (
         termination_reason is None
         and not _network_isolation_evidence_matches(network_isolation)
@@ -1907,11 +2039,13 @@ def run_external_cases(
         stderr_sha256=_case_stream_sha256(case_runs, "stderr"),
         limits=limits,
         identity=identity,
+        dependency_lock=dependency_lock,
         network_isolation=network_isolation,
         claim_metadata_complete=_claim_controls_complete(
             identity,
             limits,
             "per_case",
+            dependency_lock,
             network_isolation,
         ),
         memory_limit_enforced=limits.max_memory_mb is not None,
@@ -1941,6 +2075,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-stderr-bytes", type=int, default=1_000_000)
     parser.add_argument("--max-candidate-bytes", type=int, default=20_000_000)
     parser.add_argument("--max-memory-mb", type=int)
+    parser.add_argument(
+        "--dependency-lock-evidence",
+        type=Path,
+        help=(
+            "retained dependency lock whose SHA-256 defines --environment-id"
+        ),
+    )
     parser.add_argument(
         "--network-isolation-mode",
         choices=tuple(sorted(NETWORK_ISOLATION_MODES)),
@@ -1980,6 +2121,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.manifest_out.parent.is_dir():
         parser.error(f"manifest output directory does not exist: {args.manifest_out.parent}")
     try:
+        dependency_lock = capture_dependency_lock_evidence(
+            args.dependency_lock_evidence
+        )
         network_isolation = capture_network_isolation_evidence(
             args.network_isolation_mode,
             args.network_isolation_evidence,
@@ -2008,6 +2152,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 retry_count=args.retry_count,
                 model_service_cost_usd=args.model_service_cost_usd,
             ),
+            dependency_lock=dependency_lock,
             network_isolation=network_isolation,
         )
     except (ExternalRunnerError, TypeError, ValueError) as exc:

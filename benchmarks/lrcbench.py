@@ -2790,6 +2790,17 @@ def run_benchmark(
                     f"external system {reference.system!r} run manifest limits "
                     "do not match the frozen protocol"
                 )
+            dependency_lock = reference.dependency_lock
+            if (
+                dependency_lock.evidence_sha256
+                != protocol_environment_ids[reference.system].removeprefix(
+                    "sha256:"
+                )
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "dependency-lock evidence does not match the frozen protocol"
+                )
             network_isolation = reference.network_isolation
             if (
                 network_isolation.mode

@@ -19,6 +19,15 @@ FIXTURE_NETWORK_ISOLATION_CONTENT = (
 FIXTURE_NETWORK_ISOLATION_SHA256 = hashlib.sha256(
     FIXTURE_NETWORK_ISOLATION_CONTENT
 ).hexdigest()
+FIXTURE_DEPENDENCY_LOCK_CONTENT = (
+    b"fixture-package==1.0.0 --hash=sha256:"
+    + b"a" * 64
+    + b"\n"
+)
+FIXTURE_DEPENDENCY_LOCK_SHA256 = hashlib.sha256(
+    FIXTURE_DEPENDENCY_LOCK_CONTENT
+).hexdigest()
+FIXTURE_ENVIRONMENT_ID = f"sha256:{FIXTURE_DEPENDENCY_LOCK_SHA256}"
 
 
 def _identity(system: str) -> str:

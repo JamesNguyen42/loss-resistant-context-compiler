@@ -27,7 +27,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 878 collected: 873 passing, 5 skipped |
+| Tests at this snapshot | 879 collected: 874 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -478,7 +478,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 878 tests are collected: 873 pass and 5 platform/optional checks are skipped.
+- 879 tests are collected: 874 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all five schemas are included.
@@ -653,20 +653,21 @@ audited. Any selected superseded item independently fails verification as
   corpus mutation, digest validation, overwrite refusal, and retried Windows
   cleanup for post-termination sharing violations.
 - Claim-bearing runner manifests require per-case isolation, an enforced
-  adapter process-tree memory limit, recorded adapter/environment identity, the
-  exact local Qwen Q4 model, one inference slot, context and tokenizer ids,
-  retries, zero model-service cost, and bounded retained network-isolation
-  evidence; incomplete controls are a per-system non-win.
+  adapter process-tree memory limit, an immutable adapter revision, retained
+  dependency-lock bytes defining the environment identity, the exact local Qwen
+  Q4 model, one inference slot, context and tokenizer ids, retries, zero
+  model-service cost, and bounded retained network-isolation evidence;
+  incomplete controls are a per-system non-win.
 - External scoring requires a strict frozen
   `lrcbench-external-protocol-0.4` manifest. The protocol's set is authoritative,
   and the benchmark rejects a draft, dataset mismatch, unregistered system, or
   adapter, dependency-environment, model, tokenizer, retry, network-evidence,
   or runner-limit mismatch before scoring. Current runner schema
-  `lrcbench-external-run-manifest-0.5` freezes immutable adapter/environment
-  identity, exact 8192-context Qwen, one slot, zero retries/service cost,
-  retained network-isolation evidence, and bounded runner controls including
-  enforcement polling cadence. The committed v1 protocol is valid but
-  intentionally blocked and not claim-ready.
+  `lrcbench-external-run-manifest-0.6` freezes immutable adapter/environment
+  identity, revalidated dependency-lock bytes, exact 8192-context Qwen, one
+  slot, zero retries/service cost, retained network-isolation evidence, and
+  bounded runner controls including enforcement polling cadence. The committed
+  v1 protocol is valid but intentionally blocked and not claim-ready.
 - CI runs a 24-history fail-closed benchmark certificate.
 - The performance profile is a broad shared-runner tripwire, not an SLO: it
   excludes source construction, `tracemalloc` is not RSS, and the separate

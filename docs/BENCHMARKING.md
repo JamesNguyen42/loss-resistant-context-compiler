@@ -295,6 +295,7 @@ python -m benchmarks.external_runner \
   --max-stderr-bytes 1000000 \
   --max-candidate-bytes 20000000 \
   --max-memory-mb 32768 \
+  --dependency-lock-evidence requirements.lock \
   --network-isolation-mode host-firewall \
   --network-isolation-evidence network-policy.txt \
   --adapter-revision REVISION \
@@ -320,7 +321,9 @@ exact invocation and outcome for every case.
 The original corpus is retained as manifest evidence. On import, the loader
 reopens its absolute path, verifies its canonical self-digest and exact file
 digest, and checks the recorded case count before returning the candidate for
-full benchmark-side decoding.
+full benchmark-side decoding. It also rehashes the retained dependency lock;
+claim controls require `environment_id` to equal
+`sha256:<dependency-lock-sha256>`.
 
 `--max-memory-mb` bounds the adapter process tree with `RLIMIT_AS` on POSIX and
 a Job Object assigned before process resume on Windows. It does not account for
@@ -338,13 +341,13 @@ cost. Missing per-case isolation, no enforced process-tree memory limit,
 unrecorded identity, a model other than the exact local Qwen Q4 build,
 concurrency other than one, or nonzero model service cost is a
 certificate-invalid non-win even when the candidate interchange itself is
-valid. In current runner schema `lrcbench-external-run-manifest-0.5`, a
+valid. In current runner schema `lrcbench-external-run-manifest-0.6`, a
 claim-eligible identity requires an immutable adapter revision, environment id
-`sha256:<dependency-lock-sha256>`, the exact 8192-context Qwen model, evaluator
-tokenizer, one slot, zero retries, zero service cost, and retained
-network-isolation evidence. Scoring also matches the manifest's isolation,
-network-evidence digest, and time/polling/output/candidate/memory limits to the
-frozen protocol.
+`sha256:<dependency-lock-sha256>`, the exact retained lock bytes, the exact
+8192-context Qwen model, evaluator tokenizer, one slot, zero retries, zero
+service cost, and retained network-isolation evidence. Scoring also matches the
+manifest's environment/network-evidence digests, isolation, and
+time/polling/output/candidate/memory limits to the frozen protocol.
 
 Run the built-in round-trip and negative checks before preparing an adapter:
 
@@ -393,7 +396,7 @@ and documentation together.
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 878 tests: 873 passed and 5 platform/optional checks were
+The suite collected 879 tests: 874 passed and 5 platform/optional checks were
 skipped. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |
