@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 318 collected: 313 passing, 5 skipped |
+| Tests at this snapshot | 328 collected: 323 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -320,6 +320,7 @@ Primary exported objects:
 - `SourceLimitError`;
 - `ArtifactLimits`;
 - `ArtifactLimitError`;
+- `validate_artifact_envelope`;
 - `VerificationReport`.
 
 Custom token accounting requires both a callback and a stable
@@ -398,7 +399,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 318 tests are collected: 313 pass and 5 platform/optional checks are skipped.
+- 328 tests are collected: 323 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -416,6 +417,10 @@ audited. Any selected superseded item independently fails verification as
   strict raw/canonical byte, line, depth, item/selection, provenance, and issue
   limits. Tests cover BOM/multibyte boundaries, duplicate keys, non-finite
   values, excessive collections, cyclic direct dictionaries, and CLI refusal.
+- `ctxc inspect` additionally rejects malformed or unsupported envelopes,
+  duplicate/missing item-selection references, and stale `artifact_sha256`
+  values before reporting explicit shape/schema/self-hash health. Python
+  callers can use `validate_artifact_envelope()` for the same bounded check.
 - New artifacts carry strict `compilation-metrics-0.1` telemetry for item flow,
   post-resolution recovery, conflicts, protected-budget pressure, verification
   outcomes, and compile duration. `ctxc inspect` exposes it; replay rejects

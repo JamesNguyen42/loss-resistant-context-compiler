@@ -117,6 +117,13 @@ their entries. `verify_artifact_dict()` independently enforces the same
 canonical and collection limits for caller-supplied Python values and records
 its effective limits in the returned replay report.
 
+Before `ctxc inspect` renders a summary, `validate_artifact_envelope()` also
+requires the exact supported schema, complete field shapes, unique item and
+selection ids, selection references to retained items, and a matching
+canonical `artifact_sha256`. This source-independent check detects corruption
+but cannot establish authorship or replay semantic truth; those guarantees
+still require trusted source events and `verify_artifact_dict()`.
+
 Malformed direct Python artifacts preserve the verifier's failure-report
 contract: cycles and non-JSON objects become `invalid_artifact_json` rather
 than escaping as an unhandled error. Such caller-allocated objects necessarily

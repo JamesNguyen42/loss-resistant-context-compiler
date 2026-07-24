@@ -3,6 +3,7 @@
 from .archive import SourceArchive
 from .compiler import ContextCompiler
 from .extractors import ModelExtractor, RuleBasedExtractor
+from .io import validate_artifact_envelope
 from .isolation import CompilationIsolationError
 from .limits import ArtifactLimitError, ArtifactLimits, SourceLimitError, SourceLimits
 from .local_qwen import LmsQwenCompletion, LocalQwenError
@@ -41,6 +42,7 @@ __all__ = [
     "SourceLimits",
     "SourceRecord",
     "VerificationReport",
+    "validate_artifact_envelope",
 ]
 
 __version__ = "0.1.0"

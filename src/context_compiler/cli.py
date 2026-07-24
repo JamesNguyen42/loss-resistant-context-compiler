@@ -15,6 +15,7 @@ from .io import (
     load_artifact_path,
     load_sources,
     load_sources_path,
+    validate_artifact_envelope,
     verify_artifact_dict,
 )
 from .isolation import CompilationIsolationError
@@ -399,15 +400,15 @@ def _inspect(args: argparse.Namespace) -> int:
     try:
         artifact_limits = _artifact_limits(args)
         artifact = load_artifact_path(args.artifact, limits=artifact_limits)
+        artifact = validate_artifact_envelope(
+            artifact,
+            limits=artifact_limits,
+        )
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         _write_error(args, exc)
         return 2
-    if not isinstance(artifact, dict):
-        raise TypeError("compiled artifact must be a JSON object")
-    items = artifact.get("items")
-    selected = artifact.get("selected_item_ids")
-    if not isinstance(items, list) or not isinstance(selected, list):
-        raise TypeError("compiled artifact items and selected_item_ids must be arrays")
+    items = artifact["items"]
+    selected = artifact["selected_item_ids"]
     compiler_metadata = artifact.get("compiler_metadata")
     metrics = (
         compiler_metadata.get("metrics", {})
@@ -416,7 +417,15 @@ def _inspect(args: argparse.Namespace) -> int:
     )
     summary = {
         "schema_version": artifact.get("schema_version"),
+        "artifact_sha256": artifact.get("artifact_sha256"),
+        "source_digest": artifact.get("source_digest"),
         "source_count": artifact.get("source_count"),
+        "ledger_complete": artifact.get("ledger_complete"),
+        "integrity": {
+            "schema_supported": True,
+            "shape_valid": True,
+            "self_hash_valid": True,
+        },
         "total_items": len(items),
         "selected_items": len(selected),
         "verification": artifact.get("verification", {}),

@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 318 tests (313 passing and 5 skipped locally); CI covers Python
+- [x] Collect 328 tests (323 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -547,6 +547,9 @@ than most related technology” within the exact dated evaluation scope.
   compile latency; surface them through `ctxc inspect` and independently
   reconcile all replayable fields while accepting older schema-1.0 artifacts
   that omit the optional metrics record.
+- [x] Make `ctxc inspect` fail closed on malformed, unsupported, internally
+  inconsistent, or stale-self-hash artifact envelopes; expose the same bounded
+  source-independent validation through the Python API.
 - [x] Eliminate ordinary stale-lock recovery by replacing create/delete lock
   ownership with a persistent OS advisory lock that releases on descriptor
   close or process death; document that marker existence does not mean held.

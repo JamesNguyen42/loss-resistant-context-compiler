@@ -26,6 +26,7 @@ from .models import (
     COMPILATION_METRICS_SCHEMA,
     PRIMARY_EXTRACTOR_DEGRADED_MESSAGE,
     PRIMARY_EXTRACTOR_FAILED_MESSAGE,
+    SCHEMA_VERSION,
     CompilationMetrics,
     IssueSeverity,
     MemoryItem,
@@ -1063,6 +1064,107 @@ def load_artifact_path(
         )
     with artifact_path.open("r", encoding="utf-8", newline="") as stream:
         return load_artifact(stream, limits=resolved_limits)
+
+
+def validate_artifact_envelope(
+    artifact: Any,
+    *,
+    limits: ArtifactLimits | None = None,
+) -> dict[str, Any]:
+    """Validate shape, item/selection identity, schema, and artifact self-hash.
+
+    This checks envelope integrity without claiming that the artifact is
+    authentic or that its semantic contents replay against trusted sources.
+    Use :func:`verify_artifact_dict` for independent source-bound verification.
+    """
+
+    resolved_limits = resolve_artifact_limits(limits)
+    validate_artifact_value(artifact, limits=resolved_limits)
+    if not isinstance(artifact, dict):
+        raise TypeError("compiled artifact must be a JSON object")
+
+    issues: list[dict[str, Any]] = []
+    _validate_artifact_shape(artifact, issues)
+
+    raw_items = artifact.get("items")
+    raw_selected = artifact.get("selected_item_ids")
+    if not isinstance(raw_items, list):
+        _shape_issue(
+            issues,
+            "invalid_items_collection",
+            "Artifact items must be a JSON array.",
+        )
+        raw_items = []
+    if not isinstance(raw_selected, list):
+        _shape_issue(
+            issues,
+            "invalid_selected_item_ids",
+            "Artifact selected_item_ids must be a JSON array.",
+        )
+        raw_selected = []
+
+    item_ids = [
+        item.get("id")
+        for item in raw_items
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    ]
+    if len(item_ids) != len(set(item_ids)):
+        _shape_issue(
+            issues,
+            "duplicate_item_id",
+            "Artifact items must have unique ids.",
+        )
+    selected_ids = [
+        item_id for item_id in raw_selected if isinstance(item_id, str)
+    ]
+    if len(selected_ids) != len(set(selected_ids)):
+        _shape_issue(
+            issues,
+            "duplicate_selected_item_id",
+            "Artifact selected_item_ids must be unique.",
+        )
+    missing_selected = sorted(set(selected_ids) - set(item_ids))
+    if missing_selected:
+        _shape_issue(
+            issues,
+            "selected_item_missing",
+            "Artifact selected_item_ids must reference retained items.",
+        )
+
+    if issues:
+        first = issues[0]
+        raise ValueError(
+            "invalid compiled artifact envelope "
+            f"({first['code']}): {first['message']}"
+        )
+
+    unsigned_artifact = {
+        key: value
+        for key, value in artifact.items()
+        if key != "artifact_sha256"
+    }
+    try:
+        canonical = json.dumps(
+            unsigned_artifact,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (RecursionError, TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(
+            f"invalid compiled artifact canonical JSON: {exc}"
+        ) from exc
+    actual_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    if artifact["artifact_sha256"] != actual_digest:
+        raise ValueError(
+            "artifact digest mismatch: content does not match artifact_sha256"
+        )
+    if artifact["schema_version"] != SCHEMA_VERSION:
+        raise ValueError(
+            f"unsupported artifact schema version: {artifact['schema_version']!r}"
+        )
+    return artifact
 
 
 def dump_sources_jsonl(sources: Iterable[SourceRecord], stream: TextIO) -> None:
