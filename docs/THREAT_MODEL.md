@@ -227,17 +227,18 @@ self-consistent report can also compute new self-hashes. Trusted publication
 still requires an external signature or independently anchored digest.
 
 External scoring additionally requires a strict frozen
-`lrcbench-external-protocol-0.8` manifest. The manifest self-hash binds its
+`lrcbench-external-protocol-0.9` manifest. The manifest self-hash binds its
 Markdown document digest, comparison decisions and immutable revisions,
-adapter/dependency evidence, adapter entrypoint, source-tree, runtime, and
-portable command-contract digests, exact local-Qwen constraints, dataset
+adapter/dependency evidence, adapter entrypoint, source-tree, runtime, bounded
+process-environment, and portable command-contract digests, exact local-Qwen
+constraints, dataset
 manifests, statistics, every
 execution-affecting runner limit, retained network-evidence digest,
 inference-service metric/executable digest/ceiling, and blockers. The benchmark
 imports the registered set from that manifest and refuses a different synthetic
-dataset digest, adapter/environment identity,
-entrypoint/source-tree/runtime/command digest, model contract, isolation mode,
-network-evidence digest, service
+dataset digest, adapter/dependency identity,
+entrypoint/source-tree/runtime/process-environment/command digest, model
+contract, isolation mode, network-evidence digest, service
 accounting contract, or runner limit. Current `lrcbench-report-0.2` evidence records the
 protocol and document hashes, dataset digest, and registered set. Report replay
 checks those fields for internal consistency but does not by itself prove that
@@ -271,6 +272,15 @@ source tree or command. It does not bind imports outside that root, prove which
 files were loaded, bind the runtime's shared libraries, or eliminate
 change-and-restore races between observations; reviewed isolated execution
 remains necessary.
+
+Adapter children receive a bounded platform-startup allowlist rather than the
+complete host environment. Additional variables must be selected by name; the
+manifest retains names and a digest over value hashes, not plaintext values.
+Credential-like names make claim metadata incomplete, and scoring freezes the
+digest per system. This reduces accidental credential propagation and binds
+environment-dependent behavior, but a low-entropy value may still be guessed
+from its digest, and neither a digest nor an allowlist proves what an adapter
+read through files or another process.
 
 The default external runner gives every case a fresh sequential process and
 records its exact command and outcome. It retains each valid one-case

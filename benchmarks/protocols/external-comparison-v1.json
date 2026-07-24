@@ -1,5 +1,5 @@
 {
-  "schema": "lrcbench-external-protocol-0.8",
+  "schema": "lrcbench-external-protocol-0.9",
   "protocol_id": "external-comparison-v1",
   "status": "draft",
   "created_at": "2026-07-24T00:00:00+00:00",
@@ -7,7 +7,7 @@
   "freeze_repository_commit": null,
   "protocol_document": {
     "path": "external-comparison-v1.md",
-    "file_sha256": "dc323e70443f3585510f0970e281d3bc192ca0242449793427b7d9bcc03e92be"
+    "file_sha256": "b1027fc69caf70c55eef1f16c97e1184febf0ac7711134853e4bb0590ba80558"
   },
   "comparison_candidates": [
     {
@@ -24,6 +24,7 @@
       "adapter_entrypoint_sha256": null,
       "adapter_source_tree_sha256": null,
       "adapter_runtime_executable_sha256": null,
+      "adapter_environment_sha256": null,
       "adapter_command_sha256": null,
       "decision_reason": "Official implementation exposes history compression and local-vLLM hooks, but its documented quick start uses an OpenAI key; exact-Qwen CLI adaptation and a resolved offline environment remain unverified."
     },
@@ -41,6 +42,7 @@
       "adapter_entrypoint_sha256": null,
       "adapter_source_tree_sha256": null,
       "adapter_runtime_executable_sha256": null,
+      "adapter_environment_sha256": null,
       "adapter_command_sha256": null,
       "decision_reason": "Official benchmark and AMA-Agent code expose a two-stage memory interface and local-vLLM path, but exact-Qwen CLI adaptation, deterministic grading, and a resolved offline environment remain unverified."
     },
@@ -58,6 +60,7 @@
       "adapter_entrypoint_sha256": null,
       "adapter_source_tree_sha256": null,
       "adapter_runtime_executable_sha256": null,
+      "adapter_environment_sha256": null,
       "adapter_command_sha256": null,
       "decision_reason": "Public reimplementation supports local vLLM, but it changes agent trajectory structure rather than accepting arbitrary history as a drop-in compressor; matched exact-Qwen component adaptation and an offline environment remain unverified."
     },
@@ -75,6 +78,7 @@
       "adapter_entrypoint_sha256": null,
       "adapter_source_tree_sha256": null,
       "adapter_runtime_executable_sha256": null,
+      "adapter_environment_sha256": null,
       "adapter_command_sha256": null,
       "decision_reason": "The arXiv v1 paper specifies the architecture and prompts but identifies no public implementation revision or code license; artifact availability must be resolved before inclusion."
     }
@@ -173,7 +177,7 @@
     },
     {
       "id": "candidate-adapters",
-      "description": "Complete result-blind diagnostic adapters, retained source-tree, entrypoint, runtime, and portable command pins, and inclusion decisions for every screened system."
+      "description": "Complete result-blind diagnostic adapters, retained source-tree, entrypoint, runtime, process-environment, and portable command pins, and inclusion decisions for every screened system."
     },
     {
       "id": "candidate-dependency-locks",
@@ -204,5 +208,5 @@
       "description": "Select and pin a materially different public tool-use or research task suite."
     }
   ],
-  "protocol_sha256": "823eca663555d505ef84b206ae12054df79ade94c8912f7d760251a76c9893a1"
+  "protocol_sha256": "3f1d3ab4d4505161bc11077e6564031156c9cae6c92374305e0b2d2a677b9ffa"
 }

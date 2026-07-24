@@ -298,6 +298,7 @@ python -m benchmarks.external_runner \
   --dependency-lock-evidence requirements.lock \
   --adapter-entrypoint-evidence adapter.py \
   --adapter-source-root adapter-source \
+  --pass-environment HF_HOME \
   --network-isolation-mode host-firewall \
   --network-isolation-evidence network-policy.txt \
   --inference-service-pid INFERENCE_SERVICE_PID \
@@ -349,6 +350,17 @@ dedicated immutable adapter directory rather than a build-output directory.
 The per-case runner revalidates it and the resolved runtime executable after
 each case and stops before launching another process if either changes.
 
+The child receives a bounded platform-startup environment rather than
+`os.environ` wholesale. Repeat `--pass-environment NAME` for any additional
+reviewed variable; missing names fail preflight. The manifest exposes sorted
+variable names and an aggregate byte count, but represents values only inside
+a canonical SHA-256 digest. Credential-like names make claim controls
+incomplete, and the per-system environment digest must match the frozen
+protocol. Home/cache variables are opt-in; fixed Python guards disable user-site
+imports and bytecode writes and set a deterministic hash seed and UTF-8 I/O.
+Do not treat hashing as secret storage: low-entropy values may be guessable, so
+credentials should never be passed to an offline claim run.
+
 `--max-memory-mb` bounds the adapter process tree with `RLIMIT_AS` on POSIX and
 a Job Object assigned before process resume on Windows. The service PID and
 service-memory options separately capture the pre-existing inference process's
@@ -372,16 +384,17 @@ cost. Missing per-case isolation, no enforced process-tree memory limit,
 unrecorded identity, a model other than the exact local Qwen Q4 build,
 concurrency other than one, or nonzero model service cost is a
 certificate-invalid non-win even when the candidate interchange itself is
-valid. In current runner schema `lrcbench-external-run-manifest-0.12`, a
+valid. In current runner schema `lrcbench-external-run-manifest-0.13`, a
 claim-eligible identity requires an immutable adapter revision, environment id
 `sha256:<dependency-lock-sha256>`, the exact retained lock bytes, the exact
 8192-context Qwen model, evaluator tokenizer, one slot, zero retries, zero
 service cost, retained network-isolation evidence, a retained
 command-referenced adapter entrypoint, its bounded immutable source tree, the
-resolved runtime-executable digest, a portable complete command contract, and
-at least two stable inference-service memory samples within the ceiling.
-Scoring also matches the manifest's environment/network-evidence digests,
-adapter entrypoint/source-tree/runtime/command digests, service memory
+resolved runtime-executable digest, a portable complete command contract, a
+bounded name-audited process-environment digest, and at least two stable
+inference-service memory samples within the ceiling. Scoring also matches the
+manifest's dependency/process-environment/network-evidence digests, adapter
+entrypoint/source-tree/runtime/command digests, service memory
 metric/executable digest/ceiling, isolation, and
 time/polling/output/candidate/adapter-memory limits to the frozen protocol.
 

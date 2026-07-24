@@ -43,6 +43,7 @@ def _candidate(
         "adapter_entrypoint_sha256": _sha(character),
         "adapter_source_tree_sha256": _sha(character),
         "adapter_runtime_executable_sha256": _sha(character),
+        "adapter_environment_sha256": _sha(character),
         "adapter_command_sha256": _sha(character),
         "decision_reason": "Frozen result-blind fixture decision.",
     }
@@ -199,7 +200,7 @@ def test_committed_draft_is_verified_but_not_claim_ready() -> None:
     verified = load_external_protocol(DEFAULT_EXTERNAL_PROTOCOL)
 
     assert verified.protocol_sha256 == (
-        "823eca663555d505ef84b206ae12054df79ade94c8912f7d760251a76c9893a1"
+        "3f1d3ab4d4505161bc11077e6564031156c9cae6c92374305e0b2d2a677b9ffa"
     )
     assert verified.status == "draft"
     assert verified.claim_ready is False
@@ -259,6 +260,12 @@ def test_complete_frozen_protocol_is_claim_ready(tmp_path: Path) -> None:
         "gamma": _sha("4"),
     }
     assert dict(verified.adapter_runtime_executable_sha256s) == {
+        "alpha": _sha("1"),
+        "beta": _sha("2"),
+        "delta": _sha("3"),
+        "gamma": _sha("4"),
+    }
+    assert dict(verified.adapter_environment_sha256s) == {
         "alpha": _sha("1"),
         "beta": _sha("2"),
         "delta": _sha("3"),
@@ -348,6 +355,13 @@ def test_frozen_protocol_fails_closed_on_unresolved_controls(
             "missing adapter command",
             lambda value: value["comparison_candidates"][0].update(
                 adapter_command_sha256=None
+            ),
+            "lacks frozen identity",
+        ),
+        (
+            "missing adapter environment",
+            lambda value: value["comparison_candidates"][0].update(
+                adapter_environment_sha256=None
             ),
             "lacks frozen identity",
         ),

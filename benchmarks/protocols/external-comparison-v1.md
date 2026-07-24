@@ -104,6 +104,8 @@ This is not yet a registered set. Before freezing:
 - retain and freeze a command-referenced adapter entrypoint, its bounded
   immutable source-tree digest, the resolved runtime-executable digest, and the
   portable command-contract digest;
+- freeze the bounded name-audited adapter process-environment digest and
+  audit every passed variable name;
 - record the exact local setup and command;
 - keep at least four included systems when materially comparable runnable
   systems exist;
@@ -214,6 +216,7 @@ python -m benchmarks.external_runner \
   --dependency-lock-evidence DEPENDENCY_LOCK \
   --adapter-entrypoint-evidence ADAPTER_ENTRYPOINT \
   --adapter-source-root ADAPTER_SOURCE_ROOT \
+  --pass-environment ADAPTER_CACHE_VARIABLE \
   --network-isolation-mode NETWORK_MODE \
   --network-isolation-evidence NETWORK_POLICY_EXPORT \
   --inference-service-pid INFERENCE_SERVICE_PID \
@@ -243,6 +246,13 @@ one-case gold-free corpus; a failure is retained without allowing partial
 merged output. POSIX enforces `--max-memory-mb` with `RLIMIT_AS`. Windows
 creates the process suspended, assigns and verifies a Job Object with
 per-process and aggregate limits, and only then resumes adapter code.
+
+Adapter processes receive only a bounded platform-startup environment unless a
+variable is selected explicitly with repeatable `--pass-environment NAME`.
+The manifest retains sorted names and a digest over value hashes, never
+plaintext values. Credential-like names make a run ineligible for a claim, and
+the final per-system environment digest must be frozen here. Hashing is not
+secret storage: do not pass credentials, especially low-entropy values.
 
 Manifest replay reconstructs each one-case corpus from the retained parent
 export. Attempted cases must be its exact ordered prefix, and every record must
@@ -285,18 +295,19 @@ Whole-corpus isolation, no enforced adapter memory limit, incomplete identity
 metadata, any model other than the exact Qwen Q4 variant, inference concurrency
 other than one, or nonzero model-service cost makes the system a certificate
 non-win. Claim-eligible runner schema
-`lrcbench-external-run-manifest-0.12` also requires an immutable adapter
+`lrcbench-external-run-manifest-0.13` also requires an immutable adapter
 revision, retained dependency-lock bytes matching the canonical `sha256:`
 environment identity, a retained command-referenced adapter entrypoint covered
 by a bounded immutable source tree, a hashed resolved runtime, a portable
 complete command contract, context length 8192, the evaluator tokenizer, one
-slot, zero retries, and zero service cost, plus bounded retained
-network-isolation evidence and at least two stable service-memory samples
-within the ceiling. The scorer rejects any identity,
-lock/entrypoint/source-tree/runtime/command/network-evidence digest, service
-metric/executable digest/ceiling, isolation mode, timeout, output, candidate,
-adapter memory, or 20 ms enforcement-polling limit that differs from the frozen
-protocol. The candidate may still be retained for interchange diagnostics.
+slot, zero retries, and zero service cost, plus a bounded name-audited
+process environment, retained network-isolation evidence, and at least two
+stable service-memory samples within the ceiling. The scorer rejects any
+identity, lock/entrypoint/source-tree/runtime/process-environment/command/
+network-evidence digest, service metric/executable digest/ceiling, isolation
+mode, timeout, output, candidate, adapter memory, or 20 ms
+enforcement-polling limit that differs from the frozen protocol. The candidate
+may still be retained for interchange diagnostics.
 
 Score all intended systems in one explicitly registered invocation:
 

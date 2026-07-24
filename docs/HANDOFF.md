@@ -430,6 +430,9 @@ and enforces a subprocess timeout. See [Local Qwen integration](LOCAL_QWEN.md).
 | LRCBench candidate schema | `lrcbench-candidate-output-0.2` |
 | Corpus producer schema | `lrcbench-corpus-producer-0.1` |
 | Candidate producer schema | `lrcbench-candidate-producer-0.1` |
+| External runner manifest | `lrcbench-external-run-manifest-0.13` |
+| External comparison protocol | `lrcbench-external-protocol-0.9` |
+| Adapter process-environment evidence | `lrcbench-process-environment-0.1` |
 | Installed schema directory | `share/lossless-context-compiler/schemas` |
 
 The resistant/lossless distribution-name difference is unresolved and is a
@@ -656,20 +659,22 @@ audited. Any selected superseded item independently fails verification as
   adapter process-tree memory limit, an immutable adapter revision, retained
   dependency-lock bytes defining the environment identity, a retained
   command-referenced adapter entrypoint covered by a bounded immutable source
-  tree, the exact local Qwen Q4 model, one inference slot, context and tokenizer
-  ids, retries, zero model-service cost, bounded retained network-isolation
-  evidence, and sampled inference-service identity/peak-memory evidence;
-  incomplete controls are a per-system non-win.
+  tree, a bounded name-audited process environment, the exact local Qwen Q4
+  model, one inference slot, context and tokenizer ids, retries, zero
+  model-service cost, bounded retained network-isolation evidence, and sampled
+  inference-service identity/peak-memory evidence; incomplete controls are a
+  per-system non-win.
 - External scoring requires a strict frozen
-  `lrcbench-external-protocol-0.8` manifest. The protocol's set is authoritative,
+  `lrcbench-external-protocol-0.9` manifest. The protocol's set is authoritative,
   and the benchmark rejects a draft, dataset mismatch, unregistered system, or
   adapter, dependency-environment, model, tokenizer, retry, network-evidence,
   or runner-limit mismatch before scoring. Current runner schema
-  `lrcbench-external-run-manifest-0.12` freezes immutable adapter/environment
+  `lrcbench-external-run-manifest-0.13` freezes immutable adapter/environment
   identity, revalidated dependency-lock, adapter-entrypoint, and bounded
-  adapter-source-tree bytes, the resolved runtime executable, and the portable
-  per-case-validated command contract, exact 8192-context Qwen, one slot, zero
-  retries/service cost, retained network-isolation evidence, sampled service
+  adapter-source-tree bytes, the resolved runtime executable, the bounded
+  name-audited process-environment digest, and the portable per-case-validated
+  command contract, exact 8192-context Qwen, one slot, zero retries/service
+  cost, retained network-isolation evidence, sampled service
   process/executable/peak-memory accounting, and bounded runner controls
   including enforcement polling cadence. It also reconstructs every one-case
   corpus on reload and verifies ordered-prefix, exact-digest, and

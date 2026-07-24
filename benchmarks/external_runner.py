@@ -48,7 +48,7 @@ from .lrcbench import (
     decode_external_candidate,
 )
 
-RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.12"
+RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.13"
 _SYSTEM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 _REVISION_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 _ENVIRONMENT_ID_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -72,6 +72,42 @@ _ADAPTER_SOURCE_MAX_TOTAL_BYTES = 512_000_000
 _ADAPTER_SOURCE_MAX_RELATIVE_PATH_BYTES = 4_096
 _ADAPTER_SOURCE_MAX_PATH_BYTES = 1_000_000
 _ADAPTER_RUNTIME_EXECUTABLE_MAX_BYTES = 2_000_000_000
+_PROCESS_ENVIRONMENT_ALGORITHM = "lrcbench-process-environment-0.1"
+_PROCESS_ENVIRONMENT_MAX_VARIABLES = 1_024
+_PROCESS_ENVIRONMENT_MAX_NAME_BYTES = 4_096
+_PROCESS_ENVIRONMENT_MAX_VALUE_BYTES = 1_000_000
+_PROCESS_ENVIRONMENT_MAX_TOTAL_BYTES = 4_000_000
+_ENVIRONMENT_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+_SENSITIVE_ENVIRONMENT_NAME_RE = re.compile(
+    r"(?:^|_)(?:API_?KEY|AUTH_?TOKEN|ACCESS_?TOKEN|TOKEN|SECRET|"
+    r"PASSWORD|PASSWD|CREDENTIALS?|PRIVATE_?KEY)(?:$|_)",
+    re.IGNORECASE,
+)
+_DEFAULT_WINDOWS_ENVIRONMENT_NAMES = (
+    "COMSPEC",
+    "OS",
+    "PATH",
+    "PATHEXT",
+    "SYSTEMDRIVE",
+    "SYSTEMROOT",
+    "TEMP",
+    "TMP",
+    "WINDIR",
+)
+_DEFAULT_POSIX_ENVIRONMENT_NAMES = (
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "PATH",
+    "TMPDIR",
+    "TZ",
+)
+_FIXED_PROCESS_ENVIRONMENT = {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONNOUSERSITE": "1",
+}
 _INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES = 2_000_000_000
 _INFERENCE_SERVICE_MEMORY_METRICS = frozenset(
     {"resident-set-bytes", "working-set-bytes"}
@@ -114,6 +150,7 @@ class ExternalRunReference:
     adapter_entrypoint: AdapterEntrypointEvidence
     adapter_source: AdapterSourceEvidence
     adapter_runtime: AdapterRuntimeEvidence
+    process_environment: ProcessEnvironmentEvidence
     network_isolation: NetworkIsolationEvidence
     inference_service: InferenceServiceAccounting
     command_sha256: str
@@ -478,6 +515,253 @@ class AdapterRuntimeEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class ProcessEnvironmentEvidence:
+    """Value-redacted digest of the exact environment passed to the adapter."""
+
+    algorithm: str = _PROCESS_ENVIRONMENT_ALGORITHM
+    platform: str | None = None
+    variable_names: tuple[str, ...] = ()
+    environment_sha256: str | None = None
+    encoded_bytes: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.algorithm != _PROCESS_ENVIRONMENT_ALGORITHM:
+            raise ValueError("process environment algorithm is invalid")
+        fields = (
+            self.platform,
+            self.environment_sha256,
+            self.encoded_bytes,
+        )
+        if all(value is None for value in fields) and not self.variable_names:
+            return
+        if self.platform not in {"posix", "windows"}:
+            raise ValueError("process environment platform is invalid")
+        if (
+            not isinstance(self.variable_names, tuple)
+            or len(self.variable_names)
+            > _PROCESS_ENVIRONMENT_MAX_VARIABLES
+        ):
+            raise ValueError(
+                "process environment variable names are invalid"
+            )
+        normalized_names: set[str] = set()
+        previous_sort_key: tuple[str, str] | None = None
+        for name in self.variable_names:
+            try:
+                _validate_environment_name(name)
+            except ExternalRunnerError as exc:
+                raise ValueError(
+                    "process environment variable names are invalid"
+                ) from exc
+            normalized_name = (
+                name.casefold() if self.platform == "windows" else name
+            )
+            if normalized_name in normalized_names:
+                raise ValueError(
+                    "process environment variable names are ambiguous"
+                )
+            normalized_names.add(normalized_name)
+            sort_key = (
+                normalized_name,
+                name,
+            )
+            if (
+                previous_sort_key is not None
+                and sort_key <= previous_sort_key
+            ):
+                raise ValueError(
+                    "process environment variable names are not canonical"
+                )
+            previous_sort_key = sort_key
+        if not _is_sha256(self.environment_sha256):
+            raise ValueError(
+                "process environment evidence requires a SHA-256 digest"
+            )
+        if (
+            isinstance(self.encoded_bytes, bool)
+            or not isinstance(self.encoded_bytes, int)
+            or self.encoded_bytes < 0
+            or self.encoded_bytes > _PROCESS_ENVIRONMENT_MAX_TOTAL_BYTES
+        ):
+            raise ValueError(
+                "process environment evidence has an invalid byte count"
+            )
+
+    @property
+    def claim_evidence_complete(self) -> bool:
+        return (
+            self.environment_sha256 is not None
+            and not any(
+                _SENSITIVE_ENVIRONMENT_NAME_RE.search(name)
+                for name in self.variable_names
+            )
+        )
+
+
+def _validate_environment_name(name: object) -> str:
+    if (
+        not isinstance(name, str)
+        or not name
+        or _ENVIRONMENT_NAME_RE.fullmatch(name) is None
+    ):
+        raise ExternalRunnerError(
+            "environment variable names must be portable ASCII identifiers"
+        )
+    encoded_name = name.encode("ascii")
+    if len(encoded_name) > _PROCESS_ENVIRONMENT_MAX_NAME_BYTES:
+        raise ExternalRunnerError(
+            "environment variable name exceeds the byte limit"
+        )
+    return name
+
+
+def _environment_platform() -> str:
+    return "windows" if os.name == "nt" else "posix"
+
+
+def _environment_sort_key(
+    name: str,
+    *,
+    platform_name: str,
+) -> tuple[str, str]:
+    return (
+        name.casefold() if platform_name == "windows" else name,
+        name,
+    )
+
+
+def _default_process_environment() -> dict[str, str]:
+    names = (
+        _DEFAULT_WINDOWS_ENVIRONMENT_NAMES
+        if os.name == "nt"
+        else _DEFAULT_POSIX_ENVIRONMENT_NAMES
+    )
+    environment = {
+        name: os.environ[name]
+        for name in names
+        if name in os.environ
+    }
+    environment.update(_FIXED_PROCESS_ENVIRONMENT)
+    return environment
+
+
+def _prepare_process_environment(
+    environment: Mapping[str, str] | None,
+) -> tuple[dict[str, str], ProcessEnvironmentEvidence]:
+    source = (
+        _default_process_environment()
+        if environment is None
+        else dict(environment)
+    )
+    if len(source) > _PROCESS_ENVIRONMENT_MAX_VARIABLES:
+        raise ExternalRunnerError(
+            "environment exceeds the variable-count limit"
+        )
+    platform_name = _environment_platform()
+    normalized_names: set[str] = set()
+    entries: list[dict[str, str]] = []
+    encoded_bytes = 0
+    process_environment: dict[str, str] = {}
+    for name, value in sorted(
+        source.items(),
+        key=lambda item: _environment_sort_key(
+            item[0],
+            platform_name=platform_name,
+        )
+        if isinstance(item[0], str)
+        else ("", ""),
+    ):
+        _validate_environment_name(name)
+        if not isinstance(value, str) or "\x00" in value:
+            raise ExternalRunnerError(
+                "environment values must be strings without NUL"
+            )
+        canonical_name = (
+            name.upper() if platform_name == "windows" else name
+        )
+        normalized_name = (
+            canonical_name.casefold()
+            if platform_name == "windows"
+            else canonical_name
+        )
+        if normalized_name in normalized_names:
+            raise ExternalRunnerError(
+                "environment contains ambiguous variable names"
+            )
+        normalized_names.add(normalized_name)
+        try:
+            encoded_name = canonical_name.encode("utf-8")
+            encoded_value = value.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise ExternalRunnerError(
+                "environment names and values must be valid Unicode"
+            ) from exc
+        if len(encoded_value) > _PROCESS_ENVIRONMENT_MAX_VALUE_BYTES:
+            raise ExternalRunnerError(
+                f"environment variable {name!r} exceeds the value byte limit"
+            )
+        encoded_bytes += len(encoded_name) + len(encoded_value)
+        if encoded_bytes > _PROCESS_ENVIRONMENT_MAX_TOTAL_BYTES:
+            raise ExternalRunnerError(
+                "environment exceeds the aggregate byte limit"
+            )
+        process_environment[canonical_name] = value
+        entries.append(
+            {
+                "name": canonical_name,
+                "value_sha256": hashlib.sha256(
+                    encoded_value
+                ).hexdigest(),
+            }
+        )
+    evidence_document = {
+        "algorithm": _PROCESS_ENVIRONMENT_ALGORITHM,
+        "platform": platform_name,
+        "variables": entries,
+    }
+    evidence = ProcessEnvironmentEvidence(
+        platform=platform_name,
+        variable_names=tuple(process_environment),
+        environment_sha256=_canonical_sha256(evidence_document),
+        encoded_bytes=encoded_bytes,
+    )
+    return process_environment, evidence
+
+
+def capture_process_environment_evidence(
+    environment: Mapping[str, str] | None = None,
+) -> ProcessEnvironmentEvidence:
+    """Hash an exact bounded adapter environment without retaining values."""
+
+    return _prepare_process_environment(environment)[1]
+
+
+def _process_environment_with_pass_through(
+    variable_names: Sequence[str],
+) -> dict[str, str]:
+    environment = _default_process_environment()
+    for raw_name in variable_names:
+        name = _validate_environment_name(raw_name)
+        if name not in os.environ:
+            raise ExternalRunnerError(
+                f"requested environment variable is not set: {name}"
+            )
+        if os.name == "nt":
+            existing_name = next(
+                (
+                    candidate
+                    for candidate in environment
+                    if candidate.casefold() == name.casefold()
+                ),
+                None,
+            )
+        else:
+            existing_name = name if name in environment else None
+        environment[existing_name or name] = os.environ[name]
+    return environment
+
+
+@dataclass(frozen=True, slots=True)
 class NetworkIsolationEvidence:
     """Retained host/container evidence for an externally enforced offline run."""
 
@@ -719,6 +1003,7 @@ class ExternalRunManifest:
     adapter_entrypoint: AdapterEntrypointEvidence
     adapter_source: AdapterSourceEvidence
     adapter_runtime: AdapterRuntimeEvidence
+    process_environment: ProcessEnvironmentEvidence
     network_isolation: NetworkIsolationEvidence
     inference_service: InferenceServiceAccounting
     claim_metadata_complete: bool
@@ -2259,6 +2544,7 @@ def _claim_controls_complete(
     adapter_entrypoint: AdapterEntrypointEvidence,
     adapter_source: AdapterSourceEvidence,
     adapter_runtime: AdapterRuntimeEvidence,
+    process_environment: ProcessEnvironmentEvidence,
     network_isolation: NetworkIsolationEvidence,
     inference_service: InferenceServiceAccounting,
     minimum_inference_samples: int,
@@ -2277,6 +2563,7 @@ def _claim_controls_complete(
             adapter_entrypoint,
         )
         and adapter_runtime.claim_evidence_complete
+        and process_environment.claim_evidence_complete
         and _claim_command_contract_complete(command_contract)
         and working_directory
         == Path(adapter_source.source_root or "")
@@ -2702,6 +2989,31 @@ def load_external_run_manifest(
                     f"[{index}] command does not match the command contract"
                 )
     try:
+        environment_payload = payload["process_environment"]
+        if not isinstance(environment_payload, dict):
+            raise TypeError("process_environment must be an object")
+        if set(environment_payload) != set(
+            ProcessEnvironmentEvidence.__dataclass_fields__
+        ):
+            raise TypeError(
+                "process_environment fields do not match the schema"
+            )
+        variable_names = environment_payload["variable_names"]
+        if not isinstance(variable_names, list):
+            raise TypeError(
+                "process_environment.variable_names must be an array"
+            )
+        decoded_process_environment = ProcessEnvironmentEvidence(
+            **{
+                **environment_payload,
+                "variable_names": tuple(variable_names),
+            }
+        )
+    except (TypeError, ValueError) as exc:
+        raise ExternalRunnerError(
+            f"run manifest process environment evidence is invalid: {exc}"
+        ) from exc
+    try:
         network_payload = payload["network_isolation"]
         if not isinstance(network_payload, dict):
             raise TypeError("network_isolation must be an object")
@@ -2741,6 +3053,7 @@ def load_external_run_manifest(
         decoded_adapter_entrypoint,
         decoded_adapter_source,
         decoded_adapter_runtime,
+        decoded_process_environment,
         decoded_network_isolation,
         decoded_inference_service,
         2 * case_count if isolation_mode == "per_case" else 2,
@@ -2957,8 +3270,9 @@ def load_external_run_manifest(
                 "per-case isolation, an enforced memory limit, retained "
                 "dependency-lock, adapter-entrypoint, adapter-source, and "
                 "runtime bytes, a portable command contract rooted at the "
-                "source directory, network-isolation evidence, and measured "
-                "inference-service accounting are required"
+                "source directory, a bounded name-audited process environment, "
+                "network-isolation evidence, and measured inference-service "
+                "accounting are required"
             )
     else:
         failure_reason = (
@@ -2984,6 +3298,7 @@ def load_external_run_manifest(
         adapter_entrypoint=decoded_adapter_entrypoint,
         adapter_source=decoded_adapter_source,
         adapter_runtime=decoded_adapter_runtime,
+        process_environment=decoded_process_environment,
         network_isolation=decoded_network_isolation,
         inference_service=decoded_inference_service,
         command_sha256=payload["command_sha256"],
@@ -3151,12 +3466,10 @@ def run_external_command(
         adapter_runtime=adapter_runtime,
     )
     command_sha256 = _canonical_sha256(list(command_contract))
-    process_environment = dict(environment) if environment is not None else os.environ.copy()
-    if not all(
-        isinstance(key, str) and isinstance(value, str)
-        for key, value in process_environment.items()
-    ):
-        raise ExternalRunnerError("environment must map strings to strings")
+    (
+        process_environment,
+        process_environment_evidence,
+    ) = _prepare_process_environment(environment)
 
     started_at = datetime.now(UTC).isoformat()
     started = time.monotonic()
@@ -3453,6 +3766,7 @@ def run_external_command(
         adapter_entrypoint=adapter_entrypoint,
         adapter_source=adapter_source,
         adapter_runtime=adapter_runtime,
+        process_environment=process_environment_evidence,
         network_isolation=network_isolation,
         inference_service=inference_accounting,
         claim_metadata_complete=_claim_controls_complete(
@@ -3465,6 +3779,7 @@ def run_external_command(
             adapter_entrypoint,
             adapter_source,
             adapter_runtime,
+            process_environment_evidence,
             network_isolation,
             inference_accounting,
             2,
@@ -3562,12 +3877,10 @@ def run_external_cases(
     )
     if not cwd.is_dir():
         raise ExternalRunnerError(f"working directory does not exist: {cwd}")
-    process_environment = dict(environment) if environment is not None else os.environ.copy()
-    if not all(
-        isinstance(key, str) and isinstance(value, str)
-        for key, value in process_environment.items()
-    ):
-        raise ExternalRunnerError("environment must map strings to strings")
+    (
+        process_environment,
+        process_environment_evidence,
+    ) = _prepare_process_environment(environment)
     resolved_template = _resolve_command(command)
     adapter_runtime = adapter_runtime or capture_adapter_runtime_evidence(
         resolved_template[0]
@@ -3659,6 +3972,13 @@ def run_external_cases(
             if case_manifest.command_contract != command_contract:
                 raise ExternalRunnerError(
                     "per-case adapter command diverged from its contract"
+                )
+            if (
+                case_manifest.process_environment
+                != process_environment_evidence
+            ):
+                raise ExternalRunnerError(
+                    "per-case adapter environment diverged from its contract"
                 )
             adapter_integrity_failure: str | None = None
             if not _adapter_entrypoint_evidence_matches(
@@ -3936,6 +4256,7 @@ def run_external_cases(
         adapter_entrypoint=adapter_entrypoint,
         adapter_source=adapter_source,
         adapter_runtime=adapter_runtime,
+        process_environment=process_environment_evidence,
         network_isolation=network_isolation,
         inference_service=inference_accounting,
         claim_metadata_complete=_claim_controls_complete(
@@ -3948,6 +4269,7 @@ def run_external_cases(
             adapter_entrypoint,
             adapter_source,
             adapter_runtime,
+            process_environment_evidence,
             network_isolation,
             inference_accounting,
             2 * len(cases),
@@ -3965,6 +4287,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--candidate-out", type=Path, required=True)
     parser.add_argument("--manifest-out", type=Path, required=True)
     parser.add_argument("--working-directory", type=Path)
+    parser.add_argument(
+        "--pass-environment",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help=(
+            "add one named host variable to the bounded default adapter "
+            "environment; repeat as needed (values are hashed, not retained)"
+        ),
+    )
     parser.add_argument(
         "--isolation",
         choices=("per-case", "whole-corpus"),
@@ -4074,6 +4406,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.inference_service_pid,
             max_memory_mb=args.max_inference_service_memory_mb,
         )
+        process_environment = _process_environment_with_pass_through(
+            args.pass_environment
+        )
         runner = run_external_cases if args.isolation == "per-case" else run_external_command
         manifest = runner(
             command,
@@ -4103,6 +4438,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             adapter_source=adapter_source,
             network_isolation=network_isolation,
             inference_service=inference_service,
+            environment=process_environment,
         )
     except (ExternalRunnerError, TypeError, ValueError) as exc:
         parser.error(str(exc))

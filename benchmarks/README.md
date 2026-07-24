@@ -244,6 +244,7 @@ python -m benchmarks.external_runner `
   --dependency-lock-evidence requirements.lock `
   --adapter-entrypoint-evidence adapter.py `
   --adapter-source-root adapter-source `
+  --pass-environment HF_HOME `
   --network-isolation-mode host-firewall `
   --network-isolation-evidence network-policy.txt `
   --inference-service-pid INFERENCE_SERVICE_PID `
@@ -291,6 +292,19 @@ adapter directory rather than a repository root with generated artifacts.
 Per-case execution revalidates the tree and runtime after every case and stops
 before launching another case if either changed.
 
+Adapter processes do not inherit the complete host environment. The runner
+starts with a bounded platform-specific set of path, locale, temporary, and
+process-startup variables plus deterministic Python guards that disable
+user-site imports and bytecode writes. Home and cache variables are opt-in.
+Use repeatable `--pass-environment NAME` only for
+additional variables the reviewed adapter needs; a requested missing variable
+fails before execution. The manifest retains the platform, sorted names,
+aggregate encoded size, and a canonical digest over each name and value hash,
+never plaintext values. Sensitive-looking credential names make claim metadata
+incomplete, and external scoring matches the environment digest frozen for
+that system. Value hashes can still be guessed when values have low entropy, so
+this mechanism is reproducibility evidence, not secret storage.
+
 `--max-memory-mb` uses `RLIMIT_AS` on POSIX and a race-free Windows Job Object
 boundary created before adapter code is resumed. It limits the adapter process
 tree. The separate service options capture an already-running inference
@@ -311,16 +325,17 @@ Revision, environment, model, context, tokenizer, inference concurrency,
 retries, and service cost are also recorded. Claim-bearing manifests require
 per-case isolation, an enforced process-tree memory limit, complete identity
 fields, the exact Qwen Q4 model, one inference slot, and zero model-service
-cost. Current `lrcbench-external-run-manifest-0.12` claim metadata requires an
+cost. Current `lrcbench-external-run-manifest-0.13` claim metadata requires an
 immutable adapter revision, `environment_id` equal to
 `sha256:<dependency-lock-sha256>`, the exact retained lock bytes, context length
 8192, the evaluator tokenizer, zero retries, the exact
 Qwen/one-slot/zero-service-cost identity, and retained network-isolation
 evidence, the retained command-referenced adapter entrypoint, its bounded
 immutable source tree, the hashed resolved runtime, a portable complete command
-contract, plus at least two stable inference-service samples within the
-configured ceiling. Scoring also requires every environment/network-evidence
-digest, adapter entrypoint/source-tree/runtime/command digest, the service
+contract, a bounded name-audited process-environment digest, plus at least
+two stable inference-service samples within the configured ceiling. Scoring
+also requires every dependency/process-environment/network-evidence digest,
+adapter entrypoint/source-tree/runtime/command digest, the service
 memory metric/executable digest/ceiling, isolation, timeout, polling, output,
 candidate, and adapter memory limit to match the frozen protocol.
 `--isolation whole-corpus` remains useful for diagnostics but is a registered

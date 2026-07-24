@@ -21,6 +21,7 @@ from benchmarks.external_runner import (
     capture_dependency_lock_evidence,
     capture_inference_service_contract,
     capture_network_isolation_evidence,
+    capture_process_environment_evidence,
     load_external_run_manifest,
     run_external_cases,
     run_external_command,
@@ -172,8 +173,29 @@ def retained_inference_service():
 
 def test_claim_identity_requires_frozen_model_and_environment_contract() -> None:
     identity = claim_identity()
+    safe_environment = capture_process_environment_evidence(
+        {"LRCBENCH_MODE": "frozen"}
+    )
+    changed_environment = capture_process_environment_evidence(
+        {"LRCBENCH_MODE": "diagnostic"}
+    )
+    sensitive_environment = capture_process_environment_evidence(
+        {"OPENAI_API_KEY": "not-retained"}
+    )
 
     assert identity.claim_metadata_complete
+    assert safe_environment.claim_evidence_complete
+    assert (
+        safe_environment.environment_sha256
+        != changed_environment.environment_sha256
+    )
+    assert safe_environment.variable_names == ("LRCBENCH_MODE",)
+    assert not sensitive_environment.claim_evidence_complete
+    with pytest.raises(
+        ExternalRunnerError,
+        match="portable ASCII identifiers",
+    ):
+        capture_process_environment_evidence({"NOT-PORTABLE": "value"})
     assert not replace(identity, model_id="another/model").claim_metadata_complete
     assert not replace(
         identity,
@@ -1203,7 +1225,13 @@ def test_per_case_runner_executes_without_a_shell_and_validates_candidate(
     assert manifest_sha == hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def test_cli_defaults_to_claim_eligible_per_case_mode(tmp_path, capsys) -> None:
+def test_cli_defaults_to_claim_eligible_per_case_mode(
+    tmp_path,
+    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LRCBENCH_ADAPTER_MODE", "frozen-value")
+    monkeypatch.setenv("OPENAI_API_KEY", "must-not-be-inherited")
     corpus_path = tmp_path / "corpus.json"
     write_corpus(corpus_path)
     candidate_path = tmp_path / "candidate.json"
@@ -1223,6 +1251,8 @@ def test_cli_defaults_to_claim_eligible_per_case_mode(tmp_path, capsys) -> None:
             str(candidate_path),
             "--manifest-out",
             str(manifest_path),
+            "--pass-environment",
+            "LRCBENCH_ADAPTER_MODE",
             "--timeout-seconds",
             "5",
             "--max-memory-mb",
@@ -1266,6 +1296,15 @@ def test_cli_defaults_to_claim_eligible_per_case_mode(tmp_path, capsys) -> None:
     assert exit_code == 0
     assert payload["isolation_mode"] == "per_case"
     assert payload["claim_metadata_complete"]
+    assert "LRCBENCH_ADAPTER_MODE" in payload[
+        "process_environment"
+    ]["variable_names"]
+    assert "OPENAI_API_KEY" not in payload[
+        "process_environment"
+    ]["variable_names"]
+    serialized_manifest = manifest_path.read_text(encoding="utf-8")
+    assert "frozen-value" not in serialized_manifest
+    assert "must-not-be-inherited" not in serialized_manifest
     assert "ready for registered scoring" in capsys.readouterr().out
 
 
@@ -1450,6 +1489,11 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
     adapter_runtime_executable_sha256s = {
         "fixture-adapter": manifest.adapter_runtime.executable_sha256,
     }
+    adapter_environment_sha256s = {
+        "fixture-adapter": (
+            manifest.process_environment.environment_sha256
+        ),
+    }
     adapter_command_sha256s = {
         "fixture-adapter": manifest.command_sha256,
     }
@@ -1467,6 +1511,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_runtime_executable_sha256s=(
             adapter_runtime_executable_sha256s
         ),
+        adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
     )
@@ -1475,6 +1520,31 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         manifest_path,
         expected_dataset_sha256=document["dataset_sha256"],
     )
+    reordered_environment_payload = json.loads(
+        json.dumps(manifest.to_dict())
+    )
+    reordered_environment_payload["process_environment"][
+        "variable_names"
+    ].reverse()
+    reordered_environment_payload.pop("manifest_sha256")
+    reordered_environment_payload["manifest_sha256"] = (
+        _canonical_sha256(reordered_environment_payload)
+    )
+    reordered_environment_path = (
+        tmp_path / "reordered-environment-manifest.json"
+    )
+    reordered_environment_path.write_text(
+        json.dumps(reordered_environment_payload),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="process environment evidence is invalid.*not canonical",
+    ):
+        load_external_run_manifest(
+            reordered_environment_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
     report = run_benchmark(
         config,
         external_manifest_paths=(manifest_path,),
@@ -1524,6 +1594,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_runtime_executable_sha256s=(
             adapter_runtime_executable_sha256s
         ),
+        adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
     )
@@ -1556,6 +1627,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_runtime_executable_sha256s=(
             adapter_runtime_executable_sha256s
         ),
+        adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
     )
@@ -1588,6 +1660,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_runtime_executable_sha256s=(
             adapter_runtime_executable_sha256s
         ),
+        adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
     )
@@ -1618,6 +1691,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_runtime_executable_sha256s={
             "fixture-adapter": "f" * 64,
         },
+        adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
     )
@@ -1630,6 +1704,45 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             external_manifest_paths=(manifest_path,),
             expected_external_systems=systems,
             external_protocol_path=mismatched_runtime_protocol,
+        )
+
+    mismatched_process_environment_directory = (
+        tmp_path / "mismatched-process-environment"
+    )
+    mismatched_process_environment_directory.mkdir()
+    mismatched_process_environment_protocol = (
+        write_frozen_external_protocol(
+            mismatched_process_environment_directory,
+            systems,
+            adapter_revisions={
+                "fixture-adapter": FIXTURE_ADAPTER_REVISION,
+            },
+            environment_ids={
+                "fixture-adapter": FIXTURE_ENVIRONMENT_ID,
+            },
+            adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
+            adapter_source_tree_sha256s=adapter_source_tree_sha256s,
+            adapter_runtime_executable_sha256s=(
+                adapter_runtime_executable_sha256s
+            ),
+            adapter_environment_sha256s={
+                "fixture-adapter": "f" * 64,
+            },
+            adapter_command_sha256s=adapter_command_sha256s,
+            synthetic_dataset_sha256=document["dataset_sha256"],
+        )
+    )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="adapter environment does not match the frozen protocol",
+    ):
+        run_benchmark(
+            config,
+            external_manifest_paths=(manifest_path,),
+            expected_external_systems=systems,
+            external_protocol_path=(
+                mismatched_process_environment_protocol
+            ),
         )
 
     mismatched_command_directory = tmp_path / "mismatched-command"
@@ -1648,6 +1761,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_runtime_executable_sha256s=(
             adapter_runtime_executable_sha256s
         ),
+        adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s={
             "fixture-adapter": "f" * 64,
         },
@@ -1680,6 +1794,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_runtime_executable_sha256s=(
             adapter_runtime_executable_sha256s
         ),
+        adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
         max_memory_mb=512,
@@ -1711,6 +1826,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_runtime_executable_sha256s=(
             adapter_runtime_executable_sha256s
         ),
+        adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
         network_isolation_evidence_sha256="f" * 64,
@@ -1742,6 +1858,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_runtime_executable_sha256s=(
             adapter_runtime_executable_sha256s
         ),
+        adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
         inference_service_executable_sha256="f" * 64,
@@ -2395,6 +2512,11 @@ def test_failed_exact_contract_manifest_becomes_a_registered_invalid_nonwin(
         adapter_runtime_executable_sha256s={
             "timeout-fixture": (
                 manifest.adapter_runtime.executable_sha256
+            ),
+        },
+        adapter_environment_sha256s={
+            "timeout-fixture": (
+                manifest.process_environment.environment_sha256
             ),
         },
         adapter_command_sha256s={

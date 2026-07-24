@@ -854,9 +854,13 @@ the lock and every inventoried regular file, requires the entrypoint to be an
 exact tree record and appear in the recorded command, hashes the resolved
 runtime executable, and verifies a path-independent command contract. Each
 per-case invocation must normalize to that same contract, while claim runs use
-the source root as their working directory. Scoring requires those bytes, the
-immutable adapter revision, the entrypoint/source-tree/runtime/command digests,
-exact
+the source root as their working directory. Adapter children receive a bounded
+platform-startup allowlist instead of the full host environment. Extra
+variables require repeatable `--pass-environment NAME`; values are represented
+only by a canonical environment digest, while names remain auditable and
+sensitive-looking names invalidate claim metadata. Scoring requires those
+bytes, the immutable adapter revision, the
+entrypoint/source-tree/runtime/environment/command digests, exact
 model/context/tokenizer/retry contract, and all retained runner
 limits—including the 20 ms enforcement polling cadence—to match the frozen
 protocol. Claim controls also require a bounded retained host/container

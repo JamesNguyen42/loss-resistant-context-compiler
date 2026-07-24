@@ -2622,6 +2622,7 @@ def run_benchmark(
     protocol_adapter_entrypoint_sha256s: dict[str, str] = {}
     protocol_adapter_source_tree_sha256s: dict[str, str] = {}
     protocol_adapter_runtime_executable_sha256s: dict[str, str] = {}
+    protocol_adapter_environment_sha256s: dict[str, str] = {}
     protocol_adapter_command_sha256s: dict[str, str] = {}
     protocol_execution_contract: Any | None = None
     if external_protocol_path is not None:
@@ -2655,6 +2656,9 @@ def run_benchmark(
         )
         protocol_adapter_runtime_executable_sha256s = dict(
             verified_protocol.adapter_runtime_executable_sha256s
+        )
+        protocol_adapter_environment_sha256s = dict(
+            verified_protocol.adapter_environment_sha256s
         )
         protocol_adapter_command_sha256s = dict(
             verified_protocol.adapter_command_sha256s
@@ -2846,6 +2850,16 @@ def run_benchmark(
                 raise ExternalBaselineError(
                     f"external system {reference.system!r} run manifest "
                     "adapter runtime does not match the frozen protocol"
+                )
+            if (
+                reference.process_environment.environment_sha256
+                != protocol_adapter_environment_sha256s[
+                    reference.system
+                ]
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "adapter environment does not match the frozen protocol"
                 )
             if (
                 reference.command_sha256

@@ -346,6 +346,9 @@ Acceptance:
   digests and runner-owned temporary path structure.
 - [x] Retain every validated one-case candidate self-digest and reconcile it
   with the matching raw case in the retained merged candidate during replay.
+- [x] Replace full host-environment inheritance with a bounded startup
+  allowlist, opt-in named pass-through, value-redacted hashing, and a
+  per-system environment digest frozen by external scoring.
 - [x] Count the final rendered output and provenance ledger under the same
   evaluator-owned tokenizer and token budget for every system; external
   candidates receive a canonical typed-claim/provenance sidecar, and tests show
