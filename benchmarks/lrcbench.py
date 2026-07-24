@@ -2443,6 +2443,13 @@ def _summary(report: BenchmarkReport) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from .report_verifier import (
+        DEFAULT_BENCHMARK_REPORT_LIMITS,
+        BenchmarkReportError,
+        BenchmarkReportLimits,
+        load_benchmark_report,
+    )
+
     effective_argv = list(sys.argv[1:] if argv is None else argv)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--histories", type=int, default=32)
@@ -2491,7 +2498,54 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="run deterministic corpus/candidate interchange checks and exit",
     )
+    parser.add_argument(
+        "--verify-report",
+        type=Path,
+        metavar="PATH",
+        help="strictly verify a saved current-schema JSON report and exit",
+    )
+    parser.add_argument(
+        "--max-report-bytes",
+        type=int,
+        default=DEFAULT_BENCHMARK_REPORT_LIMITS.max_input_bytes,
+        help="maximum input size accepted by --verify-report",
+    )
     args = parser.parse_args(effective_argv)
+    if args.verify_report is not None:
+        generation_options = (
+            args.self_test
+            or args.histories != 32
+            or args.messages != 72
+            or args.noise_lines != 8
+            or args.token_budget != 900
+            or args.minimum_compression != 5.0
+            or args.seed != 56_056
+            or args.bootstrap_samples != 2_000
+            or args.bootstrap_lower_quantile != 0.025
+            or args.json_out is not None
+            or args.export_corpus is not None
+            or bool(args.external_baseline)
+            or bool(args.external_run_manifest)
+            or bool(args.expected_external_system)
+            or args.include_histories
+        )
+        if generation_options:
+            parser.error("--verify-report cannot be combined with benchmark generation options")
+        try:
+            limits = BenchmarkReportLimits(max_input_bytes=args.max_report_bytes)
+            verified = load_benchmark_report(args.verify_report, limits=limits)
+        except (BenchmarkReportError, OSError, TypeError, ValueError) as exc:
+            parser.error(str(exc))
+        print(
+            json.dumps(
+                {"verified": True, **verified.to_dict()},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.max_report_bytes != DEFAULT_BENCHMARK_REPORT_LIMITS.max_input_bytes:
+        parser.error("--max-report-bytes requires --verify-report")
     if args.self_test:
         print(json.dumps(run_interchange_self_test(), indent=2, sort_keys=True))
         return 0

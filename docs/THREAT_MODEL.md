@@ -174,6 +174,13 @@ metadata and failures. Both are self-hashes: they detect inconsistency relative
 to the recorded document but provide neither authorship nor experimental
 fairness.
 
+The bounded `--verify-report` path adds strict JSON/schema checks, deterministic
+dataset regeneration, both digest recomputations, comparison/run-metadata
+validation, and optional raw-metric reconciliation. It detects more internally
+inconsistent reports, but an attacker who can fabricate a completely new
+self-consistent report can also compute new self-hashes. Trusted publication
+still requires an external signature or independently anchored digest.
+
 Gold-free corpus exports now carry their own canonical `corpus_sha256`, and the
 external runner verifies it before execution. That detects accidental or
 unanchored export changes; it is still a self-hash, not a signature or proof

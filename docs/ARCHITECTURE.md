@@ -409,6 +409,14 @@ revisions, cost, and observed failures. This makes individual runs auditable
 without making time- or machine-specific fields part of the reproducible
 certificate estimand.
 
+`benchmarks/report_verifier.py` verifies saved current-schema reports beyond
+the envelope hash. It rejects duplicate and non-finite JSON under explicit
+byte/depth/collection limits, regenerates the deterministic dataset identity,
+reconstructs the frozen certificate evidence document, validates run and
+comparison metadata, and reconciles per-history counts/rates/aggregates when
+raw histories are retained. This is an integrity and consistency check, not an
+authentication mechanism.
+
 Every runtime-error path calls one formatter. The default remains
 `ctxc: <message>` on stderr. `--error-format json` instead emits one compact
 `ctxc-diagnostic-0.1` object with command, stable category/code, exit status,

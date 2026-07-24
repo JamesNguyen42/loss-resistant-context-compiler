@@ -197,7 +197,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-All 280 tests passed alongside it.
+All 286 tests passed alongside it.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -219,6 +219,20 @@ the repository revision/dirty state, package and interchange versions, exact
 command, timestamp, duration, environment, tokenizer/model, baseline revisions,
 cost, and failures. `report_sha256` binds that whole envelope while the
 certificate's `evidence_sha256` remains deterministic across equivalent runs.
+
+Verify a newly generated current-schema report offline:
+
+```console
+python -m benchmarks --verify-report benchmarks/result.json
+```
+
+The verifier reads a bounded regular UTF-8 file through duplicate-key,
+non-finite-number, depth, and size checks. It regenerates `dataset_sha256`,
+recomputes both report digests, validates comparison and run metadata, and,
+when present, reconciles every raw per-history count with its recorded rate and
+aggregate. Verification confirms internal consistency, not authorship or
+experimental fairness. A valid `NOT ISSUED` report passes verification because
+certificate outcome and document integrity are separate questions.
 
 The dated inclusion, failure, estimand, and freeze rules are in the
 [draft external comparison protocol](protocols/external-comparison-v1.md).

@@ -16,20 +16,34 @@ from .lrcbench import (
     run_benchmark,
     run_interchange_self_test,
 )
+from .report_verifier import (
+    DEFAULT_BENCHMARK_REPORT_LIMITS,
+    BenchmarkReportError,
+    BenchmarkReportLimits,
+    VerifiedBenchmarkReport,
+    load_benchmark_report,
+    verify_benchmark_report,
+)
 
 __all__ = [
     "CANDIDATE_SCHEMA",
     "CORPUS_SCHEMA",
     "REPORT_SCHEMA",
     "TOKENIZER_ID",
+    "DEFAULT_BENCHMARK_REPORT_LIMITS",
     "BenchmarkConfig",
     "BenchmarkReport",
+    "BenchmarkReportError",
+    "BenchmarkReportLimits",
     "BenchmarkRunMetadata",
     "ComponentRevision",
     "ExternalBaselineError",
+    "VerifiedBenchmarkReport",
     "corpus_document",
     "decode_corpus_document",
     "decode_external_candidate",
+    "load_benchmark_report",
     "run_benchmark",
     "run_interchange_self_test",
+    "verify_benchmark_report",
 ]

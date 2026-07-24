@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 280 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 286 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
@@ -137,7 +137,7 @@ The repository currently includes:
   and valid or failed manifests that feed per-system certificate decisions;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
-- cross-version CI, linting, wheel/schema checks, and 280 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 286 regression tests.
 
 ## In development
 
@@ -555,6 +555,7 @@ gold-free corpus for a separately run system:
 ```console
 python -m benchmarks --self-test
 python -m benchmarks --histories 24 --export-corpus lrcbench-corpus.json
+python -m benchmarks --verify-report lrcbench-24.json
 ```
 
 Benchmark JSON reports and corpus exports use the same flushed, `fsync`ed
@@ -569,6 +570,15 @@ duration, Python/platform, tokenizer/model identity, baseline revisions,
 model-service cost, and failures. The certificate `evidence_sha256` remains the
 deterministic metric digest; `report_sha256` additionally binds the
 run-specific envelope.
+
+`--verify-report` strictly decodes a bounded regular UTF-8 file, rejects
+duplicate keys, non-finite numbers, excessive depth/size, and unknown fields,
+regenerates the deterministic dataset id, recomputes both digests, validates
+run metadata and comparison accounting, and reconciles raw history counts with
+their recorded rates when `--include-histories` evidence is present. Its
+success means the current-schema document is internally consistent; self-hashes
+are not signatures and do not authenticate who produced it. A structurally
+valid report with a non-issued certificate still verifies successfully.
 
 External outputs can be imported directly with repeatable
 `--external-baseline` for diagnostics. A counted registered comparison also
@@ -594,7 +604,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): all 280 tests pass, and the recorded default
+Current local snapshot (2026-07-24): all 286 tests pass, and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`

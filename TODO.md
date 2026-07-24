@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Run 280 tests; CI covers Python 3.11, 3.12, and 3.13.
+- [x] Run 286 tests; CI covers Python 3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
 
@@ -525,6 +525,10 @@ than most related technology” within the exact dated evaluation scope.
   baseline revisions, cost, and failures in benchmark reports; bind the
   envelope with `report_sha256` while retaining deterministic certificate
   `evidence_sha256`.
+- [x] Add a bounded strict verifier for saved current-schema benchmark reports
+  that rejects duplicate/non-finite JSON, regenerates the dataset identity,
+  recomputes report and certificate digests, validates comparison/run metadata,
+  and reconciles included per-history counts and rates.
 - [ ] Version and propagate equivalent producer metadata through corpus and
   candidate interchange artifacts without invalidating frozen dataset identity.
 - [ ] Add metrics for item counts, protected overflow, recovery additions,
