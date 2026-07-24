@@ -388,8 +388,16 @@ replacement removes the temporary file and leaves the old destination
 unchanged. POSIX hosts additionally `fsync` the parent directory after the
 rename; Windows uses the atomic replacement boundary available through
 `os.replace()` but has no portable directory-`fsync` equivalent. CLI file
-outputs and archive commits share this primitive. Stdout stays a stream and
-therefore cannot provide file-transaction semantics.
+outputs, archive commits, benchmark reports, corpus exports, and external-run
+manifests share this primitive. Stdout stays a stream and therefore cannot
+provide file-transaction semantics.
+
+The default mode replaces an existing destination. The exclusive mode used for
+runner manifests instead hard-links the complete temporary file to a still
+absent destination, removes the temporary name, and then syncs the directory.
+This closes the existence-check/write race: if another producer wins, its file
+is preserved and the commit fails. A filesystem without same-directory
+hard-link support therefore refuses exclusive installation safely.
 
 Every runtime-error path calls one formatter. The default remains
 `ctxc: <message>` on stderr. `--error-format json` instead emits one compact

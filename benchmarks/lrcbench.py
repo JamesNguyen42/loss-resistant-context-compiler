@@ -21,6 +21,7 @@ from statistics import fmean
 from typing import Any
 
 from context_compiler import CompilationPolicy, ContextCompiler, MemoryKind, SourceRecord
+from context_compiler.atomic import atomic_write_text
 
 BENCHMARK_VERSION = "lrcbench-0.2"
 CORPUS_SCHEMA = "lrcbench-corpus-0.2"
@@ -1931,11 +1932,10 @@ def run_benchmark(
     digest = dataset_digest(cases, config)
     if corpus_export_path is not None:
         export_path = Path(corpus_export_path)
-        export_path.parent.mkdir(parents=True, exist_ok=True)
-        export_path.write_text(
+        atomic_write_text(
+            export_path,
             json.dumps(corpus_document(cases, config, digest), indent=2, sort_keys=True)
             + "\n",
-            encoding="utf-8",
         )
     manifest_candidate_paths: list[Path] = []
     external_failures: dict[str, str] = {}
@@ -2253,10 +2253,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(str(exc))
     print(_summary(report))
     if args.json_out:
-        args.json_out.parent.mkdir(parents=True, exist_ok=True)
-        args.json_out.write_text(
+        atomic_write_text(
+            args.json_out,
             report.to_json(include_histories=args.include_histories) + "\n",
-            encoding="utf-8",
         )
     return 0 if report.certificate.issued else 2
 

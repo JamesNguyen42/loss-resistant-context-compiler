@@ -197,7 +197,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-All 268 tests passed alongside it.
+All 277 tests passed alongside it.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -211,6 +211,9 @@ system result.
 Use `--json-out benchmarks/result.json --include-histories` to retain auditable
 per-history measurements. Generated result files should not be treated as
 source fixtures unless intentionally reviewed and committed.
+Reports and corpus exports are installed by same-directory atomic replacement.
+Runner manifests use exclusive atomic installation, so a competing destination
+created during the run is preserved rather than overwritten.
 
 The dated inclusion, failure, estimand, and freeze rules are in the
 [draft external comparison protocol](protocols/external-comparison-v1.md).

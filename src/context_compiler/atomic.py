@@ -24,21 +24,29 @@ def fsync_directory(path: str | Path) -> None:
         os.close(descriptor)
 
 
-def atomic_write_text(path: str | Path, value: str) -> None:
-    """Install complete UTF-8 text with same-directory atomic replacement."""
+def atomic_write_text(
+    path: str | Path,
+    value: str,
+    *,
+    overwrite: bool = True,
+) -> None:
+    """Install complete UTF-8 text atomically in the destination directory."""
 
     if not isinstance(value, str):
         raise TypeError("atomic text output must be a string")
+    if not isinstance(overwrite, bool):
+        raise TypeError("overwrite must be a boolean")
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     existing_mode: int | None = None
-    try:
-        existing_stat = output_path.stat()
-    except FileNotFoundError:
-        pass
-    else:
-        if stat.S_ISREG(existing_stat.st_mode):
-            existing_mode = stat.S_IMODE(existing_stat.st_mode)
+    if overwrite:
+        try:
+            existing_stat = output_path.stat()
+        except FileNotFoundError:
+            pass
+        else:
+            if stat.S_ISREG(existing_stat.st_mode):
+                existing_mode = stat.S_IMODE(existing_stat.st_mode)
 
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=".ctxc-",
@@ -55,7 +63,11 @@ def atomic_write_text(path: str | Path, value: str) -> None:
             stream.write(value)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary_path, output_path)
+        if overwrite:
+            os.replace(temporary_path, output_path)
+        else:
+            os.link(temporary_path, output_path)
+            temporary_path.unlink()
         fsync_directory(output_path.parent)
     finally:
         if descriptor >= 0:

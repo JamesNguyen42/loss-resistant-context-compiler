@@ -198,6 +198,9 @@ aggregate system metrics, optional per-history evidence, certificate margins,
 reasons, and an evidence digest. Record the code revision, Python version,
 platform, and command alongside any published result. Generated reports are
 measurements, not source fixtures, unless intentionally reviewed and committed.
+Report and corpus-export files are installed through a flushed, `fsync`ed
+same-directory atomic replacement, so a pre-replacement failure preserves an
+older evidence file rather than truncating it.
 
 ## External candidate interchange
 
@@ -264,11 +267,13 @@ python -m benchmarks.external_runner \
   -- ADAPTER_COMMAND {corpus} {candidate} {system} {case_id}
 ```
 
-It never invokes a shell or overwrites an existing output. The default
-`per-case` mode runs cases sequentially in fresh processes, gives each process a
-one-case gold-free corpus, applies per-case time/output limits, validates each
-candidate independently, and merges only complete valid coverage. The
-self-hashed manifest binds the exact invocation and outcome for every case.
+It never invokes a shell or overwrites an existing output. The manifest uses an
+exclusive atomic install, so another file created during the run wins rather
+than being overwritten at commit time. The default `per-case` mode runs cases
+sequentially in fresh processes, gives each process a one-case gold-free corpus,
+applies per-case time/output limits, validates each candidate independently,
+and merges only complete valid coverage. The self-hashed manifest binds the
+exact invocation and outcome for every case.
 `whole-corpus` mode is retained for diagnostics but is not claim-bearing.
 
 The original corpus is retained as manifest evidence. On import, the loader
@@ -309,7 +314,7 @@ evidence requirements below still apply.
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-All 268 tests also passed. The relevant observed metrics were:
+All 277 tests also passed. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |

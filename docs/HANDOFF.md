@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 268 passing |
+| Tests at this snapshot | 277 passing |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -238,7 +238,7 @@ supplied extractors and token counters are deterministic.
 | `src/context_compiler/verifier.py` | Independent coverage, provenance, support, authority, and state checks |
 | `src/context_compiler/io.py` | Input decoding, strict artifact shape validation, replay verification |
 | `src/context_compiler/limits.py` | Shared source/artifact byte, line, depth, canonical-size, and collection limits |
-| `src/context_compiler/atomic.py` | Shared same-directory atomic UTF-8 file replacement and durability helpers |
+| `src/context_compiler/atomic.py` | Shared same-directory replace-or-create UTF-8 transactions and durability helpers |
 | `src/context_compiler/file_lock.py` | Cross-platform persistent advisory-file locking |
 | `src/context_compiler/archive.py` | Logically append-only local archive, advisory locking, atomic commits, loading, and verification |
 | `src/context_compiler/cli.py` | `ctxc` parsing, atomic output transactions, versioned error diagnostics, and exit codes |
@@ -383,7 +383,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 268 tests pass.
+- 277 tests pass.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -413,6 +413,10 @@ audited. Any selected superseded item independently fails verification as
   existence. Same-process and real subprocess tests prove live-writer timeout
   and automatic lock release after forced process termination. Cleanup also
   preserves a primary archive error if descriptor close independently fails.
+- Benchmark reports, exported corpora, per-case corpus inputs, and runner
+  manifests use atomic commits. Failure injection proves old evidence survives
+  failed replacement, temporary files are cleaned, and a manifest creation race
+  cannot clobber the competing file.
 - Opt-in JSON runtime diagnostics have stable resource, timeout, I/O,
   invalid-input, integrity, and policy categories. Default text output and
   stdout behavior remain unchanged.
@@ -567,6 +571,8 @@ lower quantile before results are observed.
   semantics.
 - Each archive append rewrites the complete bounded event log, so append time
   and temporary storage are O(archive size).
+- Exclusive manifest installation requires same-directory hard-link support;
+  unsupported filesystems fail safely without publishing a partial manifest.
 - Direct Python callers can allocate oversized objects before the compiler
   gets an opportunity to reject them; configured byte limits do not equal a
   process-RSS guarantee.

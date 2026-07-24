@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from context_compiler.atomic import atomic_write_text
 from context_compiler.local_qwen import QWEN_Q4_VARIANT
 
 from .lrcbench import (
@@ -1304,7 +1305,8 @@ def run_external_cases(
                 "cases": [raw_case],
             }
             case_corpus_document["corpus_sha256"] = _canonical_sha256(case_corpus_document)
-            case_corpus_path.write_text(
+            atomic_write_text(
+                case_corpus_path,
                 json.dumps(
                     case_corpus_document,
                     indent=2,
@@ -1312,7 +1314,6 @@ def run_external_cases(
                     ensure_ascii=False,
                 )
                 + "\n",
-                encoding="utf-8",
             )
             case_manifest = run_external_command(
                 resolved_template,
@@ -1564,10 +1565,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     except (ExternalRunnerError, TypeError, ValueError) as exc:
         parser.error(str(exc))
-    args.manifest_out.write_text(
-        manifest.to_json() + "\n",
-        encoding="utf-8",
-    )
+    try:
+        atomic_write_text(
+            args.manifest_out,
+            manifest.to_json() + "\n",
+            overwrite=False,
+        )
+    except FileExistsError:
+        parser.error(
+            f"manifest output already exists; refusing to overwrite: {args.manifest_out}"
+        )
+    except OSError as exc:
+        parser.error(f"could not commit manifest output: {exc}")
     if manifest.ready_for_scoring and manifest.claim_metadata_complete:
         status = "ready for registered scoring"
     elif manifest.ready_for_scoring:
