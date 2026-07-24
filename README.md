@@ -27,9 +27,10 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 669 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 682 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
+| Novel English diagnostic | 64 local cases; 85.37% precision and 87.5% recall |
 | Named external comparisons | Not run |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
@@ -163,7 +164,9 @@ The repository currently includes:
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
 - a fixed-digest, versioned CI compile-performance gate with latency-growth and
   traced-Python-memory ceilings;
-- cross-version CI, linting, wheel/schema checks, and 669 regression tests.
+- a frozen, self-hashed 64-case novel-English precision/recall diagnostic with
+  exact deterministic replay;
+- cross-version CI, linting, wheel/schema checks, and 682 regression tests.
 
 ## In development
 
@@ -708,6 +711,7 @@ python -m benchmarks --self-test
 python -m benchmarks --histories 24 --export-corpus lrcbench-corpus.json
 python -m benchmarks --verify-report lrcbench-24.json
 python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
+python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json
 ```
 
 Benchmark JSON reports and corpus exports use the same flushed, `fsync`ed
@@ -771,7 +775,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 669 tests are collected (664 pass and 5
+Current local snapshot (2026-07-24): 682 tests are collected (677 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
@@ -785,6 +789,14 @@ authority accuracy, a 100% stale-claim rate, 0% perfect histories, and 30.13x
 compression. The reviewed JSON evidence is
 [docs/results/lrcbench-local.json](docs/results/lrcbench-local.json).
 
+The separate frozen 64-case novel-English diagnostic recorded 35 true
+positives, 6 false positives, and 5 false negatives: 85.3659% micro precision,
+87.5% micro recall, 86.4198% F1, and 55/64 exact-match cases, with no compiler
+verification failures. It is locally authored diagnostic evidence, not an
+independent or production-representative corpus. See
+[the method and mismatch audit](docs/PHRASE_EVALUATION.md) and the
+[self-hashed report](docs/results/novel-english-phrases-v1.json).
+
 These local generated results are **not an external-system comparison** and do
 not establish the requested 50% advantage over most related technology. Rerun
 the commands above for the current revision and environment.
@@ -795,6 +807,7 @@ the commands above for the current revision and environment.
 - [Next-chat handoff and current project state](docs/HANDOFF.md)
 - [Architecture and invariants](docs/ARCHITECTURE.md)
 - [Benchmark design and the exact 50% bar](docs/BENCHMARKING.md)
+- [Novel English phrase diagnostic](docs/PHRASE_EVALUATION.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Compiled-artifact schema compatibility](docs/SCHEMA_COMPATIBILITY.md)
 - [Related work](docs/RELATED_WORK.md)

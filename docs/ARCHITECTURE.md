@@ -255,6 +255,13 @@ negated numeric-unit limits, POSIX and Windows locators, diagnostic families,
 and correction phrasings, then checks verification, exact character spans,
 temporal links, and protected selection.
 
+The separate `benchmarks.phrase_eval` diagnostic treats the complete compiled
+ledger as a prediction set. Gold and predicted atoms match only on kind,
+literal text, source id, character offsets, and quote. Its bounded strict-JSON
+corpus and deterministic report carry independent canonical SHA-256 values;
+report verification reruns every isolated case and requires exact report
+equality. Misses remain valid measurements rather than harness failures.
+
 `ModelExtractor` wraps any callable that maps a provider-neutral JSON prompt to
 a JSON response. String responses use strict object decoding: duplicate keys,
 non-standard NaN/infinity constants, and overflowed non-finite floats fail the

@@ -15,11 +15,12 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 669 collected: 664 passing, 5 skipped |
+| Tests at this snapshot | 682 collected: 677 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
 | Recorded local certificate | `ISSUED`, scope `local-bundled-only` |
+| Novel English diagnostic | 64 cases: 85.3659% precision, 87.5% recall |
 | External systems evaluated | None |
 | External 50%-better claim | Not established |
 | Downstream task completion evidence | None yet |
@@ -429,7 +430,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 669 tests are collected: 664 pass and 5 platform/optional checks are skipped.
+- 682 tests are collected: 677 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -449,6 +450,11 @@ audited. Any selected superseded item independently fails verification as
   bullet forms, four conjunction forms, negated numeric-unit limits, six path
   locator families, seven diagnostic families, and four correction grammars;
   every case checks verified end-to-end output and exact provenance.
+- The self-hashed 64-case novel-English diagnostic records 35 true positives,
+  6 false positives, and 5 false negatives (85.3659% precision, 87.5% recall)
+  with zero compiler-verification failures. Strict report verification replays
+  every case. The corpus is local diagnostic evidence, not independent or
+  production-representative; see `docs/PHRASE_EVALUATION.md`.
 - Source loaders, direct compilation, independent verification, and archives
   share default-on byte, line, JSON-depth, count, per-record, and aggregate
   canonical-size limits. Adversarial tests cover UTF-8 boundaries, oversized
@@ -769,6 +775,7 @@ python -m ruff check src tests benchmarks
 python -m compileall -q src benchmarks tests
 python -m benchmarks --self-test
 python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
+python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json
 python -m benchmarks --histories 24 --json-out lrcbench-24.json --include-histories
 python -c "
 import pathlib, subprocess, sys, tempfile, zipfile

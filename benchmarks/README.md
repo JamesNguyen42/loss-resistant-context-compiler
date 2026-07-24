@@ -33,6 +33,27 @@ The bundled `compiler` candidate uses the default deterministic
 optional adapter accepts only complete atomic source literals for ordinary
 claims and exact source literals for exact claims, not model paraphrases.
 
+## Novel English phrase diagnostic
+
+`python -m benchmarks.phrase_eval` is a smaller, separate generalization
+diagnostic. Its frozen 64-case corpus has 40 exact-span positive cases and 24
+semantic negatives spanning tool prompt injection, assistant authority, and
+benign keyword mentions. The first deterministic run recorded 35 true
+positives, 6 false positives, 5 false negatives, 85.3659% micro precision,
+87.5% micro recall, and no compiler-verification failures.
+
+The corpus and report have independent self-hashes. `--verify-report` strictly
+loads both artifacts and requires exact deterministic replay:
+
+```console
+python -m benchmarks.phrase_eval \
+  --verify-report docs/results/novel-english-phrases-v1.json
+```
+
+This locally authored diagnostic is not independently annotated, representative
+of production traffic, multilingual, or an evaluation of `ModelExtractor`.
+See [the complete method and mismatch audit](../docs/PHRASE_EVALUATION.md).
+
 ## External baselines
 
 The bundled baselines are deterministic controls, not claims about the current
@@ -250,7 +271,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 669 tests alongside it: 664 passed and 5
+The suite collected 682 tests alongside it: 677 passed and 5
 platform/optional checks were skipped.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |
