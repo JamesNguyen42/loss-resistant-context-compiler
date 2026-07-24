@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import stat
 import sys
+import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -19,10 +22,14 @@ from .io import (
 from .limits import (
     DEFAULT_ARTIFACT_LIMITS,
     DEFAULT_SOURCE_LIMITS,
+    ArtifactLimitError,
     ArtifactLimits,
+    SourceLimitError,
     SourceLimits,
 )
 from .models import CompilationPolicy
+
+_DIAGNOSTIC_SCHEMA = "ctxc-diagnostic-0.1"
 
 
 def _source_limits(args: argparse.Namespace) -> SourceLimits:
@@ -55,16 +62,132 @@ def _input_sources(path: str, limits: SourceLimits) -> list:
     return load_sources_path(path, limits=limits)
 
 
-def _write_output(value: str, path: str | None) -> None:
-    if path:
-        output_path = Path(path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(
-            value + ("" if value.endswith("\n") else "\n"),
-            encoding="utf-8",
-        )
+def _fsync_directory(path: Path) -> None:
+    if os.name == "nt":
+        return
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _atomic_write_text(output_path: Path, value: str) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    existing_mode: int | None = None
+    try:
+        existing_stat = output_path.stat()
+    except FileNotFoundError:
+        pass
     else:
-        sys.stdout.write(value + ("" if value.endswith("\n") else "\n"))
+        if stat.S_ISREG(existing_stat.st_mode):
+            existing_mode = stat.S_IMODE(existing_stat.st_mode)
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=".ctxc-",
+        suffix=".tmp",
+        dir=output_path.parent,
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        if existing_mode is not None:
+            os.chmod(temporary_path, existing_mode)
+        stream = os.fdopen(descriptor, "w", encoding="utf-8", newline="\n")
+        descriptor = -1
+        with stream:
+            stream.write(value)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_path, output_path)
+        _fsync_directory(output_path.parent)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        temporary_path.unlink(missing_ok=True)
+
+
+def _write_output(value: str, path: str | None) -> None:
+    rendered = value + ("" if value.endswith("\n") else "\n")
+    if path:
+        _atomic_write_text(Path(path), rendered)
+    else:
+        sys.stdout.write(rendered)
+
+
+def _command_name(args: argparse.Namespace) -> str:
+    if getattr(args, "command", None) == "archive":
+        return f"archive {getattr(args, 'archive_command', '')}".strip()
+    return str(getattr(args, "command", "unknown"))
+
+
+def _error_identity(exc: BaseException) -> tuple[str, str]:
+    if isinstance(exc, (ArtifactLimitError, SourceLimitError)):
+        return "resource_limit", "resource_limit_exceeded"
+    if isinstance(exc, TimeoutError):
+        return "timeout", "operation_timed_out"
+    if isinstance(exc, FileNotFoundError):
+        return "io", "path_not_found"
+    if isinstance(exc, PermissionError):
+        return "io", "permission_denied"
+    if isinstance(exc, json.JSONDecodeError):
+        return "invalid_input", "invalid_json"
+    if isinstance(exc, UnicodeError):
+        return "invalid_input", "invalid_encoding"
+    if isinstance(exc, OSError):
+        return "io", "io_error"
+    if isinstance(exc, TypeError):
+        return "invalid_input", "invalid_type"
+    message = str(exc).casefold()
+    if any(
+        marker in message
+        for marker in (
+            "duplicate json object key",
+            "invalid json",
+            "json number must be finite",
+            "non-standard json constant",
+        )
+    ):
+        return "invalid_input", "invalid_json"
+    if any(marker in message for marker in ("hash mismatch", "digest mismatch")):
+        return "integrity", "integrity_check_failed"
+    if any(
+        marker in message
+        for marker in ("token budget", "compression ratio", "minimum_compression_ratio")
+    ):
+        return "policy", "policy_rejected"
+    return "invalid_input", "invalid_value"
+
+
+def _write_error(
+    args: argparse.Namespace,
+    exc: BaseException,
+    *,
+    exit_code: int = 2,
+    category: str | None = None,
+    code: str | None = None,
+) -> None:
+    if getattr(args, "error_format", "text") == "json":
+        inferred_category, inferred_code = _error_identity(exc)
+        diagnostic = {
+            "schema": _DIAGNOSTIC_SCHEMA,
+            "command": _command_name(args),
+            "category": category or inferred_category,
+            "code": code or inferred_code,
+            "exit_code": exit_code,
+            "exception_type": type(exc).__name__,
+            "message": str(exc),
+        }
+        sys.stderr.write(
+            json.dumps(
+                diagnostic,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        )
+        return
+    sys.stderr.write(f"ctxc: {exc}\n")
 
 
 def _compile(args: argparse.Namespace) -> int:
@@ -87,10 +210,16 @@ def _compile(args: argparse.Namespace) -> int:
             source_limits=source_limits,
         ).compile(sources)
     except (OSError, TypeError, ValueError, json.JSONDecodeError, TimeoutError) as exc:
-        sys.stderr.write(f"ctxc: {exc}\n")
+        _write_error(args, exc)
         return 2
     if args.format == "prompt" and not result.verification.passed:
-        sys.stderr.write("ctxc: refusing to render prompt from unverified memory\n")
+        _write_error(
+            args,
+            ValueError("refusing to render prompt from unverified memory"),
+            exit_code=3,
+            category="verification",
+            code="unverified_prompt_refused",
+        )
         return 3
     try:
         if args.format == "prompt":
@@ -99,7 +228,7 @@ def _compile(args: argparse.Namespace) -> int:
             rendered = result.to_json(include_all_items=not args.active_only)
         _write_output(rendered, args.output)
     except (OSError, TypeError, ValueError) as exc:
-        sys.stderr.write(f"ctxc: {exc}\n")
+        _write_error(args, exc)
         return 2
     if not result.verification.passed:
         return 3
@@ -116,7 +245,7 @@ def _archive_append(args: argparse.Namespace) -> int:
         appended = archive.append(sources)
         report = archive.verify()
     except (OSError, TypeError, ValueError, json.JSONDecodeError, TimeoutError) as exc:
-        sys.stderr.write(f"ctxc: {exc}\n")
+        _write_error(args, exc)
         return 2
     value = {
         "passed": report.passed,
@@ -136,7 +265,7 @@ def _archive_verify(args: argparse.Namespace) -> int:
             source_limits=_source_limits(args),
         ).verify()
     except OSError as exc:
-        sys.stderr.write(f"ctxc: {exc}\n")
+        _write_error(args, exc)
         return 2
     value = {
         "passed": report.passed,
@@ -161,7 +290,7 @@ def _verify(args: argparse.Namespace) -> int:
             artifact_limits=artifact_limits,
         )
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        sys.stderr.write(f"ctxc: {exc}\n")
+        _write_error(args, exc)
         return 2
     _write_output(json.dumps(report, indent=2, ensure_ascii=False), args.output)
     return 0 if report["passed"] else 3
@@ -172,7 +301,7 @@ def _inspect(args: argparse.Namespace) -> int:
         artifact_limits = _artifact_limits(args)
         artifact = load_artifact_path(args.artifact, limits=artifact_limits)
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        sys.stderr.write(f"ctxc: {exc}\n")
+        _write_error(args, exc)
         return 2
     if not isinstance(artifact, dict):
         raise TypeError("compiled artifact must be a JSON object")
@@ -282,6 +411,15 @@ def _add_artifact_limit_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_error_format_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--error-format",
+        choices=("text", "json"),
+        default="text",
+        help="render runtime errors as human-readable text or versioned JSON",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ctxc",
@@ -305,6 +443,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="append input to this immutable source archive, then compile the full archive",
     )
     _add_source_limit_arguments(compile_parser)
+    _add_error_format_argument(compile_parser)
     compile_parser.set_defaults(handler=_compile)
 
     verify_parser = subparsers.add_parser(
@@ -315,12 +454,14 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("-o", "--output")
     _add_source_limit_arguments(verify_parser)
     _add_artifact_limit_arguments(verify_parser)
+    _add_error_format_argument(verify_parser)
     verify_parser.set_defaults(handler=_verify)
 
     inspect_parser = subparsers.add_parser("inspect", help="show artifact health and compression")
     inspect_parser.add_argument("artifact")
     inspect_parser.add_argument("-o", "--output")
     _add_artifact_limit_arguments(inspect_parser)
+    _add_error_format_argument(inspect_parser)
     inspect_parser.set_defaults(handler=_inspect)
 
     archive_parser = subparsers.add_parser("archive", help="manage immutable cold source events")
@@ -330,11 +471,13 @@ def build_parser() -> argparse.ArgumentParser:
     archive_append.add_argument("input", help="history path or - for stdin")
     archive_append.add_argument("-o", "--output")
     _add_source_limit_arguments(archive_append)
+    _add_error_format_argument(archive_append)
     archive_append.set_defaults(handler=_archive_append)
     archive_verify = archive_subparsers.add_parser("verify", help="verify archive hashes and shape")
     archive_verify.add_argument("archive")
     archive_verify.add_argument("-o", "--output")
     _add_source_limit_arguments(archive_verify)
+    _add_error_format_argument(archive_verify)
     archive_verify.set_defaults(handler=_archive_verify)
     return parser
 
@@ -345,7 +488,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         return int(args.handler(args))
     except (OSError, TypeError, ValueError, TimeoutError) as exc:
-        sys.stderr.write(f"ctxc: {exc}\n")
+        _write_error(args, exc)
         return 2
 
 

@@ -378,6 +378,33 @@ quote; the prompt pointer is a compact locator, not a standalone cryptographic
 proof. Downstream models must still treat item text as untrusted historical
 data rather than executable instructions.
 
+## CLI output transaction and diagnostics
+
+File output never writes directly to the destination. The CLI creates a
+restrictive temporary file in the destination directory, writes the complete
+newline-terminated payload, flushes and `fsync`es it, preserves an existing
+regular file’s mode when replacing it, and calls `os.replace()`. Any failure
+before replacement removes the temporary file and leaves the old destination
+unchanged. POSIX hosts additionally `fsync` the parent directory after the
+rename; Windows uses the atomic replacement boundary available through
+`os.replace()` but has no portable directory-`fsync` equivalent. Stdout stays a
+stream and therefore cannot provide file-transaction semantics.
+
+Every runtime-error path calls one formatter. The default remains
+`ctxc: <message>` on stderr. `--error-format json` instead emits one compact
+`ctxc-diagnostic-0.1` object with command, stable category/code, exit status,
+exception type, and message. Classification order is explicit so resource
+limits, timeouts, missing/denied paths, malformed JSON/encoding, type/value
+errors, hash/digest failures, and budget/compression policy failures do not
+collapse into one undifferentiated string. Argparse usage failures occur before
+a subcommand handler exists and retain argparse’s native text format.
+
+Failed verification and compression-target outcomes already return structured
+artifacts or reports with exit status `3` or `4`; extraction rejections and
+deterministic-recovery contributions remain in `compiler_metadata`. A future
+event stream may surface those successful-run diagnostics on stderr without
+changing the artifact contract.
+
 ## Cold source archive
 
 `SourceArchive` stores newline-delimited source records in `events.jsonl`. An
