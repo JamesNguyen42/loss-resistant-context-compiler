@@ -243,6 +243,7 @@ python -m benchmarks.external_runner `
   --max-memory-mb 32768 `
   --dependency-lock-evidence requirements.lock `
   --adapter-entrypoint-evidence adapter.py `
+  --adapter-source-root adapter-source `
   --network-isolation-mode host-firewall `
   --network-isolation-evidence network-policy.txt `
   --inference-service-pid INFERENCE_SERVICE_PID `
@@ -271,8 +272,14 @@ absolute path, revalidates both the corpus self-digest and exact file digest,
 and requires the recorded case count to match before any candidate is scored.
 It also rehashes the retained dependency lock and requires its digest to define
 the recorded `environment_id`. The retained adapter entrypoint must be one of
-the exact command arguments; its bytes and the canonical command digest are
-revalidated and later matched to the frozen per-system protocol fields.
+the exact command arguments and an exact record in the bounded recursive
+inventory of `--adapter-source-root`. Loader replay rehashes every regular file
+in that link-free tree. Its tree digest, the entrypoint bytes, and the canonical
+command digest are later matched to the frozen per-system protocol fields. The
+fixed tree policy accepts at most 10,000 files, 256 MB per file, and 512 MB
+total; use a dedicated adapter directory rather than a repository root with
+generated artifacts. Per-case execution revalidates the tree after every case
+and stops before launching another case if it changed.
 
 `--max-memory-mb` uses `RLIMIT_AS` on POSIX and a race-free Windows Job Object
 boundary created before adapter code is resumed. It limits the adapter process
@@ -294,18 +301,19 @@ Revision, environment, model, context, tokenizer, inference concurrency,
 retries, and service cost are also recorded. Claim-bearing manifests require
 per-case isolation, an enforced process-tree memory limit, complete identity
 fields, the exact Qwen Q4 model, one inference slot, and zero model-service
-cost. Current `lrcbench-external-run-manifest-0.8` claim metadata requires an
+cost. Current `lrcbench-external-run-manifest-0.9` claim metadata requires an
 immutable adapter revision, `environment_id` equal to
 `sha256:<dependency-lock-sha256>`, the exact retained lock bytes, context length
 8192, the evaluator tokenizer, zero retries, the exact
 Qwen/one-slot/zero-service-cost identity, and retained network-isolation
-evidence, the retained command-referenced adapter entrypoint, plus at least two
-stable inference-service samples within the configured ceiling. Scoring also
-requires every environment/network-evidence digest, adapter
-entrypoint/command digest, the service memory metric/executable digest/ceiling,
-isolation, timeout, polling, output, candidate, and adapter memory limit to
-match the frozen protocol. `--isolation whole-corpus` remains useful for
-diagnostics but is a registered certificate non-win.
+evidence, the retained command-referenced adapter entrypoint, its bounded
+immutable source tree, plus at least two stable inference-service samples
+within the configured ceiling. Scoring also requires every
+environment/network-evidence digest, adapter entrypoint/source-tree/command
+digest, the service memory metric/executable digest/ceiling, isolation,
+timeout, polling, output, candidate, and adapter memory limit to match the
+frozen protocol. `--isolation whole-corpus` remains useful for diagnostics but
+is a registered certificate non-win.
 
 Evaluation also recomputes active tokens from the final rendered string for
 every bundled or programmatic candidate. A valid character span alone is not
@@ -400,7 +408,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 883 tests alongside it: 878 passed and 5
+The suite collected 884 tests alongside it: 879 passed and 5
 platform/optional checks were skipped.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |

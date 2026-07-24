@@ -63,7 +63,7 @@ to verify it, hashes cannot recover the original truth.
 | Compile/provider resource exhaustion | Model responses/candidate counts are bounded; unique-literal extraction preflights aggregate cited-source search characters; the local Qwen adapter has a transport timeout; optional whole-compile isolation owns a POSIX process group or Windows Job Object and terminates its descendant tree at the deadline | Search characters are a work proxy, not a time/RSS cap; direct in-process compilation is uncapped; a deliberately daemonized POSIX child can escape its process group; deadline job configuration uses local pickle and therefore requires trusted serializable objects |
 | Common content-secret disclosure | Optional preprocessing uses nine fixed lexical detectors, length/line-boundary-preserving masks, recomputed record hashes, explicit limits, deterministic replay, and a strict self-hashed coordinate report that omits original content-secret text and hashes | Detection is heuristic; false positives and false negatives remain. Original input enters process memory first. Metadata, ids, timestamps, PII, unknown formats, report coordinates, storage, logs, and previous artifacts are outside the redaction scope |
 | Secret disclosure after redaction | Compiling the redacted source set prevents recognized content secrets from entering its items, prompt, or artifact; replay binds the exact redacted records | Source metadata and identity fields remain in record hashes and may themselves be sensitive; external providers, process arguments, archives, diffs, benchmark evidence, or host logs can still expose anything not redacted before those boundaries |
-| External benchmark adapter escape | The standard runner avoids a shell, isolates cases, limits time/output/process-tree memory on POSIX and Windows, terminates descendants, validates candidates, hashes a manifest, binds retained dependency-lock, command-referenced adapter-entrypoint, and external network-policy artifacts, and separately samples a stable pre-existing service identity and memory | It does not establish a filesystem or network sandbox or prove the retained policy was enforced; reviewed code and an isolated host/container remain necessary. One entrypoint does not bind every dynamically imported source file. Service sampling does not contain or terminate that process and can miss between-poll spikes |
+| External benchmark adapter escape | The standard runner avoids a shell, isolates cases, limits time/output/process-tree memory on POSIX and Windows, terminates descendants, validates candidates, hashes a manifest, binds retained dependency-lock, command-referenced adapter-entrypoint, bounded link-free source tree, and external network-policy artifacts, and separately samples a stable pre-existing service identity and memory | It does not establish a filesystem or network sandbox or prove the retained policy was enforced; reviewed code and an isolated host/container remain necessary. The source tree does not bind imports outside its root or prove which files were loaded. Service sampling does not contain or terminate that process and can miss between-poll spikes |
 | External comparison protocol drift or cherry-picking | A strict self-hashed manifest binds the dated document, screened candidates, registered set, immutable revisions, exact model/resources, frozen datasets/statistics, runner policy, and explicit blockers; external scoring requires a frozen manifest plus exact dataset and adapter matches | The current artifact is still a draft. Self-hashes are not timestamps, signatures, or proof of result-blind decisions; an independently anchored freeze and reproduction remain necessary |
 
 ## Authority model
@@ -227,16 +227,16 @@ self-consistent report can also compute new self-hashes. Trusted publication
 still requires an external signature or independently anchored digest.
 
 External scoring additionally requires a strict frozen
-`lrcbench-external-protocol-0.6` manifest. The manifest self-hash binds its
+`lrcbench-external-protocol-0.7` manifest. The manifest self-hash binds its
 Markdown document digest, comparison decisions and immutable revisions,
-adapter/dependency evidence, adapter entrypoint and command digests, exact
-local-Qwen constraints, dataset manifests, statistics, every
+adapter/dependency evidence, adapter entrypoint, source-tree, and command
+digests, exact local-Qwen constraints, dataset manifests, statistics, every
 execution-affecting runner limit, retained network-evidence digest,
 inference-service metric/executable digest/ceiling, and blockers. The benchmark
 imports the registered set from that manifest and refuses a different synthetic
-dataset digest, adapter/environment identity, entrypoint/command digest, model
-contract, isolation mode, network-evidence digest, service accounting contract,
-or runner limit. Current `lrcbench-report-0.2` evidence records the
+dataset digest, adapter/environment identity, entrypoint/source-tree/command
+digest, model contract, isolation mode, network-evidence digest, service
+accounting contract, or runner limit. Current `lrcbench-report-0.2` evidence records the
 protocol and document hashes, dataset digest, and registered set. Report replay
 checks those fields for internal consistency but does not by itself prove that
 the referenced protocol was independently anchored or frozen before results;
@@ -257,13 +257,15 @@ revalidates the same absolute path, and scoring requires the digest frozen for
 that system. This binds environment identity to bytes but does not prove those
 dependencies were the ones imported by the adapter process.
 
-Claim-bearing manifests also retain one command-referenced adapter entrypoint.
-The runner hashes it before and after execution, reload revalidates the exact
-file, and scoring matches both its digest and the canonical command digest to
-the per-system protocol. This prevents a free-form revision string from
-substituting an unregistered command, but it does not prove that every imported
-module came from the named repository revision; a reviewed immutable checkout
-or source manifest remains necessary.
+Claim-bearing manifests also retain one command-referenced adapter entrypoint
+and a bounded inventory of every regular file below its dedicated source root.
+Links and junctions are rejected; the runner rehashes the complete set before
+and after execution, reload reconstructs it, and scoring matches the
+entrypoint, tree, and canonical command digests to the per-system protocol.
+This prevents a free-form revision string from substituting an unregistered
+source tree or command. It does not bind imports outside that root, prove which
+files were loaded, or eliminate change-and-restore races between observations;
+reviewed isolated execution remains necessary.
 
 The default external runner gives every case a fresh sequential process and
 records its exact command and outcome. POSIX `RLIMIT_AS` and Windows Job Objects

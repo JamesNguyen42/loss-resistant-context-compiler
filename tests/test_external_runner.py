@@ -17,6 +17,7 @@ from benchmarks.external_runner import (
     RunnerIdentity,
     RunnerLimits,
     capture_adapter_entrypoint_evidence,
+    capture_adapter_source_evidence,
     capture_dependency_lock_evidence,
     capture_inference_service_contract,
     capture_network_isolation_evidence,
@@ -102,7 +103,9 @@ def valid_adapter_command(directory: Path) -> list[str]:
         " for case in corpus['cases']]};"
         "json.dump(payload,open(sys.argv[2],'w',encoding='utf-8'))"
     )
-    entrypoint = directory / "valid-adapter.py"
+    adapter_directory = directory / "adapter-source"
+    adapter_directory.mkdir(exist_ok=True)
+    entrypoint = adapter_directory / "valid-adapter.py"
     entrypoint.write_text(program, encoding="utf-8")
     return [
         sys.executable,
@@ -149,6 +152,14 @@ def retained_adapter_entrypoint(tmp_path: Path):
     command = valid_adapter_command(tmp_path)
     evidence = capture_adapter_entrypoint_evidence(command[1])
     assert evidence.entrypoint_path == str(Path(command[1]).resolve())
+    return evidence
+
+
+def retained_adapter_source(tmp_path: Path):
+    command = valid_adapter_command(tmp_path)
+    evidence = capture_adapter_source_evidence(Path(command[1]).parent)
+    assert evidence.file_count == 1
+    assert evidence.files[0].relative_path == "valid-adapter.py"
     return evidence
 
 
@@ -386,6 +397,7 @@ def test_network_isolation_evidence_is_required_and_revalidated(tmp_path) -> Non
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
+        adapter_source=retained_adapter_source(tmp_path),
         network_isolation=evidence,
         inference_service=retained_inference_service(),
     )
@@ -461,6 +473,7 @@ def test_dependency_lock_evidence_binds_environment_and_revalidates(
         identity=claim_identity(),
         dependency_lock=dependency_lock,
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
+        adapter_source=retained_adapter_source(tmp_path),
         network_isolation=network_isolation,
         inference_service=retained_inference_service(),
     )
@@ -494,6 +507,7 @@ def test_dependency_lock_evidence_binds_environment_and_revalidates(
         ),
         dependency_lock=mismatch_lock,
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
+        adapter_source=retained_adapter_source(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
         inference_service=retained_inference_service(),
     )
@@ -540,6 +554,7 @@ def test_adapter_entrypoint_is_referenced_revalidated_and_immutable(
     corpus_path = tmp_path / "corpus.json"
     _config, document = write_corpus(corpus_path)
     entrypoint = retained_adapter_entrypoint(tmp_path)
+    source = retained_adapter_source(tmp_path)
     with pytest.raises(
         ExternalRunnerError,
         match="does not reference its retained entrypoint",
@@ -551,6 +566,7 @@ def test_adapter_entrypoint_is_referenced_revalidated_and_immutable(
             candidate_path=tmp_path / "unreferenced-candidate.json",
             limits=RunnerLimits(timeout_seconds=5),
             adapter_entrypoint=entrypoint,
+            adapter_source=source,
         )
 
     candidate_path = tmp_path / "candidate.json"
@@ -562,6 +578,7 @@ def test_adapter_entrypoint_is_referenced_revalidated_and_immutable(
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=5),
         adapter_entrypoint=entrypoint,
+        adapter_source=source,
     )
     manifest_path.write_text(
         retained_manifest.to_json(),
@@ -580,7 +597,9 @@ def test_adapter_entrypoint_is_referenced_revalidated_and_immutable(
             expected_dataset_sha256=document["dataset_sha256"],
         )
 
-    mutating_entrypoint = tmp_path / "mutating-adapter.py"
+    mutating_source = tmp_path / "mutating-source"
+    mutating_source.mkdir()
+    mutating_entrypoint = mutating_source / "mutating-adapter.py"
     mutating_entrypoint.write_text(
         "from pathlib import Path;"
         "Path(__file__).write_text('changed',encoding='utf-8')",
@@ -596,6 +615,7 @@ def test_adapter_entrypoint_is_referenced_revalidated_and_immutable(
         candidate_path=tmp_path / "mutated-candidate.json",
         limits=RunnerLimits(timeout_seconds=5),
         adapter_entrypoint=mutating_evidence,
+        adapter_source=capture_adapter_source_evidence(mutating_source),
     )
 
     assert (
@@ -603,6 +623,110 @@ def test_adapter_entrypoint_is_referenced_revalidated_and_immutable(
         == "adapter_entrypoint_evidence_modified"
     )
     assert not manifest.ready_for_scoring
+
+
+def test_adapter_source_tree_is_bounded_complete_and_immutable(
+    tmp_path: Path,
+) -> None:
+    empty_source = tmp_path / "empty-source"
+    empty_source.mkdir()
+    with pytest.raises(
+        ExternalRunnerError,
+        match="adapter source tree cannot be empty",
+    ):
+        capture_adapter_source_evidence(empty_source)
+
+    corpus_path = tmp_path / "corpus.json"
+    _config, document = write_corpus(corpus_path)
+    command = valid_adapter_command(tmp_path)
+    source_root = Path(command[1]).parent
+    support_directory = source_root / "support"
+    support_directory.mkdir()
+    helper_path = support_directory / "helper.py"
+    helper_path.write_text("VALUE = 1\n", encoding="utf-8")
+    entrypoint = capture_adapter_entrypoint_evidence(command[1])
+    source = capture_adapter_source_evidence(source_root)
+    assert [item.relative_path for item in source.files] == [
+        "support/helper.py",
+        "valid-adapter.py",
+    ]
+
+    unrelated_source = tmp_path / "unrelated-source"
+    unrelated_source.mkdir()
+    (unrelated_source / "other.py").write_text(
+        "VALUE = 2\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="does not cover its retained entrypoint",
+    ):
+        run_external_command(
+            command,
+            system="source-fixture",
+            corpus_path=corpus_path,
+            candidate_path=tmp_path / "uncovered-candidate.json",
+            limits=RunnerLimits(timeout_seconds=5),
+            adapter_entrypoint=entrypoint,
+            adapter_source=capture_adapter_source_evidence(
+                unrelated_source
+            ),
+        )
+
+    candidate_path = tmp_path / "source-candidate.json"
+    manifest_path = tmp_path / "source-manifest.json"
+    retained_manifest = run_external_command(
+        command,
+        system="source-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5),
+        adapter_entrypoint=entrypoint,
+        adapter_source=source,
+    )
+    manifest_path.write_text(
+        retained_manifest.to_json(),
+        encoding="utf-8",
+    )
+    helper_path.write_text("VALUE = 3\n", encoding="utf-8")
+    with pytest.raises(
+        ExternalRunnerError,
+        match="adapter source evidence tree does not match",
+    ):
+        load_external_run_manifest(
+            manifest_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
+    mutating_source = tmp_path / "runtime-mutating-source"
+    mutating_source.mkdir()
+    mutating_entrypoint_path = mutating_source / "adapter.py"
+    mutating_entrypoint_path.write_text(
+        "from pathlib import Path;"
+        "Path(__file__).with_name('generated.py').write_text("
+        "'VALUE = 4\\n',encoding='utf-8')",
+        encoding="utf-8",
+    )
+    mutated = run_external_cases(
+        [sys.executable, str(mutating_entrypoint_path)],
+        system="source-fixture",
+        corpus_path=corpus_path,
+        candidate_path=tmp_path / "source-mutated-candidate.json",
+        limits=RunnerLimits(timeout_seconds=5),
+        adapter_entrypoint=capture_adapter_entrypoint_evidence(
+            mutating_entrypoint_path
+        ),
+        adapter_source=capture_adapter_source_evidence(mutating_source),
+    )
+    assert mutated.termination_reason is not None
+    assert mutated.termination_reason.endswith(
+        "adapter_source_evidence_modified"
+    )
+    assert (
+        mutated.case_runs[0].termination_reason
+        == "adapter_source_evidence_modified"
+    )
+    assert not mutated.ready_for_scoring
 
 
 def test_corpus_export_digest_detects_gold_free_source_tampering(tmp_path) -> None:
@@ -864,6 +988,7 @@ def test_per_case_candidate_mutation_before_aggregation_is_rejected(
             identity=claim_identity(),
             dependency_lock=retained_dependency_lock(tmp_path),
             adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
+            adapter_source=retained_adapter_source(tmp_path),
             network_isolation=retained_network_isolation(tmp_path),
             inference_service=retained_inference_service(),
         )
@@ -885,6 +1010,7 @@ def test_per_case_runner_executes_without_a_shell_and_validates_candidate(
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
+        adapter_source=retained_adapter_source(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
         inference_service=retained_inference_service(),
     )
@@ -924,6 +1050,7 @@ def test_cli_defaults_to_claim_eligible_per_case_mode(tmp_path, capsys) -> None:
     manifest_path = tmp_path / "manifest.json"
     dependency_lock = retained_dependency_lock(tmp_path)
     adapter_entrypoint = retained_adapter_entrypoint(tmp_path)
+    adapter_source = retained_adapter_source(tmp_path)
     network_isolation = retained_network_isolation(tmp_path)
 
     exit_code = runner_main(
@@ -944,6 +1071,8 @@ def test_cli_defaults_to_claim_eligible_per_case_mode(tmp_path, capsys) -> None:
             dependency_lock.evidence_path,
             "--adapter-entrypoint-evidence",
             adapter_entrypoint.entrypoint_path,
+            "--adapter-source-root",
+            adapter_source.source_root,
             "--network-isolation-mode",
             network_isolation.mode,
             "--network-isolation-evidence",
@@ -996,7 +1125,9 @@ def test_per_case_runner_uses_one_validated_corpus_case_per_process(tmp_path) ->
         "'claims':[]}]};"
         "json.dump(payload,open(sys.argv[2],'w',encoding='utf-8'))"
     )
-    entrypoint_path = tmp_path / "isolated-adapter.py"
+    source_root = tmp_path / "isolated-source"
+    source_root.mkdir()
+    entrypoint_path = source_root / "isolated-adapter.py"
     entrypoint_path.write_text(program, encoding="utf-8")
     command = [
         sys.executable,
@@ -1018,6 +1149,7 @@ def test_per_case_runner_uses_one_validated_corpus_case_per_process(tmp_path) ->
         adapter_entrypoint=capture_adapter_entrypoint_evidence(
             entrypoint_path
         ),
+        adapter_source=capture_adapter_source_evidence(source_root),
         network_isolation=retained_network_isolation(tmp_path),
         inference_service=retained_inference_service(),
     )
@@ -1087,6 +1219,7 @@ def test_whole_corpus_mode_is_diagnostic_even_with_complete_identity(tmp_path) -
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
+        adapter_source=retained_adapter_source(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
         inference_service=retained_inference_service(),
     )
@@ -1120,6 +1253,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
+        adapter_source=retained_adapter_source(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
         inference_service=retained_inference_service(),
     )
@@ -1132,6 +1266,9 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
     )
     adapter_entrypoint_sha256s = {
         "fixture-adapter": manifest.adapter_entrypoint.entrypoint_sha256,
+    }
+    adapter_source_tree_sha256s = {
+        "fixture-adapter": manifest.adapter_source.tree_sha256,
     }
     adapter_command_sha256s = {
         "fixture-adapter": manifest.command_sha256,
@@ -1146,6 +1283,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             "fixture-adapter": FIXTURE_ENVIRONMENT_ID,
         },
         adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
+        adapter_source_tree_sha256s=adapter_source_tree_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
     )
@@ -1199,6 +1337,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             "fixture-adapter": "sha256:" + "c" * 64,
         },
         adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
+        adapter_source_tree_sha256s=adapter_source_tree_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
     )
@@ -1227,6 +1366,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_entrypoint_sha256s={
             "fixture-adapter": "f" * 64,
         },
+        adapter_source_tree_sha256s=adapter_source_tree_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
     )
@@ -1241,6 +1381,35 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             external_protocol_path=mismatched_entrypoint_protocol,
         )
 
+    mismatched_source_directory = tmp_path / "mismatched-source"
+    mismatched_source_directory.mkdir()
+    mismatched_source_protocol = write_frozen_external_protocol(
+        mismatched_source_directory,
+        systems,
+        adapter_revisions={
+            "fixture-adapter": FIXTURE_ADAPTER_REVISION,
+        },
+        environment_ids={
+            "fixture-adapter": FIXTURE_ENVIRONMENT_ID,
+        },
+        adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
+        adapter_source_tree_sha256s={
+            "fixture-adapter": "f" * 64,
+        },
+        adapter_command_sha256s=adapter_command_sha256s,
+        synthetic_dataset_sha256=document["dataset_sha256"],
+    )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="adapter source tree does not match the frozen protocol",
+    ):
+        run_benchmark(
+            config,
+            external_manifest_paths=(manifest_path,),
+            expected_external_systems=systems,
+            external_protocol_path=mismatched_source_protocol,
+        )
+
     mismatched_command_directory = tmp_path / "mismatched-command"
     mismatched_command_directory.mkdir()
     mismatched_command_protocol = write_frozen_external_protocol(
@@ -1253,6 +1422,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             "fixture-adapter": FIXTURE_ENVIRONMENT_ID,
         },
         adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
+        adapter_source_tree_sha256s=adapter_source_tree_sha256s,
         adapter_command_sha256s={
             "fixture-adapter": "f" * 64,
         },
@@ -1281,6 +1451,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             "fixture-adapter": FIXTURE_ENVIRONMENT_ID,
         },
         adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
+        adapter_source_tree_sha256s=adapter_source_tree_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
         max_memory_mb=512,
@@ -1308,6 +1479,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             "fixture-adapter": FIXTURE_ENVIRONMENT_ID,
         },
         adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
+        adapter_source_tree_sha256s=adapter_source_tree_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
         network_isolation_evidence_sha256="f" * 64,
@@ -1335,6 +1507,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             "fixture-adapter": FIXTURE_ENVIRONMENT_ID,
         },
         adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
+        adapter_source_tree_sha256s=adapter_source_tree_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
         inference_service_executable_sha256="f" * 64,
@@ -1367,6 +1540,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         identity=claim_identity(),
         dependency_lock=different_lock,
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
+        adapter_source=retained_adapter_source(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
         inference_service=retained_inference_service(),
     )
@@ -1400,6 +1574,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
+        adapter_source=retained_adapter_source(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
         inference_service=retained_inference_service(),
     )
@@ -1429,6 +1604,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         identity=replace(claim_identity(), model_context_length=4096),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
+        adapter_source=retained_adapter_source(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
         inference_service=retained_inference_service(),
     )
@@ -1498,6 +1674,7 @@ def test_ready_manifest_wraps_candidate_disappearance_during_validation(
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
+        adapter_source=retained_adapter_source(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
         inference_service=retained_inference_service(),
     )
@@ -1541,6 +1718,7 @@ def test_ready_manifest_rejects_rehashed_candidate_producer_mismatch(
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
+        adapter_source=retained_adapter_source(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
         inference_service=retained_inference_service(),
     )
@@ -1659,6 +1837,7 @@ def test_rehashed_inconsistent_case_audit_record_is_rejected(tmp_path) -> None:
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
+        adapter_source=retained_adapter_source(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
         inference_service=retained_inference_service(),
     ).to_dict()
@@ -1847,7 +2026,9 @@ def test_failed_exact_contract_manifest_becomes_a_registered_invalid_nonwin(
     config, document = write_corpus(corpus_path)
     candidate_path = tmp_path / "candidate.json"
     manifest_path = tmp_path / "manifest.json"
-    entrypoint_path = tmp_path / "failing-adapter.py"
+    source_root = tmp_path / "failing-source"
+    source_root.mkdir()
+    entrypoint_path = source_root / "failing-adapter.py"
     entrypoint_path.write_text("raise SystemExit(7)", encoding="utf-8")
     manifest = run_external_cases(
         [sys.executable, str(entrypoint_path)],
@@ -1860,6 +2041,7 @@ def test_failed_exact_contract_manifest_becomes_a_registered_invalid_nonwin(
         adapter_entrypoint=capture_adapter_entrypoint_evidence(
             entrypoint_path
         ),
+        adapter_source=capture_adapter_source_evidence(source_root),
         network_isolation=retained_network_isolation(tmp_path),
         inference_service=retained_inference_service(),
     )
@@ -1883,6 +2065,9 @@ def test_failed_exact_contract_manifest_becomes_a_registered_invalid_nonwin(
             "timeout-fixture": (
                 manifest.adapter_entrypoint.entrypoint_sha256
             ),
+        },
+        adapter_source_tree_sha256s={
+            "timeout-fixture": manifest.adapter_source.tree_sha256,
         },
         adapter_command_sha256s={
             "timeout-fixture": manifest.command_sha256,

@@ -297,6 +297,7 @@ python -m benchmarks.external_runner \
   --max-memory-mb 32768 \
   --dependency-lock-evidence requirements.lock \
   --adapter-entrypoint-evidence adapter.py \
+  --adapter-source-root adapter-source \
   --network-isolation-mode host-firewall \
   --network-isolation-evidence network-policy.txt \
   --inference-service-pid INFERENCE_SERVICE_PID \
@@ -327,9 +328,15 @@ digest, and checks the recorded case count before returning the candidate for
 full benchmark-side decoding. It also rehashes the retained dependency lock;
 claim controls require `environment_id` to equal
 `sha256:<dependency-lock-sha256>`. The retained adapter entrypoint must appear
-in the recorded command. Loader replay rehashes that file and recomputes the
-canonical command digest; external scoring matches both values to the frozen
-per-system protocol fields.
+in the recorded command and in the bounded recursive inventory of
+`--adapter-source-root`. Loader replay rehashes every regular file in that
+link-free source tree and recomputes the canonical command digest; external
+scoring matches the entrypoint, source-tree, and command digests to the frozen
+per-system protocol fields. The fixed tree policy allows at most 10,000 regular
+files, 256 MB per file, and 512 MB total, so the source root should be a
+dedicated immutable adapter directory rather than a build-output directory.
+The per-case runner revalidates it after each case and stops before launching
+another process if any inventory record changes.
 
 `--max-memory-mb` bounds the adapter process tree with `RLIMIT_AS` on POSIX and
 a Job Object assigned before process resume on Windows. The service PID and
@@ -354,15 +361,16 @@ cost. Missing per-case isolation, no enforced process-tree memory limit,
 unrecorded identity, a model other than the exact local Qwen Q4 build,
 concurrency other than one, or nonzero model service cost is a
 certificate-invalid non-win even when the candidate interchange itself is
-valid. In current runner schema `lrcbench-external-run-manifest-0.8`, a
+valid. In current runner schema `lrcbench-external-run-manifest-0.9`, a
 claim-eligible identity requires an immutable adapter revision, environment id
 `sha256:<dependency-lock-sha256>`, the exact retained lock bytes, the exact
 8192-context Qwen model, evaluator tokenizer, one slot, zero retries, zero
 service cost, retained network-isolation evidence, a retained
-command-referenced adapter entrypoint, and at least two stable inference-service
-memory samples within the ceiling. Scoring also matches the manifest's
-environment/network-evidence digests, adapter entrypoint/command digests,
-service memory metric/executable digest/ceiling, isolation, and
+command-referenced adapter entrypoint, its bounded immutable source tree, and
+at least two stable inference-service memory samples within the ceiling.
+Scoring also matches the manifest's environment/network-evidence digests,
+adapter entrypoint/source-tree/command digests, service memory
+metric/executable digest/ceiling, isolation, and
 time/polling/output/candidate/adapter-memory limits to the frozen protocol.
 
 Run the built-in round-trip and negative checks before preparing an adapter:
@@ -412,7 +420,7 @@ and documentation together.
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 883 tests: 878 passed and 5 platform/optional checks were
+The suite collected 884 tests: 879 passed and 5 platform/optional checks were
 skipped. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |

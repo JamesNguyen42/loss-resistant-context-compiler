@@ -101,8 +101,8 @@ This is not yet a registered set. Before freezing:
   `sha256:<dependency-lock-sha256>` so retained run evidence can be matched
   exactly to that lock;
 - retain the exact lock file at the path recorded by every runner manifest;
-- retain and freeze a command-referenced adapter entrypoint plus the canonical
-  command-template digest;
+- retain and freeze a command-referenced adapter entrypoint, its bounded
+  immutable source-tree digest, and the canonical command-template digest;
 - record the exact local setup and command;
 - keep at least four included systems when materially comparable runnable
   systems exist;
@@ -212,6 +212,7 @@ python -m benchmarks.external_runner \
   --max-memory-mb MEMORY_LIMIT_MB \
   --dependency-lock-evidence DEPENDENCY_LOCK \
   --adapter-entrypoint-evidence ADAPTER_ENTRYPOINT \
+  --adapter-source-root ADAPTER_SOURCE_ROOT \
   --network-isolation-mode NETWORK_MODE \
   --network-isolation-evidence NETWORK_POLICY_EXPORT \
   --inference-service-pid INFERENCE_SERVICE_PID \
@@ -230,20 +231,24 @@ python -m benchmarks.external_runner \
 The runner refuses existing output paths, does not invoke a shell, monitors
 time and output sizes, rejects corpus modification during execution, hashes
 stdout/stderr/candidate evidence, validates the candidate interchange, and
-emits a self-hashed manifest. It hashes the dependency lock and a
-command-referenced adapter entrypoint before execution, detects mutation,
-requires the lock bytes to define `environment_id`, and binds the canonical
-command-template digest. Every case runs sequentially in a fresh process
-against a one-case gold-free corpus; a failure is retained without allowing
-partial merged output. POSIX enforces `--max-memory-mb` with `RLIMIT_AS`.
-Windows creates the process suspended, assigns and verifies a Job Object with
-per-process and aggregate limits, and only then resumes adapter code.
+emits a self-hashed manifest. It hashes the dependency lock, a
+command-referenced adapter entrypoint, and every regular file in a bounded
+link-free source root before execution, detects mutation, requires the lock
+bytes to define `environment_id`, and binds the canonical command-template
+digest. Every case runs sequentially in a fresh process against a one-case
+gold-free corpus; a failure is retained without allowing partial merged output.
+POSIX enforces `--max-memory-mb` with `RLIMIT_AS`. Windows creates the process
+suspended, assigns and verifies a Job Object with per-process and aggregate
+limits, and only then resumes adapter code.
 
-The entrypoint digest prevents a free-form adapter revision from substituting
-an unregistered command or entrypoint. It does not bind every dynamically
-imported file or prove that the process imported code from the claimed
-repository revision; preserve a reviewed immutable checkout or complete source
-manifest with the final evidence bundle.
+The entrypoint and source-tree digests prevent a free-form adapter revision
+from substituting an unregistered source set or command. The source root must
+be a dedicated immutable directory and cannot contain links or junctions. It
+is capped at 10,000 regular files, 256 MB per file, and 512 MB total. It does
+not bind imports outside that root or prove which files the process actually
+loaded; preserve the reviewed checkout and isolated environment with the final
+evidence bundle. Per-case execution revalidates the tree after each case and
+stops before launching another adapter process if the source set changed.
 
 The adapter memory limit covers only the adapter process tree. The separate
 service options capture a pre-existing inference process's PID creation token
@@ -266,13 +271,14 @@ Whole-corpus isolation, no enforced adapter memory limit, incomplete identity
 metadata, any model other than the exact Qwen Q4 variant, inference concurrency
 other than one, or nonzero model-service cost makes the system a certificate
 non-win. Claim-eligible runner schema
-`lrcbench-external-run-manifest-0.8` also requires an immutable adapter
+`lrcbench-external-run-manifest-0.9` also requires an immutable adapter
 revision, retained dependency-lock bytes matching the canonical `sha256:`
-environment identity, a retained command-referenced adapter entrypoint,
-context length 8192, the evaluator tokenizer, one slot, zero retries, and zero
-service cost, plus bounded retained network-isolation evidence and at least two
-stable service-memory samples within the ceiling. The scorer rejects any
-identity, lock/entrypoint/command/network-evidence digest, service
+environment identity, a retained command-referenced adapter entrypoint covered
+by a bounded immutable source tree, context length 8192, the evaluator
+tokenizer, one slot, zero retries, and zero service cost, plus bounded retained
+network-isolation evidence and at least two stable service-memory samples
+within the ceiling. The scorer rejects any identity,
+lock/entrypoint/source-tree/command/network-evidence digest, service
 metric/executable digest/ceiling, isolation mode, timeout, output, candidate,
 adapter memory, or 20 ms enforcement-polling limit that differs from the frozen
 protocol. The candidate may still be retained for interchange diagnostics.

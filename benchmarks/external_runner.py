@@ -10,6 +10,7 @@ import platform
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -19,7 +20,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from context_compiler.atomic import atomic_write_text
@@ -47,7 +48,7 @@ from .lrcbench import (
     decode_external_candidate,
 )
 
-RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.8"
+RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.9"
 _SYSTEM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 _REVISION_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 _ENVIRONMENT_ID_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -64,6 +65,12 @@ CLAIM_NETWORK_ISOLATION_MODES = NETWORK_ISOLATION_MODES - {"unverified"}
 _NETWORK_ISOLATION_EVIDENCE_MAX_BYTES = 1_000_000
 _DEPENDENCY_LOCK_EVIDENCE_MAX_BYTES = 20_000_000
 _ADAPTER_ENTRYPOINT_EVIDENCE_MAX_BYTES = 256_000_000
+_ADAPTER_SOURCE_TREE_ALGORITHM = "lrcbench-adapter-source-tree-0.1"
+_ADAPTER_SOURCE_MAX_FILES = 10_000
+_ADAPTER_SOURCE_MAX_FILE_BYTES = 256_000_000
+_ADAPTER_SOURCE_MAX_TOTAL_BYTES = 512_000_000
+_ADAPTER_SOURCE_MAX_RELATIVE_PATH_BYTES = 4_096
+_ADAPTER_SOURCE_MAX_PATH_BYTES = 1_000_000
 _INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES = 2_000_000_000
 _INFERENCE_SERVICE_MEMORY_METRICS = frozenset(
     {"resident-set-bytes", "working-set-bytes"}
@@ -104,6 +111,7 @@ class ExternalRunReference:
     identity: RunnerIdentity
     dependency_lock: DependencyLockEvidence
     adapter_entrypoint: AdapterEntrypointEvidence
+    adapter_source: AdapterSourceEvidence
     network_isolation: NetworkIsolationEvidence
     inference_service: InferenceServiceAccounting
     command_sha256: str
@@ -287,6 +295,142 @@ class AdapterEntrypointEvidence:
     @property
     def claim_evidence_complete(self) -> bool:
         return self.entrypoint_path is not None
+
+
+@dataclass(frozen=True, slots=True)
+class AdapterSourceFileEvidence:
+    """One immutable regular file below the retained adapter source root."""
+
+    relative_path: str
+    file_sha256: str
+    file_bytes: int
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.relative_path, str)
+            or not self.relative_path
+            or "\\" in self.relative_path
+        ):
+            raise ValueError(
+                "adapter source relative paths must be non-empty POSIX paths"
+            )
+        if (
+            len(self.relative_path.encode("utf-8"))
+            > _ADAPTER_SOURCE_MAX_RELATIVE_PATH_BYTES
+        ):
+            raise ValueError(
+                "adapter source relative path exceeds the byte limit"
+            )
+        path = PurePosixPath(self.relative_path)
+        if (
+            path.is_absolute()
+            or path.as_posix() != self.relative_path
+            or any(part in {"", ".", ".."} for part in path.parts)
+        ):
+            raise ValueError(
+                "adapter source relative paths must be normalized and confined"
+            )
+        if not _is_sha256(self.file_sha256):
+            raise ValueError(
+                "adapter source files require a SHA-256 digest"
+            )
+        if (
+            isinstance(self.file_bytes, bool)
+            or not isinstance(self.file_bytes, int)
+            or self.file_bytes < 0
+        ):
+            raise ValueError(
+                "adapter source files require a non-negative byte count"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class AdapterSourceEvidence:
+    """Bounded recursive file inventory for one immutable adapter source root."""
+
+    tree_algorithm: str = _ADAPTER_SOURCE_TREE_ALGORITHM
+    source_root: str | None = None
+    tree_sha256: str | None = None
+    file_count: int | None = None
+    total_bytes: int | None = None
+    files: tuple[AdapterSourceFileEvidence, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.tree_algorithm != _ADAPTER_SOURCE_TREE_ALGORITHM:
+            raise ValueError("adapter source tree algorithm is invalid")
+        scalar_fields = (
+            self.source_root,
+            self.tree_sha256,
+            self.file_count,
+            self.total_bytes,
+        )
+        if all(value is None for value in scalar_fields) and not self.files:
+            return
+        if (
+            not isinstance(self.source_root, str)
+            or not self.source_root
+            or not Path(self.source_root).is_absolute()
+        ):
+            raise ValueError(
+                "adapter source evidence requires an absolute root"
+            )
+        if not _is_sha256(self.tree_sha256):
+            raise ValueError(
+                "adapter source evidence requires a SHA-256 tree digest"
+            )
+        if (
+            isinstance(self.file_count, bool)
+            or not isinstance(self.file_count, int)
+            or self.file_count <= 0
+            or self.file_count > _ADAPTER_SOURCE_MAX_FILES
+        ):
+            raise ValueError(
+                "adapter source evidence has an invalid file count"
+            )
+        if (
+            isinstance(self.total_bytes, bool)
+            or not isinstance(self.total_bytes, int)
+            or self.total_bytes < 0
+            or self.total_bytes > _ADAPTER_SOURCE_MAX_TOTAL_BYTES
+        ):
+            raise ValueError(
+                "adapter source evidence has an invalid total byte count"
+            )
+        if (
+            not isinstance(self.files, tuple)
+            or not all(
+                isinstance(item, AdapterSourceFileEvidence)
+                for item in self.files
+            )
+        ):
+            raise ValueError(
+                "adapter source evidence files must be immutable records"
+            )
+        if (
+            len(self.files) != self.file_count
+            or tuple(sorted(self.files, key=lambda item: item.relative_path))
+            != self.files
+            or len({item.relative_path for item in self.files})
+            != len(self.files)
+            or sum(item.file_bytes for item in self.files)
+            != self.total_bytes
+            or sum(
+                len(item.relative_path.encode("utf-8"))
+                for item in self.files
+            )
+            > _ADAPTER_SOURCE_MAX_PATH_BYTES
+        ):
+            raise ValueError(
+                "adapter source evidence file inventory is inconsistent"
+            )
+        if _adapter_source_tree_sha256(self.files) != self.tree_sha256:
+            raise ValueError(
+                "adapter source evidence tree digest is inconsistent"
+            )
+
+    @property
+    def claim_evidence_complete(self) -> bool:
+        return self.source_root is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -525,6 +669,7 @@ class ExternalRunManifest:
     identity: RunnerIdentity
     dependency_lock: DependencyLockEvidence
     adapter_entrypoint: AdapterEntrypointEvidence
+    adapter_source: AdapterSourceEvidence
     network_isolation: NetworkIsolationEvidence
     inference_service: InferenceServiceAccounting
     claim_metadata_complete: bool
@@ -715,6 +860,172 @@ def _adapter_entrypoint_evidence_matches(
     return (
         observed.file_sha256 == evidence.entrypoint_sha256
         and observed.byte_count == evidence.entrypoint_bytes
+    )
+
+
+def _adapter_source_tree_sha256(
+    files: Sequence[AdapterSourceFileEvidence],
+) -> str:
+    return _canonical_sha256(
+        {
+            "algorithm": _ADAPTER_SOURCE_TREE_ALGORITHM,
+            "files": [asdict(item) for item in files],
+        }
+    )
+
+
+def _adapter_source_files(
+    source_root: Path,
+) -> tuple[AdapterSourceFileEvidence, ...]:
+    if not source_root.is_dir():
+        raise ExternalRunnerError(
+            f"adapter source root is not a directory: {source_root}"
+        )
+    pending = [source_root]
+    records: list[AdapterSourceFileEvidence] = []
+    total_bytes = 0
+    total_path_bytes = 0
+    while pending:
+        directory = pending.pop()
+        try:
+            directory_stat = directory.lstat()
+        except OSError as exc:
+            raise ExternalRunnerError(
+                f"adapter source directory cannot be inspected: {directory}"
+            ) from exc
+        if (
+            not stat.S_ISDIR(directory_stat.st_mode)
+            or directory.is_symlink()
+            or (
+                hasattr(os.path, "isjunction")
+                and os.path.isjunction(directory)
+            )
+        ):
+            raise ExternalRunnerError(
+                "adapter source directory changed into a link or non-directory: "
+                f"{directory}"
+            )
+        try:
+            entries = sorted(
+                os.scandir(directory),
+                key=lambda item: item.name,
+            )
+        except OSError as exc:
+            raise ExternalRunnerError(
+                f"adapter source directory cannot be read: {directory}: {exc}"
+            ) from exc
+        for entry in entries:
+            entry_path = Path(entry.path)
+            try:
+                if entry.is_symlink() or (
+                    hasattr(os.path, "isjunction")
+                    and os.path.isjunction(entry_path)
+                ):
+                    raise ExternalRunnerError(
+                        "adapter source trees cannot contain links or junctions: "
+                        f"{entry_path}"
+                    )
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(entry_path)
+                    continue
+                if not entry.is_file(follow_symlinks=False):
+                    raise ExternalRunnerError(
+                        "adapter source trees can contain only regular files "
+                        f"and directories: {entry_path}"
+                    )
+            except OSError as exc:
+                raise ExternalRunnerError(
+                    f"adapter source entry cannot be inspected: {entry_path}: {exc}"
+                ) from exc
+            evidence = _bounded_file_evidence(
+                entry_path,
+                max_bytes=_ADAPTER_SOURCE_MAX_FILE_BYTES,
+                label="adapter source file",
+            )
+            total_bytes += evidence.byte_count
+            if total_bytes > _ADAPTER_SOURCE_MAX_TOTAL_BYTES:
+                raise ExternalRunnerError(
+                    "adapter source tree exceeds the aggregate byte limit"
+                )
+            relative_path = entry_path.relative_to(source_root).as_posix()
+            total_path_bytes += len(relative_path.encode("utf-8"))
+            if total_path_bytes > _ADAPTER_SOURCE_MAX_PATH_BYTES:
+                raise ExternalRunnerError(
+                    "adapter source tree exceeds the path-byte limit"
+                )
+            records.append(
+                AdapterSourceFileEvidence(
+                    relative_path=relative_path,
+                    file_sha256=evidence.file_sha256,
+                    file_bytes=evidence.byte_count,
+                )
+            )
+            if len(records) > _ADAPTER_SOURCE_MAX_FILES:
+                raise ExternalRunnerError(
+                    "adapter source tree exceeds the file-count limit"
+                )
+    if not records:
+        raise ExternalRunnerError("adapter source tree cannot be empty")
+    return tuple(sorted(records, key=lambda item: item.relative_path))
+
+
+def capture_adapter_source_evidence(
+    source_root: Path | str | None = None,
+) -> AdapterSourceEvidence:
+    """Inventory every regular file below one retained adapter source root."""
+
+    if source_root is None:
+        return AdapterSourceEvidence()
+    resolved = Path(source_root).expanduser().resolve()
+    files = _adapter_source_files(resolved)
+    return AdapterSourceEvidence(
+        source_root=str(resolved),
+        tree_sha256=_adapter_source_tree_sha256(files),
+        file_count=len(files),
+        total_bytes=sum(item.file_bytes for item in files),
+        files=files,
+    )
+
+
+def _adapter_source_evidence_matches(
+    evidence: AdapterSourceEvidence,
+) -> bool:
+    if not evidence.claim_evidence_complete:
+        return True
+    try:
+        observed = capture_adapter_source_evidence(
+            evidence.source_root
+        )
+    except (ExternalRunnerError, ValueError):
+        return False
+    return observed == evidence
+
+
+def _adapter_source_covers_entrypoint(
+    source: AdapterSourceEvidence,
+    entrypoint: AdapterEntrypointEvidence,
+) -> bool:
+    if (
+        not source.claim_evidence_complete
+        and not entrypoint.claim_evidence_complete
+    ):
+        return True
+    if (
+        not source.claim_evidence_complete
+        or not entrypoint.claim_evidence_complete
+    ):
+        return False
+    source_root = Path(source.source_root or "")
+    entrypoint_path = Path(entrypoint.entrypoint_path or "")
+    try:
+        relative_path = entrypoint_path.relative_to(source_root).as_posix()
+    except ValueError:
+        return False
+    return any(
+        item.relative_path == relative_path
+        and item.file_sha256 == entrypoint.entrypoint_sha256
+        and item.file_bytes == entrypoint.entrypoint_bytes
+        for item in source.files
     )
 
 
@@ -1570,6 +1881,7 @@ def _claim_controls_complete(
     isolation_mode: str,
     dependency_lock: DependencyLockEvidence,
     adapter_entrypoint: AdapterEntrypointEvidence,
+    adapter_source: AdapterSourceEvidence,
     network_isolation: NetworkIsolationEvidence,
     inference_service: InferenceServiceAccounting,
     minimum_inference_samples: int,
@@ -1582,6 +1894,11 @@ def _claim_controls_complete(
         and identity.environment_id
         == f"sha256:{dependency_lock.evidence_sha256}"
         and adapter_entrypoint.claim_evidence_complete
+        and adapter_source.claim_evidence_complete
+        and _adapter_source_covers_entrypoint(
+            adapter_source,
+            adapter_entrypoint,
+        )
         and network_isolation.claim_evidence_complete
         and inference_service.claim_evidence_complete
         and inference_service.sample_count >= minimum_inference_samples
@@ -1853,6 +2170,52 @@ def load_external_run_manifest(
             "run manifest command does not reference its adapter entrypoint"
         )
     try:
+        source_payload = payload["adapter_source"]
+        if not isinstance(source_payload, dict):
+            raise TypeError("adapter_source must be an object")
+        if set(source_payload) != set(
+            AdapterSourceEvidence.__dataclass_fields__
+        ):
+            raise TypeError("adapter_source fields do not match the schema")
+        source_file_payloads = source_payload["files"]
+        if not isinstance(source_file_payloads, list):
+            raise TypeError("adapter_source.files must be a list")
+        source_files: list[AdapterSourceFileEvidence] = []
+        for index, source_file_payload in enumerate(source_file_payloads):
+            if (
+                not isinstance(source_file_payload, dict)
+                or set(source_file_payload)
+                != set(AdapterSourceFileEvidence.__dataclass_fields__)
+            ):
+                raise TypeError(
+                    "adapter_source.files"
+                    f"[{index}] fields do not match the schema"
+                )
+            source_files.append(
+                AdapterSourceFileEvidence(**source_file_payload)
+            )
+        decoded_adapter_source = AdapterSourceEvidence(
+            **{
+                **source_payload,
+                "files": tuple(source_files),
+            }
+        )
+    except (TypeError, ValueError) as exc:
+        raise ExternalRunnerError(
+            f"run manifest adapter source evidence is invalid: {exc}"
+        ) from exc
+    if not _adapter_source_evidence_matches(decoded_adapter_source):
+        raise ExternalRunnerError(
+            "run manifest adapter source evidence tree does not match"
+        )
+    if not _adapter_source_covers_entrypoint(
+        decoded_adapter_source,
+        decoded_adapter_entrypoint,
+    ):
+        raise ExternalRunnerError(
+            "run manifest adapter source does not cover its entrypoint"
+        )
+    try:
         network_payload = payload["network_isolation"]
         if not isinstance(network_payload, dict):
             raise TypeError("network_isolation must be an object")
@@ -1888,6 +2251,7 @@ def load_external_run_manifest(
         isolation_mode,
         decoded_dependency_lock,
         decoded_adapter_entrypoint,
+        decoded_adapter_source,
         decoded_network_isolation,
         decoded_inference_service,
         2 * case_count if isolation_mode == "per_case" else 2,
@@ -2026,8 +2390,9 @@ def load_external_run_manifest(
             failure_reason = (
                 "run manifest lacks complete claim controls: exact-Qwen identity, "
                 "per-case isolation, an enforced memory limit, retained "
-                "dependency-lock and adapter-entrypoint bytes, network-isolation "
-                "evidence, and measured inference-service accounting are required"
+                "dependency-lock, adapter-entrypoint, and adapter-source bytes, "
+                "network-isolation evidence, and measured inference-service "
+                "accounting are required"
             )
     else:
         failure_reason = (
@@ -2051,6 +2416,7 @@ def load_external_run_manifest(
         identity=decoded_identity,
         dependency_lock=decoded_dependency_lock,
         adapter_entrypoint=decoded_adapter_entrypoint,
+        adapter_source=decoded_adapter_source,
         network_isolation=decoded_network_isolation,
         inference_service=decoded_inference_service,
         command_sha256=payload["command_sha256"],
@@ -2072,12 +2438,14 @@ def run_external_command(
     identity: RunnerIdentity | None = None,
     dependency_lock: DependencyLockEvidence | None = None,
     adapter_entrypoint: AdapterEntrypointEvidence | None = None,
+    adapter_source: AdapterSourceEvidence | None = None,
     network_isolation: NetworkIsolationEvidence | None = None,
     inference_service: InferenceServiceContract | None = None,
     working_directory: Path | str | None = None,
     environment: Mapping[str, str] | None = None,
     _inference_monitor: _InferenceServiceMonitor | None = None,
     _check_adapter_entrypoint: bool = True,
+    _check_adapter_source: bool = True,
 ) -> ExternalRunManifest:
     """Run one adapter command and validate its candidate output fail-closed."""
 
@@ -2103,6 +2471,21 @@ def run_external_command(
     ):
         raise ExternalRunnerError(
             "adapter entrypoint evidence file does not match before execution"
+        )
+    adapter_source = adapter_source or AdapterSourceEvidence()
+    if (
+        _check_adapter_source
+        and not _adapter_source_evidence_matches(adapter_source)
+    ):
+        raise ExternalRunnerError(
+            "adapter source evidence tree does not match before execution"
+        )
+    if not _adapter_source_covers_entrypoint(
+        adapter_source,
+        adapter_entrypoint,
+    ):
+        raise ExternalRunnerError(
+            "adapter source evidence does not cover its retained entrypoint"
         )
     network_isolation = network_isolation or NetworkIsolationEvidence()
     if not _network_isolation_evidence_matches(network_isolation):
@@ -2313,6 +2696,12 @@ def run_external_command(
         termination_reason = "adapter_entrypoint_evidence_modified"
     if (
         termination_reason is None
+        and _check_adapter_source
+        and not _adapter_source_evidence_matches(adapter_source)
+    ):
+        termination_reason = "adapter_source_evidence_modified"
+    if (
+        termination_reason is None
         and not _network_isolation_evidence_matches(network_isolation)
     ):
         termination_reason = "network_isolation_evidence_modified"
@@ -2456,6 +2845,7 @@ def run_external_command(
         identity=identity,
         dependency_lock=dependency_lock,
         adapter_entrypoint=adapter_entrypoint,
+        adapter_source=adapter_source,
         network_isolation=network_isolation,
         inference_service=inference_accounting,
         claim_metadata_complete=_claim_controls_complete(
@@ -2464,6 +2854,7 @@ def run_external_command(
             "whole_corpus",
             dependency_lock,
             adapter_entrypoint,
+            adapter_source,
             network_isolation,
             inference_accounting,
             2,
@@ -2484,6 +2875,7 @@ def run_external_cases(
     identity: RunnerIdentity | None = None,
     dependency_lock: DependencyLockEvidence | None = None,
     adapter_entrypoint: AdapterEntrypointEvidence | None = None,
+    adapter_source: AdapterSourceEvidence | None = None,
     network_isolation: NetworkIsolationEvidence | None = None,
     inference_service: InferenceServiceContract | None = None,
     working_directory: Path | str | None = None,
@@ -2506,6 +2898,18 @@ def run_external_cases(
     if not _adapter_entrypoint_evidence_matches(adapter_entrypoint):
         raise ExternalRunnerError(
             "adapter entrypoint evidence file does not match before execution"
+        )
+    adapter_source = adapter_source or AdapterSourceEvidence()
+    if not _adapter_source_evidence_matches(adapter_source):
+        raise ExternalRunnerError(
+            "adapter source evidence tree does not match before execution"
+        )
+    if not _adapter_source_covers_entrypoint(
+        adapter_source,
+        adapter_entrypoint,
+    ):
+        raise ExternalRunnerError(
+            "adapter source evidence does not cover its retained entrypoint"
         )
     network_isolation = network_isolation or NetworkIsolationEvidence()
     if not _network_isolation_evidence_matches(network_isolation):
@@ -2616,13 +3020,26 @@ def run_external_cases(
                 identity=identity,
                 dependency_lock=dependency_lock,
                 adapter_entrypoint=adapter_entrypoint,
+                adapter_source=adapter_source,
                 network_isolation=network_isolation,
                 inference_service=inference_service,
                 working_directory=cwd,
                 environment=process_environment,
                 _inference_monitor=inference_monitor,
                 _check_adapter_entrypoint=False,
+                _check_adapter_source=False,
             )
+            adapter_integrity_failure: str | None = None
+            if not _adapter_entrypoint_evidence_matches(
+                adapter_entrypoint
+            ):
+                adapter_integrity_failure = (
+                    "adapter_entrypoint_evidence_modified"
+                )
+            elif not _adapter_source_evidence_matches(adapter_source):
+                adapter_integrity_failure = (
+                    "adapter_source_evidence_modified"
+                )
             case_run = CaseRunRecord(
                 case_id=case.id,
                 command=case_manifest.command,
@@ -2633,10 +3050,23 @@ def run_external_cases(
                 candidate_sha256=case_manifest.candidate_sha256,
                 candidate_bytes=case_manifest.candidate_bytes,
                 exit_code=case_manifest.exit_code,
-                termination_reason=case_manifest.termination_reason,
-                process_succeeded=case_manifest.process_succeeded,
-                candidate_valid=case_manifest.candidate_valid,
-                validation_error=case_manifest.validation_error,
+                termination_reason=(
+                    case_manifest.termination_reason
+                    or adapter_integrity_failure
+                ),
+                process_succeeded=(
+                    case_manifest.process_succeeded
+                    and adapter_integrity_failure is None
+                ),
+                candidate_valid=(
+                    case_manifest.candidate_valid
+                    and adapter_integrity_failure is None
+                ),
+                validation_error=(
+                    case_manifest.validation_error
+                    if adapter_integrity_failure is None
+                    else "adapter source integrity changed during the case"
+                ),
                 stdout_bytes=case_manifest.stdout_bytes,
                 stdout_sha256=case_manifest.stdout_sha256,
                 stderr_bytes=case_manifest.stderr_bytes,
@@ -2645,7 +3075,10 @@ def run_external_cases(
             case_runs.append(case_run)
             aggregate_stdout_bytes += case_run.stdout_bytes
             aggregate_stderr_bytes += case_run.stderr_bytes
-            if case_manifest.ready_for_scoring:
+            if (
+                adapter_integrity_failure is None
+                and case_manifest.ready_for_scoring
+            ):
                 try:
                     case_candidate_document = load_strict_json_file(
                         case_candidate_path,
@@ -2668,6 +3101,11 @@ def run_external_cases(
                     ) from exc
                 candidate_cases.append(case_candidate_payload["cases"][0])
 
+        if adapter_integrity_failure is not None:
+            termination_reason = (
+                f"case_failure:{case.id}:{adapter_integrity_failure}"
+            )
+            break
         if aggregate_stdout_bytes > limits.max_stdout_bytes:
             termination_reason = "aggregate_stdout_limit"
             break
@@ -2710,6 +3148,11 @@ def run_external_cases(
         and not _adapter_entrypoint_evidence_matches(adapter_entrypoint)
     ):
         termination_reason = "adapter_entrypoint_evidence_modified"
+    if (
+        termination_reason is None
+        and not _adapter_source_evidence_matches(adapter_source)
+    ):
+        termination_reason = "adapter_source_evidence_modified"
     if (
         termination_reason is None
         and not _network_isolation_evidence_matches(network_isolation)
@@ -2835,6 +3278,7 @@ def run_external_cases(
         identity=identity,
         dependency_lock=dependency_lock,
         adapter_entrypoint=adapter_entrypoint,
+        adapter_source=adapter_source,
         network_isolation=network_isolation,
         inference_service=inference_accounting,
         claim_metadata_complete=_claim_controls_complete(
@@ -2843,6 +3287,7 @@ def run_external_cases(
             "per_case",
             dependency_lock,
             adapter_entrypoint,
+            adapter_source,
             network_isolation,
             inference_accounting,
             2 * len(cases),
@@ -2887,6 +3332,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         help=(
             "retained adapter file that must appear in the command and whose "
             "SHA-256 is bound into the run manifest"
+        ),
+    )
+    parser.add_argument(
+        "--adapter-source-root",
+        type=Path,
+        help=(
+            "immutable source directory inventoried recursively before and "
+            "after execution; it must contain --adapter-entrypoint-evidence"
         ),
     )
     parser.add_argument(
@@ -2950,6 +3403,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         adapter_entrypoint = capture_adapter_entrypoint_evidence(
             args.adapter_entrypoint_evidence
         )
+        adapter_source = capture_adapter_source_evidence(
+            args.adapter_source_root
+        )
         network_isolation = capture_network_isolation_evidence(
             args.network_isolation_mode,
             args.network_isolation_evidence,
@@ -2984,6 +3440,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             dependency_lock=dependency_lock,
             adapter_entrypoint=adapter_entrypoint,
+            adapter_source=adapter_source,
             network_isolation=network_isolation,
             inference_service=inference_service,
         )

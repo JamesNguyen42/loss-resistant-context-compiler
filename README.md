@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 883 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 884 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -190,7 +190,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 883 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 884 regression tests.
 
 ## In development
 
@@ -841,13 +841,14 @@ that complete set. Missing or failed systems remain non-wins. See
 and process-tree-memory-bounded adapter wrapper. Its default mode executes every
 case sequentially in a fresh process, records a hashed per-case audit trail,
 and merges only fully validated outputs. Whole-corpus mode is diagnostic-only.
-Current claim-eligible runner manifests retain the dependency lock and adapter
-entrypoint and identify the environment as
-`sha256:<dependency-lock-sha256>`; reload rehashes both files, requires the
-entrypoint to appear in the recorded command, and verifies that command's
-canonical digest. Scoring requires those bytes, the immutable adapter revision,
-the entrypoint/command digests, exact model/context/tokenizer/retry contract,
-and all retained runner
+Current claim-eligible runner manifests retain the dependency lock, adapter
+entrypoint, and a bounded recursive inventory of its immutable source root, and
+identify the environment as `sha256:<dependency-lock-sha256>`. Reload rehashes
+the lock and every inventoried regular file, requires the entrypoint to be an
+exact tree record and appear in the recorded command, and verifies that
+command's canonical digest. Scoring requires those bytes, the immutable adapter
+revision, the entrypoint/source-tree/command digests, exact
+model/context/tokenizer/retry contract, and all retained runner
 limits—including the 20 ms enforcement polling cadence—to match the frozen
 protocol. Claim controls also require a bounded retained host/container
 network-isolation artifact whose digest matches the protocol. A pre-existing
@@ -859,9 +860,11 @@ executable, or crosses its ceiling. Scoring requires the memory metric,
 executable digest, and service ceiling to match the frozen protocol.
 The wrapper does not itself create a filesystem or network sandbox, does not
 contain or terminate the inference service, and can miss a memory spike between
-samples. It also cannot prove that the adapter used the designated PID or
-automatically include separate helper processes. Service sampling is supported
-on Windows and Linux; a configured service contract fails preflight elsewhere.
+samples. The source inventory does not bind imports outside its root or prove
+which files were loaded. The runner also cannot prove that the adapter used the
+designated PID or automatically include separate helper processes. Service
+sampling is supported on Windows and Linux; a configured service contract fails
+preflight elsewhere.
 It accepts the legacy producerless adapter payload only at that bounded runner
 boundary, then emits the current self-hashed candidate envelope with the
 registered adapter/model identity. Direct candidate imports require the current
@@ -878,7 +881,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 883 tests are collected (878 pass and 5
+Current local snapshot (2026-07-24): 884 tests are collected (879 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
