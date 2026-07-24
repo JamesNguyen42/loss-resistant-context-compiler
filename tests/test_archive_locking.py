@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import context_compiler.file_lock as file_lock_module
 from context_compiler import SourceArchive, SourceRecord
 from context_compiler.file_lock import close_lock_file
 
@@ -136,6 +137,74 @@ def test_non_regular_lock_path_is_refused_without_writing_archive(
 
     assert lock_path.is_dir()
     assert not archive.events_path.exists()
+
+
+def test_hard_linked_lock_marker_is_refused_without_mutating_archive(
+    tmp_path: Path,
+) -> None:
+    archive = SourceArchive(tmp_path / "archive")
+    assert archive.append([source(0)]) == 1
+    committed = archive.events_path.read_bytes()
+    alias = tmp_path / "lock-alias"
+    try:
+        os.link(archive.lock_path, alias)
+    except OSError as exc:
+        pytest.skip(f"hard links unavailable on this filesystem: {exc}")
+
+    with pytest.raises(OSError, match="single-link regular file"):
+        archive.append([source(1)])
+
+    assert archive.events_path.read_bytes() == committed
+
+
+def test_lock_open_retries_a_replacement_before_returning_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive = SourceArchive(tmp_path / "archive")
+    assert archive.append([source(0)]) == 1
+    real_open = file_lock_module.os.open
+    replacements = 0
+
+    def replace_after_open(
+        path: object,
+        flags: int,
+        *args: object,
+        **kwargs: object,
+    ) -> int:
+        nonlocal replacements
+        candidate = Path(path)  # type: ignore[arg-type]
+        same_target = candidate == archive.lock_path or (
+            kwargs.get("dir_fd") is not None
+            and candidate.name == archive.lock_path.name
+        )
+        if same_target and replacements == 0 and os.name == "nt":
+            replacement = archive.directory / ".replacement.lock"
+            replacement.write_bytes(b"")
+            os.replace(replacement, archive.lock_path)
+            replacements += 1
+        descriptor = real_open(  # type: ignore[arg-type]
+            path,
+            flags,
+            *args,
+            **kwargs,
+        )
+        if same_target and replacements == 0:
+            replacement = archive.directory / ".replacement.lock"
+            replacement.write_bytes(b"")
+            os.replace(replacement, archive.lock_path)
+            replacements += 1
+        return descriptor
+
+    monkeypatch.setattr(
+        file_lock_module.os,
+        "open",
+        replace_after_open,
+    )
+
+    assert archive.append([source(1)]) == 1
+    assert replacements == 1
+    assert [record.sequence for record in archive.load()] == [0, 1]
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX lock-file mode semantics")

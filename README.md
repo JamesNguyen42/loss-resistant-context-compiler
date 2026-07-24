@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 931 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 941 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -196,7 +196,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 931 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 941 regression tests.
 
 ## In development
 
@@ -467,17 +467,20 @@ complete bounded history into a same-directory temporary file, flushes and
 either the previous complete archive or the next complete archive, never a
 partially appended JSONL tail. The `.append.lock` marker intentionally persists;
 ownership is the kernel lock, not file existence, and descriptor close or
-process death releases it. The tradeoff is O(archive size) work and temporary
-disk space per append, and the filesystem must implement local advisory locks
-and atomic replacement correctly.
+process death releases it. The marker itself must remain one regular hard link;
+aliases are refused before locking. The tradeoff is O(archive size) work and
+temporary disk space per append, and the filesystem must implement local
+advisory locks and atomic replacement correctly.
 
 Archive reads refuse a symlink, hard-linked file, directory, FIFO, device, or
 other non-regular `events.jsonl`. They open without following links where the
 OS supports it, compare the pre-open and open file identities, and retry a
 bounded number of times if an atomic replacement lands between those checks.
 This keeps a hostile special file from turning verification into an unbounded
-read or redirecting it to an aliased file. It does not authenticate the parent
-directory or protect against a filesystem administrator.
+read or redirecting it to an aliased file. The shared ancestor guard also
+rejects linked/reparse parents, pins the exact parent on POSIX, and rechecks the
+full chain before accepting the read. It does not protect against a filesystem
+administrator who can replace state outside those checks.
 
 Each new-format line is a canonical `ctxc-source-archive-entry-0.1` envelope
 whose SHA-256 binds its position, preceding entry hash, and complete canonical
@@ -537,10 +540,12 @@ caps; Python objects, compiler state, and caller-controlled extractors have
 additional overhead.
 
 Serialized source and compiled-artifact paths must resolve directly to stable
-regular files. Path loaders reject symlinks and special files, use no-follow
-and nonblocking-open flags where available, compare pre-open/open identity,
-retry a bounded atomic replacement race, and check content metadata again
-after the bounded read.
+regular files. Path loaders reject symlinks and special files, reject linked
+or reparse-point ancestors, freeze every ancestor's file identity, use
+descriptor-relative access inside the exact parent on POSIX, compare
+pre-open/open identity, retry a bounded atomic replacement race, and recheck
+both content metadata and the ancestor chain after the bounded read. They use
+no-follow and nonblocking-open flags where available.
 Gzip bytes are rejected as invalid UTF-8 and are never decompressed. Direct
 text streams remain the caller's trust boundary.
 
@@ -646,14 +651,18 @@ Every `-o/--output` file and archive commit uses the same restrictive
 same-directory atomic writer: the complete payload is flushed and `fsync`ed,
 then installed with `os.replace()`. Existing regular-file permissions are
 preserved. A failure before replacement leaves the prior destination unchanged
-and removes the temporary file; on POSIX, the destination directory is also
-`fsync`ed after replacement. Stdout behavior is unchanged.
+and removes the temporary file; linked/reparse ancestors and non-regular
+destinations are refused. POSIX creation, replacement, cleanup, and directory
+`fsync` are relative to a pinned parent descriptor. Other hosts revalidate the
+complete ancestor chain before and after installation. Stdout behavior is
+unchanged.
 
 With `--error-format json`, runtime failures have stable top-level fields:
 `schema`, `command`, `category`, `code`, `exit_code`, `exception_type`, and
 `message`. Argument-parser usage errors remain argparse text, while failed
 verification reports and compiled artifacts continue to carry their detailed
-issue/rejection data in normal command output.
+issue/rejection data in normal command output. An unsafe or changed ancestor
+chain is reported as `io` / `unsafe_path_boundary`.
 
 ## Python API
 
@@ -982,7 +991,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 931 tests are collected (924 pass and 7
+Current local snapshot (2026-07-24): 941 tests are collected (933 pass and 8
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

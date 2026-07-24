@@ -45,6 +45,7 @@ from .models import (
     render_typed_memory,
     source_digest,
 )
+from .path_safety import ParentDirectoryGuard
 from .verifier import verify_memory
 
 _ARTIFACT_FIELDS = frozenset(
@@ -1005,12 +1006,15 @@ def _file_identity(value: os.stat_result) -> tuple[int, int]:
 
 def _file_content_snapshot(
     value: os.stat_result,
-) -> tuple[int, int, int, int]:
+) -> tuple[int, int, int, int, int, int, int]:
     return (
         value.st_dev,
         value.st_ino,
+        value.st_mode,
+        value.st_nlink,
         value.st_size,
         value.st_mtime_ns,
+        value.st_ctime_ns,
     )
 
 
@@ -1023,7 +1027,8 @@ def _open_stable_text_path(
     limit_error: type[ValueError],
     require_single_link: bool = False,
 ) -> Iterator[TextIO]:
-    input_path = Path(path)
+    parent_guard = ParentDirectoryGuard.capture(path, label=label)
+    input_path = parent_guard.target
     flags = (
         os.O_RDONLY
         | getattr(os, "O_BINARY", 0)
@@ -1032,62 +1037,92 @@ def _open_stable_text_path(
         | getattr(os, "O_NOFOLLOW", 0)
         | getattr(os, "O_NONBLOCK", 0)
     )
-    for attempt in range(_PATH_OPEN_ATTEMPTS):
-        candidate_stat = input_path.lstat()
-        if not stat.S_ISREG(candidate_stat.st_mode):
-            raise ValueError(f"{label} path must be a regular file: {input_path}")
-        if require_single_link and candidate_stat.st_nlink != 1:
-            raise ValueError(f"{label} path must not have hard links: {input_path}")
-        try:
-            descriptor = os.open(input_path, flags)
-        except FileNotFoundError:
-            if attempt + 1 < _PATH_OPEN_ATTEMPTS:
-                continue
-            raise
-        except OSError as exc:
-            if exc.errno == errno.ELOOP:
-                raise ValueError(
-                    f"{label} path could not be opened without following links: "
-                    f"{input_path}"
-                ) from exc
-            raise
-        try:
-            opened_stat = os.fstat(descriptor)
-            if not stat.S_ISREG(opened_stat.st_mode):
+    with parent_guard.pinned_parent() as parent_descriptor:
+        for attempt in range(_PATH_OPEN_ATTEMPTS):
+            parent_guard.verify()
+            try:
+                if parent_descriptor is None:
+                    candidate_stat = input_path.lstat()
+                else:
+                    candidate_stat = os.stat(
+                        input_path.name,
+                        dir_fd=parent_descriptor,
+                        follow_symlinks=False,
+                    )
+            except FileNotFoundError:
+                if attempt + 1 < _PATH_OPEN_ATTEMPTS:
+                    continue
+                raise
+            if not stat.S_ISREG(candidate_stat.st_mode):
                 raise ValueError(
                     f"{label} path must be a regular file: {input_path}"
                 )
-            if require_single_link and opened_stat.st_nlink != 1:
+            if require_single_link and candidate_stat.st_nlink != 1:
                 raise ValueError(
                     f"{label} path must not have hard links: {input_path}"
                 )
-            if _file_identity(candidate_stat) != _file_identity(opened_stat):
+            try:
+                if parent_descriptor is None:
+                    descriptor = os.open(input_path, flags)
+                else:
+                    descriptor = os.open(
+                        input_path.name,
+                        flags,
+                        dir_fd=parent_descriptor,
+                    )
+            except FileNotFoundError:
                 if attempt + 1 < _PATH_OPEN_ATTEMPTS:
                     continue
-                raise ValueError(f"{label} path changed while opening: {input_path}")
-            if opened_stat.st_size > max_input_bytes:
-                raise limit_error(f"{label} exceeds {max_input_bytes} bytes")
-            os.set_inheritable(descriptor, False)
-            stream = os.fdopen(
-                descriptor,
-                "r",
-                encoding="utf-8",
-                newline="",
-            )
-            descriptor = -1
-            with stream:
-                yield stream
-                final_stat = os.fstat(stream.fileno())
-                if _file_content_snapshot(opened_stat) != _file_content_snapshot(
-                    final_stat
-                ):
+                raise
+            except OSError as exc:
+                if exc.errno == errno.ELOOP:
                     raise ValueError(
-                        f"{label} changed while it was being read: {input_path}"
+                        f"{label} path could not be opened without following links: "
+                        f"{input_path}"
+                    ) from exc
+                raise
+            try:
+                opened_stat = os.fstat(descriptor)
+                if not stat.S_ISREG(opened_stat.st_mode):
+                    raise ValueError(
+                        f"{label} path must be a regular file: {input_path}"
                     )
-            return
-        finally:
-            if descriptor >= 0:
-                os.close(descriptor)
+                if require_single_link and opened_stat.st_nlink != 1:
+                    raise ValueError(
+                        f"{label} path must not have hard links: {input_path}"
+                    )
+                if _file_identity(candidate_stat) != _file_identity(opened_stat):
+                    if attempt + 1 < _PATH_OPEN_ATTEMPTS:
+                        continue
+                    raise ValueError(
+                        f"{label} path changed while opening: {input_path}"
+                    )
+                parent_guard.verify()
+                if opened_stat.st_size > max_input_bytes:
+                    raise limit_error(f"{label} exceeds {max_input_bytes} bytes")
+                os.set_inheritable(descriptor, False)
+                stream = os.fdopen(
+                    descriptor,
+                    "r",
+                    encoding="utf-8",
+                    newline="",
+                )
+                descriptor = -1
+                with stream:
+                    yield stream
+                    final_stat = os.fstat(stream.fileno())
+                    if _file_content_snapshot(
+                        opened_stat
+                    ) != _file_content_snapshot(final_stat):
+                        raise ValueError(
+                            f"{label} changed while it was being read: "
+                            f"{input_path}"
+                        )
+                    parent_guard.verify()
+                return
+            finally:
+                if descriptor >= 0:
+                    os.close(descriptor)
     raise ValueError(f"{label} path changed while opening: {input_path}")
 
 

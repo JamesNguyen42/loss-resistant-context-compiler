@@ -23,6 +23,7 @@ from .limits import (
     source_value_size,
 )
 from .models import ProvenanceSpan, SourceRecord, source_digest
+from .path_safety import ParentDirectoryGuard, PathBoundaryError
 
 ARCHIVE_ENTRY_SCHEMA = "ctxc-source-archive-entry-0.1"
 ARCHIVE_REPORT_SCHEMA = "ctxc-source-archive-report-0.1"
@@ -181,7 +182,10 @@ class SourceArchive:
         # creating or touching the archive. This prevents a stale or externally
         # mutated record from turning a successful append into an immediately
         # corrupt event log.
-        self.directory.mkdir(parents=True, exist_ok=True)
+        ParentDirectoryGuard.prepare(
+            self.events_path,
+            label="source archive",
+        )
         lock_fd = self._acquire_lock()
         archive_error: BaseException | None = None
         try:
@@ -244,6 +248,8 @@ class SourceArchive:
                 return self._decode_chained(values)
             return self._decode_legacy(values)
         except SourceLimitError:
+            raise
+        except PathBoundaryError:
             raise
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise ValueError(f"invalid archive: {exc}") from exc

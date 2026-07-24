@@ -27,7 +27,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 931 collected: 924 passing, 7 skipped |
+| Tests at this snapshot | 941 collected: 933 passing, 8 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -278,8 +278,9 @@ counters are deterministic, apart from timestamps and measured duration.
 | `src/context_compiler/verifier.py` | Independent work-bounded coverage, provenance, support, authority, and state checks |
 | `src/context_compiler/io.py` | Input decoding, strict artifact shape validation, replay verification |
 | `src/context_compiler/limits.py` | Shared source/compilation/artifact byte, work, depth, canonical-size, and collection limits |
-| `src/context_compiler/atomic.py` | Shared same-directory replace-or-create UTF-8 transactions and durability helpers |
-| `src/context_compiler/file_lock.py` | Cross-platform persistent advisory-file locking |
+| `src/context_compiler/path_safety.py` | Full ancestor-chain validation, safe missing-parent creation, and POSIX parent-descriptor pinning |
+| `src/context_compiler/atomic.py` | Ancestor-guarded same-directory replace-or-create UTF-8 transactions and durability helpers |
+| `src/context_compiler/file_lock.py` | Ancestor-guarded, single-link persistent advisory-file locking |
 | `src/context_compiler/archive.py` | Logically append-only local archive, canonical entry chain, expected-head preconditions, legacy migration, advisory locking, atomic commits, loading, and verification |
 | `src/context_compiler/artifact_diff.py` | Integrity-gated deterministic artifact comparison and self-hashed diff reports |
 | `src/context_compiler/artifact_inspection.py` | Versioned bounded artifact summaries and control-character-safe terminal rendering |
@@ -369,6 +370,8 @@ Primary exported objects:
 - `ProvenanceSpan`;
 - `MemoryItem`;
 - `CompilationPolicy`;
+- `CompilationLimits`;
+- `CompilationLimitError`;
 - `ContextCompiler`;
 - `CompiledMemory`;
 - `Extractor`;
@@ -387,6 +390,7 @@ Primary exported objects:
 - `SourceLimitError`;
 - `ArtifactLimits`;
 - `ArtifactLimitError`;
+- `PathBoundaryError`;
 - `RedactionPolicy`;
 - `RedactionFinding`;
 - `RedactionResult`;
@@ -498,7 +502,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 931 tests are collected: 924 pass and 7 platform/optional checks are skipped.
+- 941 tests are collected: 933 pass and 8 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all seven schemas are included.
@@ -599,7 +603,9 @@ audited. Any selected superseded item independently fails verification as
   regular file, reject symlinks/directories/FIFOs, compare pre-open/open and
   post-read identity/content metadata, request nonblocking/no-follow opens,
   retry bounded atomic replacement races, and reject gzip bytes without
-  invoking a decompressor.
+  invoking a decompressor. The shared parent guard rejects linked/reparse
+  ancestors, snapshots the complete lexical chain, and pins the exact parent
+  descriptor on POSIX; adversarial swaps fail before a result is accepted.
 - Artifact loaders, direct replay, `ctxc verify`, and `ctxc inspect` share
   strict raw/canonical byte, line, depth, item/selection, provenance, and issue
   limits. Tests cover BOM/multibyte boundaries, duplicate keys, non-finite
@@ -642,10 +648,12 @@ audited. Any selected superseded item independently fails verification as
   envelope. Events expose exit outcome, rejection/failure counts, recovery,
   verification, compression/budget state, and compile metrics. Default success
   stderr remains empty.
-- CLI file outputs use flushed same-directory temporary files and atomic
-  replacement. Failure-injection tests prove pre-replacement `fsync`/replace
-  failures preserve the old file and remove temporary files; POSIX tests also
-  preserve existing regular-file modes.
+- CLI file outputs use ancestor-guarded, flushed same-directory temporary files
+  and atomic replacement. Missing parents are created component by component;
+  linked/reparse ancestors and special destinations are refused. POSIX install
+  and cleanup are parent-descriptor-relative. Failure-injection tests prove
+  pre-replacement `fsync`/replace failures preserve the old file and remove
+  temporary files; POSIX tests also preserve existing regular-file modes.
 - Archive appends use the same atomic writer under the exclusive lock and
   install a fully validated, bounded, sequence-sorted event log. Canonical
   entry envelopes bind position, prior-entry hash, and the complete source;
@@ -661,8 +669,10 @@ audited. Any selected superseded item independently fails verification as
   symlinks, and FIFOs without opening the special target.
 - Archive writers contend on a persistent advisory-lock marker rather than its
   existence. Same-process and real subprocess tests prove live-writer timeout
-  and automatic lock release after forced process termination. Cleanup also
-  preserves a primary archive error if descriptor close independently fails.
+  and automatic lock release after forced process termination. The marker must
+  remain a single-link regular file and its parent chain must remain stable.
+  Cleanup also preserves a primary archive error if descriptor close
+  independently fails.
 - Benchmark reports, exported corpora, per-case corpus inputs, and runner
   manifests use atomic commits. Failure injection proves old evidence survives
   failed replacement, temporary files are cleaned, and a manifest creation race
@@ -679,9 +689,11 @@ audited. Any selected superseded item independently fails verification as
   per-history metrics. Passing verifies internal consistency, not authorship or
   fairness.
 - Benchmark report, corpus, candidate, and manifest inputs now share the same
-  strict regular-file JSON boundary. Tests cover duplicate/non-finite values,
-  size/line/depth limits, special files, and candidate mutation between hash,
-  validation, and per-case aggregation.
+  strict regular-file JSON boundary. It now uses the same ancestor guard and
+  rejects pre/open identity changes or in-place content mutation. Tests cover
+  duplicate/non-finite values, size/line/depth limits, special files, parent
+  substitution, and candidate mutation between hash, validation, and per-case
+  aggregation.
 - Corpus and candidate envelopes carry separate versioned producer records.
   Corpus producer changes alter `corpus_sha256` but not `dataset_sha256`;
   candidate producer and cases are bound by `candidate_payload_sha256`.
@@ -878,9 +890,11 @@ lower quantile before results are observed.
   duration has an opt-in isolated deadline, and generic completion callables
   still need a shorter transport deadline to degrade into deterministic
   fallback rather than aborting the whole isolated run.
-- Stdout cannot be transactional, and Windows has no portable parent-directory
-  `fsync`; atomic file replacement still depends on destination filesystem
-  semantics.
+- Stdout cannot be transactional. Windows has no portable parent-relative
+  replacement or parent-directory `fsync`; a privileged rename in the final
+  path-syscall window and durability still depend on destination filesystem
+  semantics. Full-chain postchecks reject the operation but cannot guarantee
+  cleanup of a temporary file stranded in a renamed directory.
 - Each archive append rewrites the complete bounded event log, so append time
   and temporary storage are O(archive size).
 - Exclusive manifest installation requires same-directory hard-link support;

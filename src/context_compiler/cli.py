@@ -33,6 +33,7 @@ from .limits import (
     SourceLimits,
 )
 from .models import CompilationPolicy, CompiledMemory
+from .path_safety import PathBoundaryError
 from .redaction import (
     SECRET_DETECTOR_NAMES,
     RedactionLimitError,
@@ -132,6 +133,8 @@ def _error_identity(exc: BaseException) -> tuple[str, str]:
         return "io", "path_not_found"
     if isinstance(exc, PermissionError):
         return "io", "permission_denied"
+    if isinstance(exc, PathBoundaryError):
+        return "io", "unsafe_path_boundary"
     if isinstance(exc, json.JSONDecodeError):
         return "invalid_input", "invalid_json"
     if isinstance(exc, UnicodeError):

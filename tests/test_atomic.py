@@ -47,9 +47,29 @@ def test_exclusive_atomic_install_loses_race_without_clobbering(
     output = tmp_path / "output.json"
     real_link = atomic_module.os.link
 
-    def create_racer_then_link(temporary: object, target: object) -> None:
-        Path(target).write_text("racer", encoding="utf-8")  # type: ignore[arg-type]
-        real_link(temporary, target)
+    def create_racer_then_link(
+        temporary: object,
+        target: object,
+        **kwargs: object,
+    ) -> None:
+        destination_descriptor = kwargs.get("dst_dir_fd")
+        if isinstance(destination_descriptor, int):
+            descriptor = os.open(
+                target,  # type: ignore[arg-type]
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o600,
+                dir_fd=destination_descriptor,
+            )
+            try:
+                os.write(descriptor, b"racer")
+            finally:
+                os.close(descriptor)
+        else:
+            Path(target).write_text(  # type: ignore[arg-type]
+                "racer",
+                encoding="utf-8",
+            )
+        real_link(temporary, target, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(atomic_module.os, "link", create_racer_then_link)
 
@@ -66,7 +86,11 @@ def test_exclusive_atomic_install_cleans_temp_after_link_failure(
 ) -> None:
     output = tmp_path / "output.json"
 
-    def fail_link(_temporary: object, _target: object) -> None:
+    def fail_link(
+        _temporary: object,
+        _target: object,
+        **_kwargs: object,
+    ) -> None:
         raise OSError("injected link failure")
 
     monkeypatch.setattr(atomic_module.os, "link", fail_link)

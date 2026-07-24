@@ -62,14 +62,29 @@ def test_archive_retries_an_atomic_replacement_during_open(
     real_open = io_module.os.open
     replacements = 0
 
-    def replace_before_first_open(path: object, flags: int, *args: object) -> int:
+    def replace_before_first_open(
+        path: object,
+        flags: int,
+        *args: object,
+        **kwargs: object,
+    ) -> int:
         nonlocal replacements
-        if Path(path) == archive.events_path and replacements == 0:  # type: ignore[arg-type]
+        candidate = Path(path)  # type: ignore[arg-type]
+        same_target = candidate == archive.events_path or (
+            kwargs.get("dir_fd") is not None
+            and candidate.name == archive.events_path.name
+        )
+        if same_target and replacements == 0:
             replacement = archive.directory / "replacement.jsonl"
             replacement.write_bytes(committed)
             os.replace(replacement, archive.events_path)
             replacements += 1
-        return real_open(path, flags, *args)  # type: ignore[arg-type]
+        return real_open(  # type: ignore[arg-type]
+            path,
+            flags,
+            *args,
+            **kwargs,
+        )
 
     monkeypatch.setattr(io_module.os, "open", replace_before_first_open)
 

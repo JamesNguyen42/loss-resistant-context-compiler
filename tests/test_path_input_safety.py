@@ -93,13 +93,17 @@ for loader, path in (
 race_path = sys.argv[3]
 real_open = io_module.os.open
 swapped = False
-def swap_to_fifo_before_open(path, flags, *args):
+def swap_to_fifo_before_open(path, flags, *args, **kwargs):
     global swapped
-    if os.fspath(path) == race_path and not swapped:
+    same_target = os.fspath(path) == race_path or (
+        kwargs.get("dir_fd") is not None
+        and os.fspath(path) == os.path.basename(race_path)
+    )
+    if same_target and not swapped:
         os.unlink(race_path)
         os.mkfifo(race_path)
         swapped = True
-    return real_open(path, flags, *args)
+    return real_open(path, flags, *args, **kwargs)
 io_module.os.open = swap_to_fifo_before_open
 try:
     load_sources_path(race_path)
@@ -138,14 +142,38 @@ def test_path_loaders_retry_atomic_replacement_before_open(
     replaced: set[Path] = set()
     real_open = io_module.os.open
 
-    def replace_before_first_open(path: object, flags: int, *args: object) -> int:
+    def replace_before_first_open(
+        path: object,
+        flags: int,
+        *args: object,
+        **kwargs: object,
+    ) -> int:
         candidate = Path(path)  # type: ignore[arg-type]
-        if candidate in committed and candidate not in replaced:
-            replacement = candidate.with_name(f".{candidate.name}.replacement")
-            replacement.write_bytes(committed[candidate])
-            os.replace(replacement, candidate)
-            replaced.add(candidate)
-        return real_open(path, flags, *args)  # type: ignore[arg-type]
+        matched = next(
+            (
+                target
+                for target in committed
+                if candidate == target
+                or (
+                    kwargs.get("dir_fd") is not None
+                    and candidate.name == target.name
+                )
+            ),
+            None,
+        )
+        if matched is not None and matched not in replaced:
+            replacement = matched.with_name(
+                f".{matched.name}.replacement"
+            )
+            replacement.write_bytes(committed[matched])
+            os.replace(replacement, matched)
+            replaced.add(matched)
+        return real_open(  # type: ignore[arg-type]
+            path,
+            flags,
+            *args,
+            **kwargs,
+        )
 
     monkeypatch.setattr(io_module.os, "open", replace_before_first_open)
 

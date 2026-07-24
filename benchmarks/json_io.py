@@ -13,6 +13,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from context_compiler.path_safety import (
+    ParentDirectoryGuard,
+    PathBoundaryError,
+)
+
 
 class StrictJsonError(ValueError):
     """A JSON evidence file is unsafe, malformed, or outside its limits."""
@@ -50,6 +55,24 @@ class StrictFileEvidence:
 
     byte_count: int
     file_sha256: str
+
+
+def _file_identity(value: os.stat_result) -> tuple[int, int]:
+    return value.st_dev, value.st_ino
+
+
+def _file_content_snapshot(
+    value: os.stat_result,
+) -> tuple[int, int, int, int, int, int, int]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_mode,
+        value.st_nlink,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
 
 
 def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -120,38 +143,101 @@ def _open_regular_file(
     label: str,
 ) -> Iterator[tuple[int, os.stat_result]]:
     try:
-        candidate_stat = path.lstat()
+        parent_guard = ParentDirectoryGuard.capture(path, label=label)
+    except PathBoundaryError as exc:
+        raise StrictJsonError(str(exc)) from exc
     except OSError as exc:
         raise StrictJsonError(f"could not inspect {label}: {path}") from exc
-    if not stat.S_ISREG(candidate_stat.st_mode):
-        raise StrictJsonError(f"{label} path must be a regular file: {path}")
-
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_CLOEXEC", 0)
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
+    input_path = parent_guard.target
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOINHERIT", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
     try:
-        descriptor = os.open(path, flags)
-    except OSError as exc:
-        raise StrictJsonError(f"could not open {label}: {path}") from exc
+        parent_context = parent_guard.pinned_parent()
+        with parent_context as parent_descriptor:
+            parent_guard.verify()
+            try:
+                if parent_descriptor is None:
+                    candidate_stat = input_path.lstat()
+                else:
+                    candidate_stat = os.stat(
+                        input_path.name,
+                        dir_fd=parent_descriptor,
+                        follow_symlinks=False,
+                    )
+            except OSError as exc:
+                raise StrictJsonError(
+                    f"could not inspect {label}: {input_path}"
+                ) from exc
+            if not stat.S_ISREG(candidate_stat.st_mode):
+                raise StrictJsonError(
+                    f"{label} path must be a regular file: {input_path}"
+                )
+            try:
+                if parent_descriptor is None:
+                    descriptor = os.open(input_path, flags)
+                else:
+                    descriptor = os.open(
+                        input_path.name,
+                        flags,
+                        dir_fd=parent_descriptor,
+                    )
+            except OSError as exc:
+                raise StrictJsonError(
+                    f"could not open {label}: {input_path}"
+                ) from exc
 
-    primary_error: BaseException | None = None
-    try:
-        try:
-            file_stat = os.fstat(descriptor)
-        except OSError as exc:
-            raise StrictJsonError(f"could not inspect open {label}: {path}") from exc
-        if not stat.S_ISREG(file_stat.st_mode):
-            raise StrictJsonError(f"{label} path must be a regular file: {path}")
-        yield descriptor, file_stat
-    except BaseException as exc:
-        primary_error = exc
-        raise
-    finally:
-        try:
-            os.close(descriptor)
-        except OSError as exc:
-            if primary_error is None:
-                raise StrictJsonError(f"could not close {label}: {path}") from exc
+            primary_error: BaseException | None = None
+            try:
+                try:
+                    file_stat = os.fstat(descriptor)
+                except OSError as exc:
+                    raise StrictJsonError(
+                        f"could not inspect open {label}: {input_path}"
+                    ) from exc
+                if not stat.S_ISREG(file_stat.st_mode):
+                    raise StrictJsonError(
+                        f"{label} path must be a regular file: {input_path}"
+                    )
+                if _file_identity(candidate_stat) != _file_identity(file_stat):
+                    raise StrictJsonError(
+                        f"{label} path changed while opening: {input_path}"
+                    )
+                parent_guard.verify()
+                os.set_inheritable(descriptor, False)
+                yield descriptor, file_stat
+                try:
+                    final_stat = os.fstat(descriptor)
+                except OSError as exc:
+                    raise StrictJsonError(
+                        f"could not inspect {label} after reading: "
+                        f"{input_path}"
+                    ) from exc
+                if _file_content_snapshot(file_stat) != _file_content_snapshot(
+                    final_stat
+                ):
+                    raise StrictJsonError(
+                        f"{label} changed while it was being read: {input_path}"
+                    )
+                parent_guard.verify()
+            except BaseException as exc:
+                primary_error = exc
+                raise
+            finally:
+                try:
+                    os.close(descriptor)
+                except OSError as exc:
+                    if primary_error is None:
+                        raise StrictJsonError(
+                            f"could not close {label}: {input_path}"
+                        ) from exc
+    except PathBoundaryError as exc:
+        raise StrictJsonError(str(exc)) from exc
 
 
 def _read_bounded_regular_file(

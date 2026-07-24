@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 931 tests (924 passing and 7 skipped locally); CI covers Python
+- [x] Collect 941 tests (933 passing and 8 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -590,9 +590,12 @@ than most related technology” within the exact dated evaluation scope.
   compressed bytes without decompression; archive hard-link aliases, writer
   races, oversized/ambiguous JSON, canonical immutable metadata, and fixed
   source-id/role/timestamp amplification ceilings have fail-closed coverage.
-- [ ] Define and test the remaining parent-directory traversal boundary.
-  File-level no-follow and identity checks do not prevent a privileged rename
-  or alias of an ancestor directory.
+- [x] Define and test the parent-directory traversal boundary. Shared guards
+  reject linked/reparse ancestors, freeze the full lexical ancestor chain,
+  use pinned descriptor-relative parents on POSIX, and revalidate before and
+  after reads, writes, and archive-lock opens. On Windows and other hosts
+  without directory-relative replacement, a privileged rename inside the
+  final path syscall remains an explicit filesystem trust boundary.
 - [ ] Complete an external security review before a production claim.
 
 ### Reliability and operations

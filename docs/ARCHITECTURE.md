@@ -92,12 +92,15 @@ Serialized source and compiled-artifact path loaders share a stable
 regular-file boundary: lstat rejection of links/special files, OS no-follow
 and nonblocking-open flags where available, pre-open/open identity comparison,
 bounded retry when atomic replacement wins the inspection race, and post-read
-size/mtime comparison. They do not decompress input. Direct text streams
-remain the caller's trust boundary. UTF-8 size and physical line length are
-checked before JSON decoding. A quote-aware nesting scan rejects excessive
-container depth before the decoder recurses. Source JSON also rejects duplicate
-object keys, non-standard NaN/infinity constants, and overflowed non-finite
-floats.
+size/mtime comparison. `path_safety.py` additionally rejects a linked or
+reparse-point ancestor, snapshots every lexical ancestor identity, and
+revalidates the chain throughout the operation. POSIX opens are relative to a
+pinned parent directory descriptor, so an ancestor rename cannot redirect the
+accepted file. They do not decompress input. Direct text streams remain the
+caller's trust boundary. UTF-8 size and physical line length are checked before
+JSON decoding. A quote-aware nesting scan rejects excessive container depth
+before the decoder recurses. Source JSON also rejects duplicate object keys,
+non-standard NaN/infinity constants, and overflowed non-finite floats.
 
 Direct Python iterables are stopped after the first record beyond the count
 limit. A non-allocating compact-JSON size walk bounds every supplied dictionary
@@ -576,11 +579,14 @@ rather than executable instructions.
 The reusable writer in `atomic.py` never writes directly to its destination. It
 creates a restrictive temporary file in the destination directory, writes the
 complete UTF-8 payload, flushes and `fsync`es it, preserves an existing regular
-file’s mode when replacing it, and calls `os.replace()`. Any failure before
-replacement removes the temporary file and leaves the old destination
-unchanged. POSIX hosts additionally `fsync` the parent directory after the
-rename; Windows uses the atomic replacement boundary available through
-`os.replace()` but has no portable directory-`fsync` equivalent. CLI file
+file’s mode when replacing it, and calls `os.replace()`. Missing parents are
+created one component at a time below a validated boundary. Existing
+linked/reparse ancestors and non-regular destinations are refused. Any failure
+before replacement removes the reachable temporary file and leaves the old
+destination unchanged. POSIX creation, install, cleanup, and directory
+`fsync` use one pinned parent descriptor; Windows uses the atomic replacement
+boundary available through `os.replace()` plus full-chain checks but has no
+portable directory-relative replace or directory-`fsync` equivalent. CLI file
 outputs, redacted source/report files, archive commits, benchmark reports,
 corpus exports, and external-run manifests share this primitive. Stdout stays
 a stream and therefore cannot provide file-transaction semantics. The two
@@ -722,9 +728,10 @@ the complete canonical source record; the first entry links to the all-zero
 genesis value. A persistent `.append.lock` regular file carries an exclusive OS
 advisory lock that serializes writers. The marker stays on disk, but only
 kernel lock ownership means a writer is active; descriptor close and process
-death release ownership automatically. Timeouts are finite and non-negative,
-and a non-regular lock path is refused. Existing ids and sequences cannot be
-overwritten through the API, and archive loads revalidate the chain, exact
+death release ownership automatically. Timeouts are finite and non-negative;
+a non-regular, linked/reparse, or hard-linked lock path is refused, and its
+parent boundary is pinned and revalidated. Existing ids and sequences cannot
+be overwritten through the API, and archive loads revalidate the chain, exact
 entry shape, source ordering, each content hash, and each canonical record
 hash, including timestamp and metadata.
 

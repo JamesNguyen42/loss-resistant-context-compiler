@@ -50,6 +50,7 @@ from .models import (
     SourceRecord,
     VerificationReport,
 )
+from .path_safety import PathBoundaryError
 from .redaction import (
     REDACTION_REPORT_SCHEMA,
     REDACTION_VERIFICATION_SCHEMA,
@@ -98,6 +99,7 @@ __all__ = [
     "MemoryKind",
     "MemoryStatus",
     "ModelExtractor",
+    "PathBoundaryError",
     "LmsQwenCompletion",
     "LocalQwenError",
     "LiteralModelExtractor",

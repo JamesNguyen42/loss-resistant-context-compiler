@@ -8,7 +8,13 @@ from pathlib import Path
 import pytest
 
 import context_compiler.atomic as atomic_module
-from context_compiler import ArtifactLimitError, SourceLimitError, SourceRecord, cli
+from context_compiler import (
+    ArtifactLimitError,
+    PathBoundaryError,
+    SourceLimitError,
+    SourceRecord,
+    cli,
+)
 from context_compiler.cli import main
 
 
@@ -99,6 +105,10 @@ def test_stdout_output_retains_existing_text_contract(
         (TimeoutError("late"), ("timeout", "operation_timed_out")),
         (FileNotFoundError("missing"), ("io", "path_not_found")),
         (PermissionError("denied"), ("io", "permission_denied")),
+        (
+            PathBoundaryError("changed parent"),
+            ("io", "unsafe_path_boundary"),
+        ),
         (
             json.JSONDecodeError("bad", "{", 1),
             ("invalid_input", "invalid_json"),
