@@ -27,7 +27,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 879 collected: 874 passing, 5 skipped |
+| Tests at this snapshot | 882 collected: 877 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -478,7 +478,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 879 tests are collected: 874 pass and 5 platform/optional checks are skipped.
+- 882 tests are collected: 877 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all five schemas are included.
@@ -656,18 +656,20 @@ audited. Any selected superseded item independently fails verification as
   adapter process-tree memory limit, an immutable adapter revision, retained
   dependency-lock bytes defining the environment identity, the exact local Qwen
   Q4 model, one inference slot, context and tokenizer ids, retries, zero
-  model-service cost, and bounded retained network-isolation evidence;
-  incomplete controls are a per-system non-win.
+  model-service cost, bounded retained network-isolation evidence, and sampled
+  inference-service identity/peak-memory evidence; incomplete controls are a
+  per-system non-win.
 - External scoring requires a strict frozen
-  `lrcbench-external-protocol-0.4` manifest. The protocol's set is authoritative,
+  `lrcbench-external-protocol-0.5` manifest. The protocol's set is authoritative,
   and the benchmark rejects a draft, dataset mismatch, unregistered system, or
   adapter, dependency-environment, model, tokenizer, retry, network-evidence,
   or runner-limit mismatch before scoring. Current runner schema
-  `lrcbench-external-run-manifest-0.6` freezes immutable adapter/environment
+  `lrcbench-external-run-manifest-0.7` freezes immutable adapter/environment
   identity, revalidated dependency-lock bytes, exact 8192-context Qwen, one
-  slot, zero retries/service cost, retained network-isolation evidence, and
-  bounded runner controls including enforcement polling cadence. The committed
-  v1 protocol is valid but intentionally blocked and not claim-ready.
+  slot, zero retries/service cost, retained network-isolation evidence, sampled
+  service process/executable/peak-memory accounting, and bounded runner controls
+  including enforcement polling cadence. The committed v1 protocol is valid
+  but intentionally blocked and not claim-ready.
 - CI runs a 24-history fail-closed benchmark certificate.
 - The performance profile is a broad shared-runner tripwire, not an SLO: it
   excludes source construction, `tracemalloc` is not RSS, and the separate
@@ -872,9 +874,12 @@ lower quantile before results are observed.
   isolation. It now binds and revalidates an externally created host firewall,
   container, or network-namespace policy artifact, but that retained file does
   not prove the host enforced it. POSIX `RLIMIT_AS` and Windows Job Objects
-  bound the adapter process tree, but not a pre-existing inference service;
-  claim-bearing resource accounting still needs to freeze how that external
-  process is measured or contained.
+  bound the adapter process tree, but not a pre-existing inference service. The
+  runner now identifies that service by PID creation token plus executable
+  digest and samples Windows working set or Linux RSS; it cannot contain the
+  service, prove the adapter used that PID, include separate helper processes,
+  or observe a spike that begins and ends between 20 ms polls. The draft
+  protocol still needs to freeze the service binary, metric, and ceiling.
 
 ## Safe host-side compaction transaction
 
@@ -918,8 +923,8 @@ next work is the external and natural-history evidence path:
    protocol without looking at comparative results;
 3. complete result-blind inclusion decisions and freeze the initial comparison
    set, dependency locks, and adapter revisions;
-4. freeze containment or accounting for a pre-existing inference service
-   outside the now-bounded adapter process tree;
+4. freeze the implemented pre-existing inference-service executable, memory
+   metric, and ceiling (or replace monitoring with stronger containment);
 5. add the first reproducible, no-paid-service external adapter;
 6. define the natural-history privacy, licensing, and annotation protocol.
 

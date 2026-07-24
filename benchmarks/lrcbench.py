@@ -2812,6 +2812,19 @@ def run_benchmark(
                     f"external system {reference.system!r} run manifest "
                     "network-isolation evidence does not match the frozen protocol"
                 )
+            inference_service = reference.inference_service
+            if (
+                inference_service.memory_metric
+                != expected_identity.inference_service_memory_metric
+                or inference_service.executable_sha256
+                != expected_identity.inference_service_executable_sha256
+                or inference_service.max_memory_mb
+                != expected_identity.max_inference_service_memory_mb
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "inference-service accounting does not match the frozen protocol"
+                )
             external_manifest_sha256[reference.system] = reference.manifest_sha256
             external_model_ids[reference.system] = reference.model_id
             external_model_costs[reference.system] = reference.model_service_cost_usd

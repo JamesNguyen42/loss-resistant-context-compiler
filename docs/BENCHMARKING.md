@@ -298,6 +298,8 @@ python -m benchmarks.external_runner \
   --dependency-lock-evidence requirements.lock \
   --network-isolation-mode host-firewall \
   --network-isolation-evidence network-policy.txt \
+  --inference-service-pid INFERENCE_SERVICE_PID \
+  --max-inference-service-memory-mb SERVICE_MEMORY_LIMIT_MB \
   --adapter-revision REVISION \
   --environment-id sha256:DEPENDENCY_LOCK_SHA256 \
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m \
@@ -326,14 +328,21 @@ claim controls require `environment_id` to equal
 `sha256:<dependency-lock-sha256>`.
 
 `--max-memory-mb` bounds the adapter process tree with `RLIMIT_AS` on POSIX and
-a Job Object assigned before process resume on Windows. It does not account for
-a pre-existing inference service outside that process tree. The wrapper is not
-a filesystem sandbox and does not establish its own network sandbox, so
+a Job Object assigned before process resume on Windows. The service PID and
+service-memory options separately capture the pre-existing inference process's
+creation identity and executable digest, then sample Windows working set or
+Linux RSS at the runner's polling cadence. The adapter run fails if the service
+disappears, restarts, changes executable, or exceeds the ceiling; the runner
+does not terminate or contain that service, and polling can miss between-sample
+spikes. It also cannot prove that the adapter used the designated PID or
+automatically include separate helper processes. Configured service accounting
+is supported on Windows and Linux and fails preflight elsewhere. The wrapper is
+not a filesystem sandbox and does not establish its own network sandbox, so
 unreviewed adapter code still belongs in a separately isolated environment.
-Claim controls require a bounded retained host firewall, container, or
-network-namespace policy artifact. The runner hashes it before and after
-execution and manifest reload rechecks it, but this does not independently
-prove that the host enforced the named policy.
+Claim controls require a bounded retained host firewall,
+container, or network-namespace policy artifact. The runner hashes it before
+and after execution and manifest reload rechecks it, but this does not
+independently prove that the host enforced the named policy.
 
 The manifest also binds adapter revision, environment id, model identity,
 context length, tokenizer, inference concurrency, retries, and model-service
@@ -341,13 +350,15 @@ cost. Missing per-case isolation, no enforced process-tree memory limit,
 unrecorded identity, a model other than the exact local Qwen Q4 build,
 concurrency other than one, or nonzero model service cost is a
 certificate-invalid non-win even when the candidate interchange itself is
-valid. In current runner schema `lrcbench-external-run-manifest-0.6`, a
+valid. In current runner schema `lrcbench-external-run-manifest-0.7`, a
 claim-eligible identity requires an immutable adapter revision, environment id
 `sha256:<dependency-lock-sha256>`, the exact retained lock bytes, the exact
 8192-context Qwen model, evaluator tokenizer, one slot, zero retries, zero
-service cost, and retained network-isolation evidence. Scoring also matches the
-manifest's environment/network-evidence digests, isolation, and
-time/polling/output/candidate/memory limits to the frozen protocol.
+service cost, retained network-isolation evidence, and at least two stable
+inference-service memory samples within the ceiling. Scoring also matches the
+manifest's environment/network-evidence digests, service memory
+metric/executable digest/ceiling, isolation, and
+time/polling/output/candidate/adapter-memory limits to the frozen protocol.
 
 Run the built-in round-trip and negative checks before preparing an adapter:
 
@@ -396,7 +407,7 @@ and documentation together.
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 879 tests: 874 passed and 5 platform/optional checks were
+The suite collected 882 tests: 877 passed and 5 platform/optional checks were
 skipped. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |

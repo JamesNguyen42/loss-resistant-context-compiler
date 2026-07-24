@@ -244,6 +244,8 @@ python -m benchmarks.external_runner `
   --dependency-lock-evidence requirements.lock `
   --network-isolation-mode host-firewall `
   --network-isolation-evidence network-policy.txt `
+  --inference-service-pid INFERENCE_SERVICE_PID `
+  --max-inference-service-memory-mb SERVICE_MEMORY_LIMIT_MB `
   --adapter-revision REVISION `
   --environment-id sha256:DEPENDENCY_LOCK_SHA256 `
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m `
@@ -271,25 +273,33 @@ the recorded `environment_id`.
 
 `--max-memory-mb` uses `RLIMIT_AS` on POSIX and a race-free Windows Job Object
 boundary created before adapter code is resumed. It limits the adapter process
-tree, not an already-running inference service outside that tree. The wrapper
-does not establish a filesystem or network sandbox, so execute only reviewed
-adapter code in an appropriately isolated environment. Claim-bearing runs must
-provide the retained host firewall, container, or network-namespace policy file;
-the runner hashes it before execution, detects changes, and manifest reload
-rehashes it. That artifact is auditable evidence, not proof that the host
-enforced the named policy.
+tree. The separate service options capture an already-running inference
+service's PID creation token and executable digest, then sample Windows working
+set or Linux RSS before, during, and after each case. A restart, disappearance,
+executable change, or ceiling breach invalidates the adapter without
+terminating the service. Sampling is not containment and can miss a spike
+between polls; it does not prove the adapter used that PID or automatically
+include separate helper processes. Configured service accounting is supported
+on Windows and Linux and fails preflight on other platforms. The wrapper does
+not establish a filesystem or network sandbox, so execute only reviewed adapter
+code in an appropriately isolated environment. Claim-bearing runs must provide the retained host firewall,
+container, or network-namespace policy file; the runner hashes it before
+execution, detects changes, and manifest reload rehashes it. That artifact is
+auditable evidence, not proof that the host enforced the named policy.
 
 Revision, environment, model, context, tokenizer, inference concurrency,
 retries, and service cost are also recorded. Claim-bearing manifests require
 per-case isolation, an enforced process-tree memory limit, complete identity
 fields, the exact Qwen Q4 model, one inference slot, and zero model-service
-cost. Current `lrcbench-external-run-manifest-0.6` claim metadata requires an
+cost. Current `lrcbench-external-run-manifest-0.7` claim metadata requires an
 immutable adapter revision, `environment_id` equal to
 `sha256:<dependency-lock-sha256>`, the exact retained lock bytes, context length
 8192, the evaluator tokenizer, zero retries, the exact
 Qwen/one-slot/zero-service-cost identity, and retained network-isolation
-evidence. Scoring also requires every environment/network-evidence digest,
-isolation, timeout, polling, output, candidate, and memory limit to match the
+evidence, plus at least two stable inference-service samples within the
+configured ceiling. Scoring also requires every environment/network-evidence
+digest, the service memory metric/executable digest/ceiling, isolation,
+timeout, polling, output, candidate, and adapter memory limit to match the
 frozen protocol. `--isolation whole-corpus` remains useful for diagnostics but
 is a registered certificate non-win.
 
@@ -386,7 +396,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 879 tests alongside it: 874 passed and 5
+The suite collected 882 tests alongside it: 877 passed and 5
 platform/optional checks were skipped.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |

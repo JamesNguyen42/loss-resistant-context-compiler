@@ -151,10 +151,14 @@ def _protocol(
             "max_stderr_bytes": 1_000_000,
             "max_candidate_bytes": 20_000_000,
             "max_memory_mb": 8_192 if frozen else None,
-            "inference_service_accounting": (
-                "Shared exact-model service is sampled and reported."
-                if frozen
-                else None
+            "inference_service_memory_metric": (
+                "working-set-bytes" if frozen else None
+            ),
+            "inference_service_executable_sha256": (
+                _sha("a") if frozen else None
+            ),
+            "max_inference_service_memory_mb": (
+                32_768 if frozen else None
             ),
             "shell_invocation": False,
             "overwrite_existing_outputs": False,
@@ -191,7 +195,7 @@ def test_committed_draft_is_verified_but_not_claim_ready() -> None:
     verified = load_external_protocol(DEFAULT_EXTERNAL_PROTOCOL)
 
     assert verified.protocol_sha256 == (
-        "8ec70a05cc6691569463c4f579180c594fe56dfee3da55850f169b50e0a295e8"
+        "27d39b42e46851e72aba80a2c365108a4baaef8469bbbcb6ba019c64264e374b"
     )
     assert verified.status == "draft"
     assert verified.claim_ready is False
@@ -251,6 +255,9 @@ def test_complete_frozen_protocol_is_claim_ready(tmp_path: Path) -> None:
         "poll_interval_seconds": 0.02,
         "network_isolation_mode": "host-firewall",
         "network_isolation_evidence_sha256": _sha("9"),
+        "inference_service_memory_metric": "working-set-bytes",
+        "inference_service_executable_sha256": _sha("a"),
+        "max_inference_service_memory_mb": 32_768,
         "max_stdout_bytes": 1_000_000,
         "max_stderr_bytes": 1_000_000,
         "max_candidate_bytes": 20_000_000,
@@ -319,14 +326,30 @@ def test_frozen_protocol_fails_closed_on_unresolved_controls(
         (
             "missing memory limit",
             lambda value: value["runner"].update(max_memory_mb=None),
-            "memory and inference-service",
+            "requires adapter memory",
         ),
         (
             "missing service accounting",
             lambda value: value["runner"].update(
-                inference_service_accounting=None
+                inference_service_memory_metric=None,
+                inference_service_executable_sha256=None,
+                max_inference_service_memory_mb=None,
             ),
-            "memory and inference-service",
+            "measured inference-service",
+        ),
+        (
+            "partial service accounting",
+            lambda value: value["runner"].update(
+                inference_service_executable_sha256=None,
+            ),
+            "requires a memory metric",
+        ),
+        (
+            "unsupported service metric",
+            lambda value: value["runner"].update(
+                inference_service_memory_metric="estimated-bytes",
+            ),
+            "memory_metric is unsupported",
         ),
         (
             "missing network isolation evidence",

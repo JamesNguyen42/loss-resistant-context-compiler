@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -28,6 +30,13 @@ FIXTURE_DEPENDENCY_LOCK_SHA256 = hashlib.sha256(
     FIXTURE_DEPENDENCY_LOCK_CONTENT
 ).hexdigest()
 FIXTURE_ENVIRONMENT_ID = f"sha256:{FIXTURE_DEPENDENCY_LOCK_SHA256}"
+FIXTURE_INFERENCE_SERVICE_MEMORY_METRIC = (
+    "working-set-bytes" if os.name == "nt" else "resident-set-bytes"
+)
+FIXTURE_INFERENCE_SERVICE_EXECUTABLE_SHA256 = hashlib.sha256(
+    Path(getattr(sys, "_base_executable", sys.executable)).read_bytes()
+).hexdigest()
+FIXTURE_MAX_INFERENCE_SERVICE_MEMORY_MB = 4_096
 
 
 def _identity(system: str) -> str:
@@ -45,6 +54,15 @@ def write_frozen_external_protocol(
     network_isolation_mode: str = FIXTURE_NETWORK_ISOLATION_MODE,
     network_isolation_evidence_sha256: str = (
         FIXTURE_NETWORK_ISOLATION_SHA256
+    ),
+    inference_service_memory_metric: str = (
+        FIXTURE_INFERENCE_SERVICE_MEMORY_METRIC
+    ),
+    inference_service_executable_sha256: str = (
+        FIXTURE_INFERENCE_SERVICE_EXECUTABLE_SHA256
+    ),
+    max_inference_service_memory_mb: int = (
+        FIXTURE_MAX_INFERENCE_SERVICE_MEMORY_MB
     ),
 ) -> Path:
     registered = tuple(sorted(systems))
@@ -161,8 +179,14 @@ def write_frozen_external_protocol(
             "max_stderr_bytes": 1_000_000,
             "max_candidate_bytes": 20_000_000,
             "max_memory_mb": max_memory_mb,
-            "inference_service_accounting": (
-                "Shared exact-model service is sampled and reported."
+            "inference_service_memory_metric": (
+                inference_service_memory_metric
+            ),
+            "inference_service_executable_sha256": (
+                inference_service_executable_sha256
+            ),
+            "max_inference_service_memory_mb": (
+                max_inference_service_memory_mb
             ),
             "shell_invocation": False,
             "overwrite_existing_outputs": False,

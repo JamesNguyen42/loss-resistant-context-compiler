@@ -1,5 +1,5 @@
 {
-  "schema": "lrcbench-external-protocol-0.4",
+  "schema": "lrcbench-external-protocol-0.5",
   "protocol_id": "external-comparison-v1",
   "status": "draft",
   "created_at": "2026-07-24T00:00:00+00:00",
@@ -7,7 +7,7 @@
   "freeze_repository_commit": null,
   "protocol_document": {
     "path": "external-comparison-v1.md",
-    "file_sha256": "ff320a176f163743027cb1049af81dfd401fcb368a70b788e3a4244bf8ce6f48"
+    "file_sha256": "28c5cc4e4a1ba750081085171ac08a3bd523274abd354c100dc29d41906700df"
   },
   "comparison_candidates": [
     {
@@ -142,7 +142,9 @@
     "max_stderr_bytes": 1000000,
     "max_candidate_bytes": 20000000,
     "max_memory_mb": null,
-    "inference_service_accounting": null,
+    "inference_service_memory_metric": null,
+    "inference_service_executable_sha256": null,
+    "max_inference_service_memory_mb": null,
     "shell_invocation": false,
     "overwrite_existing_outputs": false,
     "failure_policy": "registered-failures-are-non-wins",
@@ -186,5 +188,5 @@
       "description": "Select and pin a materially different public tool-use or research task suite."
     }
   ],
-  "protocol_sha256": "8ec70a05cc6691569463c4f579180c594fe56dfee3da55850f169b50e0a295e8"
+  "protocol_sha256": "27d39b42e46851e72aba80a2c365108a4baaef8469bbbcb6ba019c64264e374b"
 }

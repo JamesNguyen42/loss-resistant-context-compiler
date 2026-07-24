@@ -27,7 +27,7 @@ from .json_io import (
 )
 from .lrcbench import TOKENIZER_ID
 
-EXTERNAL_PROTOCOL_SCHEMA = "lrcbench-external-protocol-0.4"
+EXTERNAL_PROTOCOL_SCHEMA = "lrcbench-external-protocol-0.5"
 DEFAULT_EXTERNAL_PROTOCOL = (
     Path(__file__).resolve().parent
     / "protocols"
@@ -136,7 +136,9 @@ _RUNNER_FIELDS = {
     "max_stderr_bytes",
     "max_candidate_bytes",
     "max_memory_mb",
-    "inference_service_accounting",
+    "inference_service_memory_metric",
+    "inference_service_executable_sha256",
+    "max_inference_service_memory_mb",
     "shell_invocation",
     "overwrite_existing_outputs",
     "failure_policy",
@@ -165,6 +167,9 @@ class ExternalExecutionContract:
     poll_interval_seconds: float
     network_isolation_mode: str | None
     network_isolation_evidence_sha256: str | None
+    inference_service_memory_metric: str | None
+    inference_service_executable_sha256: str | None
+    max_inference_service_memory_mb: int | None
     max_stdout_bytes: int
     max_stderr_bytes: int
     max_candidate_bytes: int
@@ -185,6 +190,15 @@ class ExternalExecutionContract:
             "network_isolation_mode": self.network_isolation_mode,
             "network_isolation_evidence_sha256": (
                 self.network_isolation_evidence_sha256
+            ),
+            "inference_service_memory_metric": (
+                self.inference_service_memory_metric
+            ),
+            "inference_service_executable_sha256": (
+                self.inference_service_executable_sha256
+            ),
+            "max_inference_service_memory_mb": (
+                self.max_inference_service_memory_mb
             ),
             "max_stdout_bytes": self.max_stdout_bytes,
             "max_stderr_bytes": self.max_stderr_bytes,
@@ -764,20 +778,49 @@ def _validate_runner(value: object, *, frozen: bool) -> None:
             network_evidence_sha256,
             context="runner.network_isolation_evidence_sha256",
         )
-    accounting = _optional_string(
-        runner["inference_service_accounting"],
-        context="runner.inference_service_accounting",
-        maximum=2_048,
+    service_metric = runner["inference_service_memory_metric"]
+    service_executable_sha256 = runner[
+        "inference_service_executable_sha256"
+    ]
+    max_service_memory_mb = runner["max_inference_service_memory_mb"]
+    service_fields = (
+        service_metric,
+        service_executable_sha256,
+        max_service_memory_mb,
     )
+    if all(field is None for field in service_fields):
+        pass
+    elif any(field is None for field in service_fields):
+        raise ExternalProtocolError(
+            "runner inference-service accounting requires a memory metric, "
+            "executable SHA-256, and memory ceiling"
+        )
+    else:
+        if service_metric not in {
+            "resident-set-bytes",
+            "working-set-bytes",
+        }:
+            raise ExternalProtocolError(
+                "runner.inference_service_memory_metric is unsupported"
+            )
+        _sha256(
+            service_executable_sha256,
+            context="runner.inference_service_executable_sha256",
+        )
+        _integer(
+            max_service_memory_mb,
+            context="runner.max_inference_service_memory_mb",
+            minimum=1,
+        )
     if frozen and (
         max_memory_mb is None
-        or accounting is None
+        or any(field is None for field in service_fields)
         or network_mode is None
         or network_evidence_sha256 is None
     ):
         raise ExternalProtocolError(
-            "frozen runner requires memory and inference-service accounting "
-            "plus retained network-isolation evidence"
+            "frozen runner requires adapter memory, measured inference-service "
+            "accounting, and retained network-isolation evidence"
         )
 
 
@@ -962,6 +1005,34 @@ def load_external_protocol(
                 is None
                 else str(
                     payload["runner"]["network_isolation_evidence_sha256"]
+                )
+            ),
+            inference_service_memory_metric=(
+                None
+                if payload["runner"]["inference_service_memory_metric"]
+                is None
+                else str(
+                    payload["runner"]["inference_service_memory_metric"]
+                )
+            ),
+            inference_service_executable_sha256=(
+                None
+                if payload["runner"][
+                    "inference_service_executable_sha256"
+                ]
+                is None
+                else str(
+                    payload["runner"][
+                        "inference_service_executable_sha256"
+                    ]
+                )
+            ),
+            max_inference_service_memory_mb=(
+                None
+                if payload["runner"]["max_inference_service_memory_mb"]
+                is None
+                else int(
+                    payload["runner"]["max_inference_service_memory_mb"]
                 )
             ),
             max_stdout_bytes=int(payload["runner"]["max_stdout_bytes"]),

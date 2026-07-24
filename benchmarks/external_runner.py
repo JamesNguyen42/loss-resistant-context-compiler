@@ -11,12 +11,14 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +47,7 @@ from .lrcbench import (
     decode_external_candidate,
 )
 
-RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.6"
+RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.7"
 _SYSTEM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 _REVISION_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 _ENVIRONMENT_ID_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -61,6 +63,10 @@ NETWORK_ISOLATION_MODES = frozenset(
 CLAIM_NETWORK_ISOLATION_MODES = NETWORK_ISOLATION_MODES - {"unverified"}
 _NETWORK_ISOLATION_EVIDENCE_MAX_BYTES = 1_000_000
 _DEPENDENCY_LOCK_EVIDENCE_MAX_BYTES = 20_000_000
+_INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES = 2_000_000_000
+_INFERENCE_SERVICE_MEMORY_METRICS = frozenset(
+    {"resident-set-bytes", "working-set-bytes"}
+)
 _WINDOWS_CREATE_SUSPENDED = 0x00000004
 _WINDOWS_JOB_OBJECT_LIMIT_PROCESS_MEMORY = 0x00000100
 _WINDOWS_JOB_OBJECT_LIMIT_JOB_MEMORY = 0x00000200
@@ -97,6 +103,7 @@ class ExternalRunReference:
     identity: RunnerIdentity
     dependency_lock: DependencyLockEvidence
     network_isolation: NetworkIsolationEvidence
+    inference_service: InferenceServiceAccounting
     adapter_revision: str
     environment_id: str
     model_id: str
@@ -287,6 +294,138 @@ class NetworkIsolationEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class InferenceServiceContract:
+    """Stable identity and memory ceiling for one pre-existing model service."""
+
+    process_id: int | None = None
+    process_start_token: str | None = None
+    executable_path: str | None = None
+    executable_sha256: str | None = None
+    executable_bytes: int | None = None
+    memory_metric: str | None = None
+    max_memory_mb: int | None = None
+
+    def __post_init__(self) -> None:
+        values = tuple(getattr(self, name) for name in self.__dataclass_fields__)
+        if all(value is None for value in values):
+            return
+        if any(value is None for value in values):
+            raise ValueError("inference-service contract must be complete or disabled")
+        if (
+            isinstance(self.process_id, bool)
+            or not isinstance(self.process_id, int)
+            or self.process_id <= 0
+        ):
+            raise ValueError("inference-service process_id must be positive")
+        if (
+            not isinstance(self.process_start_token, str)
+            or not self.process_start_token
+            or len(self.process_start_token) > 256
+        ):
+            raise ValueError("inference-service process start token is invalid")
+        if (
+            not isinstance(self.executable_path, str)
+            or not self.executable_path
+            or not Path(self.executable_path).is_absolute()
+        ):
+            raise ValueError(
+                "inference-service executable requires an absolute path"
+            )
+        if not _is_sha256(self.executable_sha256):
+            raise ValueError(
+                "inference-service executable requires a SHA-256 digest"
+            )
+        if (
+            isinstance(self.executable_bytes, bool)
+            or not isinstance(self.executable_bytes, int)
+            or self.executable_bytes <= 0
+        ):
+            raise ValueError(
+                "inference-service executable requires a positive byte count"
+            )
+        if self.memory_metric not in _INFERENCE_SERVICE_MEMORY_METRICS:
+            raise ValueError("inference-service memory metric is invalid")
+        if (
+            isinstance(self.max_memory_mb, bool)
+            or not isinstance(self.max_memory_mb, int)
+            or self.max_memory_mb <= 0
+        ):
+            raise ValueError("inference-service memory ceiling must be positive")
+
+    @property
+    def enabled(self) -> bool:
+        return self.process_id is not None
+
+
+@dataclass(frozen=True, slots=True)
+class InferenceServiceAccounting:
+    """Historical samples for one stable pre-existing model-service process."""
+
+    process_id: int | None = None
+    process_start_token: str | None = None
+    executable_path: str | None = None
+    executable_sha256: str | None = None
+    executable_bytes: int | None = None
+    memory_metric: str | None = None
+    max_memory_mb: int | None = None
+    sample_count: int = 0
+    peak_memory_bytes: int | None = None
+
+    def __post_init__(self) -> None:
+        contract_values = (
+            self.process_id,
+            self.process_start_token,
+            self.executable_path,
+            self.executable_sha256,
+            self.executable_bytes,
+            self.memory_metric,
+            self.max_memory_mb,
+        )
+        if all(value is None for value in contract_values):
+            if self.sample_count != 0 or self.peak_memory_bytes is not None:
+                raise ValueError(
+                    "disabled inference-service accounting cannot carry samples"
+                )
+            return
+        InferenceServiceContract(*contract_values)
+        if (
+            isinstance(self.sample_count, bool)
+            or not isinstance(self.sample_count, int)
+            or self.sample_count <= 0
+        ):
+            raise ValueError(
+                "inference-service accounting requires a positive sample count"
+            )
+        if (
+            isinstance(self.peak_memory_bytes, bool)
+            or not isinstance(self.peak_memory_bytes, int)
+            or self.peak_memory_bytes <= 0
+        ):
+            raise ValueError(
+                "inference-service accounting requires positive peak memory"
+            )
+
+    @property
+    def claim_evidence_complete(self) -> bool:
+        return (
+            self.process_id is not None
+            and self.sample_count >= 2
+            and self.peak_memory_bytes is not None
+            and self.max_memory_mb is not None
+            and self.peak_memory_bytes <= self.max_memory_mb * 1024 * 1024
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _InferenceProcessSnapshot:
+    process_id: int
+    process_start_token: str
+    executable_path: str
+    memory_metric: str
+    memory_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
 class CaseRunRecord:
     case_id: str
     command: tuple[str, ...]
@@ -340,6 +479,7 @@ class ExternalRunManifest:
     identity: RunnerIdentity
     dependency_lock: DependencyLockEvidence
     network_isolation: NetworkIsolationEvidence
+    inference_service: InferenceServiceAccounting
     claim_metadata_complete: bool
     memory_limit_enforced: bool
     python_version: str
@@ -541,6 +681,356 @@ def _network_isolation_evidence_matches(
         observed.file_sha256 == evidence.evidence_sha256
         and observed.byte_count == evidence.evidence_bytes
     )
+
+
+@lru_cache(maxsize=1)
+def _windows_inference_process_api():
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+
+    class FileTime(ctypes.Structure):
+        _fields_ = [
+            ("low", wintypes.DWORD),
+            ("high", wintypes.DWORD),
+        ]
+
+    class ProcessMemoryCountersEx(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("page_fault_count", wintypes.DWORD),
+            ("peak_working_set_size", ctypes.c_size_t),
+            ("working_set_size", ctypes.c_size_t),
+            ("quota_peak_paged_pool_usage", ctypes.c_size_t),
+            ("quota_paged_pool_usage", ctypes.c_size_t),
+            ("quota_peak_non_paged_pool_usage", ctypes.c_size_t),
+            ("quota_non_paged_pool_usage", ctypes.c_size_t),
+            ("pagefile_usage", ctypes.c_size_t),
+            ("peak_pagefile_usage", ctypes.c_size_t),
+            ("private_usage", ctypes.c_size_t),
+        ]
+
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.QueryFullProcessImageNameW.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.LPWSTR,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+    kernel32.GetProcessTimes.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(FileTime),
+        ctypes.POINTER(FileTime),
+        ctypes.POINTER(FileTime),
+        ctypes.POINTER(FileTime),
+    ]
+    kernel32.GetProcessTimes.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    psapi.GetProcessMemoryInfo.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(ProcessMemoryCountersEx),
+        wintypes.DWORD,
+    ]
+    psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+    return kernel32, psapi, FileTime, ProcessMemoryCountersEx
+
+
+def _windows_inference_process_snapshot(
+    process_id: int,
+) -> _InferenceProcessSnapshot:
+    import ctypes
+    from ctypes import wintypes
+
+    process_query_information = 0x0400
+    process_vm_read = 0x0010
+    (
+        kernel32,
+        psapi,
+        file_time_type,
+        memory_counters_type,
+    ) = _windows_inference_process_api()
+
+    handle = kernel32.OpenProcess(
+        process_query_information | process_vm_read,
+        False,
+        process_id,
+    )
+    if not handle:
+        error = ctypes.get_last_error()
+        raise ExternalRunnerError(
+            f"could not inspect inference-service process {process_id} "
+            f"(Windows error {error})"
+        )
+    try:
+        path_buffer = ctypes.create_unicode_buffer(32_768)
+        path_length = wintypes.DWORD(len(path_buffer))
+        if not kernel32.QueryFullProcessImageNameW(
+            handle,
+            0,
+            path_buffer,
+            ctypes.byref(path_length),
+        ):
+            error = ctypes.get_last_error()
+            raise ExternalRunnerError(
+                "could not resolve inference-service executable "
+                f"(Windows error {error})"
+            )
+        creation = file_time_type()
+        exit_time = file_time_type()
+        kernel_time = file_time_type()
+        user_time = file_time_type()
+        if not kernel32.GetProcessTimes(
+            handle,
+            ctypes.byref(creation),
+            ctypes.byref(exit_time),
+            ctypes.byref(kernel_time),
+            ctypes.byref(user_time),
+        ):
+            error = ctypes.get_last_error()
+            raise ExternalRunnerError(
+                "could not read inference-service start time "
+                f"(Windows error {error})"
+            )
+        counters = memory_counters_type()
+        counters.cb = ctypes.sizeof(counters)
+        if not psapi.GetProcessMemoryInfo(
+            handle,
+            ctypes.byref(counters),
+            counters.cb,
+        ):
+            error = ctypes.get_last_error()
+            raise ExternalRunnerError(
+                "could not read inference-service memory "
+                f"(Windows error {error})"
+            )
+    finally:
+        kernel32.CloseHandle(handle)
+    executable = Path(path_buffer.value).resolve()
+    return _InferenceProcessSnapshot(
+        process_id=process_id,
+        process_start_token=(
+            f"windows-filetime:{creation.high:08x}{creation.low:08x}"
+        ),
+        executable_path=str(executable),
+        memory_metric="working-set-bytes",
+        memory_bytes=int(counters.working_set_size),
+    )
+
+
+def _linux_process_start_token(stat_path: Path) -> str:
+    try:
+        stat_text = stat_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ExternalRunnerError(
+            "could not read inference-service process identity"
+        ) from exc
+    command_end = stat_text.rfind(")")
+    if command_end < 0:
+        raise ExternalRunnerError(
+            "inference-service process identity is malformed"
+        )
+    fields_after_command = stat_text[command_end + 2 :].split()
+    if len(fields_after_command) <= 19:
+        raise ExternalRunnerError(
+            "inference-service process identity is incomplete"
+        )
+    return f"linux-proc-start:{fields_after_command[19]}"
+
+
+def _linux_inference_process_snapshot(
+    process_id: int,
+) -> _InferenceProcessSnapshot:
+    process_directory = Path("/proc") / str(process_id)
+    stat_path = process_directory / "stat"
+    first_start_token = _linux_process_start_token(stat_path)
+    try:
+        executable = Path(os.readlink(process_directory / "exe")).resolve()
+        statm_fields = (process_directory / "statm").read_text(
+            encoding="utf-8"
+        ).split()
+        page_size = os.sysconf("SC_PAGE_SIZE")
+    except (OSError, ValueError) as exc:
+        raise ExternalRunnerError(
+            f"could not inspect inference-service process {process_id}"
+        ) from exc
+    if len(statm_fields) < 2 or not statm_fields[1].isdigit():
+        raise ExternalRunnerError(
+            "inference-service memory counters are malformed"
+        )
+    second_start_token = _linux_process_start_token(stat_path)
+    if second_start_token != first_start_token:
+        raise ExternalRunnerError(
+            "inference-service process identity changed during sampling"
+        )
+    memory_bytes = int(statm_fields[1]) * int(page_size)
+    if memory_bytes <= 0:
+        raise ExternalRunnerError(
+            "inference-service resident memory is unavailable"
+        )
+    return _InferenceProcessSnapshot(
+        process_id=process_id,
+        process_start_token=first_start_token,
+        executable_path=str(executable),
+        memory_metric="resident-set-bytes",
+        memory_bytes=memory_bytes,
+    )
+
+
+def _inference_process_snapshot(process_id: int) -> _InferenceProcessSnapshot:
+    if os.name == "nt":
+        return _windows_inference_process_snapshot(process_id)
+    if sys.platform.startswith("linux"):
+        return _linux_inference_process_snapshot(process_id)
+    raise ExternalRunnerError(
+        "inference-service process accounting is supported only on Windows "
+        "and Linux"
+    )
+
+
+def capture_inference_service_contract(
+    process_id: int | None = None,
+    *,
+    max_memory_mb: int | None = None,
+) -> InferenceServiceContract:
+    """Capture a stable service identity and ceiling before adapter execution."""
+
+    if process_id is None and max_memory_mb is None:
+        return InferenceServiceContract()
+    if (
+        isinstance(process_id, bool)
+        or not isinstance(process_id, int)
+        or process_id <= 0
+    ):
+        raise ExternalRunnerError(
+            "inference-service accounting requires a positive process ID"
+        )
+    if (
+        isinstance(max_memory_mb, bool)
+        or not isinstance(max_memory_mb, int)
+        or max_memory_mb <= 0
+    ):
+        raise ExternalRunnerError(
+            "inference-service accounting requires a positive memory ceiling"
+        )
+    snapshot = _inference_process_snapshot(process_id)
+    executable = Path(snapshot.executable_path)
+    evidence = _bounded_file_evidence(
+        executable,
+        max_bytes=_INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES,
+        label="inference-service executable",
+    )
+    if evidence.byte_count <= 0:
+        raise ExternalRunnerError(
+            "inference-service executable evidence cannot be empty"
+        )
+    if snapshot.memory_bytes > max_memory_mb * 1024 * 1024:
+        raise ExternalRunnerError(
+            "inference-service memory already exceeds the configured ceiling"
+        )
+    return InferenceServiceContract(
+        process_id=snapshot.process_id,
+        process_start_token=snapshot.process_start_token,
+        executable_path=str(executable),
+        executable_sha256=evidence.file_sha256,
+        executable_bytes=evidence.byte_count,
+        memory_metric=snapshot.memory_metric,
+        max_memory_mb=max_memory_mb,
+    )
+
+
+class _InferenceServiceMonitor:
+    """Sample a captured service without taking ownership of its process."""
+
+    def __init__(self, contract: InferenceServiceContract) -> None:
+        self.contract = contract
+        self.sample_count = 0
+        self.peak_memory_bytes: int | None = None
+
+    def _executable_matches(self) -> bool:
+        if not self.contract.enabled:
+            return True
+        try:
+            observed = _bounded_file_evidence(
+                Path(self.contract.executable_path or ""),
+                max_bytes=_INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES,
+                label="inference-service executable",
+            )
+        except ExternalRunnerError:
+            return False
+        return (
+            observed.file_sha256 == self.contract.executable_sha256
+            and observed.byte_count == self.contract.executable_bytes
+        )
+
+    def _snapshot_matches(
+        self,
+        observed: _InferenceProcessSnapshot,
+    ) -> bool:
+        return (
+            observed.process_start_token
+            == self.contract.process_start_token
+            and observed.executable_path == self.contract.executable_path
+            and observed.memory_metric == self.contract.memory_metric
+        )
+
+    def sample(self, *, check_executable: bool = False) -> str | None:
+        if not self.contract.enabled:
+            return None
+
+        try:
+            snapshot = _inference_process_snapshot(
+                int(self.contract.process_id or 0)
+            )
+        except ExternalRunnerError:
+            return "inference_service_unavailable"
+        if not self._snapshot_matches(snapshot):
+            return "inference_service_identity_changed"
+        snapshots = [snapshot]
+        if check_executable and not self._executable_matches():
+            return "inference_service_executable_modified"
+        if check_executable:
+            try:
+                final_snapshot = _inference_process_snapshot(
+                    int(self.contract.process_id or 0)
+                )
+            except ExternalRunnerError:
+                return "inference_service_unavailable"
+            if not self._snapshot_matches(final_snapshot):
+                return "inference_service_identity_changed"
+            snapshots.append(final_snapshot)
+        observed_peak = max(value.memory_bytes for value in snapshots)
+        self.sample_count += len(snapshots)
+        self.peak_memory_bytes = max(
+            self.peak_memory_bytes or 0,
+            observed_peak,
+        )
+        if (
+            self.contract.max_memory_mb is not None
+            and observed_peak
+            > self.contract.max_memory_mb * 1024 * 1024
+        ):
+            return "inference_service_memory_limit"
+        return None
+
+    def accounting(self) -> InferenceServiceAccounting:
+        if not self.contract.enabled:
+            return InferenceServiceAccounting()
+        return InferenceServiceAccounting(
+            process_id=self.contract.process_id,
+            process_start_token=self.contract.process_start_token,
+            executable_path=self.contract.executable_path,
+            executable_sha256=self.contract.executable_sha256,
+            executable_bytes=self.contract.executable_bytes,
+            memory_metric=self.contract.memory_metric,
+            max_memory_mb=self.contract.max_memory_mb,
+            sample_count=self.sample_count,
+            peak_memory_bytes=self.peak_memory_bytes,
+        )
 
 
 def _is_sha256(value: object) -> bool:
@@ -969,6 +1459,8 @@ def _claim_controls_complete(
     isolation_mode: str,
     dependency_lock: DependencyLockEvidence,
     network_isolation: NetworkIsolationEvidence,
+    inference_service: InferenceServiceAccounting,
+    minimum_inference_samples: int,
 ) -> bool:
     return (
         identity.claim_metadata_complete
@@ -978,6 +1470,8 @@ def _claim_controls_complete(
         and identity.environment_id
         == f"sha256:{dependency_lock.evidence_sha256}"
         and network_isolation.claim_evidence_complete
+        and inference_service.claim_evidence_complete
+        and inference_service.sample_count >= minimum_inference_samples
     )
 
 
@@ -1220,12 +1714,29 @@ def load_external_run_manifest(
         raise ExternalRunnerError(
             "run manifest network-isolation evidence file does not match"
         )
+    try:
+        inference_payload = payload["inference_service"]
+        if not isinstance(inference_payload, dict):
+            raise TypeError("inference_service must be an object")
+        if set(inference_payload) != set(
+            InferenceServiceAccounting.__dataclass_fields__
+        ):
+            raise TypeError("inference_service fields do not match the schema")
+        decoded_inference_service = InferenceServiceAccounting(
+            **inference_payload
+        )
+    except (TypeError, ValueError) as exc:
+        raise ExternalRunnerError(
+            f"run manifest inference-service accounting is invalid: {exc}"
+        ) from exc
     expected_claim_controls = _claim_controls_complete(
         decoded_identity,
         decoded_limits,
         isolation_mode,
         decoded_dependency_lock,
         decoded_network_isolation,
+        decoded_inference_service,
+        2 * case_count if isolation_mode == "per_case" else 2,
     )
     if payload["claim_metadata_complete"] != expected_claim_controls:
         raise ExternalRunnerError("run manifest claim-control completeness flag is inconsistent")
@@ -1361,7 +1872,8 @@ def load_external_run_manifest(
             failure_reason = (
                 "run manifest lacks complete claim controls: exact-Qwen identity, "
                 "per-case isolation, an enforced memory limit, retained "
-                "dependency-lock bytes, and network-isolation evidence are required"
+                "dependency-lock bytes, network-isolation evidence, and measured "
+                "inference-service accounting are required"
             )
     else:
         failure_reason = (
@@ -1385,6 +1897,7 @@ def load_external_run_manifest(
         identity=decoded_identity,
         dependency_lock=decoded_dependency_lock,
         network_isolation=decoded_network_isolation,
+        inference_service=decoded_inference_service,
         adapter_revision=decoded_identity.adapter_revision,
         environment_id=decoded_identity.environment_id,
         model_id=decoded_identity.model_id,
@@ -1403,8 +1916,10 @@ def run_external_command(
     identity: RunnerIdentity | None = None,
     dependency_lock: DependencyLockEvidence | None = None,
     network_isolation: NetworkIsolationEvidence | None = None,
+    inference_service: InferenceServiceContract | None = None,
     working_directory: Path | str | None = None,
     environment: Mapping[str, str] | None = None,
+    _inference_monitor: _InferenceServiceMonitor | None = None,
 ) -> ExternalRunManifest:
     """Run one adapter command and validate its candidate output fail-closed."""
 
@@ -1426,6 +1941,25 @@ def run_external_command(
         raise ExternalRunnerError(
             "network-isolation evidence file does not match before execution"
         )
+    inference_service = inference_service or InferenceServiceContract()
+    if _inference_monitor is None:
+        inference_monitor = _InferenceServiceMonitor(inference_service)
+        inference_preflight = inference_monitor.sample(
+            check_executable=True
+        )
+        if inference_preflight is not None:
+            raise ExternalRunnerError(
+                "inference-service contract failed before execution: "
+                f"{inference_preflight}"
+            )
+        check_executable_after = True
+    else:
+        if _inference_monitor.contract != inference_service:
+            raise ExternalRunnerError(
+                "shared inference-service monitor contract does not match"
+            )
+        inference_monitor = _inference_monitor
+        check_executable_after = False
     corpus = Path(corpus_path).expanduser().resolve()
     candidate = Path(candidate_path).expanduser().resolve()
     if candidate.exists():
@@ -1522,7 +2056,10 @@ def run_external_command(
 
                     while process.poll() is None:
                         elapsed = time.monotonic() - started
-                        if elapsed > limits.timeout_seconds:
+                        service_failure = inference_monitor.sample()
+                        if service_failure is not None:
+                            termination_reason = service_failure
+                        elif elapsed > limits.timeout_seconds:
                             termination_reason = "timeout"
                         elif _size(stdout_path) > limits.max_stdout_bytes:
                             termination_reason = "stdout_limit"
@@ -1539,6 +2076,14 @@ def run_external_command(
                     except subprocess.TimeoutExpired:
                         _terminate_process_tree(process, windows_job)
                         exit_code = process.wait(timeout=1)
+                    service_failure = inference_monitor.sample(
+                        check_executable=check_executable_after
+                    )
+                    if (
+                        termination_reason is None
+                        and service_failure is not None
+                    ):
+                        termination_reason = service_failure
                     stdout.flush()
                     stderr.flush()
             finally:
@@ -1567,6 +2112,7 @@ def run_external_command(
             windows_job.close()
 
     duration = time.monotonic() - started
+    inference_accounting = inference_monitor.accounting()
     candidate_bytes = _size(candidate) if candidate.exists() else None
     if termination_reason is None and (
         not _bounded_file_matches(
@@ -1726,12 +2272,15 @@ def run_external_command(
         identity=identity,
         dependency_lock=dependency_lock,
         network_isolation=network_isolation,
+        inference_service=inference_accounting,
         claim_metadata_complete=_claim_controls_complete(
             identity,
             limits,
             "whole_corpus",
             dependency_lock,
             network_isolation,
+            inference_accounting,
+            2,
         ),
         memory_limit_enforced=limits.max_memory_mb is not None,
         python_version=platform.python_version(),
@@ -1749,6 +2298,7 @@ def run_external_cases(
     identity: RunnerIdentity | None = None,
     dependency_lock: DependencyLockEvidence | None = None,
     network_isolation: NetworkIsolationEvidence | None = None,
+    inference_service: InferenceServiceContract | None = None,
     working_directory: Path | str | None = None,
     environment: Mapping[str, str] | None = None,
 ) -> ExternalRunManifest:
@@ -1767,6 +2317,14 @@ def run_external_cases(
     if not _network_isolation_evidence_matches(network_isolation):
         raise ExternalRunnerError(
             "network-isolation evidence file does not match before execution"
+        )
+    inference_service = inference_service or InferenceServiceContract()
+    inference_monitor = _InferenceServiceMonitor(inference_service)
+    inference_preflight = inference_monitor.sample(check_executable=True)
+    if inference_preflight is not None:
+        raise ExternalRunnerError(
+            "inference-service contract failed before execution: "
+            f"{inference_preflight}"
         )
     corpus = Path(corpus_path).expanduser().resolve()
     candidate = Path(candidate_path).expanduser().resolve()
@@ -1811,6 +2369,12 @@ def run_external_cases(
     validation_error: str | None = None
 
     for index, (case, raw_case) in enumerate(zip(cases, raw_cases, strict=True)):
+        service_failure = inference_monitor.sample()
+        if service_failure is not None:
+            termination_reason = (
+                f"case_failure:{case.id}:{service_failure}"
+            )
+            break
         with _runner_temporary_directory(
             prefix=f".lrcbench-case-{index:06d}-",
             directory=candidate.parent,
@@ -1849,8 +2413,10 @@ def run_external_cases(
                 identity=identity,
                 dependency_lock=dependency_lock,
                 network_isolation=network_isolation,
+                inference_service=inference_service,
                 working_directory=cwd,
                 environment=process_environment,
+                _inference_monitor=inference_monitor,
             )
             case_run = CaseRunRecord(
                 case_id=case.id,
@@ -1903,7 +2469,23 @@ def run_external_cases(
         if aggregate_stderr_bytes > limits.max_stderr_bytes:
             termination_reason = "aggregate_stderr_limit"
             break
+        if (
+            case_manifest.termination_reason is not None
+            and case_manifest.termination_reason.startswith(
+                "inference_service_"
+            )
+        ):
+            termination_reason = (
+                f"case_failure:{case.id}:"
+                f"{case_manifest.termination_reason}"
+            )
+            break
 
+    final_service_failure = inference_monitor.sample(
+        check_executable=True
+    )
+    if termination_reason is None and final_service_failure is not None:
+        termination_reason = final_service_failure
     if termination_reason is None and (
         not _bounded_file_matches(
             corpus,
@@ -2008,6 +2590,7 @@ def run_external_cases(
             None,
         )
     duration = time.monotonic() - started
+    inference_accounting = inference_monitor.accounting()
     ready_for_scoring = process_succeeded and candidate_valid
     return ExternalRunManifest(
         system=system,
@@ -2041,12 +2624,15 @@ def run_external_cases(
         identity=identity,
         dependency_lock=dependency_lock,
         network_isolation=network_isolation,
+        inference_service=inference_accounting,
         claim_metadata_complete=_claim_controls_complete(
             identity,
             limits,
             "per_case",
             dependency_lock,
             network_isolation,
+            inference_accounting,
+            2 * len(cases),
         ),
         memory_limit_enforced=limits.max_memory_mb is not None,
         python_version=platform.python_version(),
@@ -2096,6 +2682,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         help="retained host/container policy artifact hashed into the run manifest",
     )
+    parser.add_argument(
+        "--inference-service-pid",
+        type=int,
+        help=(
+            "PID of the pre-existing local inference service to identify and "
+            "sample during adapter execution"
+        ),
+    )
+    parser.add_argument(
+        "--max-inference-service-memory-mb",
+        type=int,
+        help=(
+            "working-set/RSS ceiling for --inference-service-pid; exceeding "
+            "it invalidates the run without terminating the service"
+        ),
+    )
     parser.add_argument("--adapter-revision", default="unrecorded")
     parser.add_argument("--environment-id", default="unrecorded")
     parser.add_argument("--model-id", default="unrecorded")
@@ -2128,6 +2730,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.network_isolation_mode,
             args.network_isolation_evidence,
         )
+        inference_service = capture_inference_service_contract(
+            args.inference_service_pid,
+            max_memory_mb=args.max_inference_service_memory_mb,
+        )
         runner = run_external_cases if args.isolation == "per-case" else run_external_command
         manifest = runner(
             command,
@@ -2154,6 +2760,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             dependency_lock=dependency_lock,
             network_isolation=network_isolation,
+            inference_service=inference_service,
         )
     except (ExternalRunnerError, TypeError, ValueError) as exc:
         parser.error(str(exc))

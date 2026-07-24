@@ -63,7 +63,7 @@ to verify it, hashes cannot recover the original truth.
 | Compile/provider resource exhaustion | Model responses/candidate counts are bounded; unique-literal extraction preflights aggregate cited-source search characters; the local Qwen adapter has a transport timeout; optional whole-compile isolation owns a POSIX process group or Windows Job Object and terminates its descendant tree at the deadline | Search characters are a work proxy, not a time/RSS cap; direct in-process compilation is uncapped; a deliberately daemonized POSIX child can escape its process group; deadline job configuration uses local pickle and therefore requires trusted serializable objects |
 | Common content-secret disclosure | Optional preprocessing uses nine fixed lexical detectors, length/line-boundary-preserving masks, recomputed record hashes, explicit limits, deterministic replay, and a strict self-hashed coordinate report that omits original content-secret text and hashes | Detection is heuristic; false positives and false negatives remain. Original input enters process memory first. Metadata, ids, timestamps, PII, unknown formats, report coordinates, storage, logs, and previous artifacts are outside the redaction scope |
 | Secret disclosure after redaction | Compiling the redacted source set prevents recognized content secrets from entering its items, prompt, or artifact; replay binds the exact redacted records | Source metadata and identity fields remain in record hashes and may themselves be sensitive; external providers, process arguments, archives, diffs, benchmark evidence, or host logs can still expose anything not redacted before those boundaries |
-| External benchmark adapter escape | The standard runner avoids a shell, isolates cases, limits time/output/process-tree memory on POSIX and Windows, terminates descendants, validates candidates, hashes a manifest, and binds retained dependency-lock and external network-policy artifacts | It does not establish a filesystem or network sandbox or prove the retained policy was enforced; reviewed code and an isolated host/container remain necessary, and a pre-existing inference service is outside the process-tree memory boundary |
+| External benchmark adapter escape | The standard runner avoids a shell, isolates cases, limits time/output/process-tree memory on POSIX and Windows, terminates descendants, validates candidates, hashes a manifest, binds retained dependency-lock and external network-policy artifacts, and separately samples a stable pre-existing service identity and memory | It does not establish a filesystem or network sandbox or prove the retained policy was enforced; reviewed code and an isolated host/container remain necessary. Service sampling does not contain or terminate that process and can miss between-poll spikes |
 | External comparison protocol drift or cherry-picking | A strict self-hashed manifest binds the dated document, screened candidates, registered set, immutable revisions, exact model/resources, frozen datasets/statistics, runner policy, and explicit blockers; external scoring requires a frozen manifest plus exact dataset and adapter matches | The current artifact is still a draft. Self-hashes are not timestamps, signatures, or proof of result-blind decisions; an independently anchored freeze and reproduction remain necessary |
 
 ## Authority model
@@ -227,14 +227,15 @@ self-consistent report can also compute new self-hashes. Trusted publication
 still requires an external signature or independently anchored digest.
 
 External scoring additionally requires a strict frozen
-`lrcbench-external-protocol-0.4` manifest. The manifest self-hash binds its
+`lrcbench-external-protocol-0.5` manifest. The manifest self-hash binds its
 Markdown document digest, comparison decisions and immutable revisions,
 adapter/dependency evidence, exact local-Qwen constraints, dataset manifests,
 statistics, every execution-affecting runner limit, retained network-evidence
-digest, and blockers. The benchmark imports the registered set from that
-manifest and refuses a different synthetic dataset digest,
-adapter/environment identity, model contract, isolation mode, network-evidence
-digest, or runner limit. Current `lrcbench-report-0.2` evidence records the
+digest, inference-service metric/executable digest/ceiling, and blockers. The
+benchmark imports the registered set from that manifest and refuses a different
+synthetic dataset digest, adapter/environment identity, model contract,
+isolation mode, network-evidence digest, service accounting contract, or runner
+limit. Current `lrcbench-report-0.2` evidence records the
 protocol and document hashes, dataset digest, and registered set. Report replay
 checks those fields for internal consistency but does not by itself prove that
 the referenced protocol was independently anchored or frozen before results;
@@ -265,8 +266,15 @@ manifests must retain a bounded host firewall, container, or network-namespace
 policy artifact; the runner hashes it before and after execution and reload
 checks the same file. A self-consistent file still does not prove that the host
 enforced the policy. These controls also do not contain a model server that was
-already running outside the adapter process tree. Claim protocols must freeze
-separate containment or accounting for that service.
+already running outside the adapter process tree. The runner instead captures
+that process's PID creation token and executable digest and samples Windows
+working set or Linux RSS at the fixed polling cadence, failing the adapter if
+identity changes, sampling becomes unavailable, or the ceiling is exceeded.
+This measured peak is a sampled upper observation, not proof that no shorter
+memory spike occurred, that the adapter used the designated PID, or that
+separate helper processes were included. Claim protocols must freeze the
+service executable digest, metric, and ceiling or establish stronger external
+containment.
 
 The exact-Qwen phrase evaluator stores cleaned raw model outputs so strict
 candidate validation and deterministic recovery can be replayed without model

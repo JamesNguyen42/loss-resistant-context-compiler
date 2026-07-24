@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 import time
 from dataclasses import replace
@@ -12,9 +13,11 @@ import pytest
 import benchmarks.external_runner as external_runner_module
 from benchmarks.external_runner import (
     ExternalRunnerError,
+    InferenceServiceContract,
     RunnerIdentity,
     RunnerLimits,
     capture_dependency_lock_evidence,
+    capture_inference_service_contract,
     capture_network_isolation_evidence,
     load_external_run_manifest,
     run_external_cases,
@@ -140,6 +143,13 @@ def retained_dependency_lock(tmp_path: Path):
     return evidence
 
 
+def retained_inference_service():
+    return capture_inference_service_contract(
+        os.getpid(),
+        max_memory_mb=4_096,
+    )
+
+
 def test_claim_identity_requires_frozen_model_and_environment_contract() -> None:
     identity = claim_identity()
 
@@ -160,6 +170,170 @@ def test_claim_identity_requires_frozen_model_and_environment_contract() -> None
     assert not replace(identity, model_service_cost_usd=0.01).claim_metadata_complete
     with pytest.raises(TypeError, match="model_service_cost_usd must be numeric"):
         replace(identity, model_service_cost_usd=None)  # type: ignore[arg-type]
+
+
+def test_inference_service_contract_captures_stable_process_identity() -> None:
+    contract = retained_inference_service()
+
+    assert contract.enabled
+    assert contract.process_id == os.getpid()
+    assert Path(contract.executable_path or "").is_absolute()
+    assert contract.executable_sha256 is not None
+    assert len(contract.executable_sha256) == 64
+    assert contract.executable_bytes > 0
+    assert contract.memory_metric in {
+        "resident-set-bytes",
+        "working-set-bytes",
+    }
+    with pytest.raises(
+        ExternalRunnerError,
+        match="requires a positive process ID",
+    ):
+        capture_inference_service_contract(None, max_memory_mb=4_096)
+    with pytest.raises(
+        ExternalRunnerError,
+        match="requires a positive memory ceiling",
+    ):
+        capture_inference_service_contract(os.getpid())
+
+
+def test_inference_service_memory_ceiling_fails_closed_during_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "service.bin"
+    executable.write_bytes(b"fixture inference service executable\n")
+    contract = InferenceServiceContract(
+        process_id=42,
+        process_start_token="fixture-start-token",
+        executable_path=str(executable.resolve()),
+        executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),
+        executable_bytes=executable.stat().st_size,
+        memory_metric="working-set-bytes",
+        max_memory_mb=1,
+    )
+    observed_memory = iter(
+        (512 * 1024, 512 * 1024, 2 * 1024 * 1024)
+    )
+
+    def sample(_process_id: int):
+        return external_runner_module._InferenceProcessSnapshot(
+            process_id=42,
+            process_start_token="fixture-start-token",
+            executable_path=str(executable.resolve()),
+            memory_metric="working-set-bytes",
+            memory_bytes=next(observed_memory, 2 * 1024 * 1024),
+        )
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "_inference_process_snapshot",
+        sample,
+    )
+    corpus_path = tmp_path / "corpus.json"
+    write_corpus(corpus_path)
+    manifest = run_external_command(
+        [sys.executable, "-c", "import time;time.sleep(0.05)"],
+        system="service-limit-fixture",
+        corpus_path=corpus_path,
+        candidate_path=tmp_path / "candidate.json",
+        limits=RunnerLimits(timeout_seconds=5),
+        inference_service=contract,
+    )
+
+    assert manifest.termination_reason == "inference_service_memory_limit"
+    assert manifest.inference_service.sample_count >= 2
+    assert manifest.inference_service.peak_memory_bytes == 2 * 1024 * 1024
+    assert not manifest.inference_service.claim_evidence_complete
+    assert not manifest.ready_for_scoring
+
+
+def test_inference_service_identity_and_executable_changes_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "service.bin"
+    executable.write_bytes(b"fixture inference service executable\n")
+    executable_path = str(executable.resolve())
+    contract = InferenceServiceContract(
+        process_id=42,
+        process_start_token="fixture-start-token",
+        executable_path=executable_path,
+        executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),
+        executable_bytes=executable.stat().st_size,
+        memory_metric="working-set-bytes",
+        max_memory_mb=1,
+    )
+    corpus_path = tmp_path / "corpus.json"
+    write_corpus(corpus_path)
+    start_tokens = iter(
+        (
+            "fixture-start-token",
+            "fixture-start-token",
+            "restarted-token",
+        )
+    )
+
+    def changed_identity(_process_id: int):
+        return external_runner_module._InferenceProcessSnapshot(
+            process_id=42,
+            process_start_token=next(start_tokens, "restarted-token"),
+            executable_path=executable_path,
+            memory_metric="working-set-bytes",
+            memory_bytes=512 * 1024,
+        )
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "_inference_process_snapshot",
+        changed_identity,
+    )
+    identity_manifest = run_external_command(
+        [sys.executable, "-c", "import time;time.sleep(0.05)"],
+        system="service-identity-fixture",
+        corpus_path=corpus_path,
+        candidate_path=tmp_path / "identity-candidate.json",
+        limits=RunnerLimits(timeout_seconds=5),
+        inference_service=contract,
+    )
+
+    assert (
+        identity_manifest.termination_reason
+        == "inference_service_identity_changed"
+    )
+
+    def stable_identity(_process_id: int):
+        return external_runner_module._InferenceProcessSnapshot(
+            process_id=42,
+            process_start_token="fixture-start-token",
+            executable_path=executable_path,
+            memory_metric="working-set-bytes",
+            memory_bytes=512 * 1024,
+        )
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "_inference_process_snapshot",
+        stable_identity,
+    )
+    mutation_program = (
+        "from pathlib import Path;import sys;"
+        "Path(sys.argv[1]).write_bytes(b'modified service executable')"
+    )
+    executable_manifest = run_external_command(
+        [sys.executable, "-c", mutation_program, executable_path],
+        system="service-executable-fixture",
+        corpus_path=corpus_path,
+        candidate_path=tmp_path / "executable-candidate.json",
+        limits=RunnerLimits(timeout_seconds=5),
+        inference_service=contract,
+    )
+
+    assert (
+        executable_manifest.termination_reason
+        == "inference_service_executable_modified"
+    )
+    assert not executable_manifest.ready_for_scoring
 
 
 def test_network_isolation_evidence_is_required_and_revalidated(tmp_path) -> None:
@@ -203,6 +377,7 @@ def test_network_isolation_evidence_is_required_and_revalidated(tmp_path) -> Non
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=evidence,
+        inference_service=retained_inference_service(),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
     assert manifest.claim_metadata_complete
@@ -240,6 +415,7 @@ def test_network_isolation_evidence_is_required_and_revalidated(tmp_path) -> Non
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=execution_evidence,
+        inference_service=retained_inference_service(),
     )
     assert mutated.termination_reason == "network_isolation_evidence_modified"
     assert not mutated.ready_for_scoring
@@ -275,6 +451,7 @@ def test_dependency_lock_evidence_binds_environment_and_revalidates(
         identity=claim_identity(),
         dependency_lock=dependency_lock,
         network_isolation=network_isolation,
+        inference_service=retained_inference_service(),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
     assert manifest.claim_metadata_complete
@@ -306,6 +483,7 @@ def test_dependency_lock_evidence_binds_environment_and_revalidates(
         ),
         dependency_lock=mismatch_lock,
         network_isolation=retained_network_isolation(tmp_path),
+        inference_service=retained_inference_service(),
     )
     assert mismatch.ready_for_scoring
     assert not mismatch.claim_metadata_complete
@@ -330,6 +508,7 @@ def test_dependency_lock_evidence_binds_environment_and_revalidates(
         identity=claim_identity(),
         dependency_lock=execution_lock,
         network_isolation=retained_network_isolation(tmp_path),
+        inference_service=retained_inference_service(),
     )
     assert mutated.termination_reason == "dependency_lock_evidence_modified"
     assert not mutated.ready_for_scoring
@@ -594,6 +773,7 @@ def test_per_case_candidate_mutation_before_aggregation_is_rejected(
             identity=claim_identity(),
             dependency_lock=retained_dependency_lock(tmp_path),
             network_isolation=retained_network_isolation(tmp_path),
+            inference_service=retained_inference_service(),
         )
 
 
@@ -613,6 +793,7 @@ def test_per_case_runner_executes_without_a_shell_and_validates_candidate(
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
+        inference_service=retained_inference_service(),
     )
 
     assert manifest.process_succeeded
@@ -671,6 +852,10 @@ def test_cli_defaults_to_claim_eligible_per_case_mode(tmp_path, capsys) -> None:
             network_isolation.mode,
             "--network-isolation-evidence",
             network_isolation.evidence_path,
+            "--inference-service-pid",
+            str(os.getpid()),
+            "--max-inference-service-memory-mb",
+            "4096",
             "--adapter-revision",
             FIXTURE_ADAPTER_REVISION,
             "--environment-id",
@@ -734,6 +919,7 @@ def test_per_case_runner_uses_one_validated_corpus_case_per_process(tmp_path) ->
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
+        inference_service=retained_inference_service(),
     )
 
     payload = json.loads(candidate_path.read_text(encoding="utf-8"))
@@ -801,6 +987,7 @@ def test_whole_corpus_mode_is_diagnostic_even_with_complete_identity(tmp_path) -
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
+        inference_service=retained_inference_service(),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
 
@@ -832,6 +1019,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
+        inference_service=retained_inference_service(),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
     systems = (
@@ -962,6 +1150,31 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             external_protocol_path=mismatched_network_protocol,
         )
 
+    mismatched_service_directory = tmp_path / "mismatched-service"
+    mismatched_service_directory.mkdir()
+    mismatched_service_protocol = write_frozen_external_protocol(
+        mismatched_service_directory,
+        systems,
+        adapter_revisions={
+            "fixture-adapter": FIXTURE_ADAPTER_REVISION,
+        },
+        environment_ids={
+            "fixture-adapter": FIXTURE_ENVIRONMENT_ID,
+        },
+        synthetic_dataset_sha256=document["dataset_sha256"],
+        inference_service_executable_sha256="f" * 64,
+    )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="inference-service accounting does not match the frozen protocol",
+    ):
+        run_benchmark(
+            config,
+            external_manifest_paths=(manifest_path,),
+            expected_external_systems=systems,
+            external_protocol_path=mismatched_service_protocol,
+        )
+
     different_lock_path = tmp_path / "different-requirements.lock"
     different_lock_path.write_text(
         "different-package==2.0.0\n",
@@ -979,6 +1192,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         identity=claim_identity(),
         dependency_lock=different_lock,
         network_isolation=retained_network_isolation(tmp_path),
+        inference_service=retained_inference_service(),
     )
     mismatched_lock_manifest_path.write_text(
         mismatched_lock_manifest.to_json(),
@@ -1010,6 +1224,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
+        inference_service=retained_inference_service(),
     )
     mismatched_poll_manifest_path.write_text(
         mismatched_poll_manifest.to_json(),
@@ -1037,6 +1252,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         identity=replace(claim_identity(), model_context_length=4096),
         dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
+        inference_service=retained_inference_service(),
     )
     mismatched_model_manifest_path.write_text(
         mismatched_model_manifest.to_json(),
@@ -1104,6 +1320,7 @@ def test_ready_manifest_wraps_candidate_disappearance_during_validation(
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
+        inference_service=retained_inference_service(),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
     original_loader = external_runner_module.load_strict_json_file
@@ -1145,6 +1362,7 @@ def test_ready_manifest_rejects_rehashed_candidate_producer_mismatch(
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
+        inference_service=retained_inference_service(),
     )
     candidate_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
     candidate_payload["producer"]["adapter_revision"] = "forged-revision"
@@ -1261,6 +1479,7 @@ def test_rehashed_inconsistent_case_audit_record_is_rejected(tmp_path) -> None:
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
+        inference_service=retained_inference_service(),
     ).to_dict()
     payload = json.loads(json.dumps(original_payload))
     payload["case_runs"][0]["stdout_bytes"] += 1
@@ -1456,6 +1675,7 @@ def test_failed_exact_contract_manifest_becomes_a_registered_invalid_nonwin(
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=retained_network_isolation(tmp_path),
+        inference_service=retained_inference_service(),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
     systems = (

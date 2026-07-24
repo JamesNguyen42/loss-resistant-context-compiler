@@ -115,8 +115,10 @@ Protocol file SHA-256 at freeze: **not assigned while status is draft**
 Adapter process-tree memory limit (MB): **unresolved blocker
 `adapter-memory-limit`**
 
-Pre-existing inference-service containment or accounting rule: **unresolved
-blocker `inference-service-accounting`**
+Pre-existing inference-service executable digest, memory metric, and ceiling:
+**unresolved blocker `inference-service-accounting`**. The runner can enforce
+the measured contract, but these values must be selected from the evaluation
+host without looking at comparison results.
 
 Network-isolation mode and retained host/container policy evidence:
 **unresolved blocker `network-isolation-evidence`**
@@ -209,6 +211,8 @@ python -m benchmarks.external_runner \
   --dependency-lock-evidence DEPENDENCY_LOCK \
   --network-isolation-mode NETWORK_MODE \
   --network-isolation-evidence NETWORK_POLICY_EXPORT \
+  --inference-service-pid INFERENCE_SERVICE_PID \
+  --max-inference-service-memory-mb SERVICE_MEMORY_LIMIT_MB \
   --adapter-revision REVISION \
   --environment-id sha256:DEPENDENCY_LOCK_SHA256 \
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m \
@@ -231,28 +235,36 @@ a failure is retained without allowing partial merged output. POSIX enforces
 assigns and verifies a Job Object with per-process and aggregate limits, and
 only then resumes adapter code.
 
-The memory limit covers the adapter process tree, not a pre-existing inference
-service. The final protocol must freeze how such a service is measured or
-contained before a claim-bearing run. The wrapper does not create a filesystem
-or network sandbox. A claim-bearing manifest must instead retain and hash the
-host firewall, container, or network-namespace policy artifact established
-outside the runner; reload verifies that exact file but cannot independently
-prove the host enforced it. Retain the corpus and network evidence at the
-absolute paths recorded in each manifest; import revalidates their byte counts
-and digests.
+The adapter memory limit covers only the adapter process tree. The separate
+service options capture a pre-existing inference process's PID creation token
+and executable digest and sample Windows working set or Linux RSS at the same
+20 ms cadence. Disappearance, restart, executable change, or ceiling breach
+invalidates the adapter without terminating the service. This is monitoring,
+not containment; a shorter between-poll spike can be missed, and the runner
+cannot prove the adapter used that PID or automatically include separate helper
+processes. Configured service accounting is supported on Windows and Linux and
+fails preflight elsewhere. The final protocol must freeze the service
+executable digest, memory metric, and ceiling before a claim-bearing run. The
+wrapper does not create a filesystem or network sandbox. A claim-bearing
+manifest must instead retain and hash the host
+firewall, container, or network-namespace policy artifact established outside
+the runner; reload verifies that exact file but cannot independently prove the
+host enforced it. Retain the corpus and network evidence at the absolute paths
+recorded in each manifest; import revalidates their byte counts and digests.
 
 Whole-corpus isolation, no enforced adapter memory limit, incomplete identity
 metadata, any model other than the exact Qwen Q4 variant, inference concurrency
 other than one, or nonzero model-service cost makes the system a certificate
 non-win. Claim-eligible runner schema
-`lrcbench-external-run-manifest-0.6` also requires an immutable adapter
+`lrcbench-external-run-manifest-0.7` also requires an immutable adapter
 revision, retained dependency-lock bytes matching the canonical `sha256:`
 environment identity, context length 8192, the evaluator tokenizer, one slot,
 zero retries, and zero service cost, plus bounded retained network-isolation
-evidence. The scorer rejects any identity, lock/network-evidence digest,
-isolation mode, timeout, output, candidate, memory, or 20 ms
-enforcement-polling limit that differs from the frozen protocol. The candidate
-may still be retained for interchange diagnostics.
+evidence and at least two stable service-memory samples within the ceiling. The
+scorer rejects any identity, lock/network-evidence digest, service
+metric/executable digest/ceiling, isolation mode, timeout, output, candidate,
+adapter memory, or 20 ms enforcement-polling limit that differs from the frozen
+protocol. The candidate may still be retained for interchange diagnostics.
 
 Score all intended systems in one explicitly registered invocation:
 

@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 879 tests (874 passing and 5 skipped locally); CI covers Python
+- [x] Collect 882 tests (877 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -313,8 +313,13 @@ Acceptance:
   memory enforcement. POSIX uses `RLIMIT_AS`; Windows creates the process
   suspended, assigns and verifies a Job Object with per-process and aggregate
   memory limits, then resumes it.
-- [ ] Account separately for a pre-existing inference service outside the
-  adapter process tree; the runner's memory boundary does not include one.
+- [x] Account separately for a pre-existing inference service outside the
+  adapter process tree. The runner binds PID creation identity and executable
+  digest, samples Windows working set or Linux RSS at the fixed polling
+  cadence, records peak/sample evidence, and fails the adapter on restart,
+  disappearance, executable change, or ceiling breach. This is monitoring,
+  not containment, and the draft protocol still must freeze the executable,
+  metric, and ceiling before claim-bearing runs.
 - [x] Require claim-bearing manifests to retain a bounded host firewall,
   container, or network-namespace policy artifact; hash it before execution,
   detect mutation, revalidate it on import, and match it to the frozen
