@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/lossless-context-compiler/source-event.schema.json",
+  "title": "Context compiler source event",
+  "type": "object",
+  "required": ["role", "content"],
+  "properties": {
+    "id": {
+      "anyOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "null"}
+      ]
+    },
+    "sequence": {"type": "integer", "minimum": 0},
+    "role": {"type": "string", "minLength": 1},
+    "content": {"type": "string"},
+    "timestamp": {"type": ["string", "null"]},
+    "metadata": {"type": "object"},
+    "content_sha256": {
+      "anyOf": [
+        {"const": ""},
+        {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      ]
+    },
+    "record_sha256": {
+      "anyOf": [
+        {"const": ""},
+        {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      ]
+    }
+  },
+  "additionalProperties": true
+}

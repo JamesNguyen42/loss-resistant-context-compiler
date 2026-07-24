@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/lossless-context-compiler/compiled-memory.schema.json",
+  "title": "Loss-resistant compiled memory artifact",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "ledger_complete",
+    "compiled_at",
+    "source_digest",
+    "source_count",
+    "items",
+    "selected_item_ids",
+    "verification",
+    "compression",
+    "compiler_metadata",
+    "artifact_sha256"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "ledger_complete": {"type": "boolean"},
+    "compiled_at": {"type": "string"},
+    "source_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "source_count": {"type": "integer", "minimum": 0},
+    "items": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/memoryItem"}
+    },
+    "selected_item_ids": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "verification": {"$ref": "#/$defs/verification"},
+    "compression": {"$ref": "#/$defs/compression"},
+    "compiler_metadata": {"type": "object"},
+    "artifact_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": ["source_id", "start", "end", "quote", "quote_sha256"],
+      "properties": {
+        "source_id": {"type": "string", "minLength": 1},
+        "start": {"type": "integer", "minimum": 0},
+        "end": {"type": "integer", "minimum": 0},
+        "quote": {"type": "string"},
+        "quote_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "memoryItem": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "text",
+        "status",
+        "priority",
+        "confidence",
+        "exact",
+        "protected",
+        "tags",
+        "supersedes",
+        "conflicts_with",
+        "metadata",
+        "provenance"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "kind": {
+          "enum": [
+            "goal",
+            "constraint",
+            "user_correction",
+            "confirmed_fact",
+            "decision",
+            "unresolved",
+            "exact_error",
+            "exact_reference",
+            "discarded_attempt",
+            "progress",
+            "context"
+          ]
+        },
+        "text": {"type": "string", "minLength": 1},
+        "status": {"enum": ["active", "superseded", "discarded", "conflicting"]},
+        "priority": {"type": "integer", "minimum": 0, "maximum": 100},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "exact": {"type": "boolean"},
+        "protected": {"type": "boolean"},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "supersedes": {"type": "array", "items": {"type": "string"}},
+        "conflicts_with": {"type": "array", "items": {"type": "string"}},
+        "metadata": {"type": "object"},
+        "provenance": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/provenance"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "verification": {
+      "type": "object",
+      "required": [
+        "passed",
+        "protected_candidates",
+        "protected_retained",
+        "protected_recall",
+        "provenance_valid",
+        "provenance_total",
+        "provenance_validity",
+        "recovered_items",
+        "issues"
+      ],
+      "properties": {
+        "passed": {"type": "boolean"},
+        "protected_candidates": {"type": "integer", "minimum": 0},
+        "protected_retained": {"type": "integer", "minimum": 0},
+        "protected_recall": {"type": "number", "minimum": 0, "maximum": 1},
+        "provenance_valid": {"type": "integer", "minimum": 0},
+        "provenance_total": {"type": "integer", "minimum": 0},
+        "provenance_validity": {"type": "number", "minimum": 0, "maximum": 1},
+        "recovered_items": {"type": "integer", "minimum": 0},
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["code", "severity", "message", "item_id", "source_id"],
+            "properties": {
+              "code": {"type": "string"},
+              "severity": {"enum": ["error", "warning", "info"]},
+              "message": {"type": "string"},
+              "item_id": {"type": ["string", "null"]},
+              "source_id": {"type": ["string", "null"]}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "compression": {
+      "type": "object",
+      "required": [
+        "source_chars",
+        "active_chars",
+        "source_tokens_estimate",
+        "active_tokens_estimate",
+        "compression_ratio",
+        "token_budget",
+        "budget_overflow",
+        "target_met"
+      ],
+      "properties": {
+        "source_chars": {"type": "integer", "minimum": 0},
+        "active_chars": {"type": "integer", "minimum": 0},
+        "source_tokens_estimate": {"type": "integer", "minimum": 0},
+        "active_tokens_estimate": {"type": "integer", "minimum": 0},
+        "compression_ratio": {"type": "number", "minimum": 0},
+        "token_budget": {"type": "integer", "minimum": 1},
+        "budget_overflow": {"type": "integer", "minimum": 0},
+        "target_met": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

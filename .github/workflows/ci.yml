@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install package
+        run: python -m pip install -e ".[dev]"
+      - name: Run the complete test suite
+        run: python -m pytest -q
+      - name: Run static checks
+        run: python -m ruff check src tests benchmarks
+
+  benchmark:
+    name: LRCBench (24 histories)
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install package
+        run: python -m pip install -e .
+      - name: Build wheel and verify packaged schemas
+        run: |
+          python -m pip wheel . --no-deps --wheel-dir dist
+          python -c "import glob, zipfile; p=glob.glob('dist/*.whl')[0]; names=zipfile.ZipFile(p).namelist(); assert sum(name.endswith('.schema.json') for name in names) == 3, names"
+      - name: Validate external candidate interchange
+        run: python -m benchmarks --self-test
+      - name: Run the fail-closed 24-history certificate
+        run: >-
+          python -m benchmarks
+          --histories 24
+          --json-out lrcbench-24.json
+          --include-histories
+      - name: Upload auditable benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lrcbench-24-python-3.11
+          path: lrcbench-24.json
+          if-no-files-found: warn

@@ -1,0 +1,323 @@
+# Architecture and invariants
+
+The compiler separates durable task state from the history used to derive it.
+The active prompt is compact; the typed ledger and optional source archive keep
+the evidence needed to audit that prompt.
+
+> **Evidence boundary:** these invariants and the bundled local benchmark do
+> not establish superiority over any external context or memory system.
+
+## Pipeline
+
+```mermaid
+flowchart LR
+    A["Ordered SourceRecord events"] --> B["Primary extractor"]
+    A --> C["Full deterministic rule recovery extractor"]
+    A -. optional .-> H["Append-only SourceArchive"]
+    B --> D["Recovery and canonicalization"]
+    C --> D
+    D --> E["Correction and conflict resolver"]
+    E --> F["Budget-aware selector"]
+    A --> K["Protected-only certification extraction"]
+    F --> G["Independent invariant verifier"]
+    K --> G
+    G --> I["JSON artifact"]
+    G --> J["Typed-memory prompt"]
+    H -. resolves spans .-> I
+```
+
+The implementation is synchronous and provider-neutral. It has no runtime
+dependencies outside the Python 3.11+ standard library.
+
+## Core data model
+
+### `SourceRecord`
+
+A source is a message or tool event with a unique id, unique non-negative
+sequence, role, content, optional timestamp, and metadata. Construction records
+both the full SHA-256 digest of the UTF-8 content and a canonical record digest
+that binds id, sequence, role, content, timestamp, and metadata. Compilation
+sorts by sequence, rechecks both digests, and rejects duplicate ids or sequence
+numbers.
+
+Generated ids are deterministic for sequence, role, content, timestamp, and
+metadata. A `source_digest` commits to each ordered sequence, id, and canonical
+record hash for the full source set. Timestamp or metadata changes therefore
+change both the record hash and source-set digest.
+
+Metadata accepts only canonical JSON values: objects with string keys, arrays,
+strings, booleans, integers, finite floating-point numbers, and `null`. Input
+objects and arrays are recursively copied and frozen during construction, so
+later caller mutation cannot change the record and attempted nested mutation
+raises `TypeError`. Serialization returns an ordinary detached JSON object.
+
+The source-input schema accepts `id: null` and empty hash fields as omission
+sentinels for OpenAI-style message exports. Loading replaces them with a
+generated non-empty id and canonical SHA-256 values, so serialized
+`SourceRecord` output always uses the canonical form.
+
+### `ProvenanceSpan`
+
+A provenance span contains:
+
+- the source id;
+- Python character offsets `[start, end)`;
+- the exact source quote;
+- the quote’s full SHA-256 digest.
+
+Offsets are character offsets, not UTF-8 byte offsets. `validates()` succeeds
+only when the id resolves, offsets are in bounds, the sliced text equals the
+quote, and the quote hash matches.
+
+### `MemoryItem`
+
+Each item has a stable id, kind, text, one or more provenance spans, status,
+priority, confidence, exactness flag, tags, temporal links, and metadata. The
+schema rejects empty text, missing provenance, out-of-range priorities, and
+out-of-range confidence.
+
+Supported kinds are:
+
+| Kind | Purpose | Protected |
+| --- | --- | --- |
+| `goal` | Current requested outcome | yes |
+| `constraint` | Requirement or prohibition | yes |
+| `user_correction` | Explicit change to earlier state | yes |
+| `confirmed_fact` | Explicitly observed or confirmed state | no |
+| `decision` | Chosen next action or implementation direction | no |
+| `unresolved` | Question or uncertainty that remains open | yes |
+| `exact_error` | Verbatim failure literal | yes |
+| `exact_reference` | Verbatim path, line, or test reference | yes |
+| `discarded_attempt` | Failed or abandoned approach | no |
+| `progress` | Completed intermediate work | no |
+| `context` | Lower-priority background | no |
+
+Statuses are `active`, `superseded`, `discarded`, and `conflicting`.
+An item carrying the internal `resolves-protected` tag is also protected; the
+resolver uses this for a supported confirmed fact that closes an unresolved
+question.
+
+## Extraction and authority
+
+`RuleBasedExtractor` recognizes explicit YAML-like sections and conservative
+sentence patterns. It only treats `user`, `system`, and `developer` records as
+authoritative sources of goals, constraints, and corrections. Decisions and
+unresolved questions may additionally come from `assistant`; confirmed facts
+may come from any non-tool role. Tool output can still supply errors,
+references, and failed-attempt evidence, but it cannot assert durable task
+state unless the host explicitly sets `metadata.trusted_for_state` to the JSON
+boolean `true`, which enables confirmed-fact extraction only. This prevents a
+literal `Requirement:` or `fact:` in ordinary tool text from automatically
+becoming authoritative state.
+
+Constraint-bearing input is atomized before temporal resolution. The tested
+forms include labeled sections and bullets as well as independent commitments
+joined by sentences, conjunctions, or semicolons. This prevents a later
+correction to one clause from superseding an unrelated neighboring constraint.
+The atomizer is deliberately bounded rather than a general-purpose parser.
+
+Exact-literal recognition covers complete diagnostic forms for pytest
+assertions, expected/received output, TypeScript and Rust error codes, null or
+undefined references, exceptions, tracebacks, fatal process output, HTTP error
+status, exit codes, and failed-test counts. Reference recognition preserves
+POSIX or Windows paths with `:line` or line ranges, `path lines N-M`, GitHub
+`#L` anchors, and pytest node ids. These regex-recognized forms are exact and
+protected; arbitrary diagnostics and locator syntaxes still require an
+explicit label or another extractor.
+
+`ModelExtractor` wraps any callable that maps a provider-neutral JSON prompt to
+a JSON response. Candidate kinds, priorities, confidence values, source ids,
+offsets, role authority, and reserved tags are validated before acceptance. It
+reconstructs quotes from source offsets instead of trusting model-supplied quote
+text. Ordinary candidate text must equal a complete atomic cited source span;
+exact candidates must equal every cited span. The adapter intentionally rejects
+model paraphrases and truncated clauses rather than trying to prove them.
+
+Model extraction does not authenticate upstream roles or protect source text
+sent to the model provider. A consumer that enables it must treat the callable
+as part of the confidentiality boundary, and must authenticate roles before
+constructing sources. Accepted model output remains subject to the same role,
+provenance, exactness, uncertainty, ordering, and polarity checks as rule
+output. These checks are not a general semantic theorem prover.
+
+By default, `ContextCompiler` also runs a separate full
+`RuleBasedExtractor()`. If the primary extractor omitted any rule-recognized
+span/kind pair, protected or optional, the candidate is restored with a
+`verifier-recovered` tag before selection. The verifier uses the protected
+subset of this independent output as the certification obligation; serialized
+artifact verification independently reruns
+`RuleBasedExtractor(protected_only=True)` for that obligation. Recovery can be
+disabled explicitly, but doing so removes deterministic fallback coverage.
+
+When an authoritative sentence is both a correction and a new constraint,
+fact, decision, or unresolved state, rule extraction emits two items over the
+same span: the protected correction edge and a `correction-derived`,
+`current-value` semantic item. The new value therefore remains usable even
+when lexical matching cannot safely identify which older item it replaces.
+An explicit revocation is different: it supersedes the matched old commitment
+but intentionally emits no invented replacement state.
+
+## Canonicalization and temporal state
+
+Canonicalization groups items by kind and normalized text, unions distinct
+provenance spans, and retains the strongest priority, confidence, exactness,
+and tags.
+
+The temporal resolver is conservative:
+
+1. An explicit correction is compared only with earlier active state.
+2. A sufficiently strong, unambiguous token overlap marks the old item
+   `superseded` and links the correction and current semantic item to it.
+3. Weak matches remain as protected, unlinked correction edges while any
+   independently recognized current semantic value remains active.
+4. Near-ties are tagged as ambiguous rather than silently choosing a target.
+5. A recognized revocation retires the matched old item without creating a
+   current-value item.
+6. Related active constraints, facts, or decisions with opposite polarity or
+   disjoint numeric values are marked `conflicting`; neither wins. A protected
+   `unresolved` item cites both sources.
+
+Opposite settings in different recognized environments, such as development
+and production, remain separately active instead of becoming a false conflict.
+
+The old item remains in the full ledger for audit. It is omitted from active
+selection by default unless `include_superseded=True`.
+
+These operations are lexical heuristics. Paraphrases with little token overlap
+may remain unlinked, and superficially similar propositions may need user
+review.
+
+## Budget selection
+
+`CompilationPolicy` defaults to a 4,000-token active budget and a 5x minimum
+compression target. Without a custom token counter, one token is estimated as
+four characters. The minimum ratio is an independently reported success target;
+it does not silently shrink the requested active-token budget.
+
+The selector charges the canonical envelope, kind headers, item JSON, source
+roles, and compact provenance pointers against the requested token budget. It
+then:
+
+1. keeps every eligible protected item;
+2. ranks optional items by priority, confidence, recency, and estimated cost;
+3. admits optional items while space remains.
+
+Protected items are never dropped merely to fit. If they overflow the budget,
+the artifact carries `budget_overflow` and the verifier emits a
+`loss_resistant_budget_overflow` warning. Overflow is deliberately not inserted
+into the active prompt, because doing so would recursively change the measured
+size. `fail_on_budget_overflow=True` converts this condition to an exception.
+
+A compression miss is also explicit. It is a warning unless the CLI is invoked
+with `--require-target`.
+
+## Verification
+
+Compilation-time `verify_memory()` checks:
+
+- every provenance span against the supplied immutable sources;
+- item source-role and source-sequence metadata against cited sources;
+- every exact item against every cited literal;
+- ordinary claims for complete atomic literal support, ordered content-token
+  support, and consistent polarity across spans;
+- role authority for commitments, decisions, unresolved state, and facts;
+- uncertain or unconfirmed evidence incorrectly typed as a confirmed fact;
+- supported correction, resolution, and symmetric conflict graph edges;
+- retention of all protected safety candidates;
+- selection of every active protected item;
+- budget overflow and compression-target status.
+
+Errors make `verification.passed` false. Budget and compression conditions are
+warnings because losing protected state would be worse than exceeding the
+requested size.
+
+`ctxc verify` uses `verify_artifact_dict()` to re-check a serialized artifact
+against a separately supplied source history. It first removes
+`artifact_sha256`, canonically JSON-encodes the remaining payload, and checks
+the recomputed SHA-256 against the claimed artifact digest. It then validates
+schema version, source count and digest, ledger completeness, item shape,
+duplicate ids, and selected-id existence before independently rerunning
+protected-only rule extraction and the core verifier over decoded items,
+including provenance, exactness, uncertainty, protected retention, and
+protected selection checks. It also reconstructs the canonical selected prompt,
+recomputes every compression field from the recorded deterministic policy, and
+compares the embedded compilation-time verification report with the replay.
+
+A custom tokenizer can participate in independent replay when it has a stable
+name. Compile with
+`ContextCompiler(token_counter=counter, token_counter_id="name-v1")`, then
+call `verify_artifact_dict(..., token_counter=counter,
+token_counter_id="name-v1")` with the same callback and id. The artifact stores
+only `custom:name-v1`, not executable tokenizer code. An unnamed custom counter,
+a missing callback, or a mismatched id therefore fails closed with
+`unverifiable_token_counter`.
+
+Full JSON output is required for this audit path. Active-only serialization
+intentionally omits cold and superseded ledger entries and sets
+`ledger_complete: false`; independent verification adds
+`incomplete_ledger` and fails rather than certifying incomplete protected
+coverage.
+
+## Outputs
+
+`CompiledMemory.to_json()` emits schema version `1.0`, source digest and count,
+a `ledger_complete` marker, the full or active-only item ledger, selected ids,
+verification report, compression statistics, and compiler metadata. The
+default full ledger is the audit artifact; active-only output is a compact
+delivery artifact. `artifact_sha256` commits to the canonical full payload
+excluding the digest field itself. This self-hash detects accidental changes
+and supports comparison to a separately trusted digest; it is not a signature
+and an attacker can recompute it after rewriting an artifact.
+
+Draft 2020-12 JSON Schemas document the public interchange shapes:
+
+- [source event](../schemas/source-event.schema.json);
+- [model extraction envelope](../schemas/model-extraction.schema.json);
+- [compiled memory artifact](../schemas/compiled-memory.schema.json).
+
+The standard-library runtime performs its own validation and does not require a
+JSON Schema package. Integrations can use these files for generation,
+validation, and typed client tooling.
+
+`CompiledMemory.to_prompt()` emits only selected items grouped by kind. It
+refuses when `verification.passed` is false. `CompilationPolicy(verify=False)`
+therefore produces an explicitly failed, non-promptable diagnostic result; the
+Python-only `allow_unverified=True` escape hatch is unsafe and should never feed
+an agent. Verified items are compact JSON lines inside an outer
+`<typed_memory schema="1.0" content="untrusted-jsonl">` envelope. The renderer
+JSON-encodes text and escapes angle brackets and ampersands so historical
+content cannot close the envelope syntactically. Each line includes source id,
+offsets, and the first ten hexadecimal characters of the quote digest, plus
+the roles of all cited sources. The JSON artifact retains the full digest and
+quote; the prompt pointer is a compact locator, not a standalone cryptographic
+proof. Downstream models must still treat item text as untrusted historical
+data rather than executable instructions.
+
+## Cold source archive
+
+`SourceArchive` stores newline-delimited source records in `events.jsonl`. An
+exclusive local lock serializes appends, existing ids and sequences cannot be
+overwritten through the API, writes are flushed and `fsync`ed, and archive
+loads revalidate each content hash and canonical record hash, including
+timestamp and metadata.
+
+The archive is append-only by convention and API behavior, not by filesystem
+enforcement. It is neither hash-chained nor signed. Anyone able to rewrite the
+archive and every trusted digest can rewrite history. Use filesystem access
+control, backups, or an external signed/WORM store when adversarial tampering is
+in scope.
+
+## Extension points
+
+- Supply any `Extractor` implementation with `name` and `extract(sources)`.
+- Use `ModelExtractor` with any JSON-capable model provider.
+- Supply an exact tokenizer through `token_counter`; add a stable
+  `token_counter_id` and pass both to `verify_artifact_dict()` for portable
+  independent replay.
+- Change selection and recovery behavior through `CompilationPolicy`.
+- Store or transmit `CompiledMemory.to_dict()` without tying consumers to a
+  particular underlying LLM.
+
+New extractors should be evaluated against adversarial role injection,
+uncertainty, corrections, duplicate symbols, exact literals, and invalid spans
+before use.
