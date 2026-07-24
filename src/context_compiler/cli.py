@@ -11,13 +11,25 @@ from pathlib import Path
 from .archive import SourceArchive
 from .compiler import ContextCompiler
 from .io import load_sources, load_sources_path, verify_artifact_dict
+from .limits import DEFAULT_SOURCE_LIMITS, SourceLimits
 from .models import CompilationPolicy
 
 
-def _input_sources(path: str) -> list:
+def _source_limits(args: argparse.Namespace) -> SourceLimits:
+    return SourceLimits(
+        max_input_bytes=args.max_source_bytes,
+        max_records=args.max_source_records,
+        max_line_chars=args.max_source_line_chars,
+        max_record_bytes=args.max_source_record_bytes,
+        max_total_record_bytes=args.max_total_source_bytes,
+        max_json_depth=args.max_source_json_depth,
+    )
+
+
+def _input_sources(path: str, limits: SourceLimits) -> list:
     if path == "-":
-        return load_sources(sys.stdin)
-    return load_sources_path(path)
+        return load_sources(sys.stdin, limits=limits)
+    return load_sources_path(path, limits=limits)
 
 
 def _write_output(value: str, path: str | None) -> None:
@@ -34,9 +46,10 @@ def _write_output(value: str, path: str | None) -> None:
 
 def _compile(args: argparse.Namespace) -> int:
     try:
-        sources = _input_sources(args.input)
+        source_limits = _source_limits(args)
+        sources = _input_sources(args.input, source_limits)
         if args.archive:
-            archive = SourceArchive(args.archive)
+            archive = SourceArchive(args.archive, source_limits=source_limits)
             archive.append(sources)
             sources = archive.load()
         policy = CompilationPolicy(
@@ -46,7 +59,10 @@ def _compile(args: argparse.Namespace) -> int:
             include_superseded=args.include_superseded,
             recover_missed_protected=not args.no_recovery,
         )
-        result = ContextCompiler(policy=policy).compile(sources)
+        result = ContextCompiler(
+            policy=policy,
+            source_limits=source_limits,
+        ).compile(sources)
     except (OSError, TypeError, ValueError, json.JSONDecodeError, TimeoutError) as exc:
         sys.stderr.write(f"ctxc: {exc}\n")
         return 2
@@ -71,8 +87,9 @@ def _compile(args: argparse.Namespace) -> int:
 
 def _archive_append(args: argparse.Namespace) -> int:
     try:
-        sources = _input_sources(args.input)
-        archive = SourceArchive(args.archive)
+        source_limits = _source_limits(args)
+        sources = _input_sources(args.input, source_limits)
+        archive = SourceArchive(args.archive, source_limits=source_limits)
         appended = archive.append(sources)
         report = archive.verify()
     except (OSError, TypeError, ValueError, json.JSONDecodeError, TimeoutError) as exc:
@@ -91,7 +108,10 @@ def _archive_append(args: argparse.Namespace) -> int:
 
 def _archive_verify(args: argparse.Namespace) -> int:
     try:
-        report = SourceArchive(args.archive).verify()
+        report = SourceArchive(
+            args.archive,
+            source_limits=_source_limits(args),
+        ).verify()
     except OSError as exc:
         sys.stderr.write(f"ctxc: {exc}\n")
         return 2
@@ -107,9 +127,14 @@ def _archive_verify(args: argparse.Namespace) -> int:
 
 def _verify(args: argparse.Namespace) -> int:
     try:
+        source_limits = _source_limits(args)
         artifact = json.loads(Path(args.artifact).read_text(encoding="utf-8"))
-        sources = _input_sources(args.sources)
-        report = verify_artifact_dict(artifact, sources)
+        sources = _input_sources(args.sources, source_limits)
+        report = verify_artifact_dict(
+            artifact,
+            sources,
+            source_limits=source_limits,
+        )
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         sys.stderr.write(f"ctxc: {exc}\n")
         return 2
@@ -141,6 +166,45 @@ def _inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_source_limit_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--max-source-bytes",
+        type=int,
+        default=DEFAULT_SOURCE_LIMITS.max_input_bytes,
+        help="maximum UTF-8 bytes read from a source input or archive",
+    )
+    parser.add_argument(
+        "--max-source-records",
+        type=int,
+        default=DEFAULT_SOURCE_LIMITS.max_records,
+        help="maximum source records",
+    )
+    parser.add_argument(
+        "--max-source-line-chars",
+        type=int,
+        default=DEFAULT_SOURCE_LIMITS.max_line_chars,
+        help="maximum characters in one physical JSON/JSONL line",
+    )
+    parser.add_argument(
+        "--max-source-record-bytes",
+        type=int,
+        default=DEFAULT_SOURCE_LIMITS.max_record_bytes,
+        help="maximum canonical UTF-8 JSON bytes in one source record",
+    )
+    parser.add_argument(
+        "--max-total-source-bytes",
+        type=int,
+        default=DEFAULT_SOURCE_LIMITS.max_total_record_bytes,
+        help="maximum canonical UTF-8 JSON bytes across source records",
+    )
+    parser.add_argument(
+        "--max-source-json-depth",
+        type=int,
+        default=DEFAULT_SOURCE_LIMITS.max_json_depth,
+        help="maximum JSON container nesting depth in source records",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ctxc",
@@ -163,6 +227,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--archive",
         help="append input to this immutable source archive, then compile the full archive",
     )
+    _add_source_limit_arguments(compile_parser)
     compile_parser.set_defaults(handler=_compile)
 
     verify_parser = subparsers.add_parser(
@@ -171,6 +236,7 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("artifact")
     verify_parser.add_argument("sources")
     verify_parser.add_argument("-o", "--output")
+    _add_source_limit_arguments(verify_parser)
     verify_parser.set_defaults(handler=_verify)
 
     inspect_parser = subparsers.add_parser("inspect", help="show artifact health and compression")
@@ -184,10 +250,12 @@ def build_parser() -> argparse.ArgumentParser:
     archive_append.add_argument("archive")
     archive_append.add_argument("input", help="history path or - for stdin")
     archive_append.add_argument("-o", "--output")
+    _add_source_limit_arguments(archive_append)
     archive_append.set_defaults(handler=_archive_append)
     archive_verify = archive_subparsers.add_parser("verify", help="verify archive hashes and shape")
     archive_verify.add_argument("archive")
     archive_verify.add_argument("-o", "--output")
+    _add_source_limit_arguments(archive_verify)
     archive_verify.set_defaults(handler=_archive_verify)
     return parser
 

@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 163 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 197 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
@@ -119,6 +119,8 @@ The repository currently includes:
 - strict bounded model-output parsing with duplicate-key and non-finite-number
   rejection, deterministic provider-failure fallback, and an opt-in strict
   provider-failure policy;
+- shared default-on source limits for UTF-8 input bytes, physical line length,
+  JSON depth, record count, per-record size, total canonical size, and archives;
 - a portable JSON artifact, compact prompt renderer, and three JSON Schemas;
 - an append-only local source archive with integrity checks and locking;
 - the `ctxc compile`, `verify`, `inspect`, and `archive` commands;
@@ -129,7 +131,7 @@ The repository currently includes:
   and valid or failed manifests that feed per-system certificate decisions;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
-- cross-version CI, linting, wheel/schema checks, and 163 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 197 regression tests.
 
 ## In development
 
@@ -142,8 +144,8 @@ adding more claims to the README:
 - test the optional model extractor across providers and novel phrasing;
 - add exact provider tokenizers and framework adapters;
 - support efficient incremental compilation for live agent loops;
-- harden resource limits, secrets handling, storage authenticity, and
-  observability;
+- add whole-compile and generic-provider deadlines, bound artifact input, and
+  continue hardening secrets handling, storage authenticity, and observability;
 - obtain independent reproduction before making a state-of-the-art claim.
 
 The ordered engineering backlog is in [TODO.md](TODO.md). The current design
@@ -298,6 +300,26 @@ ctxc compile examples/auth_timeout.jsonl --archive .context-archive --format pro
 `ctxc compile` also accepts `-` for stdin. Inputs may be a JSON list, an object
 containing `sources`, `events`, or `messages`, or JSONL. Each record accepts
 `id`, `sequence`, `role`, `content`, `timestamp`, and `metadata`.
+Source JSON uses strict decoding: duplicate object keys, non-standard
+NaN/infinity constants, overflowed non-finite floats, and excessive nesting
+are rejected.
+
+Source ingestion is bounded by default across `compile`, `verify`, and archive
+commands:
+
+| Boundary | Default | CLI override |
+| --- | ---: | --- |
+| Serialized source or archive input | 64 MiB | `--max-source-bytes` |
+| Source records | 100,000 | `--max-source-records` |
+| One physical JSON/JSONL line | 1,048,576 characters | `--max-source-line-chars` |
+| One canonical source record | 4 MiB | `--max-source-record-bytes` |
+| All canonical source records | 64 MiB | `--max-total-source-bytes` |
+| JSON container nesting | 128 levels | `--max-source-json-depth` |
+
+The same six limits are available through `SourceLimits` for the Python API.
+They are hard ingestion boundaries, not a promise that total process memory
+equals the byte caps; Python objects, compiler state, and caller-controlled
+extractors have additional overhead.
 
 The default JSON output contains the complete typed ledger and is the format to
 retain for audit. It carries `artifact_sha256`, which `ctxc verify`
@@ -331,7 +353,12 @@ compression ratio is not achieved.
 ## Python API
 
 ```python
-from context_compiler import CompilationPolicy, ContextCompiler, SourceRecord
+from context_compiler import (
+    CompilationPolicy,
+    ContextCompiler,
+    SourceLimits,
+    SourceRecord,
+)
 
 sources = [
     SourceRecord.create(
@@ -347,7 +374,8 @@ sources = [
 ]
 
 compiler = ContextCompiler(
-    policy=CompilationPolicy(token_budget=800, minimum_compression_ratio=5.0)
+    policy=CompilationPolicy(token_budget=800, minimum_compression_ratio=5.0),
+    source_limits=SourceLimits(max_records=10_000, max_input_bytes=16 * 1024 * 1024),
 )
 memory = compiler.compile(sources)
 
@@ -501,7 +529,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): all 163 tests pass, and the recorded default
+Current local snapshot (2026-07-24): all 197 tests pass, and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`

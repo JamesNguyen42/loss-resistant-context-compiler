@@ -3,6 +3,7 @@
 from .archive import SourceArchive
 from .compiler import ContextCompiler
 from .extractors import ModelExtractor, RuleBasedExtractor
+from .limits import SourceLimitError, SourceLimits
 from .local_qwen import LmsQwenCompletion, LocalQwenError
 from .models import (
     CompilationPolicy,
@@ -28,6 +29,8 @@ __all__ = [
     "ProvenanceSpan",
     "RuleBasedExtractor",
     "SourceArchive",
+    "SourceLimitError",
+    "SourceLimits",
     "SourceRecord",
     "VerificationReport",
 ]

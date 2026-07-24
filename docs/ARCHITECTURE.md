@@ -60,6 +60,37 @@ sentinels for OpenAI-style message exports. Loading replaces them with a
 generated non-empty id and canonical SHA-256 values, so serialized
 `SourceRecord` output always uses the canonical form.
 
+### Source ingestion limits
+
+`SourceLimits` is one immutable contract shared by the stream/path loaders,
+`ContextCompiler`, `verify_artifact_dict()`, and `SourceArchive`. Defaults cap
+serialized input and archive files at 64 MiB, physical lines at 1,048,576
+characters, histories at 100,000 records, individual canonical records at
+4 MiB, total canonical records at 64 MiB, and JSON container depth at 128.
+Every field must be a positive non-boolean integer.
+
+Path input is size-checked before opening and then read in bounded chunks so a
+file-growth race is checked again. Text-stream UTF-8 size and physical line
+length are checked before JSON decoding. A quote-aware nesting scan rejects
+excessive container depth before the decoder recurses. Source JSON also rejects
+duplicate object keys, non-standard NaN/infinity constants, and overflowed
+non-finite floats.
+
+Direct Python iterables are stopped after the first record beyond the count
+limit. A non-allocating compact-JSON size walk bounds every supplied dictionary
+or normalized `SourceRecord`, including otherwise ignored extra fields, and
+bounds their aggregate size before extraction. The same traversal rejects
+cycles, excessive nesting, non-JSON values, non-finite numbers, and unpaired
+Unicode surrogates. Effective compilation limits are recorded in
+`compiler_metadata.source_limits`; independent verification reports its own
+effective limits and validates the recorded shape without treating a self-hash
+as external proof.
+
+These controls bound accepted source material, not total Python process RSS or
+runtime. Callers can allocate an oversized object before passing it to the
+library, and custom extractors, token counters, artifact files, and whole
+compilation still need separate host-level limits.
+
 ### `ProvenanceSpan`
 
 A provenance span contains:

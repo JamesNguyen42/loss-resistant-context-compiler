@@ -10,6 +10,13 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from .extractors import RuleBasedExtractor
+from .limits import (
+    SourceLimitError,
+    SourceLimits,
+    add_source_size,
+    resolve_source_limits,
+    source_value_size,
+)
 from .models import (
     ADDITIVE_SAFETY_EXTRACTOR_FAILED_MESSAGE,
     PRIMARY_EXTRACTOR_DEGRADED_MESSAGE,
@@ -94,6 +101,16 @@ _POLICY_FIELDS = frozenset(
         "token_counter",
         "include_superseded",
         "include_discarded",
+    }
+)
+_SOURCE_LIMIT_FIELDS = frozenset(
+    {
+        "max_input_bytes",
+        "max_records",
+        "max_line_chars",
+        "max_record_bytes",
+        "max_total_record_bytes",
+        "max_json_depth",
     }
 )
 
@@ -536,6 +553,41 @@ def _validate_policy_shape(
             )
 
 
+def _validate_source_limits_shape(
+    compiler_metadata: Any,
+    issues: list[dict[str, Any]],
+) -> None:
+    if not isinstance(compiler_metadata, dict):
+        return
+    source_limits = compiler_metadata.get("source_limits")
+    if source_limits is None:
+        return
+    if not isinstance(source_limits, dict):
+        _shape_issue(
+            issues,
+            "invalid_source_limits",
+            "Artifact compiler_metadata.source_limits must be a JSON object.",
+        )
+        return
+    _check_exact_fields(
+        source_limits,
+        _SOURCE_LIMIT_FIELDS,
+        label="Artifact compiler_metadata.source_limits",
+        code="invalid_source_limits",
+        issues=issues,
+    )
+    for name in sorted(_SOURCE_LIMIT_FIELDS):
+        if not _is_integer(source_limits.get(name), minimum=1):
+            _shape_issue(
+                issues,
+                "invalid_source_limits",
+                (
+                    f"Artifact compiler_metadata.source_limits.{name} "
+                    "must be a positive integer."
+                ),
+            )
+
+
 def _validate_artifact_shape(
     artifact: dict[str, Any],
     issues: list[dict[str, Any]],
@@ -607,9 +659,69 @@ def _validate_artifact_shape(
     _validate_verification_shape(artifact.get("verification"), issues)
     _validate_compression_shape(artifact.get("compression"), issues)
     _validate_policy_shape(artifact.get("compiler_metadata"), issues)
+    _validate_source_limits_shape(artifact.get("compiler_metadata"), issues)
 
 
-def _records_from_value(value: Any) -> list[dict[str, Any]]:
+def _strict_source_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
+
+
+def _finite_source_json_float(value: str) -> float:
+    decoded = float(value)
+    if not math.isfinite(decoded):
+        raise ValueError("JSON number must be finite")
+    return decoded
+
+
+def _reject_source_json_constant(value: str) -> None:
+    raise ValueError(f"non-standard JSON constant is forbidden: {value}")
+
+
+def _validate_source_json_nesting(raw: str, limits: SourceLimits) -> None:
+    depth = 0
+    in_string = False
+    escaped = False
+    for character in raw:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+        elif character in "[{":
+            depth += 1
+            if depth > limits.max_json_depth:
+                raise SourceLimitError(
+                    "source JSON exceeds supported nesting depth of "
+                    f"{limits.max_json_depth}"
+                )
+        elif character in "]}":
+            depth = max(0, depth - 1)
+
+
+def _decode_source_json(raw: str, limits: SourceLimits) -> Any:
+    _validate_source_json_nesting(raw, limits)
+    try:
+        return json.loads(
+            raw,
+            object_pairs_hook=_strict_source_json_object,
+            parse_float=_finite_source_json_float,
+            parse_constant=_reject_source_json_constant,
+        )
+    except RecursionError as exc:
+        raise ValueError("source JSON exceeds the supported nesting depth") from exc
+
+
+def _records_from_value(value: Any) -> list[Any]:
     if isinstance(value, list):
         return value
     if isinstance(value, dict):
@@ -622,33 +734,143 @@ def _records_from_value(value: Any) -> list[dict[str, Any]]:
     raise ValueError("expected a JSON list or an object containing sources/events/messages")
 
 
-def load_sources(stream: TextIO, *, json_lines: bool | None = None) -> list[SourceRecord]:
-    """Load OpenAI-style messages or source records from JSON/JSONL."""
+def _validate_line_lengths(raw: str, limits: SourceLimits) -> None:
+    line_number = 1
+    line_chars = 0
+    previous_was_cr = False
+    for character in raw:
+        if character == "\r":
+            line_number += 1
+            line_chars = 0
+            previous_was_cr = True
+            continue
+        if character == "\n":
+            if not previous_was_cr:
+                line_number += 1
+            line_chars = 0
+            previous_was_cr = False
+            continue
+        previous_was_cr = False
+        line_chars += 1
+        if line_chars > limits.max_line_chars:
+            raise SourceLimitError(
+                f"source input line {line_number} exceeds "
+                f"{limits.max_line_chars} characters"
+            )
 
-    raw = stream.read()
+
+def _read_limited_text(stream: TextIO, limits: SourceLimits) -> str:
+    chunks: list[str] = []
+    total_bytes = 0
+    read_size = min(64 * 1024, limits.max_input_bytes + 1)
+    while True:
+        chunk = stream.read(read_size)
+        if not isinstance(chunk, str):
+            raise TypeError("source input stream must return text")
+        if not chunk:
+            break
+        try:
+            total_bytes += len(chunk.encode("utf-8"))
+        except UnicodeEncodeError as exc:
+            raise ValueError("source input must be valid UTF-8 text") from exc
+        if total_bytes > limits.max_input_bytes:
+            raise SourceLimitError(
+                f"source input exceeds {limits.max_input_bytes} UTF-8 bytes"
+            )
+        chunks.append(chunk)
+    raw = "".join(chunks)
     if raw.startswith("\ufeff"):
         raw = raw[1:]
+    _validate_line_lengths(raw, limits)
+    return raw
+
+
+def _json_line_records(raw: str, limits: SourceLimits) -> list[Any]:
+    records: list[Any] = []
+    for line_number, line in enumerate(raw.splitlines(), start=1):
+        if not line.strip():
+            continue
+        if len(records) >= limits.max_records:
+            raise SourceLimitError(
+                f"source record count exceeds {limits.max_records} records"
+            )
+        try:
+            records.append(_decode_source_json(line, limits))
+        except SourceLimitError:
+            raise
+        except ValueError as exc:
+            raise ValueError(f"invalid JSON source record at line {line_number}: {exc}") from exc
+    return records
+
+
+def _convert_source_records(
+    records: list[Any],
+    limits: SourceLimits,
+) -> list[SourceRecord]:
+    if len(records) > limits.max_records:
+        raise SourceLimitError(
+            f"source record count exceeds {limits.max_records} records"
+        )
+    prepared: list[SourceRecord] = []
+    total_size = 0
+    for index, record in enumerate(records):
+        raw_size = source_value_size(record, limits=limits, index=index)
+        source = SourceRecord.from_dict(record, default_sequence=index)
+        normalized_size = source_value_size(
+            source.to_dict(),
+            limits=limits,
+            index=index,
+        )
+        total_size = add_source_size(
+            total_size,
+            max(raw_size, normalized_size),
+            limits=limits,
+        )
+        prepared.append(source)
+    return prepared
+
+
+def load_sources(
+    stream: TextIO,
+    *,
+    json_lines: bool | None = None,
+    limits: SourceLimits | None = None,
+) -> list[SourceRecord]:
+    """Load OpenAI-style messages or source records from JSON/JSONL."""
+
+    resolved_limits = resolve_source_limits(limits)
+    raw = _read_limited_text(stream, resolved_limits)
     if not raw.strip():
         return []
     if json_lines is True:
-        records = [json.loads(line) for line in raw.splitlines() if line.strip()]
+        records = _json_line_records(raw, resolved_limits)
     elif json_lines is False:
-        records = _records_from_value(json.loads(raw))
+        records = _records_from_value(_decode_source_json(raw, resolved_limits))
     else:
         try:
-            records = _records_from_value(json.loads(raw))
+            records = _records_from_value(_decode_source_json(raw, resolved_limits))
         except json.JSONDecodeError:
-            records = [json.loads(line) for line in raw.splitlines() if line.strip()]
-    return [
-        SourceRecord.from_dict(record, default_sequence=index)
-        for index, record in enumerate(records)
-    ]
+            records = _json_line_records(raw, resolved_limits)
+    return _convert_source_records(records, resolved_limits)
 
 
-def load_sources_path(path: str | Path) -> list[SourceRecord]:
+def load_sources_path(
+    path: str | Path,
+    *,
+    limits: SourceLimits | None = None,
+) -> list[SourceRecord]:
+    resolved_limits = resolve_source_limits(limits)
     source_path = Path(path)
-    with source_path.open("r", encoding="utf-8") as stream:
-        return load_sources(stream, json_lines=source_path.suffix.casefold() == ".jsonl")
+    if source_path.stat().st_size > resolved_limits.max_input_bytes:
+        raise SourceLimitError(
+            f"source input exceeds {resolved_limits.max_input_bytes} bytes"
+        )
+    with source_path.open("r", encoding="utf-8", newline="") as stream:
+        return load_sources(
+            stream,
+            json_lines=source_path.suffix.casefold() == ".jsonl",
+            limits=resolved_limits,
+        )
 
 
 def dump_sources_jsonl(sources: Iterable[SourceRecord], stream: TextIO) -> None:
@@ -662,6 +884,7 @@ def verify_artifact_dict(
     *,
     token_counter: Callable[[str], int] | None = None,
     token_counter_id: str | None = None,
+    source_limits: SourceLimits | None = None,
 ) -> dict[str, Any]:
     """Verify a serialized artifact without trusting its own report."""
 
@@ -669,6 +892,23 @@ def verify_artifact_dict(
         isinstance(source, SourceRecord) for source in sources
     ):
         raise TypeError("sources must be a list of SourceRecord values")
+    resolved_limits = resolve_source_limits(source_limits)
+    if len(sources) > resolved_limits.max_records:
+        raise SourceLimitError(
+            f"source record count exceeds {resolved_limits.max_records} records"
+        )
+    total_source_size = 0
+    for index, source in enumerate(sources):
+        record_size = source_value_size(
+            source.to_dict(),
+            limits=resolved_limits,
+            index=index,
+        )
+        total_source_size = add_source_size(
+            total_source_size,
+            record_size,
+            limits=resolved_limits,
+        )
 
     issues: list[dict[str, Any]] = []
     if not isinstance(artifact, dict):
@@ -1097,5 +1337,6 @@ def verify_artifact_dict(
         "provenance_valid": core.provenance_valid,
         "provenance_total": core.provenance_total,
         "provenance_validity": core.provenance_validity,
+        "verification_source_limits": resolved_limits.to_dict(),
         "issues": issues,
     }

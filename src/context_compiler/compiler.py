@@ -6,6 +6,13 @@ import math
 from collections.abc import Callable, Iterable
 
 from .extractors import ExtractionResult, Extractor, RuleBasedExtractor
+from .limits import (
+    SourceLimitError,
+    SourceLimits,
+    add_source_size,
+    resolve_source_limits,
+    source_value_size,
+)
 from .models import (
     ADDITIVE_SAFETY_EXTRACTOR_FAILED_MESSAGE,
     PRIMARY_EXTRACTOR_DEGRADED_MESSAGE,
@@ -50,6 +57,7 @@ class ContextCompiler:
         safety_extractor: Extractor | None = None,
         token_counter: TokenCounter | None = None,
         token_counter_id: str | None = None,
+        source_limits: SourceLimits | None = None,
     ) -> None:
         if token_counter is None and token_counter_id is not None:
             raise ValueError("token_counter_id requires token_counter")
@@ -62,9 +70,10 @@ class ContextCompiler:
         self.safety_extractor = safety_extractor
         self._custom_token_counter = token_counter
         self._token_counter_id = token_counter_id.strip() if token_counter_id else None
+        self.source_limits = resolve_source_limits(source_limits)
 
     def compile(self, sources: Iterable[SourceRecord | dict]) -> CompiledMemory:
-        ordered = self._prepare_sources(sources)
+        ordered = self._prepare_sources(sources, limits=self.source_limits)
         trusted_source_digest = source_digest(ordered)
 
         # These built-in passes are deliberately not constructor seams. Custom
@@ -210,6 +219,7 @@ class ContextCompiler:
                 "additive_safety_failure": custom_safety_failure,
                 "recovered_items": recovered,
                 "loss_policy": "protected-items-never-drop",
+                "source_limits": self.source_limits.to_dict(),
                 "policy": {
                     "token_budget": self.policy.token_budget,
                     "minimum_compression_ratio": self.policy.minimum_compression_ratio,
@@ -277,15 +287,42 @@ class ContextCompiler:
         return result.seal()
 
     @staticmethod
-    def _prepare_sources(sources: Iterable[SourceRecord | dict]) -> list[SourceRecord]:
+    def _prepare_sources(
+        sources: Iterable[SourceRecord | dict],
+        *,
+        limits: SourceLimits,
+    ) -> list[SourceRecord]:
         prepared: list[SourceRecord] = []
+        total_size = 0
         for index, value in enumerate(sources):
+            if index >= limits.max_records:
+                raise SourceLimitError(
+                    f"source record count exceeds {limits.max_records} records"
+                )
             if isinstance(value, SourceRecord):
-                prepared.append(value)
+                source = value
+                raw_size = source_value_size(
+                    source.to_dict(),
+                    limits=limits,
+                    index=index,
+                )
             elif isinstance(value, dict):
-                prepared.append(SourceRecord.from_dict(value, default_sequence=index))
+                raw_size = source_value_size(value, limits=limits, index=index)
+                source = SourceRecord.from_dict(value, default_sequence=index)
+                normalized_size = source_value_size(
+                    source.to_dict(),
+                    limits=limits,
+                    index=index,
+                )
+                raw_size = max(raw_size, normalized_size)
             else:
                 raise TypeError("sources must contain SourceRecord or dictionary values")
+            total_size = add_source_size(
+                total_size,
+                raw_size,
+                limits=limits,
+            )
+            prepared.append(source)
         ids = [source.id for source in prepared]
         if len(ids) != len(set(ids)):
             raise ValueError("source ids must be unique")

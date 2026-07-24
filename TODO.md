@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Run 163 tests; CI covers Python 3.11, 3.12, and 3.13.
+- [x] Run 197 tests; CI covers Python 3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
 
@@ -411,7 +411,7 @@ than most related technology” within the exact dated evaluation scope.
   multilingual support.
 - [ ] Add domain packs or documented extension hooks rather than continually
   widening one global regular-expression vocabulary.
-- [ ] Test extremely long lines, huge tool schemas, binary-looking output, and
+- [x] Test extremely long lines, huge tool schemas, binary-looking output, and
   high record counts under explicit resource limits.
 
 ### Model extractor evaluation
@@ -497,9 +497,11 @@ than most related technology” within the exact dated evaluation scope.
 
 ### Reliability and operations
 
-- [ ] Add configurable limits for source bytes, record count, line length,
-  archive size, and whole-compile duration. Model response size and candidate
-  count are already bounded.
+- [x] Add shared configurable limits for source bytes, record count, line
+  length, canonical record size, JSON depth, and archive size. Model response
+  size and candidate count are also bounded.
+- [ ] Add a portable whole-compile deadline that cannot leave background
+  extractors running or corrupt caller state.
 - [ ] Add structured diagnostics that distinguish invalid input, extraction
   rejection, integrity failure, budget overflow, and policy failure.
 - [ ] Embed commit SHA, package and schema versions, Python/platform, command,

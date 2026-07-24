@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 163 passing |
+| Tests at this snapshot | 197 passing |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -237,6 +237,7 @@ supplied extractors and token counters are deterministic.
 | `src/context_compiler/compiler.py` | End-to-end orchestration, recovery, selection, compression accounting |
 | `src/context_compiler/verifier.py` | Independent coverage, provenance, support, authority, and state checks |
 | `src/context_compiler/io.py` | Input decoding, strict artifact shape validation, replay verification |
+| `src/context_compiler/limits.py` | Shared source byte, line, depth, count, and canonical-size limits |
 | `src/context_compiler/archive.py` | Append-only local archive, locking, loading, and verification |
 | `src/context_compiler/cli.py` | `ctxc` command-line interface and exit codes |
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
@@ -268,7 +269,10 @@ Important compile options:
   and verified prompt rendering;
 - `--active-only`;
 - `--no-recovery`;
-- `--archive`.
+- `--archive`;
+- `--max-source-bytes`, `--max-source-records`,
+  `--max-source-line-chars`, `--max-source-record-bytes`,
+  `--max-total-source-bytes`, and `--max-source-json-depth`.
 
 Exit codes:
 
@@ -295,6 +299,8 @@ Primary exported objects:
 - `LmsQwenCompletion`;
 - `LocalQwenError`;
 - `SourceArchive`;
+- `SourceLimits`;
+- `SourceLimitError`;
 - `VerificationReport`.
 
 Custom token accounting requires both a callback and a stable
@@ -366,7 +372,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 163 tests pass.
+- 197 tests pass.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -375,6 +381,11 @@ audited. Any selected superseded item independently fails verification as
 - Model-output JSON rejects duplicate object keys, non-standard NaN/infinity,
   overflowed non-finite floats, forged fields/roles, invalid spans, reserved
   internal tags, and paraphrases before candidates enter memory.
+- Source loaders, direct compilation, independent verification, and archives
+  share default-on byte, line, JSON-depth, count, per-record, and aggregate
+  canonical-size limits. Adversarial tests cover UTF-8 boundaries, oversized
+  paths and lines, deep/ambiguous/non-finite JSON, high-count generators, huge
+  tool schemas, binary-looking output, and atomic archive refusal.
 - The external runner has deterministic fixture coverage for sequential
   per-case execution, retained case failure, Windows Job Object memory
   enforcement, valid output, timeout, output overflow, invalid candidates,
@@ -518,8 +529,12 @@ lower quantile before results are observed.
 ### Scale and availability
 
 - Batch compilation reparses the supplied history.
-- Input bytes, line length, record count, and archive size are not globally
-  capped.
+- Source and archive input is bounded by default, but artifact-file size,
+  whole-compile duration, custom extractor/token-counter work, and generic
+  completion-callable latency are not globally capped.
+- Direct Python callers can allocate oversized objects before the compiler
+  gets an opportunity to reject them; configured byte limits do not equal a
+  process-RSS guarantee.
 - Protected items can exceed a downstream hard context limit.
 - Archive locking may require operator review after an abnormal process death.
 
