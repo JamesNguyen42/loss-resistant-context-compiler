@@ -54,6 +54,28 @@ This locally authored diagnostic is not independently annotated, representative
 of production traffic, multilingual, or an evaluation of `ModelExtractor`.
 See [the complete method and mismatch audit](../docs/PHRASE_EVALUATION.md).
 
+## Exact local Qwen captured-output diagnostic
+
+`python -m benchmarks.qwen_phrase_eval` evaluates the exact local Qwen Q4
+adapter against the already frozen 64-case phrase corpus. It invokes one case
+at a time, captures one prompt-bound raw output per case, and scores strict
+model-only acceptance separately from deterministic recovery and final
+compiler output. It also records candidate rejection, per-call latency, and
+zero model-service cost.
+
+The saved report can be verified without LM Studio because every captured
+output is replayed through `ModelExtractor` and the full compiler:
+
+```console
+python -m benchmarks.qwen_phrase_eval \
+  --verify-report docs/results/qwen-novel-english-phrases-v1.json
+```
+
+The harness and verifier are frozen; the first live report is pending in this
+checkpoint. Raw outputs make validator replay possible but can expose source
+text, so this path is intended for the public corpus. See
+[the exact protocol and claim boundary](../docs/QWEN_PHRASE_EVALUATION.md).
+
 ## External baselines
 
 The bundled baselines are deterministic controls, not claims about the current
@@ -271,7 +293,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 709 tests alongside it: 704 passed and 5
+The suite collected 797 tests alongside it: 792 passed and 5
 platform/optional checks were skipped.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |

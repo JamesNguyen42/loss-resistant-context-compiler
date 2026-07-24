@@ -27,11 +27,12 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 777 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 797 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Novel English diagnostic | 64 local cases; 85.37% precision and 87.5% recall |
+| Exact local Qwen phrase evaluation | Captured-output harness frozen; first live report pending |
 | Named external comparisons | Not run |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
@@ -167,12 +168,16 @@ The repository currently includes:
   traced-Python-memory ceilings;
 - a frozen, self-hashed 64-case novel-English precision/recall diagnostic with
   exact deterministic replay;
+- a sequential captured-output harness for the exact local Qwen Q4 model that
+  binds every ModelExtractor prompt/output, separates strict model-only
+  acceptance from deterministic recovery, records rejection/latency/zero-cost
+  evidence, and replays saved outputs without model access;
 - public, bounded domain-label and strict extractor-composition hooks that do
   not accept caller-supplied regexes or replace built-in recovery;
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 777 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 797 regression tests.
 
 ## In development
 
@@ -819,7 +824,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 777 tests are collected (772 pass and 5
+Current local snapshot (2026-07-24): 797 tests are collected (792 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
@@ -853,6 +858,7 @@ the commands above for the current revision and environment.
 - [Extending extraction with domain packs](docs/EXTENDING_EXTRACTION.md)
 - [Benchmark design and the exact 50% bar](docs/BENCHMARKING.md)
 - [Novel English phrase diagnostic](docs/PHRASE_EVALUATION.md)
+- [Exact local Qwen phrase-evaluation protocol](docs/QWEN_PHRASE_EVALUATION.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Compiled-artifact schema compatibility](docs/SCHEMA_COMPATIBILITY.md)
 - [Related work](docs/RELATED_WORK.md)

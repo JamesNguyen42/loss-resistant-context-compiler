@@ -94,3 +94,27 @@ a model-quality, latency, cost, or external-system performance claim.
 Automated tests mock the CLI boundary and cover exact identity, quantization,
 loaded-state and single-slot checks, ANSI removal, timeouts, and refusal of a
 different configuration. They do not require the model in CI.
+
+## Frozen corpus-scale evaluator
+
+`benchmarks.qwen_phrase_eval` is frozen before its first live result. It uses
+the existing self-hashed 64-case English phrase corpus and requires this exact
+model/quantization, an 8,192-token loaded context, one slot, the local CLI, a
+240-second per-call timeout, bounded output/candidates, and zero model-service
+cost.
+
+Each case receives one sequential live completion. The report binds the exact
+`ModelExtractor` prompt and cleaned raw output, then deterministically replays
+that capture to score:
+
+- validator-accepted model-only atoms;
+- decoded and rejected candidates;
+- deterministic recovery contributions;
+- final compiler quality and verification;
+- per-call latency and service cost.
+
+Offline report verification never calls a model. The harness is implemented
+and regression-tested; the first live 64-case report is pending in this
+checkpoint. See
+[Exact local Qwen phrase evaluation](QWEN_PHRASE_EVALUATION.md) for commands,
+metric definitions, raw-output privacy, replay, and claim limits.

@@ -6,7 +6,9 @@ with the root [README](../README.md), [TODO](../TODO.md),
 [threat model](THREAT_MODEL.md). Read the
 [extraction extension contract](EXTENDING_EXTRACTION.md) before adding domain
 vocabulary or custom extractors, and [content secret redaction](REDACTION.md)
-before changing preprocessing or privacy claims.
+before changing preprocessing or privacy claims. Read the
+[exact local-Qwen phrase protocol](QWEN_PHRASE_EVALUATION.md) before running or
+changing the captured-output evaluation.
 
 ## Snapshot
 
@@ -17,12 +19,13 @@ before changing preprocessing or privacy claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 777 collected: 772 passing, 5 skipped |
+| Tests at this snapshot | 797 collected: 792 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
 | Recorded local certificate | `ISSUED`, scope `local-bundled-only` |
 | Novel English diagnostic | 64 cases: 85.3659% precision, 87.5% recall |
+| Exact local Qwen phrase evaluation | Captured-output harness frozen; first live report pending |
 | Common content-secret preprocessing | Opt-in, fixed-detector, offset-preserving, replayable |
 | External systems evaluated | None |
 | External 50%-better claim | Not established |
@@ -267,6 +270,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `benchmarks/report_verifier.py` | Bounded strict saved-report verification and deterministic replay |
 | `benchmarks/external_runner.py` | Shell-free adapter process limits, validation, and self-hashed run manifests |
 | `benchmarks/performance_gate.py` | Fixed-digest CI compile latency/growth/traced-memory regression gate |
+| `benchmarks/qwen_phrase_eval.py` | Sequential exact-Qwen prompt/output capture, model-only/recovery scoring, and offline replay |
 | `benchmarks/protocols/` | Versioned external comparison protocol; v1 is still a non-claim-bearing draft |
 | `schemas/` | Source, model extraction, compiled artifact, and redaction-report contracts |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
@@ -458,7 +462,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 777 tests are collected: 772 pass and 5 platform/optional checks are skipped.
+- 797 tests are collected: 792 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all four schemas are included.
@@ -483,6 +487,13 @@ audited. Any selected superseded item independently fails verification as
   with zero compiler-verification failures. Strict report verification replays
   every case. The corpus is local diagnostic evidence, not independent or
   production-representative; see `docs/PHRASE_EVALUATION.md`.
+- The exact local-Qwen corpus evaluator is frozen before observing its first
+  live run. It enforces the Q4 variant, 8,192 context, one inference slot,
+  local CLI/no model API, sequential 64-case order, bounded output/candidates,
+  and zero service cost. It binds every ModelExtractor prompt/raw output,
+  separates strict model-only acceptance from deterministic recovery/final
+  verification, and replays saved outputs offline. The first live report is
+  pending; see `docs/QWEN_PHRASE_EVALUATION.md`.
 - Public `DomainLabelExtractor`, `CompositeExtractor`, `Extractor`, and
   `ExtractionResult` APIs provide bounded exact-label domain packs and strict
   composition without changing the global regex vocabulary. Configuration is
@@ -759,8 +770,10 @@ lower quantile before results are observed.
 - The recorded histories are generated templates, not natural production
   prevalence.
 - The optional model extractor is not exercised in the recorded benchmark.
-- The exact local Qwen adapter has only one public-example integration
-  diagnostic; that is not a model-quality evaluation.
+- The exact local Qwen adapter still has only one completed public-example
+  integration diagnostic. A frozen 64-case captured-output evaluator exists,
+  but its first live report is pending and the corpus is not independent or
+  production-representative.
 - Local controls are simple and are not state-of-the-art substitutes.
 - Atom recall is a proxy for agent success, not task completion.
 - Bootstrap intervals do not cover benchmark design bias.

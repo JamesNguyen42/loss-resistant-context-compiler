@@ -233,6 +233,16 @@ filesystem or network sandbox. They also do not contain a model server that was
 already running outside the adapter process tree. Claim protocols must freeze
 separate containment or accounting for that service.
 
+The exact-Qwen phrase evaluator stores cleaned raw model outputs so strict
+candidate validation and deterministic recovery can be replayed without model
+access. Prompt and output digests, executable digest, repository state, and the
+top-level self-hash detect inconsistent changes, but do not prove that Qwen
+produced the bytes. A complete fabricated report can be rehashed. Raw outputs
+can reproduce source text; the capture path is approved only for the public
+frozen corpus unless a separate privacy review authorizes other inputs.
+Recorded wall-clock latency is shape- and aggregate-checked but cannot be
+independently reproduced offline.
+
 Manifest replay requires the retained corpus at its recorded absolute path and
 checks its canonical digest, file digest, dataset id, and case count. The
 manifest is still only a self-hash: anyone able to replace the corpus,
