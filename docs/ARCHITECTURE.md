@@ -181,7 +181,14 @@ A provenance span contains:
 
 Offsets are character offsets, not UTF-8 byte offsets. `validates()` succeeds
 only when the id resolves, offsets are in bounds, the sliced text equals the
-quote, and the quote hash matches.
+quote, and the quote hash matches. Direct construction requires a non-empty
+string source id, integer-but-not-boolean offsets, string quote, and string
+digest; it does not coerce numeric or textual offsets.
+
+Atomic-span line discovery recognizes the same boundaries as Python
+`str.splitlines()`: LF, CRLF, CR, vertical tab, form feed, file/group/record
+separators, NEL, and Unicode line/paragraph separators. This keeps extraction
+and independent replay aligned for non-LF histories.
 
 ### `MemoryItem`
 
@@ -429,12 +436,14 @@ Python-only `allow_unverified=True` escape hatch is unsafe and should never feed
 an agent. Verified items are compact JSON lines inside an outer
 `<typed_memory schema="1.0" content="untrusted-jsonl">` envelope. The renderer
 JSON-encodes text and escapes angle brackets and ampersands so historical
-content cannot close the envelope syntactically. Each line includes source id,
-offsets, and the first ten hexadecimal characters of the quote digest, plus
-the roles of all cited sources. The JSON artifact retains the full digest and
-quote; the prompt pointer is a compact locator, not a standalone cryptographic
-proof. Downstream models must still treat item text as untrusted historical
-data rather than executable instructions.
+content cannot close the envelope syntactically. Raw NEL and Unicode
+line/paragraph separators are also escaped so arbitrary source ids cannot split
+one JSON item across physical lines. Each line includes source id, offsets, and
+the first ten hexadecimal characters of the quote digest, plus the roles of
+all cited sources. The JSON artifact retains the full digest and quote; the
+prompt pointer is a compact locator, not a standalone cryptographic proof.
+Downstream models must still treat item text as untrusted historical data
+rather than executable instructions.
 
 ## Atomic file transactions and CLI diagnostics
 

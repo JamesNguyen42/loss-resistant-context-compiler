@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 378 collected: 373 passing, 5 skipped |
+| Tests at this snapshot | 447 collected: 442 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -122,6 +122,12 @@ Every item must cite one or more `ProvenanceSpan` values:
 - Python character offsets `[start, end)`;
 - exact quote;
 - full quote SHA-256.
+
+Span construction rejects boolean, floating-point, textual, or otherwise
+non-integer offsets instead of relying on Python slice coercion. Extraction and
+atomic replay share all line boundaries recognized by `str.splitlines()`, not
+only LF. Prompt JSON Lines escape raw NEL and Unicode line/paragraph separators
+from arbitrary source ids so one item remains one physical line.
 
 Ordinary model-produced claims must equal a complete atomic cited span. Exact
 items must equal every cited literal. Broad enclosing spans do not earn
@@ -423,7 +429,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 378 tests are collected: 373 pass and 5 platform/optional checks are skipped.
+- 447 tests are collected: 442 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -435,6 +441,10 @@ audited. Any selected superseded item independently fails verification as
 - Model-output JSON rejects duplicate object keys, non-standard NaN/infinity,
   overflowed non-finite floats, forged fields/roles, invalid spans, reserved
   internal tags, and paraphrases before candidates enter memory.
+- Fixed-seed generative regressions cover arbitrary control/Unicode source ids,
+  character-vs-byte and invalid direct offsets, all 11 Python line boundaries,
+  whitespace, coordinated clause boundaries, prompt JSON-line safety, and
+  independent artifact replay.
 - Source loaders, direct compilation, independent verification, and archives
   share default-on byte, line, JSON-depth, count, per-record, and aggregate
   canonical-size limits. Adversarial tests cover UTF-8 boundaries, oversized

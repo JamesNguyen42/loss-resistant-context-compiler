@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 378 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 447 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
@@ -106,6 +106,9 @@ The repository currently includes:
   progress, and background context;
 - immutable source records with content and canonical-record SHA-256 digests;
 - exact character-offset provenance with quote hashes;
+- fixed-seed generative coverage for arbitrary control/Unicode source ids,
+  character-vs-byte offsets, all Python line boundaries, whitespace, and
+  coordinated clause boundaries;
 - a deterministic rule extractor and an optional provider-neutral
   `ModelExtractor`;
 - an independent deterministic recovery pass for rule-recognized content;
@@ -160,7 +163,7 @@ The repository currently includes:
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
 - a fixed-digest, versioned CI compile-performance gate with latency-growth and
   traced-Python-memory ceilings;
-- cross-version CI, linting, wheel/schema checks, and 378 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 447 regression tests.
 
 ## In development
 
@@ -765,7 +768,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 378 tests are collected (373 pass and 5
+Current local snapshot (2026-07-24): 447 tests are collected (442 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

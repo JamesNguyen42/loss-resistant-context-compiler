@@ -327,6 +327,16 @@ class ProvenanceSpan:
     quote_sha256: str = ""
 
     def __post_init__(self) -> None:
+        if not isinstance(self.source_id, str) or not self.source_id:
+            raise TypeError("provenance source_id must be a non-empty string")
+        if isinstance(self.start, bool) or not isinstance(self.start, int):
+            raise TypeError("provenance start must be an integer")
+        if isinstance(self.end, bool) or not isinstance(self.end, int):
+            raise TypeError("provenance end must be an integer")
+        if not isinstance(self.quote, str):
+            raise TypeError("provenance quote must be a string")
+        if not isinstance(self.quote_sha256, str):
+            raise TypeError("provenance quote_sha256 must be a string")
         if self.start < 0 or self.end < self.start:
             raise ValueError("invalid provenance offsets")
         digest = hashlib.sha256(self.quote.encode("utf-8")).hexdigest()
@@ -396,8 +406,9 @@ class ProvenanceSpan:
 
 
 _ATOM_PREFIX = re.compile(
-    r"^\s*(?:(?:[-*+]|\d+[.)])\s+|[A-Za-z_ -]+:\s*)?$"
+    r"^\s*(?:(?:[-*+]|\d+[.)])\s+|[A-Za-z_ -]+?\s*:\s*)?$"
 )
+_LINE_BREAK = re.compile(r"\r\n|[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]")
 
 
 def provenance_span_is_atomic(source: SourceRecord, span: ProvenanceSpan) -> bool:
@@ -405,10 +416,17 @@ def provenance_span_is_atomic(source: SourceRecord, span: ProvenanceSpan) -> boo
 
     if span.source_id != source.id or span.end > len(source.content):
         return False
-    line_start = source.content.rfind("\n", 0, span.start) + 1
-    line_end = source.content.find("\n", span.end)
-    if line_end < 0:
-        line_end = len(source.content)
+    if _LINE_BREAK.search(source.content, span.start, span.end):
+        return False
+    line_start = 0
+    for boundary in _LINE_BREAK.finditer(source.content, 0, span.start):
+        line_start = boundary.end()
+    next_boundary = _LINE_BREAK.search(source.content, span.end)
+    line_end = (
+        next_boundary.start()
+        if next_boundary is not None
+        else len(source.content)
+    )
     left = source.content[line_start:span.start]
     right = source.content[span.end:line_end]
     left_trimmed = left.rstrip()
@@ -1018,7 +1036,10 @@ def render_prompt_item(item: MemoryItem) -> str:
     }
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     encoded = (
-        encoded.replace("<", "\\u003c")
+        encoded.replace("\u0085", "\\u0085")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+        .replace("<", "\\u003c")
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")
     )
