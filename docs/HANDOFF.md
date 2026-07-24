@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 160 passing |
+| Tests at this snapshot | 163 passing |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -366,12 +366,15 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 160 tests pass.
+- 163 tests pass.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
 - CI runs the external-candidate interchange self-test.
 - Gold-free corpus exports carry a canonical `corpus_sha256`.
+- Model-output JSON rejects duplicate object keys, non-standard NaN/infinity,
+  overflowed non-finite floats, forged fields/roles, invalid spans, reserved
+  internal tags, and paraphrases before candidates enter memory.
 - The external runner has deterministic fixture coverage for sequential
   per-case execution, retained case failure, Windows Job Object memory
   enforcement, valid output, timeout, output overflow, invalid candidates,

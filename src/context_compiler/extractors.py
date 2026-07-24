@@ -86,9 +86,7 @@ KIND_PRIORITY: dict[MemoryKind, int] = {
     MemoryKind.CONTEXT: 30,
 }
 
-_LABEL = re.compile(
-    r"^(?P<indent>\s*)(?P<label>[A-Za-z_ -]+?)\s*:\s*(?P<value>.*)$"
-)
+_LABEL = re.compile(r"^(?P<indent>\s*)(?P<label>[A-Za-z_ -]+?)\s*:\s*(?P<value>.*)$")
 _BULLET = re.compile(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)(?P<value>.*)$")
 _CORRECTION = re.compile(
     r"(?:\bcorrection\s*(?::|,)|\bcorrection\s+(?:is|was|use|set|make|keep)\b|"
@@ -201,9 +199,7 @@ _WINDOWS_SPACE_REFERENCE = re.compile(
     r"(?P<ref>[A-Za-z]:[\\/][^\r\n\"'<>|?*]+?\.[A-Za-z0-9]{1,8}"
     r"(?::\d+(?:-\d+)?)?)(?=$|[.,;)\]])"
 )
-_REFERENCE = re.compile(
-    rf"(?P<ref>{_REFERENCE_BASE}(?::\d+(?:-\d+)?)?)"
-)
+_REFERENCE = re.compile(rf"(?P<ref>{_REFERENCE_BASE}(?::\d+(?:-\d+)?)?)")
 _TEST_REFERENCE = re.compile(
     r"(?P<ref>(?:[\w.@+-]+[\\/])*test[\w.@+-]*\.py"
     r"(?:::[A-Za-z_][\w.\[\]-]*)+)",
@@ -289,16 +285,12 @@ def _constraint_clauses(text: str, absolute_start: int) -> list[tuple[str, int, 
         if not split:
             atomic.append((local_start, local_end))
     return [
-        (text[start:end], absolute_start + start, absolute_start + end)
-        for start, end in atomic
+        (text[start:end], absolute_start + start, absolute_start + end) for start, end in atomic
     ]
 
 
 def _source_can_assert_fact(source: SourceRecord) -> bool:
-    return (
-        source.role.casefold() in _FACT_ROLES
-        or source.metadata.get("trusted_for_state") is True
-    )
+    return source.role.casefold() in _FACT_ROLES or source.metadata.get("trusted_for_state") is True
 
 
 def _item_from_span(
@@ -315,9 +307,7 @@ def _item_from_span(
 ) -> MemoryItem:
     span = ProvenanceSpan.from_source(source, start, end)
     exact_value = (
-        kind in {MemoryKind.EXACT_ERROR, MemoryKind.EXACT_REFERENCE}
-        if exact is None
-        else exact
+        kind in {MemoryKind.EXACT_ERROR, MemoryKind.EXACT_REFERENCE} if exact is None else exact
     )
     item_id = stable_hash_parts(
         kind.value,
@@ -388,17 +378,22 @@ class RuleBasedExtractor:
                 kind = LABEL_KIND.get(label)
                 if kind is not None:
                     if (
-                        kind in _AUTHORITY_GATED_KINDS
-                        and source.role.casefold() not in _AUTHORITATIVE_COMMITMENT_ROLES
-                    ) or (
-                        kind == MemoryKind.UNRESOLVED
-                        and source.role.casefold() not in _UNRESOLVED_ROLES
-                    ) or (
-                        kind == MemoryKind.DECISION
-                        and source.role.casefold() not in _DECISION_ROLES
-                    ) or (
-                        kind == MemoryKind.CONFIRMED_FACT
-                        and not _source_can_assert_fact(source)
+                        (
+                            kind in _AUTHORITY_GATED_KINDS
+                            and source.role.casefold() not in _AUTHORITATIVE_COMMITMENT_ROLES
+                        )
+                        or (
+                            kind == MemoryKind.UNRESOLVED
+                            and source.role.casefold() not in _UNRESOLVED_ROLES
+                        )
+                        or (
+                            kind == MemoryKind.DECISION
+                            and source.role.casefold() not in _DECISION_ROLES
+                        )
+                        or (
+                            kind == MemoryKind.CONFIRMED_FACT
+                            and not _source_can_assert_fact(source)
+                        )
                     ):
                         active_section = None
                     else:
@@ -431,9 +426,7 @@ class RuleBasedExtractor:
                                 extractor=self.name,
                             )
                             if kind == MemoryKind.USER_CORRECTION:
-                                item.tags = sorted(
-                                    set(item.tags) | {"explicit-correction-label"}
-                                )
+                                item.tags = sorted(set(item.tags) | {"explicit-correction-label"})
                             results.append(item)
                             covered.add((atom_start, atom_end, kind))
                     continue
@@ -485,18 +478,14 @@ class RuleBasedExtractor:
                 ]
             elif ";" in stripped:
                 clause_atoms = []
-                for clause_text, clause_start, clause_end in _semicolon_clauses(
-                    stripped, start
-                ):
+                for clause_text, clause_start, clause_end in _semicolon_clauses(stripped, start):
                     clause_kind = self._classify(
                         clause_text,
                         source.role,
                         trusted_for_state=_source_can_assert_fact(source),
                     )
                     if clause_kind is not None:
-                        clause_atoms.append(
-                            (clause_text, clause_start, clause_end, clause_kind)
-                        )
+                        clause_atoms.append((clause_text, clause_start, clause_end, clause_kind))
                 if kind == MemoryKind.USER_CORRECTION:
                     classified_atoms.extend(
                         atom for atom in clause_atoms if atom[3] != MemoryKind.USER_CORRECTION
@@ -521,9 +510,7 @@ class RuleBasedExtractor:
                 if atom_kind == MemoryKind.USER_CORRECTION:
                     secondary = self._correction_secondary_kind(atom_text, source.role)
                     secondary_key = (
-                        (atom_start, atom_end, secondary)
-                        if secondary is not None
-                        else None
+                        (atom_start, atom_end, secondary) if secondary is not None else None
                     )
                     if secondary is not None and secondary_key not in covered:
                         item = _item_from_span(
@@ -703,6 +690,26 @@ _MODEL_CANDIDATE_REQUIRED_KEYS = frozenset({"kind", "text", "provenance"})
 _MODEL_PROVENANCE_KEYS = frozenset({"source_id", "start", "end"})
 
 
+def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
+
+
+def _finite_json_float(value: str) -> float:
+    decoded = float(value)
+    if not math.isfinite(decoded):
+        raise ValueError("JSON number must be finite")
+    return decoded
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-standard JSON constant is forbidden: {value}")
+
+
 def _bounded_json_size(value: Any, limit: int) -> int:
     """Return a conservative JSON-size bound without stringifying huge values."""
 
@@ -810,7 +817,16 @@ class ModelExtractor:
                 ),
             )
         try:
-            decoded = json.loads(raw) if isinstance(raw, str) else raw
+            decoded = (
+                json.loads(
+                    raw,
+                    object_pairs_hook=_strict_json_object,
+                    parse_float=_finite_json_float,
+                    parse_constant=_reject_json_constant,
+                )
+                if isinstance(raw, str)
+                else raw
+            )
         except (RecursionError, TypeError, ValueError) as exc:
             return ExtractionResult(
                 rejected=[{"reason": "invalid_json", "detail": str(exc)}],
@@ -821,8 +837,7 @@ class ModelExtractor:
             )
         if (
             not isinstance(raw, str)
-            and _bounded_json_size(decoded, self.max_response_chars)
-            > self.max_response_chars
+            and _bounded_json_size(decoded, self.max_response_chars) > self.max_response_chars
         ):
             return ExtractionResult(
                 rejected=[{"reason": "response_too_large"}],
@@ -979,14 +994,11 @@ class ModelExtractor:
         if not literal_spans:
             raise ValueError("candidate text must equal a cited source literal")
         if not intrinsically_exact and not any(
-            provenance_span_is_atomic(source_map[span.source_id], span)
-            for span in literal_spans
+            provenance_span_is_atomic(source_map[span.source_id], span) for span in literal_spans
         ):
             raise ValueError("candidate source literal is not an atomic clause")
         raw_tags = candidate.get("tags", [])
-        if not isinstance(raw_tags, list) or not all(
-            isinstance(tag, str) for tag in raw_tags
-        ):
+        if not isinstance(raw_tags, list) or not all(isinstance(tag, str) for tag in raw_tags):
             raise TypeError("candidate tags must be a list of strings")
         tags = list(raw_tags)
         reserved = sorted(set(tags) & _RESERVED_INTERNAL_TAGS)
@@ -998,18 +1010,13 @@ class ModelExtractor:
         if not 0 <= raw_priority <= 100:
             raise ValueError("candidate priority must be between 0 and 100")
         raw_confidence = candidate.get("confidence", 0.8)
-        if isinstance(raw_confidence, bool) or not isinstance(
-            raw_confidence, (int, float)
-        ):
+        if isinstance(raw_confidence, bool) or not isinstance(raw_confidence, (int, float)):
             raise TypeError("candidate confidence must be numeric")
         if not math.isfinite(raw_confidence):
             raise ValueError("candidate confidence must be finite")
         if not 0 <= raw_confidence <= 1:
             raise ValueError("candidate confidence must be between 0 and 1")
-        span_parts = [
-            [span.source_id, span.start, span.end]
-            for span in spans
-        ]
+        span_parts = [[span.source_id, span.start, span.end] for span in spans]
         candidate_id = stable_hash_parts(kind.value, text.casefold(), span_parts)
         return MemoryItem(
             id=f"m-{candidate_id}",

@@ -132,14 +132,16 @@ protected; arbitrary diagnostics and locator syntaxes still require an
 explicit label or another extractor.
 
 `ModelExtractor` wraps any callable that maps a provider-neutral JSON prompt to
-a JSON response. Candidate kinds, priorities, confidence values, source ids,
+a JSON response. String responses use strict object decoding: duplicate keys,
+non-standard NaN/infinity constants, and overflowed non-finite floats fail the
+whole response. Candidate kinds, priorities, confidence values, source ids,
 offsets, role authority, and reserved tags are validated before acceptance. It
-reconstructs quotes from source offsets instead of trusting model-supplied quote
-text. Ordinary candidate text must equal a complete atomic cited source span;
-exact candidates must equal every cited span. The adapter intentionally rejects
-model paraphrases and truncated clauses rather than trying to prove them. Raw
-response characters, conservative decoded JSON size, and candidate count are
-bounded before candidates enter the compiler.
+reconstructs quotes from source offsets instead of trusting model-supplied
+quote text. Ordinary candidate text must equal a complete atomic cited source
+span; exact candidates must equal every cited span. The adapter intentionally
+rejects model paraphrases and truncated clauses rather than trying to prove
+them. Raw response characters, conservative decoded JSON size, and candidate
+count are bounded before candidates enter the compiler.
 
 Model extraction does not authenticate upstream roles or protect source text
 sent to the model provider. A consumer that enables it must treat the callable

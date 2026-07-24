@@ -40,7 +40,7 @@ to verify it, hashes cannot recover the original truth.
 | Primary model-provider failure | Built-in passes run independently; exceptions or wholly unusable output produce deterministic fallback plus a warning by default, with an opt-in strict failure policy | Generic in-process callables must enforce their own deadline and cancellation; fallback can lose novel phrasing found only by the model |
 | Tool-output prompt injection | Goals, constraints, and corrections require `user`, `system`, or `developer`; decisions and unresolved state reject tool provenance; facts reject tool provenance unless the host sets `metadata.trusted_for_state: true` | Spoofed upstream roles or host-supplied trust metadata defeat the gate; errors and references still preserve untrusted tool literals |
 | Memory text closes its prompt envelope | Selected items are JSON-encoded and `<`, `>`, and `&` are escaped inside an explicitly untrusted envelope | Syntactic containment does not stop a model from semantically following quoted instructions |
-| Fabricated model provenance | Model spans are rebuilt from known source ids and offsets; ordinary text must equal a complete atomic cited span, and paraphrases are rejected | A real literal can still be assigned an incorrect non-authority-gated type that passes lexical checks |
+| Fabricated model provenance | Strict JSON rejects duplicate keys and non-finite numbers; model spans are rebuilt from known source ids and offsets; ordinary text must equal a complete atomic cited span, and forged fields, reserved tags, and paraphrases are rejected | A real literal can still be assigned an incorrect non-authority-gated type that passes lexical checks |
 | Hallucinated model claim | Exact atomic extraction, role checks, ordered token support, numeric/negation checks, and consistent evidence polarity | Literal support is not logical entailment or proof that a memory kind is pragmatically correct |
 | Uncertainty promoted to fact | Rule ordering favors unresolved; verifier rejects facts citing uncertainty without confirmation markers | Novel uncertainty phrasing or mixed confirmed/uncertain spans can be misclassified |
 | Exact literal corruption | Exact items must equal every cited source quote | Correctly copied source text can itself be false or malicious |
@@ -52,7 +52,7 @@ to verify it, hashes cannot recover the original truth.
 | Budget pressure removes requirements | Protected kinds bypass optional selection; overflow is explicit or strict-fail | Enough protected content can exceed the downstream model’s hard context window |
 | Resource exhaustion | Positive configuration bounds, bounded model responses/candidate counts, and a hard timeout in the local Qwen subprocess adapter | Input size, line length, record count, archive size, whole-compile duration, and generic completion-callable latency are not globally capped |
 | Secret disclosure | None beyond caller-controlled storage and provider choice | Source quotes, metadata, artifacts, prompts, benchmark JSON, and model calls can expose secrets; the LM Studio CLI prompt is visible in process arguments on some hosts |
-| External benchmark adapter escape | The standard runner avoids a shell, limits time/output, terminates the spawned process tree, validates candidates, and hashes a manifest | It is not a filesystem or network sandbox; reviewed code and an isolated host/container remain necessary, and cross-platform memory enforcement is incomplete |
+| External benchmark adapter escape | The standard runner avoids a shell, isolates cases, limits time/output/process-tree memory on POSIX and Windows, terminates descendants, validates candidates, and hashes a manifest | It is not a filesystem or network sandbox; reviewed code and an isolated host/container remain necessary, and a pre-existing inference service is outside the process-tree memory boundary |
 
 ## Authority model
 
@@ -77,13 +77,14 @@ decision correct.
 
 `ModelExtractor` applies the same role policies before accepting candidates.
 It also requires ordinary candidate text to equal a complete atomic cited span
-and rejects paraphrases, reserved internal tags, uncertainty promoted to fact,
-and invalid or unauthorized spans. The verifier independently rechecks role
-metadata, atomic support, ordering, exactness, negation, and evidence polarity.
-These controls prevent several representation attacks; they do not prove that
-a correctly copied source statement is true or that every plausible memory kind
-is semantically appropriate. Source roles are rendered in the prompt so a
-downstream agent can retain that distinction.
+and rejects duplicate JSON keys, non-standard or overflowed non-finite numbers,
+paraphrases, forged object fields, reserved internal tags, uncertainty promoted
+to fact, and invalid or unauthorized spans. The verifier independently rechecks
+role metadata, atomic support, ordering, exactness, negation, and evidence
+polarity. These controls prevent several representation attacks; they do not
+prove that a correctly copied source statement is true or that every plausible
+memory kind is semantically appropriate. Source roles are rendered in the
+prompt so a downstream agent can retain that distinction.
 
 ## Integrity is not authenticity
 

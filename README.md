@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 160 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 163 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
@@ -116,8 +116,9 @@ The repository currently includes:
   verification, and independent artifact replay;
 - non-replaceable built-in deterministic recovery and protected-item
   certification passes;
-- bounded model-output parsing, deterministic provider-failure fallback, and
-  an opt-in strict provider-failure policy;
+- strict bounded model-output parsing with duplicate-key and non-finite-number
+  rejection, deterministic provider-failure fallback, and an opt-in strict
+  provider-failure policy;
 - a portable JSON artifact, compact prompt renderer, and three JSON Schemas;
 - an append-only local source archive with integrity checks and locking;
 - the `ctxc compile`, `verify`, `inspect`, and `archive` commands;
@@ -128,7 +129,7 @@ The repository currently includes:
   and valid or failed manifests that feed per-system certificate decisions;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
-- cross-version CI, linting, wheel/schema checks, and 160 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 163 regression tests.
 
 ## In development
 
@@ -397,8 +398,10 @@ invalid envelopes, oversized responses, and wholly unusable candidate sets
 produce deterministic fallback memory plus an explicit warning by default.
 Set `CompilationPolicy(fail_on_primary_extractor_error=True)` when provider
 failure must abort instead. `ModelExtractor` bounds response size and candidate
-count, but custom completion adapters remain responsible for enforcing their
-own deadlines and transport-level cancellation. The callable and any data it
+count, rejects duplicate JSON keys and non-standard or overflowed non-finite
+numbers, and validates exact object fields. Custom completion adapters remain
+responsible for enforcing their own deadlines and transport-level cancellation.
+The callable and any data it
 sends remain the integrator’s security and privacy responsibility.
 
 For the exact locally installed Qwen build approved for this repository, the
@@ -498,7 +501,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): all 160 tests pass, and the recorded default
+Current local snapshot (2026-07-24): all 163 tests pass, and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`

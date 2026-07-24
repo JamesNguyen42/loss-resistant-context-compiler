@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Run 160 tests; CI covers Python 3.11, 3.12, and 3.13.
+- [x] Run 163 tests; CI covers Python 3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
 
@@ -426,7 +426,7 @@ than most related technology” within the exact dated evaluation scope.
   contribution separately.
 - [x] Test oversized output, excessive candidate counts, malformed JSON, and
   subprocess timeout at the adapter boundary.
-- [ ] Test malicious model output, unknown keys, NaN/infinity,
+- [x] Test malicious model output, duplicate and unknown keys, NaN/infinity,
   invalid offsets, role forgery, reserved tags, and paraphrases.
 - [ ] Decide whether exact-span-only model extraction remains the permanent
   contract or whether a separately verified abstractive path is justified.

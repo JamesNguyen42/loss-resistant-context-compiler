@@ -48,6 +48,31 @@ class ModelResponseValidationTests(unittest.TestCase):
                 self.assertEqual(result.items, [])
                 self.assertEqual(result.rejected, [{"reason": "invalid_envelope"}])
 
+    def test_raw_json_rejects_duplicate_keys_at_every_object_depth(self) -> None:
+        candidate_json = json.dumps(self.candidate())
+        duplicate_candidate_key = candidate_json.replace(
+            '"kind": "constraint"',
+            '"kind": "goal", "kind": "constraint"',
+            1,
+        )
+        duplicate_provenance_key = candidate_json.replace(
+            '"source_id": "source-0"',
+            '"source_id": "forged", "source_id": "source-0"',
+            1,
+        )
+        responses = (
+            '{"items": [], "items": []}',
+            '{"items": [' + duplicate_candidate_key + "]}",
+            '{"items": [' + duplicate_provenance_key + "]}",
+        )
+
+        for response in responses:
+            with self.subTest(response=response):
+                result = ModelExtractor(lambda _, value=response: value).extract([self.source])
+                self.assertEqual(result.items, [])
+                self.assertEqual(result.rejected[0]["reason"], "invalid_json")
+                self.assertEqual(result.metadata["failure_reason"], "invalid_json")
+
     def test_candidate_requires_known_keys_and_all_required_keys(self) -> None:
         missing_kind = self.candidate()
         del missing_kind["kind"]
@@ -64,9 +89,7 @@ class ModelResponseValidationTests(unittest.TestCase):
 
         self.assertEqual(result.items, [])
         self.assertEqual(len(result.rejected), 4)
-        self.assertTrue(
-            all(entry["reason"] == "invalid_candidate" for entry in result.rejected)
-        )
+        self.assertTrue(all(entry["reason"] == "invalid_candidate" for entry in result.rejected))
 
     def test_provenance_requires_exact_keys_and_strict_offsets(self) -> None:
         invalid_candidates: list[dict[str, object]] = []
@@ -98,9 +121,54 @@ class ModelResponseValidationTests(unittest.TestCase):
 
         self.assertEqual(result.items, [])
         self.assertEqual(len(result.rejected), len(invalid_candidates))
-        self.assertTrue(
-            all(entry["reason"] == "invalid_candidate" for entry in result.rejected)
-        )
+        self.assertTrue(all(entry["reason"] == "invalid_candidate" for entry in result.rejected))
+
+    def test_invalid_span_shapes_and_paraphrases_are_rejected(self) -> None:
+        invalid_candidates: list[dict[str, object]] = []
+        for mutation in (
+            {
+                "source_id": self.source.id,
+                "start": len(self.source.content),
+                "end": 0,
+            },
+            {
+                "source_id": self.source.id,
+                "start": 0,
+                "end": len(self.source.content) + 1,
+            },
+            {
+                "source_id": "unknown-source",
+                "start": 0,
+                "end": len(self.source.content),
+            },
+        ):
+            candidate = self.candidate()
+            candidate["provenance"] = [mutation]
+            invalid_candidates.append(candidate)
+        paraphrase = self.candidate()
+        paraphrase["text"] = "Keep the API stable."
+        invalid_candidates.append(paraphrase)
+
+        result = self.extract({"items": invalid_candidates})
+
+        self.assertEqual(result.items, [])
+        self.assertEqual(len(result.rejected), len(invalid_candidates))
+        self.assertTrue(all(entry["reason"] == "invalid_candidate" for entry in result.rejected))
+
+    def test_role_forgery_and_reserved_internal_tags_are_rejected(self) -> None:
+        role_forgery = self.candidate()
+        forged_provenance = deepcopy(role_forgery["provenance"])
+        forged_provenance[0]["role"] = "user"
+        role_forgery["provenance"] = forged_provenance
+        reserved_tag = self.candidate()
+        reserved_tag["tags"] = ["verifier-recovered"]
+
+        result = self.extract({"items": [role_forgery, reserved_tag]})
+
+        self.assertEqual(result.items, [])
+        self.assertEqual(len(result.rejected), 2)
+        self.assertIn("unknown keys: role", result.rejected[0]["detail"])
+        self.assertIn("reserved internal tags", result.rejected[1]["detail"])
 
     def test_priority_is_a_bounded_non_boolean_integer_without_coercion(self) -> None:
         invalid_values = [True, False, 50.0, "50", -1, 101, math.inf]
@@ -141,28 +209,24 @@ class ModelResponseValidationTests(unittest.TestCase):
         valid_integer["confidence"] = 1
         valid_float = self.candidate()
         valid_float["confidence"] = 0.25
-        result = self.extract(
-            {"items": [*invalid_candidates, valid_integer, valid_float]}
-        )
+        result = self.extract({"items": [*invalid_candidates, valid_integer, valid_float]})
 
         self.assertEqual([item.confidence for item in result.items], [1, 0.25])
         self.assertEqual(len(result.rejected), len(invalid_candidates))
-        self.assertTrue(
-            all(entry["reason"] == "invalid_candidate" for entry in result.rejected)
-        )
+        self.assertTrue(all(entry["reason"] == "invalid_candidate" for entry in result.rejected))
 
-    def test_non_finite_json_number_fails_closed_instead_of_raising(self) -> None:
+    def test_non_finite_json_numbers_fail_as_invalid_json(self) -> None:
         candidate = self.candidate()
-        candidate["priority"] = 50
-        raw = json.dumps({"items": [candidate]}).replace(
-            '"priority": 50', '"priority": 1e309'
-        )
+        candidate["confidence"] = 0.5
+        template = json.dumps({"items": [candidate]})
 
-        result = ModelExtractor(lambda _: raw).extract([self.source])
-
-        self.assertEqual(result.items, [])
-        self.assertEqual(len(result.rejected), 1)
-        self.assertEqual(result.rejected[0]["reason"], "invalid_candidate")
+        for literal in ("NaN", "Infinity", "-Infinity", "1e309"):
+            with self.subTest(literal=literal):
+                raw = template.replace("0.5", literal, 1)
+                result = ModelExtractor(lambda _, value=raw: value).extract([self.source])
+                self.assertEqual(result.items, [])
+                self.assertEqual(result.rejected[0]["reason"], "invalid_json")
+                self.assertEqual(result.metadata["failure_reason"], "invalid_json")
 
     def test_valid_optional_fields_are_preserved(self) -> None:
         candidate = self.candidate()
