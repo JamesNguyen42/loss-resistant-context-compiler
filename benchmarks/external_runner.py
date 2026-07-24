@@ -47,7 +47,7 @@ from .lrcbench import (
     decode_external_candidate,
 )
 
-RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.7"
+RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.8"
 _SYSTEM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 _REVISION_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 _ENVIRONMENT_ID_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -63,6 +63,7 @@ NETWORK_ISOLATION_MODES = frozenset(
 CLAIM_NETWORK_ISOLATION_MODES = NETWORK_ISOLATION_MODES - {"unverified"}
 _NETWORK_ISOLATION_EVIDENCE_MAX_BYTES = 1_000_000
 _DEPENDENCY_LOCK_EVIDENCE_MAX_BYTES = 20_000_000
+_ADAPTER_ENTRYPOINT_EVIDENCE_MAX_BYTES = 256_000_000
 _INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES = 2_000_000_000
 _INFERENCE_SERVICE_MEMORY_METRICS = frozenset(
     {"resident-set-bytes", "working-set-bytes"}
@@ -102,8 +103,10 @@ class ExternalRunReference:
     limits: RunnerLimits
     identity: RunnerIdentity
     dependency_lock: DependencyLockEvidence
+    adapter_entrypoint: AdapterEntrypointEvidence
     network_isolation: NetworkIsolationEvidence
     inference_service: InferenceServiceAccounting
+    command_sha256: str
     adapter_revision: str
     environment_id: str
     model_id: str
@@ -242,6 +245,48 @@ class DependencyLockEvidence:
     @property
     def claim_evidence_complete(self) -> bool:
         return self.evidence_path is not None
+
+
+@dataclass(frozen=True, slots=True)
+class AdapterEntrypointEvidence:
+    """Retained bytes for the adapter file referenced by the command."""
+
+    entrypoint_path: str | None = None
+    entrypoint_sha256: str | None = None
+    entrypoint_bytes: int | None = None
+
+    def __post_init__(self) -> None:
+        fields = (
+            self.entrypoint_path,
+            self.entrypoint_sha256,
+            self.entrypoint_bytes,
+        )
+        if all(value is None for value in fields):
+            return
+        if (
+            not isinstance(self.entrypoint_path, str)
+            or not self.entrypoint_path
+            or not Path(self.entrypoint_path).is_absolute()
+        ):
+            raise ValueError(
+                "adapter entrypoint evidence requires an absolute path"
+            )
+        if not _is_sha256(self.entrypoint_sha256):
+            raise ValueError(
+                "adapter entrypoint evidence requires a SHA-256 digest"
+            )
+        if (
+            isinstance(self.entrypoint_bytes, bool)
+            or not isinstance(self.entrypoint_bytes, int)
+            or self.entrypoint_bytes <= 0
+        ):
+            raise ValueError(
+                "adapter entrypoint evidence requires a positive byte count"
+            )
+
+    @property
+    def claim_evidence_complete(self) -> bool:
+        return self.entrypoint_path is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -453,6 +498,7 @@ class ExternalRunManifest:
     case_count: int
     case_runs: tuple[CaseRunRecord, ...]
     command: tuple[str, ...]
+    command_sha256: str
     working_directory: str
     started_at: str
     duration_seconds: float
@@ -478,6 +524,7 @@ class ExternalRunManifest:
     limits: RunnerLimits
     identity: RunnerIdentity
     dependency_lock: DependencyLockEvidence
+    adapter_entrypoint: AdapterEntrypointEvidence
     network_isolation: NetworkIsolationEvidence
     inference_service: InferenceServiceAccounting
     claim_metadata_complete: bool
@@ -625,6 +672,49 @@ def _dependency_lock_evidence_matches(
     return (
         observed.file_sha256 == evidence.evidence_sha256
         and observed.byte_count == evidence.evidence_bytes
+    )
+
+
+def capture_adapter_entrypoint_evidence(
+    path: Path | str | None = None,
+) -> AdapterEntrypointEvidence:
+    """Hash the retained adapter file that its command must reference."""
+
+    if path is None:
+        return AdapterEntrypointEvidence()
+    resolved = Path(path).expanduser().resolve()
+    evidence = _bounded_file_evidence(
+        resolved,
+        max_bytes=_ADAPTER_ENTRYPOINT_EVIDENCE_MAX_BYTES,
+        label="adapter entrypoint evidence",
+    )
+    if evidence.byte_count <= 0:
+        raise ExternalRunnerError(
+            "adapter entrypoint evidence cannot be empty"
+        )
+    return AdapterEntrypointEvidence(
+        entrypoint_path=str(resolved),
+        entrypoint_sha256=evidence.file_sha256,
+        entrypoint_bytes=evidence.byte_count,
+    )
+
+
+def _adapter_entrypoint_evidence_matches(
+    evidence: AdapterEntrypointEvidence,
+) -> bool:
+    if not evidence.claim_evidence_complete:
+        return True
+    try:
+        observed = _bounded_file_evidence(
+            Path(evidence.entrypoint_path or ""),
+            max_bytes=_ADAPTER_ENTRYPOINT_EVIDENCE_MAX_BYTES,
+            label="adapter entrypoint evidence",
+        )
+    except ExternalRunnerError:
+        return False
+    return (
+        observed.file_sha256 == evidence.entrypoint_sha256
+        and observed.byte_count == evidence.entrypoint_bytes
     )
 
 
@@ -1368,6 +1458,27 @@ def _resolve_command(command: Sequence[str]) -> tuple[str, ...]:
     return (str(Path(executable).resolve()), *command[1:])
 
 
+def _command_references_adapter_entrypoint(
+    command: Sequence[str],
+    *,
+    working_directory: Path,
+    evidence: AdapterEntrypointEvidence,
+) -> bool:
+    if not evidence.claim_evidence_complete:
+        return True
+    expected = Path(evidence.entrypoint_path or "")
+    for argument in command:
+        candidate = Path(argument).expanduser()
+        if not candidate.is_absolute():
+            candidate = working_directory / candidate
+        try:
+            if candidate.resolve() == expected:
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def _terminate_posix_process_group(process_group_id: int) -> None:
     try:
         os.killpg(process_group_id, signal.SIGTERM)
@@ -1458,6 +1569,7 @@ def _claim_controls_complete(
     limits: RunnerLimits,
     isolation_mode: str,
     dependency_lock: DependencyLockEvidence,
+    adapter_entrypoint: AdapterEntrypointEvidence,
     network_isolation: NetworkIsolationEvidence,
     inference_service: InferenceServiceAccounting,
     minimum_inference_samples: int,
@@ -1469,6 +1581,7 @@ def _claim_controls_complete(
         and dependency_lock.claim_evidence_complete
         and identity.environment_id
         == f"sha256:{dependency_lock.evidence_sha256}"
+        and adapter_entrypoint.claim_evidence_complete
         and network_isolation.claim_evidence_complete
         and inference_service.claim_evidence_complete
         and inference_service.sample_count >= minimum_inference_samples
@@ -1662,8 +1775,17 @@ def load_external_run_manifest(
     if ready != (payload["process_succeeded"] and payload["candidate_valid"]):
         raise ExternalRunnerError("run manifest readiness flags are inconsistent")
     command = payload["command"]
-    if not isinstance(command, list) or not all(isinstance(part, str) and part for part in command):
+    if (
+        not isinstance(command, list)
+        or not command
+        or not all(isinstance(part, str) and part for part in command)
+    ):
         raise ExternalRunnerError("run manifest command is invalid")
+    if (
+        not _is_sha256(payload["command_sha256"])
+        or payload["command_sha256"] != _canonical_sha256(command)
+    ):
+        raise ExternalRunnerError("run manifest command SHA-256 is invalid")
     try:
         limits_payload = payload["limits"]
         if not isinstance(limits_payload, dict):
@@ -1700,6 +1822,37 @@ def load_external_run_manifest(
             "run manifest dependency-lock evidence file does not match"
         )
     try:
+        entrypoint_payload = payload["adapter_entrypoint"]
+        if not isinstance(entrypoint_payload, dict):
+            raise TypeError("adapter_entrypoint must be an object")
+        if set(entrypoint_payload) != set(
+            AdapterEntrypointEvidence.__dataclass_fields__
+        ):
+            raise TypeError(
+                "adapter_entrypoint fields do not match the schema"
+            )
+        decoded_adapter_entrypoint = AdapterEntrypointEvidence(
+            **entrypoint_payload
+        )
+    except (TypeError, ValueError) as exc:
+        raise ExternalRunnerError(
+            f"run manifest adapter entrypoint evidence is invalid: {exc}"
+        ) from exc
+    if not _adapter_entrypoint_evidence_matches(
+        decoded_adapter_entrypoint
+    ):
+        raise ExternalRunnerError(
+            "run manifest adapter entrypoint evidence file does not match"
+        )
+    if not _command_references_adapter_entrypoint(
+        command,
+        working_directory=Path(payload["working_directory"]),
+        evidence=decoded_adapter_entrypoint,
+    ):
+        raise ExternalRunnerError(
+            "run manifest command does not reference its adapter entrypoint"
+        )
+    try:
         network_payload = payload["network_isolation"]
         if not isinstance(network_payload, dict):
             raise TypeError("network_isolation must be an object")
@@ -1734,6 +1887,7 @@ def load_external_run_manifest(
         decoded_limits,
         isolation_mode,
         decoded_dependency_lock,
+        decoded_adapter_entrypoint,
         decoded_network_isolation,
         decoded_inference_service,
         2 * case_count if isolation_mode == "per_case" else 2,
@@ -1872,8 +2026,8 @@ def load_external_run_manifest(
             failure_reason = (
                 "run manifest lacks complete claim controls: exact-Qwen identity, "
                 "per-case isolation, an enforced memory limit, retained "
-                "dependency-lock bytes, network-isolation evidence, and measured "
-                "inference-service accounting are required"
+                "dependency-lock and adapter-entrypoint bytes, network-isolation "
+                "evidence, and measured inference-service accounting are required"
             )
     else:
         failure_reason = (
@@ -1896,8 +2050,10 @@ def load_external_run_manifest(
         limits=decoded_limits,
         identity=decoded_identity,
         dependency_lock=decoded_dependency_lock,
+        adapter_entrypoint=decoded_adapter_entrypoint,
         network_isolation=decoded_network_isolation,
         inference_service=decoded_inference_service,
+        command_sha256=payload["command_sha256"],
         adapter_revision=decoded_identity.adapter_revision,
         environment_id=decoded_identity.environment_id,
         model_id=decoded_identity.model_id,
@@ -1915,11 +2071,13 @@ def run_external_command(
     limits: RunnerLimits | None = None,
     identity: RunnerIdentity | None = None,
     dependency_lock: DependencyLockEvidence | None = None,
+    adapter_entrypoint: AdapterEntrypointEvidence | None = None,
     network_isolation: NetworkIsolationEvidence | None = None,
     inference_service: InferenceServiceContract | None = None,
     working_directory: Path | str | None = None,
     environment: Mapping[str, str] | None = None,
     _inference_monitor: _InferenceServiceMonitor | None = None,
+    _check_adapter_entrypoint: bool = True,
 ) -> ExternalRunManifest:
     """Run one adapter command and validate its candidate output fail-closed."""
 
@@ -1935,6 +2093,16 @@ def run_external_command(
     if not _dependency_lock_evidence_matches(dependency_lock):
         raise ExternalRunnerError(
             "dependency-lock evidence file does not match before execution"
+        )
+    adapter_entrypoint = (
+        adapter_entrypoint or AdapterEntrypointEvidence()
+    )
+    if (
+        _check_adapter_entrypoint
+        and not _adapter_entrypoint_evidence_matches(adapter_entrypoint)
+    ):
+        raise ExternalRunnerError(
+            "adapter entrypoint evidence file does not match before execution"
         )
     network_isolation = network_isolation or NetworkIsolationEvidence()
     if not _network_isolation_evidence_matches(network_isolation):
@@ -1992,6 +2160,15 @@ def run_external_command(
         for part in command
     )
     resolved_command = _resolve_command(substituted)
+    if not _command_references_adapter_entrypoint(
+        resolved_command,
+        working_directory=cwd,
+        evidence=adapter_entrypoint,
+    ):
+        raise ExternalRunnerError(
+            "adapter command does not reference its retained entrypoint"
+        )
+    command_sha256 = _canonical_sha256(list(resolved_command))
     process_environment = dict(environment) if environment is not None else os.environ.copy()
     if not all(
         isinstance(key, str) and isinstance(value, str)
@@ -2130,6 +2307,12 @@ def run_external_command(
         termination_reason = "dependency_lock_evidence_modified"
     if (
         termination_reason is None
+        and _check_adapter_entrypoint
+        and not _adapter_entrypoint_evidence_matches(adapter_entrypoint)
+    ):
+        termination_reason = "adapter_entrypoint_evidence_modified"
+    if (
+        termination_reason is None
         and not _network_isolation_evidence_matches(network_isolation)
     ):
         termination_reason = "network_isolation_evidence_modified"
@@ -2246,6 +2429,7 @@ def run_external_command(
         case_count=len(cases),
         case_runs=(),
         command=resolved_command,
+        command_sha256=command_sha256,
         working_directory=str(cwd),
         started_at=started_at,
         duration_seconds=round(duration, 6),
@@ -2271,6 +2455,7 @@ def run_external_command(
         limits=limits,
         identity=identity,
         dependency_lock=dependency_lock,
+        adapter_entrypoint=adapter_entrypoint,
         network_isolation=network_isolation,
         inference_service=inference_accounting,
         claim_metadata_complete=_claim_controls_complete(
@@ -2278,6 +2463,7 @@ def run_external_command(
             limits,
             "whole_corpus",
             dependency_lock,
+            adapter_entrypoint,
             network_isolation,
             inference_accounting,
             2,
@@ -2297,6 +2483,7 @@ def run_external_cases(
     limits: RunnerLimits | None = None,
     identity: RunnerIdentity | None = None,
     dependency_lock: DependencyLockEvidence | None = None,
+    adapter_entrypoint: AdapterEntrypointEvidence | None = None,
     network_isolation: NetworkIsolationEvidence | None = None,
     inference_service: InferenceServiceContract | None = None,
     working_directory: Path | str | None = None,
@@ -2312,6 +2499,13 @@ def run_external_cases(
     if not _dependency_lock_evidence_matches(dependency_lock):
         raise ExternalRunnerError(
             "dependency-lock evidence file does not match before execution"
+        )
+    adapter_entrypoint = (
+        adapter_entrypoint or AdapterEntrypointEvidence()
+    )
+    if not _adapter_entrypoint_evidence_matches(adapter_entrypoint):
+        raise ExternalRunnerError(
+            "adapter entrypoint evidence file does not match before execution"
         )
     network_isolation = network_isolation or NetworkIsolationEvidence()
     if not _network_isolation_evidence_matches(network_isolation):
@@ -2358,6 +2552,15 @@ def run_external_cases(
     ):
         raise ExternalRunnerError("environment must map strings to strings")
     resolved_template = _resolve_command(command)
+    if not _command_references_adapter_entrypoint(
+        resolved_template,
+        working_directory=cwd,
+        evidence=adapter_entrypoint,
+    ):
+        raise ExternalRunnerError(
+            "adapter command does not reference its retained entrypoint"
+        )
+    command_sha256 = _canonical_sha256(list(resolved_template))
 
     started_at = datetime.now(UTC).isoformat()
     started = time.monotonic()
@@ -2412,11 +2615,13 @@ def run_external_cases(
                 limits=limits,
                 identity=identity,
                 dependency_lock=dependency_lock,
+                adapter_entrypoint=adapter_entrypoint,
                 network_isolation=network_isolation,
                 inference_service=inference_service,
                 working_directory=cwd,
                 environment=process_environment,
                 _inference_monitor=inference_monitor,
+                _check_adapter_entrypoint=False,
             )
             case_run = CaseRunRecord(
                 case_id=case.id,
@@ -2500,6 +2705,11 @@ def run_external_cases(
         and not _dependency_lock_evidence_matches(dependency_lock)
     ):
         termination_reason = "dependency_lock_evidence_modified"
+    if (
+        termination_reason is None
+        and not _adapter_entrypoint_evidence_matches(adapter_entrypoint)
+    ):
+        termination_reason = "adapter_entrypoint_evidence_modified"
     if (
         termination_reason is None
         and not _network_isolation_evidence_matches(network_isolation)
@@ -2598,6 +2808,7 @@ def run_external_cases(
         case_count=len(cases),
         case_runs=tuple(case_runs),
         command=resolved_template,
+        command_sha256=command_sha256,
         working_directory=str(cwd),
         started_at=started_at,
         duration_seconds=round(duration, 6),
@@ -2623,6 +2834,7 @@ def run_external_cases(
         limits=limits,
         identity=identity,
         dependency_lock=dependency_lock,
+        adapter_entrypoint=adapter_entrypoint,
         network_isolation=network_isolation,
         inference_service=inference_accounting,
         claim_metadata_complete=_claim_controls_complete(
@@ -2630,6 +2842,7 @@ def run_external_cases(
             limits,
             "per_case",
             dependency_lock,
+            adapter_entrypoint,
             network_isolation,
             inference_accounting,
             2 * len(cases),
@@ -2666,6 +2879,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         help=(
             "retained dependency lock whose SHA-256 defines --environment-id"
+        ),
+    )
+    parser.add_argument(
+        "--adapter-entrypoint-evidence",
+        type=Path,
+        help=(
+            "retained adapter file that must appear in the command and whose "
+            "SHA-256 is bound into the run manifest"
         ),
     )
     parser.add_argument(
@@ -2726,6 +2947,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         dependency_lock = capture_dependency_lock_evidence(
             args.dependency_lock_evidence
         )
+        adapter_entrypoint = capture_adapter_entrypoint_evidence(
+            args.adapter_entrypoint_evidence
+        )
         network_isolation = capture_network_isolation_evidence(
             args.network_isolation_mode,
             args.network_isolation_evidence,
@@ -2759,6 +2983,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 model_service_cost_usd=args.model_service_cost_usd,
             ),
             dependency_lock=dependency_lock,
+            adapter_entrypoint=adapter_entrypoint,
             network_isolation=network_isolation,
             inference_service=inference_service,
         )

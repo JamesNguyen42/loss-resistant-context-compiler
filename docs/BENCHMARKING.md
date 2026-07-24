@@ -296,6 +296,7 @@ python -m benchmarks.external_runner \
   --max-candidate-bytes 20000000 \
   --max-memory-mb 32768 \
   --dependency-lock-evidence requirements.lock \
+  --adapter-entrypoint-evidence adapter.py \
   --network-isolation-mode host-firewall \
   --network-isolation-evidence network-policy.txt \
   --inference-service-pid INFERENCE_SERVICE_PID \
@@ -325,7 +326,10 @@ reopens its absolute path, verifies its canonical self-digest and exact file
 digest, and checks the recorded case count before returning the candidate for
 full benchmark-side decoding. It also rehashes the retained dependency lock;
 claim controls require `environment_id` to equal
-`sha256:<dependency-lock-sha256>`.
+`sha256:<dependency-lock-sha256>`. The retained adapter entrypoint must appear
+in the recorded command. Loader replay rehashes that file and recomputes the
+canonical command digest; external scoring matches both values to the frozen
+per-system protocol fields.
 
 `--max-memory-mb` bounds the adapter process tree with `RLIMIT_AS` on POSIX and
 a Job Object assigned before process resume on Windows. The service PID and
@@ -350,14 +354,15 @@ cost. Missing per-case isolation, no enforced process-tree memory limit,
 unrecorded identity, a model other than the exact local Qwen Q4 build,
 concurrency other than one, or nonzero model service cost is a
 certificate-invalid non-win even when the candidate interchange itself is
-valid. In current runner schema `lrcbench-external-run-manifest-0.7`, a
+valid. In current runner schema `lrcbench-external-run-manifest-0.8`, a
 claim-eligible identity requires an immutable adapter revision, environment id
 `sha256:<dependency-lock-sha256>`, the exact retained lock bytes, the exact
 8192-context Qwen model, evaluator tokenizer, one slot, zero retries, zero
-service cost, retained network-isolation evidence, and at least two stable
-inference-service memory samples within the ceiling. Scoring also matches the
-manifest's environment/network-evidence digests, service memory
-metric/executable digest/ceiling, isolation, and
+service cost, retained network-isolation evidence, a retained
+command-referenced adapter entrypoint, and at least two stable inference-service
+memory samples within the ceiling. Scoring also matches the manifest's
+environment/network-evidence digests, adapter entrypoint/command digests,
+service memory metric/executable digest/ceiling, isolation, and
 time/polling/output/candidate/adapter-memory limits to the frozen protocol.
 
 Run the built-in round-trip and negative checks before preparing an adapter:
@@ -407,7 +412,7 @@ and documentation together.
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 882 tests: 877 passed and 5 platform/optional checks were
+The suite collected 883 tests: 878 passed and 5 platform/optional checks were
 skipped. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |

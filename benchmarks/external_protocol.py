@@ -27,7 +27,7 @@ from .json_io import (
 )
 from .lrcbench import TOKENIZER_ID
 
-EXTERNAL_PROTOCOL_SCHEMA = "lrcbench-external-protocol-0.5"
+EXTERNAL_PROTOCOL_SCHEMA = "lrcbench-external-protocol-0.6"
 DEFAULT_EXTERNAL_PROTOCOL = (
     Path(__file__).resolve().parent
     / "protocols"
@@ -90,6 +90,8 @@ _CANDIDATE_FIELDS = {
     "license_file_sha256",
     "dependency_lock_sha256",
     "adapter_revision",
+    "adapter_entrypoint_sha256",
+    "adapter_command_sha256",
     "decision_reason",
 }
 _CONSTRAINT_FIELDS = {
@@ -220,6 +222,8 @@ class VerifiedExternalProtocol:
     registered_systems: tuple[str, ...]
     adapter_revisions: tuple[tuple[str, str], ...]
     environment_ids: tuple[tuple[str, str], ...]
+    adapter_entrypoint_sha256s: tuple[tuple[str, str], ...]
+    adapter_command_sha256s: tuple[tuple[str, str], ...]
     execution_contract: ExternalExecutionContract
     candidate_count: int
     blocker_ids: tuple[str, ...]
@@ -243,6 +247,14 @@ class VerifiedExternalProtocol:
             "environment_ids": {
                 system: environment_id
                 for system, environment_id in self.environment_ids
+            },
+            "adapter_entrypoint_sha256s": {
+                system: digest
+                for system, digest in self.adapter_entrypoint_sha256s
+            },
+            "adapter_command_sha256s": {
+                system: digest
+                for system, digest in self.adapter_command_sha256s
             },
             "execution_contract": self.execution_contract.to_dict(),
             "candidate_count": self.candidate_count,
@@ -498,6 +510,20 @@ def _validate_candidates(
                 adapter_revision,
                 context=f"{context}.adapter_revision",
             )
+        adapter_entrypoint_sha256 = candidate[
+            "adapter_entrypoint_sha256"
+        ]
+        if adapter_entrypoint_sha256 is not None:
+            _sha256(
+                adapter_entrypoint_sha256,
+                context=f"{context}.adapter_entrypoint_sha256",
+            )
+        adapter_command_sha256 = candidate["adapter_command_sha256"]
+        if adapter_command_sha256 is not None:
+            _sha256(
+                adapter_command_sha256,
+                context=f"{context}.adapter_command_sha256",
+            )
         _string(
             candidate["decision_reason"],
             context=f"{context}.decision_reason",
@@ -513,6 +539,8 @@ def _validate_candidates(
                 or license_sha256 is None
                 or dependency_sha256 is None
                 or adapter_revision is None
+                or adapter_entrypoint_sha256 is None
+                or adapter_command_sha256 is None
             ):
                 raise ExternalProtocolError(
                     f"{context} included system lacks frozen identity evidence"
@@ -970,6 +998,20 @@ def load_external_protocol(
             (
                 system,
                 f"sha256:{candidates[system]['dependency_lock_sha256']}",
+            )
+            for system in registered
+        ),
+        adapter_entrypoint_sha256s=tuple(
+            (
+                system,
+                str(candidates[system]["adapter_entrypoint_sha256"]),
+            )
+            for system in registered
+        ),
+        adapter_command_sha256s=tuple(
+            (
+                system,
+                str(candidates[system]["adapter_command_sha256"]),
             )
             for system in registered
         ),

@@ -2619,6 +2619,8 @@ def run_benchmark(
     external_protocol: ExternalProtocolEvidence | None = None
     protocol_adapter_revisions: dict[str, str] = {}
     protocol_environment_ids: dict[str, str] = {}
+    protocol_adapter_entrypoint_sha256s: dict[str, str] = {}
+    protocol_adapter_command_sha256s: dict[str, str] = {}
     protocol_execution_contract: Any | None = None
     if external_protocol_path is not None:
         from .external_protocol import ExternalProtocolError, load_external_protocol
@@ -2643,6 +2645,12 @@ def run_benchmark(
         expected = verified_protocol.registered_systems
         protocol_adapter_revisions = dict(verified_protocol.adapter_revisions)
         protocol_environment_ids = dict(verified_protocol.environment_ids)
+        protocol_adapter_entrypoint_sha256s = dict(
+            verified_protocol.adapter_entrypoint_sha256s
+        )
+        protocol_adapter_command_sha256s = dict(
+            verified_protocol.adapter_command_sha256s
+        )
         protocol_execution_contract = verified_protocol.execution_contract
         external_protocol = ExternalProtocolEvidence(
             protocol_id=verified_protocol.protocol_id,
@@ -2800,6 +2808,24 @@ def run_benchmark(
                 raise ExternalBaselineError(
                     f"external system {reference.system!r} run manifest "
                     "dependency-lock evidence does not match the frozen protocol"
+                )
+            if (
+                reference.adapter_entrypoint.entrypoint_sha256
+                != protocol_adapter_entrypoint_sha256s[
+                    reference.system
+                ]
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "adapter entrypoint does not match the frozen protocol"
+                )
+            if (
+                reference.command_sha256
+                != protocol_adapter_command_sha256s[reference.system]
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "adapter command does not match the frozen protocol"
                 )
             network_isolation = reference.network_isolation
             if (

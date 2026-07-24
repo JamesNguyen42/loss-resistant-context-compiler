@@ -1,5 +1,5 @@
 {
-  "schema": "lrcbench-external-protocol-0.5",
+  "schema": "lrcbench-external-protocol-0.6",
   "protocol_id": "external-comparison-v1",
   "status": "draft",
   "created_at": "2026-07-24T00:00:00+00:00",
@@ -7,7 +7,7 @@
   "freeze_repository_commit": null,
   "protocol_document": {
     "path": "external-comparison-v1.md",
-    "file_sha256": "28c5cc4e4a1ba750081085171ac08a3bd523274abd354c100dc29d41906700df"
+    "file_sha256": "0b2cbe054d0e08f8e55e7afad43032ff9601a7c06d8664db149f5d3be57c2a5a"
   },
   "comparison_candidates": [
     {
@@ -21,6 +21,8 @@
       "license_file_sha256": "9906940f61b1f0b533fa7d99baf55178b2808fbe113ea51dfbfad8572ccd5f2b",
       "dependency_lock_sha256": null,
       "adapter_revision": null,
+      "adapter_entrypoint_sha256": null,
+      "adapter_command_sha256": null,
       "decision_reason": "Official implementation exposes history compression and local-vLLM hooks, but its documented quick start uses an OpenAI key; exact-Qwen CLI adaptation and a resolved offline environment remain unverified."
     },
     {
@@ -34,6 +36,8 @@
       "license_file_sha256": "00cfaf3d10c367a0efe213b8e3cc937f3ca83d5e7cff581e83ae48941ca6e4b7",
       "dependency_lock_sha256": null,
       "adapter_revision": null,
+      "adapter_entrypoint_sha256": null,
+      "adapter_command_sha256": null,
       "decision_reason": "Official benchmark and AMA-Agent code expose a two-stage memory interface and local-vLLM path, but exact-Qwen CLI adaptation, deterministic grading, and a resolved offline environment remain unverified."
     },
     {
@@ -47,6 +51,8 @@
       "license_file_sha256": "5ad8c213095c573921d7388edf93f6a9f54490b8ebf3b165ae8ef1947cf70846",
       "dependency_lock_sha256": null,
       "adapter_revision": null,
+      "adapter_entrypoint_sha256": null,
+      "adapter_command_sha256": null,
       "decision_reason": "Public reimplementation supports local vLLM, but it changes agent trajectory structure rather than accepting arbitrary history as a drop-in compressor; matched exact-Qwen component adaptation and an offline environment remain unverified."
     },
     {
@@ -60,6 +66,8 @@
       "license_file_sha256": null,
       "dependency_lock_sha256": null,
       "adapter_revision": null,
+      "adapter_entrypoint_sha256": null,
+      "adapter_command_sha256": null,
       "decision_reason": "The arXiv v1 paper specifies the architecture and prompts but identifies no public implementation revision or code license; artifact availability must be resolved before inclusion."
     }
   ],
@@ -157,7 +165,7 @@
     },
     {
       "id": "candidate-adapters",
-      "description": "Complete result-blind diagnostic adapters and inclusion decisions for every screened system."
+      "description": "Complete result-blind diagnostic adapters, retained entrypoint and command pins, and inclusion decisions for every screened system."
     },
     {
       "id": "candidate-dependency-locks",
@@ -188,5 +196,5 @@
       "description": "Select and pin a materially different public tool-use or research task suite."
     }
   ],
-  "protocol_sha256": "27d39b42e46851e72aba80a2c365108a4baaef8469bbbcb6ba019c64264e374b"
+  "protocol_sha256": "2ca7f4ed88d0a52e0eba775d79841cbbf5fe071cbd30880a523d98a9c883a7fa"
 }

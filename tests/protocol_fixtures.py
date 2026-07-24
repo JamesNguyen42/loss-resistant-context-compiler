@@ -49,6 +49,8 @@ def write_frozen_external_protocol(
     *,
     adapter_revisions: Mapping[str, str] | None = None,
     environment_ids: Mapping[str, str] | None = None,
+    adapter_entrypoint_sha256s: Mapping[str, str] | None = None,
+    adapter_command_sha256s: Mapping[str, str] | None = None,
     synthetic_dataset_sha256: str = "9" * 64,
     max_memory_mb: int = 256,
     network_isolation_mode: str = FIXTURE_NETWORK_ISOLATION_MODE,
@@ -70,6 +72,8 @@ def write_frozen_external_protocol(
         raise ValueError("fixture protocols require at least four unique systems")
     revisions = dict(adapter_revisions or {})
     environments = dict(environment_ids or {})
+    entrypoints = dict(adapter_entrypoint_sha256s or {})
+    commands = dict(adapter_command_sha256s or {})
     protocol_document = tmp_path / "external-protocol.md"
     protocol_document.write_text("# Frozen external fixture\n", encoding="utf-8")
     candidates: list[dict[str, Any]] = []
@@ -97,6 +101,14 @@ def write_frozen_external_protocol(
                     "sha256:"
                 ),
                 "adapter_revision": revisions.get(system, identity[:40]),
+                "adapter_entrypoint_sha256": entrypoints.get(
+                    system,
+                    identity,
+                ),
+                "adapter_command_sha256": commands.get(
+                    system,
+                    _identity(f"{system}-command"),
+                ),
                 "decision_reason": "Frozen result-blind fixture decision.",
             }
         )
