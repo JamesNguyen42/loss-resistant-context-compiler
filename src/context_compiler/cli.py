@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import stat
 import sys
-import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
 from .archive import SourceArchive
+from .atomic import atomic_write_text
 from .compiler import ContextCompiler
 from .io import (
     load_artifact_path,
@@ -62,54 +60,10 @@ def _input_sources(path: str, limits: SourceLimits) -> list:
     return load_sources_path(path, limits=limits)
 
 
-def _fsync_directory(path: Path) -> None:
-    if os.name == "nt":
-        return
-    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-
-
-def _atomic_write_text(output_path: Path, value: str) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    existing_mode: int | None = None
-    try:
-        existing_stat = output_path.stat()
-    except FileNotFoundError:
-        pass
-    else:
-        if stat.S_ISREG(existing_stat.st_mode):
-            existing_mode = stat.S_IMODE(existing_stat.st_mode)
-
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=".ctxc-",
-        suffix=".tmp",
-        dir=output_path.parent,
-    )
-    temporary_path = Path(temporary_name)
-    try:
-        if existing_mode is not None:
-            os.chmod(temporary_path, existing_mode)
-        stream = os.fdopen(descriptor, "w", encoding="utf-8", newline="\n")
-        descriptor = -1
-        with stream:
-            stream.write(value)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary_path, output_path)
-        _fsync_directory(output_path.parent)
-    finally:
-        if descriptor >= 0:
-            os.close(descriptor)
-        temporary_path.unlink(missing_ok=True)
-
-
 def _write_output(value: str, path: str | None) -> None:
     rendered = value + ("" if value.endswith("\n") else "\n")
     if path:
-        _atomic_write_text(Path(path), rendered)
+        atomic_write_text(Path(path), rendered)
     else:
         sys.stdout.write(rendered)
 

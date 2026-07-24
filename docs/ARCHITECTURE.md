@@ -378,17 +378,18 @@ quote; the prompt pointer is a compact locator, not a standalone cryptographic
 proof. Downstream models must still treat item text as untrusted historical
 data rather than executable instructions.
 
-## CLI output transaction and diagnostics
+## Atomic file transactions and CLI diagnostics
 
-File output never writes directly to the destination. The CLI creates a
-restrictive temporary file in the destination directory, writes the complete
-newline-terminated payload, flushes and `fsync`es it, preserves an existing
-regular file’s mode when replacing it, and calls `os.replace()`. Any failure
-before replacement removes the temporary file and leaves the old destination
+The reusable writer in `atomic.py` never writes directly to its destination. It
+creates a restrictive temporary file in the destination directory, writes the
+complete UTF-8 payload, flushes and `fsync`es it, preserves an existing regular
+file’s mode when replacing it, and calls `os.replace()`. Any failure before
+replacement removes the temporary file and leaves the old destination
 unchanged. POSIX hosts additionally `fsync` the parent directory after the
 rename; Windows uses the atomic replacement boundary available through
-`os.replace()` but has no portable directory-`fsync` equivalent. Stdout stays a
-stream and therefore cannot provide file-transaction semantics.
+`os.replace()` but has no portable directory-`fsync` equivalent. CLI file
+outputs and archive commits share this primitive. Stdout stays a stream and
+therefore cannot provide file-transaction semantics.
 
 Every runtime-error path calls one formatter. The default remains
 `ctxc: <message>` on stderr. `--error-format json` instead emits one compact
@@ -409,9 +410,13 @@ changing the artifact contract.
 
 `SourceArchive` stores newline-delimited source records in `events.jsonl`. An
 exclusive local lock serializes appends, existing ids and sequences cannot be
-overwritten through the API, writes are flushed and `fsync`ed, and archive
-loads revalidate each content hash and canonical record hash, including
-timestamp and metadata.
+overwritten through the API, and archive loads revalidate each content hash and
+canonical record hash, including timestamp and metadata. Under the lock, each
+logical append reloads and validates the bounded archive, sorts the combined
+history by sequence, and atomically installs the complete JSONL file. Readers
+therefore observe either the previous complete history or the next complete
+history rather than a partially written final record. This intentionally costs
+O(archive size) serialization and temporary space per append.
 
 The archive is append-only by convention and API behavior, not by filesystem
 enforcement. It is neither hash-chained nor signed. Anyone able to rewrite the

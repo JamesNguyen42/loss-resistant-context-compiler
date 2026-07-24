@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import context_compiler.atomic as atomic_module
 from context_compiler import ArtifactLimitError, SourceLimitError, SourceRecord, cli
 from context_compiler.cli import main
 
@@ -55,7 +56,7 @@ def test_atomic_replace_failure_preserves_old_file_and_removes_temp(
     def fail_replace(_source: object, _target: object) -> None:
         raise OSError("injected replace failure")
 
-    monkeypatch.setattr(cli.os, "replace", fail_replace)
+    monkeypatch.setattr(atomic_module.os, "replace", fail_replace)
 
     with pytest.raises(OSError, match="injected replace failure"):
         cli._write_output("uncommitted-new", str(output))
@@ -74,7 +75,7 @@ def test_file_fsync_failure_preserves_old_file_and_removes_temp(
     def fail_fsync(_descriptor: int) -> None:
         raise OSError("injected fsync failure")
 
-    monkeypatch.setattr(cli.os, "fsync", fail_fsync)
+    monkeypatch.setattr(atomic_module.os, "fsync", fail_fsync)
 
     with pytest.raises(OSError, match="injected fsync failure"):
         cli._write_output("uncommitted-new", str(output))

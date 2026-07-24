@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 248 passing |
+| Tests at this snapshot | 254 passing |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -238,7 +238,8 @@ supplied extractors and token counters are deterministic.
 | `src/context_compiler/verifier.py` | Independent coverage, provenance, support, authority, and state checks |
 | `src/context_compiler/io.py` | Input decoding, strict artifact shape validation, replay verification |
 | `src/context_compiler/limits.py` | Shared source/artifact byte, line, depth, canonical-size, and collection limits |
-| `src/context_compiler/archive.py` | Append-only local archive, locking, loading, and verification |
+| `src/context_compiler/atomic.py` | Shared same-directory atomic UTF-8 file replacement and durability helpers |
+| `src/context_compiler/archive.py` | Logically append-only local archive, locking, atomic commits, loading, and verification |
 | `src/context_compiler/cli.py` | `ctxc` parsing, atomic output transactions, versioned error diagnostics, and exit codes |
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
 | `benchmarks/external_runner.py` | Shell-free adapter process limits, validation, and self-hashed run manifests |
@@ -381,7 +382,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 248 tests pass.
+- 254 tests pass.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -403,6 +404,10 @@ audited. Any selected superseded item independently fails verification as
   replacement. Failure-injection tests prove pre-replacement `fsync`/replace
   failures preserve the old file and remove temporary files; POSIX tests also
   preserve existing regular-file modes.
+- Archive appends use the same atomic writer under the exclusive lock and
+  install a fully validated, bounded, sequence-sorted event log. Tests prove
+  readers observe the old or complete new archive, pre-replacement failures
+  preserve committed history, and temporary and lock files are cleaned.
 - Opt-in JSON runtime diagnostics have stable resource, timeout, I/O,
   invalid-input, integrity, and policy categories. Default text output and
   stdout behavior remain unchanged.
@@ -555,6 +560,8 @@ lower quantile before results are observed.
 - Stdout cannot be transactional, and Windows has no portable parent-directory
   `fsync`; atomic file replacement still depends on destination filesystem
   semantics.
+- Each archive append rewrites the complete bounded event log, so append time
+  and temporary storage are O(archive size).
 - Direct Python callers can allocate oversized objects before the compiler
   gets an opportunity to reject them; configured byte limits do not equal a
   process-RSS guarantee.

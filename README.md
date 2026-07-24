@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 248 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 254 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
@@ -121,11 +121,12 @@ The repository currently includes:
   provider-failure policy;
 - shared default-on source and compiled-artifact limits for UTF-8 input bytes,
   physical line length, JSON depth, canonical size, and schema collections;
-- same-directory atomic CLI file replacement plus opt-in versioned JSON error
-  diagnostics with stable resource, I/O, input, integrity, timeout, and policy
-  categories;
+- reusable same-directory atomic file replacement for CLI outputs and archive
+  commits, plus opt-in versioned JSON error diagnostics with stable resource,
+  I/O, input, integrity, timeout, and policy categories;
 - a portable JSON artifact, compact prompt renderer, and three JSON Schemas;
-- an append-only local source archive with integrity checks and locking;
+- a logically append-only local source archive with integrity checks, exclusive
+  locking, and bounded old-or-new atomic commits;
 - the `ctxc compile`, `verify`, `inspect`, and `archive` commands;
 - LRCBench, external-candidate import/export, history-weighted paired bootstrap
   gates, per-system decisions, and auditable JSON reports;
@@ -134,7 +135,7 @@ The repository currently includes:
   and valid or failed manifests that feed per-system certificate decisions;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
-- cross-version CI, linting, wheel/schema checks, and 248 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 254 regression tests.
 
 ## In development
 
@@ -300,6 +301,14 @@ ctxc archive verify .context-archive
 ctxc compile examples/auth_timeout.jsonl --archive .context-archive --format prompt
 ```
 
+Archive writes are logical appends but physical transactions: while holding the
+exclusive writer lock, `SourceArchive` validates and serializes the complete
+bounded history into a same-directory temporary file, flushes and `fsync`s it,
+then atomically replaces `events.jsonl`. Readers therefore observe either the
+previous complete archive or the next complete archive, never a partially
+appended JSONL tail. The tradeoff is O(archive size) work and temporary disk
+space per append.
+
 `ctxc compile` also accepts `-` for stdin. Inputs may be a JSON list, an object
 containing `sources`, `events`, or `messages`, or JSONL. Each record accepts
 `id`, `sequence`, `role`, `content`, `timestamp`, and `metadata`.
@@ -373,12 +382,12 @@ Exit status is `0` on success, `2` for invalid input or policy errors, `3` for
 a failed verification, and `4` when `--require-target` is set and the requested
 compression ratio is not achieved.
 
-Every `-o/--output` file is written to a restrictive temporary file in the
-destination directory, flushed and `fsync`ed, then installed with
-`os.replace()`. Existing regular-file permissions are preserved. A failure
-before replacement leaves the prior destination unchanged and removes the
-temporary file; on POSIX, the destination directory is also `fsync`ed after
-replacement. Stdout behavior is unchanged.
+Every `-o/--output` file and archive commit uses the same restrictive
+same-directory atomic writer: the complete payload is flushed and `fsync`ed,
+then installed with `os.replace()`. Existing regular-file permissions are
+preserved. A failure before replacement leaves the prior destination unchanged
+and removes the temporary file; on POSIX, the destination directory is also
+`fsync`ed after replacement. Stdout behavior is unchanged.
 
 With `--error-format json`, runtime failures have stable top-level fields:
 `schema`, `command`, `category`, `code`, `exit_code`, `exception_type`, and
@@ -567,7 +576,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): all 248 tests pass, and the recorded default
+Current local snapshot (2026-07-24): all 254 tests pass, and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`

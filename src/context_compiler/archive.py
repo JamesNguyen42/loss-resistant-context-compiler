@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .atomic import atomic_write_text
 from .io import load_sources_path
 from .limits import (
     SourceLimitError,
@@ -100,11 +101,14 @@ class SourceArchive:
                 accepted.append(record)
             if not accepted:
                 return 0
-            combined = [*existing, *accepted]
+            combined = sorted(
+                [*existing, *accepted],
+                key=lambda entry: entry.sequence,
+            )
             self._validate_records(combined)
             lines = [
                 json.dumps(record.to_dict(), ensure_ascii=False, separators=(",", ":"))
-                for record in accepted
+                for record in combined
             ]
             for line in lines:
                 if len(line) > self.source_limits.max_line_chars:
@@ -113,17 +117,12 @@ class SourceArchive:
                         f"{self.source_limits.max_line_chars} line characters"
                     )
             payload = "".join(line + "\n" for line in lines)
-            projected_bytes = (
-                self.events_path.stat().st_size if self.events_path.exists() else 0
-            ) + len(payload.encode("utf-8"))
-            if projected_bytes > self.source_limits.max_input_bytes:
+            payload_bytes = len(payload.encode("utf-8"))
+            if payload_bytes > self.source_limits.max_input_bytes:
                 raise SourceLimitError(
                     f"archive exceeds {self.source_limits.max_input_bytes} UTF-8 bytes"
                 )
-            with self.events_path.open("a", encoding="utf-8", newline="\n") as stream:
-                stream.write(payload)
-                stream.flush()
-                os.fsync(stream.fileno())
+            atomic_write_text(self.events_path, payload)
             return len(accepted)
         finally:
             os.close(lock_fd)
