@@ -2618,6 +2618,7 @@ def run_benchmark(
         )
     external_protocol: ExternalProtocolEvidence | None = None
     protocol_adapter_revisions: dict[str, str] = {}
+    protocol_environment_ids: dict[str, str] = {}
     if external_protocol_path is not None:
         from .external_protocol import ExternalProtocolError, load_external_protocol
 
@@ -2640,6 +2641,7 @@ def run_benchmark(
             )
         expected = verified_protocol.registered_systems
         protocol_adapter_revisions = dict(verified_protocol.adapter_revisions)
+        protocol_environment_ids = dict(verified_protocol.environment_ids)
         external_protocol = ExternalProtocolEvidence(
             protocol_id=verified_protocol.protocol_id,
             protocol_sha256=verified_protocol.protocol_sha256,
@@ -2694,6 +2696,9 @@ def run_benchmark(
     external_adapter_revisions: dict[str, str] = dict(
         protocol_adapter_revisions
     )
+    external_environment_ids: dict[str, str] = dict(
+        protocol_environment_ids
+    )
     external_model_ids: dict[str, str] = {}
     external_model_costs: dict[str, float] = {}
     if external_manifest_paths:
@@ -2725,6 +2730,14 @@ def run_benchmark(
                 raise ExternalBaselineError(
                     f"external system {reference.system!r} run manifest adapter "
                     "revision does not match the frozen protocol"
+                )
+            if (
+                reference.environment_id
+                != protocol_environment_ids[reference.system]
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "environment identity does not match the frozen protocol"
                 )
             external_manifest_sha256[reference.system] = reference.manifest_sha256
             external_model_ids[reference.system] = reference.model_id
@@ -2773,6 +2786,15 @@ def run_benchmark(
                 f"external system {system!r} candidate producer revision "
                 "does not match the frozen protocol or run manifest"
             )
+        recorded_environment = external_environment_ids.get(system)
+        if (
+            recorded_environment is not None
+            and recorded_environment != producer.environment_id
+        ):
+            raise ExternalBaselineError(
+                f"external system {system!r} candidate producer environment "
+                "identity does not match the frozen protocol or run manifest"
+            )
         recorded_model = external_model_ids.get(system)
         if recorded_model is not None and recorded_model != producer.model_id:
             raise ExternalBaselineError(
@@ -2791,6 +2813,10 @@ def run_benchmark(
         external_adapter_revisions.setdefault(
             system,
             producer.adapter_revision,
+        )
+        external_environment_ids.setdefault(
+            system,
+            producer.environment_id,
         )
         external_model_ids.setdefault(system, producer.model_id)
         external_model_costs.setdefault(

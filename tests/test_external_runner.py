@@ -37,6 +37,7 @@ from context_compiler.local_qwen import QWEN_Q4_VARIANT
 from tests.protocol_fixtures import write_frozen_external_protocol
 
 FIXTURE_ADAPTER_REVISION = "a" * 40
+FIXTURE_ENVIRONMENT_ID = "sha256:" + "b" * 64
 
 
 def corpus_producer(
@@ -100,7 +101,7 @@ def valid_adapter_command() -> list[str]:
 def claim_identity() -> RunnerIdentity:
     return RunnerIdentity(
         adapter_revision=FIXTURE_ADAPTER_REVISION,
-        environment_id="fixture-environment",
+        environment_id=FIXTURE_ENVIRONMENT_ID,
         model_id=QWEN_Q4_VARIANT,
         model_context_length=8192,
         tokenizer_id="character-estimate-v1",
@@ -115,6 +116,10 @@ def test_claim_identity_requires_exact_qwen_one_slot_and_zero_service_cost() -> 
 
     assert identity.claim_metadata_complete
     assert not replace(identity, model_id="another/model").claim_metadata_complete
+    assert not replace(
+        identity,
+        environment_id="fixture-environment",
+    ).claim_metadata_complete
     assert not replace(identity, inference_concurrency=2).claim_metadata_complete
     assert not replace(identity, model_service_cost_usd=0.01).claim_metadata_complete
     with pytest.raises(TypeError, match="model_service_cost_usd must be numeric"):
@@ -260,7 +265,7 @@ def test_interchange_file_loaders_reject_duplicate_keys_and_size_overflow(
     manifest_path.write_text(
         manifest_text.replace(
             "{",
-            '{"schema":"lrcbench-external-run-manifest-0.2",',
+            f'{{"schema":"{external_runner_module.RUNNER_MANIFEST_SCHEMA}",',
             1,
         ),
         encoding="utf-8",
@@ -437,7 +442,7 @@ def test_cli_defaults_to_claim_eligible_per_case_mode(tmp_path, capsys) -> None:
             "--adapter-revision",
             "fixture-revision",
             "--environment-id",
-            "fixture-environment",
+            FIXTURE_ENVIRONMENT_ID,
             "--model-id",
             QWEN_Q4_VARIANT,
             "--model-context-length",
@@ -603,6 +608,9 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_revisions={
             "fixture-adapter": FIXTURE_ADAPTER_REVISION,
         },
+        environment_ids={
+            "fixture-adapter": FIXTURE_ENVIRONMENT_ID,
+        },
         synthetic_dataset_sha256=document["dataset_sha256"],
     )
 
@@ -625,6 +633,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
     ).hexdigest()
     assert reference.failure_reason is None
     assert reference.adapter_revision == FIXTURE_ADAPTER_REVISION
+    assert reference.environment_id == FIXTURE_ENVIRONMENT_ID
     assert reference.model_id == QWEN_Q4_VARIANT
     assert reference.model_service_cost_usd == 0.0
     assert report.run_metadata.model_id == "unrecorded"
@@ -642,6 +651,29 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         value for value in report.certificate.comparisons if value.system == "fixture-adapter"
     )
     assert "no validated external run manifest" not in comparison.reasons
+    mismatched_protocol_directory = tmp_path / "mismatched-environment"
+    mismatched_protocol_directory.mkdir()
+    mismatched_protocol_path = write_frozen_external_protocol(
+        mismatched_protocol_directory,
+        systems,
+        adapter_revisions={
+            "fixture-adapter": FIXTURE_ADAPTER_REVISION,
+        },
+        environment_ids={
+            "fixture-adapter": "sha256:" + "c" * 64,
+        },
+        synthetic_dataset_sha256=document["dataset_sha256"],
+    )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="environment identity does not match the frozen protocol",
+    ):
+        run_benchmark(
+            config,
+            external_manifest_paths=(manifest_path,),
+            expected_external_systems=systems,
+            external_protocol_path=mismatched_protocol_path,
+        )
 
     original_manifest_loader = external_runner_module.load_external_run_manifest
 
@@ -790,6 +822,9 @@ def test_ready_candidate_with_unrecorded_identity_cannot_cross_frozen_protocol(
         systems,
         adapter_revisions={
             "fixture-adapter": FIXTURE_ADAPTER_REVISION,
+        },
+        environment_ids={
+            "fixture-adapter": FIXTURE_ENVIRONMENT_ID,
         },
         synthetic_dataset_sha256=document["dataset_sha256"],
     )
@@ -1046,6 +1081,9 @@ def test_failed_manifest_reason_becomes_a_registered_invalid_nonwin(tmp_path) ->
         systems,
         adapter_revisions={
             "timeout-fixture": FIXTURE_ADAPTER_REVISION,
+        },
+        environment_ids={
+            "timeout-fixture": FIXTURE_ENVIRONMENT_ID,
         },
         synthetic_dataset_sha256=document["dataset_sha256"],
     )

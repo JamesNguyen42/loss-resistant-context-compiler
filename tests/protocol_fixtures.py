@@ -22,17 +22,27 @@ def write_frozen_external_protocol(
     systems: Sequence[str],
     *,
     adapter_revisions: Mapping[str, str] | None = None,
+    environment_ids: Mapping[str, str] | None = None,
     synthetic_dataset_sha256: str = "9" * 64,
 ) -> Path:
     registered = tuple(sorted(systems))
     if len(registered) < 4 or len(registered) != len(set(registered)):
         raise ValueError("fixture protocols require at least four unique systems")
     revisions = dict(adapter_revisions or {})
+    environments = dict(environment_ids or {})
     protocol_document = tmp_path / "external-protocol.md"
     protocol_document.write_text("# Frozen external fixture\n", encoding="utf-8")
     candidates: list[dict[str, Any]] = []
     for system in registered:
         identity = _identity(system)
+        environment_id = environments.get(system, f"sha256:{identity}")
+        if (
+            not environment_id.startswith("sha256:")
+            or len(environment_id) != 71
+        ):
+            raise ValueError(
+                "fixture environment ids must be canonical SHA-256 identities"
+            )
         candidates.append(
             {
                 "system": system,
@@ -43,7 +53,9 @@ def write_frozen_external_protocol(
                 "revision_observed_at": "2026-07-24T00:00:00+00:00",
                 "license_spdx": "MIT",
                 "license_file_sha256": identity,
-                "dependency_lock_sha256": identity,
+                "dependency_lock_sha256": environment_id.removeprefix(
+                    "sha256:"
+                ),
                 "adapter_revision": revisions.get(system, identity[:40]),
                 "decision_reason": "Frozen result-blind fixture decision.",
             }

@@ -296,7 +296,7 @@ python -m benchmarks.external_runner \
   --max-candidate-bytes 20000000 \
   --max-memory-mb 32768 \
   --adapter-revision REVISION \
-  --environment-id ENVIRONMENT_LOCK_OR_IMAGE_DIGEST \
+  --environment-id sha256:DEPENDENCY_LOCK_SHA256 \
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m \
   --model-context-length 8192 \
   --tokenizer-id character-estimate-v1 \
@@ -332,7 +332,9 @@ cost. Missing per-case isolation, no enforced process-tree memory limit,
 unrecorded identity, a model other than the exact local Qwen Q4 build,
 concurrency other than one, or nonzero model service cost is a
 certificate-invalid non-win even when the candidate interchange itself is
-valid.
+valid. In current runner schema `lrcbench-external-run-manifest-0.3`, a
+claim-eligible environment id is exactly
+`sha256:<dependency-lock-sha256>` and must match the frozen protocol candidate.
 
 Run the built-in round-trip and negative checks before preparing an adapter:
 

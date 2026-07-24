@@ -184,7 +184,7 @@ def test_committed_draft_is_verified_but_not_claim_ready() -> None:
     verified = load_external_protocol(DEFAULT_EXTERNAL_PROTOCOL)
 
     assert verified.protocol_sha256 == (
-        "7b198d4bb6b2916f1c40569b55707e39cbf98dc1932b28509aca1b2c0d2f2064"
+        "068e5f2ebb39c1f7cf009a236f25e6a74f077c3a2bad066372f1dedbc9bbb2d3"
     )
     assert verified.status == "draft"
     assert verified.claim_ready is False
@@ -224,6 +224,12 @@ def test_complete_frozen_protocol_is_claim_ready(tmp_path: Path) -> None:
         "gamma",
     )
     assert verified.synthetic_dataset_sha256 == _sha("6")
+    assert dict(verified.environment_ids) == {
+        "alpha": "sha256:" + _sha("1"),
+        "beta": "sha256:" + _sha("2"),
+        "delta": "sha256:" + _sha("3"),
+        "gamma": "sha256:" + _sha("4"),
+    }
     assert verified.blocker_ids == ()
 
 

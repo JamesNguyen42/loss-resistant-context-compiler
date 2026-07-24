@@ -175,7 +175,7 @@ current envelope:
   "producer": {
     "schema": "lrcbench-candidate-producer-0.1",
     "adapter_revision": "<immutable adapter revision>",
-    "environment_id": "<frozen environment identifier>",
+    "environment_id": "sha256:<dependency_lock_sha256>",
     "model_id": "qwen/qwen3.6-35b-a3b@q4_k_m",
     "model_context_length": 8192,
     "tokenizer_id": "character-estimate-v1",
@@ -242,7 +242,7 @@ python -m benchmarks.external_runner `
   --max-candidate-bytes 20000000 `
   --max-memory-mb 32768 `
   --adapter-revision REVISION `
-  --environment-id ENVIRONMENT_LOCK_OR_IMAGE_DIGEST `
+  --environment-id sha256:DEPENDENCY_LOCK_SHA256 `
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m `
   --model-context-length 8192 `
   --tokenizer-id character-estimate-v1 `
@@ -274,8 +274,11 @@ Revision, environment, model, context, tokenizer, inference concurrency,
 retries, and service cost are also recorded. Claim-bearing manifests require
 per-case isolation, an enforced process-tree memory limit, complete identity
 fields, the exact Qwen Q4 model, one inference slot, and zero model-service
-cost. `--isolation whole-corpus` remains useful for diagnostics but is a
-registered certificate non-win.
+cost. Current `lrcbench-external-run-manifest-0.3` claim metadata requires
+`environment_id` to be `sha256:<dependency-lock-sha256>`; scoring checks that
+value against the included system's frozen protocol lock. `--isolation
+whole-corpus` remains useful for diagnostics but is a registered certificate
+non-win.
 
 Evaluation also recomputes active tokens from the final rendered string for
 every bundled or programmatic candidate. A valid character span alone is not

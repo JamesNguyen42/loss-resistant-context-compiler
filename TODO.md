@@ -322,7 +322,9 @@ Acceptance:
 - [x] Record system/adapter revision, environment id, model id, tokenizer,
   context limit, inference concurrency, Python/platform, exact command,
   timestamp, latency, failures, retries, and cost; incomplete, non-Qwen,
-  multi-slot, or paid-model metadata is a certificate non-win.
+  multi-slot, or paid-model metadata is a certificate non-win. Current runner
+  manifests require canonical `sha256:<dependency-lock-sha256>` environment
+  identity, and scoring matches it to the frozen protocol.
 - [ ] Count the final rendered output and provenance ledger under the same
   tokenizer and token budget for every system.
 - [x] Fail closed on missing cases, duplicate cases, malformed spans, unknown

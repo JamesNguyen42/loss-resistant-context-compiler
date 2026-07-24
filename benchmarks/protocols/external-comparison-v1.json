@@ -1,5 +1,5 @@
 {
-  "schema": "lrcbench-external-protocol-0.1",
+  "schema": "lrcbench-external-protocol-0.2",
   "protocol_id": "external-comparison-v1",
   "status": "draft",
   "created_at": "2026-07-24T00:00:00+00:00",
@@ -7,7 +7,7 @@
   "freeze_repository_commit": null,
   "protocol_document": {
     "path": "external-comparison-v1.md",
-    "file_sha256": "b363d8a5a6c0304986b88bdd69f03b70836c6bd059c4bc022b2f6917012ee906"
+    "file_sha256": "7591e9a898e423dd60c12330e284c64235885b81fe056243c2d8c548434ff73b"
   },
   "comparison_candidates": [
     {
@@ -179,5 +179,5 @@
       "description": "Select and pin a materially different public tool-use or research task suite."
     }
   ],
-  "protocol_sha256": "7b198d4bb6b2916f1c40569b55707e39cbf98dc1932b28509aca1b2c0d2f2064"
+  "protocol_sha256": "068e5f2ebb39c1f7cf009a236f25e6a74f077c3a2bad066372f1dedbc9bbb2d3"
 }

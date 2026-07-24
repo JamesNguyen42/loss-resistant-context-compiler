@@ -97,6 +97,9 @@ This is not yet a registered set. Before freezing:
 
 - resolve each pending decision using the inclusion rule;
 - pin an immutable source revision and dependency lock;
+- identify the claim environment as
+  `sha256:<dependency-lock-sha256>` so retained run evidence can be matched
+  exactly to that lock;
 - record the exact local setup and command;
 - keep at least four included systems when materially comparable runnable
   systems exist;
@@ -200,7 +203,7 @@ python -m benchmarks.external_runner \
   --max-candidate-bytes 20000000 \
   --max-memory-mb MEMORY_LIMIT_MB \
   --adapter-revision REVISION \
-  --environment-id ENVIRONMENT_LOCK_OR_IMAGE_DIGEST \
+  --environment-id sha256:DEPENDENCY_LOCK_SHA256 \
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m \
   --model-context-length 8192 \
   --tokenizer-id character-estimate-v1 \
@@ -229,7 +232,12 @@ count.
 Whole-corpus isolation, no enforced adapter memory limit, incomplete identity
 metadata, any model other than the exact Qwen Q4 variant, inference concurrency
 other than one, or nonzero model-service cost makes the system a certificate
-non-win. The candidate may still be retained for interchange diagnostics.
+non-win. Claim-eligible runner schema
+`lrcbench-external-run-manifest-0.3` also requires the environment id to be the
+canonical `sha256:` identity of the dependency lock recorded for that system.
+The scorer rejects any adapter or environment identity that differs from the
+frozen protocol. The candidate may still be retained for interchange
+diagnostics.
 
 Score all intended systems in one explicitly registered invocation:
 

@@ -21,7 +21,7 @@ from .json_io import (
 )
 from .lrcbench import TOKENIZER_ID
 
-EXTERNAL_PROTOCOL_SCHEMA = "lrcbench-external-protocol-0.1"
+EXTERNAL_PROTOCOL_SCHEMA = "lrcbench-external-protocol-0.2"
 DEFAULT_EXTERNAL_PROTOCOL = (
     Path(__file__).resolve().parent
     / "protocols"
@@ -149,6 +149,7 @@ class VerifiedExternalProtocol:
     synthetic_dataset_sha256: str | None
     registered_systems: tuple[str, ...]
     adapter_revisions: tuple[tuple[str, str], ...]
+    environment_ids: tuple[tuple[str, str], ...]
     candidate_count: int
     blocker_ids: tuple[str, ...]
     claim_ready: bool
@@ -167,6 +168,10 @@ class VerifiedExternalProtocol:
             "adapter_revisions": {
                 system: revision
                 for system, revision in self.adapter_revisions
+            },
+            "environment_ids": {
+                system: environment_id
+                for system, environment_id in self.environment_ids
             },
             "candidate_count": self.candidate_count,
             "blocker_ids": list(self.blocker_ids),
@@ -833,6 +838,13 @@ def load_external_protocol(
             (
                 system,
                 str(candidates[system]["adapter_revision"]),
+            )
+            for system in registered
+        ),
+        environment_ids=tuple(
+            (
+                system,
+                f"sha256:{candidates[system]['dependency_lock_sha256']}",
             )
             for system in registered
         ),

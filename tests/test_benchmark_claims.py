@@ -468,10 +468,12 @@ def test_registered_missing_and_degenerate_outputs_remain_external_nonwins(
         "registered-missing-c",
     )
     adapter_revision = "a" * 40
+    environment_id = "sha256:" + "b" * 64
     protocol_path = write_frozen_external_protocol(
         tmp_path,
         systems,
         adapter_revisions={"registered-empty": adapter_revision},
+        environment_ids={"registered-empty": environment_id},
         synthetic_dataset_sha256=digest,
     )
     candidate_path = tmp_path / "candidate.json"
@@ -480,7 +482,7 @@ def test_registered_missing_and_degenerate_outputs_remain_external_nonwins(
         system="registered-empty",
         producer=CandidateProducerMetadata(
             adapter_revision=adapter_revision,
-            environment_id="fixture-environment",
+            environment_id=environment_id,
             model_id="fixture-model",
             model_context_length=4096,
             tokenizer_id="fixture-tokenizer",
@@ -541,6 +543,29 @@ def test_registered_missing_and_degenerate_outputs_remain_external_nonwins(
     with pytest.raises(
         ExternalBaselineError,
         match="does not match the frozen protocol",
+    ):
+        run_benchmark(
+            config,
+            external_baseline_paths=(candidate_path,),
+            expected_external_systems=systems,
+            external_protocol_path=protocol_path,
+        )
+
+    candidate_payload["producer"]["adapter_revision"] = adapter_revision
+    candidate_payload["producer"]["environment_id"] = (
+        "sha256:" + "c" * 64
+    )
+    candidate_payload.pop("candidate_payload_sha256")
+    candidate_payload["candidate_payload_sha256"] = _canonical_sha256(
+        candidate_payload
+    )
+    candidate_path.write_text(
+        json.dumps(candidate_payload),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="environment identity does not match the frozen protocol",
     ):
         run_benchmark(
             config,

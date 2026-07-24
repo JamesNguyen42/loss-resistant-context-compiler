@@ -841,6 +841,9 @@ that complete set. Missing or failed systems remain non-wins. See
 and process-tree-memory-bounded adapter wrapper. Its default mode executes every
 case sequentially in a fresh process, records a hashed per-case audit trail,
 and merges only fully validated outputs. Whole-corpus mode is diagnostic-only.
+Current claim-eligible runner manifests identify the environment as
+`sha256:<dependency-lock-sha256>`; scoring requires that identity and the
+adapter revision to match the frozen protocol.
 The wrapper is not a filesystem or network sandbox, and its memory limit does
 not include a pre-existing inference service outside the adapter process tree.
 It accepts the legacy producerless adapter payload only at that bounded runner

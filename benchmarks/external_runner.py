@@ -41,8 +41,9 @@ from .lrcbench import (
     decode_external_candidate,
 )
 
-RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.2"
+RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.3"
 _SYSTEM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
+_ENVIRONMENT_ID_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _ISOLATION_MODES = frozenset({"whole_corpus", "per_case"})
 _WINDOWS_CREATE_SUSPENDED = 0x00000004
 _WINDOWS_JOB_OBJECT_LIMIT_PROCESS_MEMORY = 0x00000100
@@ -76,6 +77,7 @@ class ExternalRunReference:
     failure_reason: str | None
     manifest_sha256: str
     adapter_revision: str
+    environment_id: str
     model_id: str
     model_service_cost_usd: float
 
@@ -117,7 +119,7 @@ class RunnerIdentity:
     def claim_metadata_complete(self) -> bool:
         return (
             self.adapter_revision != "unrecorded"
-            and self.environment_id != "unrecorded"
+            and _ENVIRONMENT_ID_RE.fullmatch(self.environment_id) is not None
             and self.model_id == QWEN_Q4_VARIANT
             and self.model_context_length > 0
             and self.tokenizer_id != "unrecorded"
@@ -1129,6 +1131,7 @@ def load_external_run_manifest(
         failure_reason=failure_reason,
         manifest_sha256=claimed_manifest_sha,
         adapter_revision=decoded_identity.adapter_revision,
+        environment_id=decoded_identity.environment_id,
         model_id=decoded_identity.model_id,
         model_service_cost_usd=decoded_identity.model_service_cost_usd,
     )

@@ -227,7 +227,7 @@ self-consistent report can also compute new self-hashes. Trusted publication
 still requires an external signature or independently anchored digest.
 
 External scoring additionally requires a strict frozen
-`lrcbench-external-protocol-0.1` manifest. The manifest self-hash binds its
+`lrcbench-external-protocol-0.2` manifest. The manifest self-hash binds its
 Markdown document digest, comparison decisions and immutable revisions,
 adapter/dependency evidence, exact local-Qwen constraints, dataset manifests,
 statistics, runner policy, and blockers. The benchmark imports the registered
