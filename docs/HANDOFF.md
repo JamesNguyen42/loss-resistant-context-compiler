@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 152 passing |
+| Tests at this snapshot | 160 passing |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -26,9 +26,11 @@ claims.
 | Confirmed fail-closed blockers | Four identified in-process paths closed |
 
 The clean starting baseline for this work was commit
-`7a0d4545be839d05161e993e8eecd5b0b03ee311`. The safety, benchmark, local-Qwen,
-test, and documentation work described here may still be uncommitted. Always
-use `git log -1` and `git status -sb` to establish the exact state.
+`7a0d4545be839d05161e993e8eecd5b0b03ee311`. The first validated safety,
+benchmark, and local-Qwen checkpoint is commit `3ed2f79` on
+`codex/harden-verified-memory-evaluation`; later runner and documentation work
+may be newer. Always use `git log -1` and `git status -sb` to establish the
+exact state.
 
 ## Original objective
 
@@ -364,18 +366,20 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 152 tests pass.
+- 160 tests pass.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
 - CI runs the external-candidate interchange self-test.
 - Gold-free corpus exports carry a canonical `corpus_sha256`.
-- The external runner has deterministic fixture coverage for valid output,
-  timeout, output overflow, invalid candidates, corpus mutation, digest
-  validation, and overwrite refusal.
-- Claim-bearing runner manifests require recorded adapter/environment identity,
-  the exact local Qwen Q4 model, one inference slot, context and tokenizer ids,
-  retries, and zero model-service cost; incomplete identity is a per-system
+- The external runner has deterministic fixture coverage for sequential
+  per-case execution, retained case failure, Windows Job Object memory
+  enforcement, valid output, timeout, output overflow, invalid candidates,
+  corpus mutation, digest validation, and overwrite refusal.
+- Claim-bearing runner manifests require per-case isolation, an enforced
+  adapter process-tree memory limit, recorded adapter/environment identity, the
+  exact local Qwen Q4 model, one inference slot, context and tokenizer ids,
+  retries, and zero model-service cost; incomplete controls are a per-system
   non-win.
 - CI runs a 24-history fail-closed benchmark certificate.
 
@@ -530,9 +534,10 @@ lower quantile before results are observed.
   producing a per-system invalid aggregate when passed directly. The
   claim-bearing manifest path converts bounded runner failures into retained
   invalid decisions with the manifest hash and reason bound into evidence.
-- The bounded runner is not a filesystem or network sandbox. POSIX supports an
-  address-space limit; Windows claim-bearing use still needs a reviewed
-  cross-platform memory-limiting sandbox.
+- The bounded runner is not a filesystem or network sandbox. POSIX
+  `RLIMIT_AS` and Windows Job Objects bound the adapter process tree, but not a
+  pre-existing inference service; claim-bearing resource accounting still
+  needs to freeze how that external process is measured or contained.
 
 ## Safe host-side compaction transaction
 
@@ -565,8 +570,8 @@ The highest-value next work is the external and natural-history evidence path:
 1. resolve every `TBD` in the versioned draft external protocol without looking
    at comparative results;
 2. freeze the initial comparison set and pinned revisions;
-3. add per-case isolation and cross-platform memory limits to the existing
-   bounded runner;
+3. freeze containment or accounting for a pre-existing inference service
+   outside the now-bounded adapter process tree;
 4. add the first reproducible, no-paid-service external adapter;
 5. define the natural-history privacy, licensing, and annotation protocol;
 6. run a small diagnostic corpus before freezing claim-bearing evidence;

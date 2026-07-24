@@ -171,6 +171,20 @@ external runner verifies it before execution. That detects accidental or
 unanchored export changes; it is still a self-hash, not a signature or proof
 that the evaluator supplied the intended corpus.
 
+The default external runner gives every case a fresh sequential process and
+records its exact command and outcome. POSIX `RLIMIT_AS` and Windows Job Objects
+bound the adapter process tree; Windows processes are assigned while suspended
+and verified in the job before adapter code resumes. These controls limit
+cross-case contamination and resource exhaustion, but they are not a
+filesystem or network sandbox. They also do not contain a model server that was
+already running outside the adapter process tree. Claim protocols must freeze
+separate containment or accounting for that service.
+
+Manifest replay requires the retained corpus at its recorded absolute path and
+checks its canonical digest, file digest, dataset id, and case count. The
+manifest is still only a self-hash: anyone able to replace the corpus,
+candidate, and manifest together can create a new internally consistent bundle.
+
 Most importantly, a local certificate is **not proof against external
 technology**. External claims require preregistered systems, matched resources,
 public downstream tasks, complete result disclosure, and independent

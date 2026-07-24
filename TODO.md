@@ -55,10 +55,11 @@ raw evidence when completing benchmark work.
 - [x] Make superseded selection fail execution verification.
 - [x] Use history-weighted benchmark estimands and per-system majority decisions.
 - [x] Add an API-free, single-slot adapter for the exact local Qwen Q4 model.
-- [x] Add a shell-free bounded external-adapter runner with full candidate
-  validation and self-hashed run manifests.
+- [x] Add a shell-free bounded external-adapter runner with sequential per-case
+  processes, POSIX/Windows process-tree memory limits, full candidate
+  validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Run 152 tests; CI covers Python 3.11, 3.12, and 3.13.
+- [x] Run 160 tests; CI covers Python 3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
 
@@ -291,9 +292,12 @@ Acceptance:
 - [x] Add a shell-free whole-adapter subprocess runner with time, stdout,
   stderr, and candidate limits, overwrite refusal, process-tree termination,
   candidate validation, and a self-hashed manifest.
-- [ ] Add per-case isolation and cross-platform memory enforcement. The current
-  runner supports `RLIMIT_AS` on POSIX and refuses to claim memory enforcement
-  on Windows.
+- [x] Add sequential per-case isolation and cross-platform adapter process-tree
+  memory enforcement. POSIX uses `RLIMIT_AS`; Windows creates the process
+  suspended, assigns and verifies a Job Object with per-process and aggregate
+  memory limits, then resumes it.
+- [ ] Account separately for a pre-existing inference service outside the
+  adapter process tree; the runner's memory boundary does not include one.
 - [x] Keep gold atoms completely outside candidate inputs and bind the exported
   corpus to its own canonical digest.
 - [x] Normalize every candidate through

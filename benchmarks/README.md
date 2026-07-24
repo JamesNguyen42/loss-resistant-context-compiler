@@ -96,10 +96,12 @@ python -m benchmarks.external_runner `
   --corpus lrcbench-corpus.json `
   --candidate-out acon-output.json `
   --manifest-out acon-manifest.json `
+  --isolation per-case `
   --timeout-seconds 300 `
   --max-stdout-bytes 1000000 `
   --max-stderr-bytes 1000000 `
   --max-candidate-bytes 20000000 `
+  --max-memory-mb 32768 `
   --adapter-revision REVISION `
   --environment-id ENVIRONMENT_LOCK_OR_IMAGE_DIGEST `
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m `
@@ -108,24 +110,33 @@ python -m benchmarks.external_runner `
   --inference-concurrency 1 `
   --retry-count 0 `
   --model-service-cost-usd 0 `
-  -- ADAPTER_COMMAND {corpus} {candidate} {system}
+  -- ADAPTER_COMMAND {corpus} {candidate} {system} {case_id}
 ```
 
 Placeholders are replaced as individual arguments without invoking a shell.
-The runner refuses existing output files, monitors time and output sizes,
-rechecks that the corpus file did not change during execution, validates the
-complete candidate interchange, and records hashes, limits, process status,
-platform, command, and validation outcome in a self-hashed manifest. POSIX runs
-may also specify `--max-memory-mb`; the runner refuses to claim memory-limit
-enforcement on Windows. This is a process wrapper, not a filesystem or network
-sandbox, so execute only reviewed adapter code in an appropriately isolated
-environment.
+Per-case mode is the default: it creates a one-case gold-free corpus, starts a
+fresh bounded adapter process for that case, validates the one-case candidate,
+and repeats sequentially before merging the complete output. The manifest
+records every exact invocation and its hashes, limits, process status, platform,
+and validation outcome. `--timeout-seconds` applies to each case; stdout and
+stderr limits apply both per case and to the aggregate.
+
+Keep the original corpus beside the manifest. Manifest loading reopens that
+absolute path, revalidates both the corpus self-digest and exact file digest,
+and requires the recorded case count to match before any candidate is scored.
+
+`--max-memory-mb` uses `RLIMIT_AS` on POSIX and a race-free Windows Job Object
+boundary created before adapter code is resumed. It limits the adapter process
+tree, not an already-running inference service outside that tree. The wrapper
+is not a filesystem or network sandbox, so execute only reviewed adapter code
+in an appropriately isolated environment.
 
 Revision, environment, model, context, tokenizer, inference concurrency,
-retries, and service cost are also recorded. Missing identity fields, a
-different model, concurrency other than one, or nonzero model service cost
-leaves the candidate useful for diagnostics but makes the registered
-certificate comparison invalid.
+retries, and service cost are also recorded. Claim-bearing manifests require
+per-case isolation, an enforced process-tree memory limit, complete identity
+fields, the exact Qwen Q4 model, one inference slot, and zero model-service
+cost. `--isolation whole-corpus` remains useful for diagnostics but is a
+registered certificate non-win.
 
 Evaluation also recomputes active tokens from the final rendered string for
 every bundled or programmatic candidate. A valid character span alone is not
@@ -186,7 +197,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-All 152 tests passed alongside it.
+All 160 tests passed alongside it.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |

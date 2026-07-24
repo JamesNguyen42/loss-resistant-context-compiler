@@ -90,6 +90,10 @@ Freeze timestamp: **TBD**
 
 Protocol file SHA-256 at freeze: **TBD**
 
+Adapter process-tree memory limit (MB): **TBD**
+
+Pre-existing inference-service containment or accounting rule: **TBD**
+
 ## Datasets and tasks
 
 The claim-bearing study must include all of:
@@ -168,10 +172,12 @@ python -m benchmarks.external_runner \
   --corpus lrcbench-corpus.json \
   --candidate-out SYSTEM-candidate.json \
   --manifest-out SYSTEM-manifest.json \
+  --isolation per-case \
   --timeout-seconds 300 \
   --max-stdout-bytes 1000000 \
   --max-stderr-bytes 1000000 \
   --max-candidate-bytes 20000000 \
+  --max-memory-mb MEMORY_LIMIT_MB \
   --adapter-revision REVISION \
   --environment-id ENVIRONMENT_LOCK_OR_IMAGE_DIGEST \
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m \
@@ -180,21 +186,29 @@ python -m benchmarks.external_runner \
   --inference-concurrency 1 \
   --retry-count 0 \
   --model-service-cost-usd 0 \
-  -- ADAPTER_COMMAND {corpus} {candidate} {system}
+  -- ADAPTER_COMMAND {corpus} {candidate} {system} {case_id}
 ```
 
 The runner refuses existing output paths, does not invoke a shell, monitors
 time and output sizes, rejects corpus modification during execution, hashes
 stdout/stderr/candidate evidence, validates the candidate interchange, and
-emits a self-hashed manifest. On POSIX, a
-`--max-memory-mb` limit is also available. Windows claim-bearing runs require a
-separately reviewed memory-limiting sandbox because the standard-library runner
-refuses to claim memory enforcement there.
+emits a self-hashed manifest. Every case runs sequentially in a fresh process
+against a one-case gold-free corpus; a failure is retained without allowing
+partial merged output. POSIX enforces `--max-memory-mb` with `RLIMIT_AS`.
+Windows creates the process suspended, assigns and verifies a Job Object with
+per-process and aggregate limits, and only then resumes adapter code.
 
-Incomplete identity metadata, any model other than the exact Qwen Q4 variant,
-inference concurrency other than one, or nonzero model-service cost makes the
-system a certificate non-win. The candidate may still be retained for
-interchange diagnostics.
+The memory limit covers the adapter process tree, not a pre-existing inference
+service. The final protocol must freeze how such a service is measured or
+contained before a claim-bearing run. The wrapper is also not a filesystem or
+network sandbox. Retain the corpus at the absolute path recorded in each
+manifest; import revalidates its self-digest, file digest, dataset id, and case
+count.
+
+Whole-corpus isolation, no enforced adapter memory limit, incomplete identity
+metadata, any model other than the exact Qwen Q4 variant, inference concurrency
+other than one, or nonzero model-service cost makes the system a certificate
+non-win. The candidate may still be retained for interchange diagnostics.
 
 Score all intended systems in one explicitly registered invocation:
 

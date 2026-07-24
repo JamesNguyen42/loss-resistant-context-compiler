@@ -247,10 +247,12 @@ python -m benchmarks.external_runner \
   --corpus lrcbench-corpus.json \
   --candidate-out SYSTEM-candidate.json \
   --manifest-out SYSTEM-manifest.json \
+  --isolation per-case \
   --timeout-seconds 300 \
   --max-stdout-bytes 1000000 \
   --max-stderr-bytes 1000000 \
   --max-candidate-bytes 20000000 \
+  --max-memory-mb 32768 \
   --adapter-revision REVISION \
   --environment-id ENVIRONMENT_LOCK_OR_IMAGE_DIGEST \
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m \
@@ -259,20 +261,31 @@ python -m benchmarks.external_runner \
   --inference-concurrency 1 \
   --retry-count 0 \
   --model-service-cost-usd 0 \
-  -- ADAPTER_COMMAND {corpus} {candidate} {system}
+  -- ADAPTER_COMMAND {corpus} {candidate} {system} {case_id}
 ```
 
-It never invokes a shell, refuses to overwrite existing outputs, monitors the
-process and output files, refuses a corpus changed during execution, validates
-the resulting candidate, and emits a self-hashed run manifest. POSIX can
-additionally enforce
-`--max-memory-mb`; Windows runs refuse to claim that limit. The wrapper is not
+It never invokes a shell or overwrites an existing output. The default
+`per-case` mode runs cases sequentially in fresh processes, gives each process a
+one-case gold-free corpus, applies per-case time/output limits, validates each
+candidate independently, and merges only complete valid coverage. The
+self-hashed manifest binds the exact invocation and outcome for every case.
+`whole-corpus` mode is retained for diagnostics but is not claim-bearing.
+
+The original corpus is retained as manifest evidence. On import, the loader
+reopens its absolute path, verifies its canonical self-digest and exact file
+digest, and checks the recorded case count before returning the candidate for
+full benchmark-side decoding.
+
+`--max-memory-mb` bounds the adapter process tree with `RLIMIT_AS` on POSIX and
+a Job Object assigned before process resume on Windows. It does not account for
+a pre-existing inference service outside that process tree. The wrapper is not
 a filesystem or network sandbox, so unreviewed adapter code still belongs in a
 separately isolated environment.
 
 The manifest also binds adapter revision, environment id, model identity,
 context length, tokenizer, inference concurrency, retries, and model-service
-cost. Unrecorded identity, a model other than the exact local Qwen Q4 build,
+cost. Missing per-case isolation, no enforced process-tree memory limit,
+unrecorded identity, a model other than the exact local Qwen Q4 build,
 concurrency other than one, or nonzero model service cost is a
 certificate-invalid non-win even when the candidate interchange itself is
 valid.
@@ -296,7 +309,7 @@ evidence requirements below still apply.
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-All 152 tests also passed. The relevant observed metrics were:
+All 160 tests also passed. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
