@@ -336,8 +336,8 @@ valid. In current runner schema `lrcbench-external-run-manifest-0.4`, a
 claim-eligible identity requires an immutable adapter revision, environment id
 `sha256:<dependency-lock-sha256>`, the exact 8192-context Qwen model, evaluator
 tokenizer, one slot, zero retries, and zero service cost. Scoring also matches
-the manifest's isolation and time/output/candidate/memory limits to the frozen
-protocol.
+the manifest's isolation and time/polling/output/candidate/memory limits to the
+frozen protocol.
 
 Run the built-in round-trip and negative checks before preparing an adapter:
 

@@ -140,6 +140,7 @@ def _protocol(
         "runner": {
             "isolation_mode": "per_case",
             "timeout_seconds": 300,
+            "poll_interval_seconds": 0.02,
             "max_stdout_bytes": 1_000_000,
             "max_stderr_bytes": 1_000_000,
             "max_candidate_bytes": 20_000_000,
@@ -184,7 +185,7 @@ def test_committed_draft_is_verified_but_not_claim_ready() -> None:
     verified = load_external_protocol(DEFAULT_EXTERNAL_PROTOCOL)
 
     assert verified.protocol_sha256 == (
-        "5e8039da30665d36d7a6863f8cdaef754b23e0f3ea69d81fcd2198bb0e547e03"
+        "4053d6b46ccb1d65cf40e9de7d105d3c696e707e3dfd3a11758f0c5edd698cc8"
     )
     assert verified.status == "draft"
     assert verified.claim_ready is False
@@ -240,6 +241,7 @@ def test_complete_frozen_protocol_is_claim_ready(tmp_path: Path) -> None:
         "active_token_budget": 900,
         "isolation_mode": "per_case",
         "timeout_seconds": 300.0,
+        "poll_interval_seconds": 0.02,
         "max_stdout_bytes": 1_000_000,
         "max_stderr_bytes": 1_000_000,
         "max_candidate_bytes": 20_000_000,
@@ -340,6 +342,13 @@ def test_frozen_protocol_fails_closed_on_unresolved_controls(
                 active_token_budget=901
             ),
             "active_token_budget",
+        ),
+        (
+            "changed runner polling cadence",
+            lambda value: value["runner"].update(
+                poll_interval_seconds=0.01
+            ),
+            "poll_interval_seconds",
         ),
     )
     for _label, mutate, error in mutations:

@@ -27,7 +27,7 @@ from .json_io import (
 )
 from .lrcbench import TOKENIZER_ID
 
-EXTERNAL_PROTOCOL_SCHEMA = "lrcbench-external-protocol-0.2"
+EXTERNAL_PROTOCOL_SCHEMA = "lrcbench-external-protocol-0.3"
 DEFAULT_EXTERNAL_PROTOCOL = (
     Path(__file__).resolve().parent
     / "protocols"
@@ -126,6 +126,7 @@ _STATISTIC_FIELDS = {
 _RUNNER_FIELDS = {
     "isolation_mode",
     "timeout_seconds",
+    "poll_interval_seconds",
     "max_stdout_bytes",
     "max_stderr_bytes",
     "max_candidate_bytes",
@@ -156,6 +157,7 @@ class ExternalExecutionContract:
     active_token_budget: int
     isolation_mode: str
     timeout_seconds: float
+    poll_interval_seconds: float
     max_stdout_bytes: int
     max_stderr_bytes: int
     max_candidate_bytes: int
@@ -172,6 +174,7 @@ class ExternalExecutionContract:
             "active_token_budget": self.active_token_budget,
             "isolation_mode": self.isolation_mode,
             "timeout_seconds": self.timeout_seconds,
+            "poll_interval_seconds": self.poll_interval_seconds,
             "max_stdout_bytes": self.max_stdout_bytes,
             "max_stderr_bytes": self.max_stderr_bytes,
             "max_candidate_bytes": self.max_candidate_bytes,
@@ -712,6 +715,7 @@ def _validate_runner(value: object, *, frozen: bool) -> None:
     required = {
         "isolation_mode": "per_case",
         "timeout_seconds": 300,
+        "poll_interval_seconds": 0.02,
         "max_stdout_bytes": 1_000_000,
         "max_stderr_bytes": 1_000_000,
         "max_candidate_bytes": 20_000_000,
@@ -910,6 +914,9 @@ def load_external_protocol(
             ),
             isolation_mode=str(payload["runner"]["isolation_mode"]),
             timeout_seconds=float(payload["runner"]["timeout_seconds"]),
+            poll_interval_seconds=float(
+                payload["runner"]["poll_interval_seconds"]
+            ),
             max_stdout_bytes=int(payload["runner"]["max_stdout_bytes"]),
             max_stderr_bytes=int(payload["runner"]["max_stderr_bytes"]),
             max_candidate_bytes=int(

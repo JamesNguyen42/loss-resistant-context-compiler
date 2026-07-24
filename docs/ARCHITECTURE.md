@@ -605,7 +605,8 @@ manifest schema `0.4` requires an immutable adapter revision, canonical
 `sha256:<dependency-lock-sha256>` environment, exact model/context/tokenizer,
 one inference slot, and zero retries/service cost for claim eligibility.
 External scoring additionally compares all of those fields and the retained
-runner limits with the frozen protocol.
+runner limits, including the enforcement polling cadence, with the frozen
+protocol.
 
 Every runtime-error path calls one formatter. The default remains
 `ctxc: <message>` on stderr. `--error-format json` instead emits one compact

@@ -1,5 +1,5 @@
 {
-  "schema": "lrcbench-external-protocol-0.2",
+  "schema": "lrcbench-external-protocol-0.3",
   "protocol_id": "external-comparison-v1",
   "status": "draft",
   "created_at": "2026-07-24T00:00:00+00:00",
@@ -7,7 +7,7 @@
   "freeze_repository_commit": null,
   "protocol_document": {
     "path": "external-comparison-v1.md",
-    "file_sha256": "786381191e2c51167b5c9361e540adec7f112ac45e6011a5870e3c23f856322e"
+    "file_sha256": "d1eb1ad233629374cbc22ae305cfca09005c52687bbcc575608f4a7e9dcda363"
   },
   "comparison_candidates": [
     {
@@ -135,6 +135,7 @@
   "runner": {
     "isolation_mode": "per_case",
     "timeout_seconds": 300,
+    "poll_interval_seconds": 0.02,
     "max_stdout_bytes": 1000000,
     "max_stderr_bytes": 1000000,
     "max_candidate_bytes": 20000000,
@@ -179,5 +180,5 @@
       "description": "Select and pin a materially different public tool-use or research task suite."
     }
   ],
-  "protocol_sha256": "5e8039da30665d36d7a6863f8cdaef754b23e0f3ea69d81fcd2198bb0e547e03"
+  "protocol_sha256": "4053d6b46ccb1d65cf40e9de7d105d3c696e707e3dfd3a11758f0c5edd698cc8"
 }

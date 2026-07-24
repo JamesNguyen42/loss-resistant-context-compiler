@@ -2776,6 +2776,8 @@ def run_benchmark(
                 != expected_identity.isolation_mode
                 or float(limits.timeout_seconds)
                 != expected_identity.timeout_seconds
+                or float(limits.poll_interval_seconds)
+                != expected_identity.poll_interval_seconds
                 or limits.max_stdout_bytes
                 != expected_identity.max_stdout_bytes
                 or limits.max_stderr_bytes

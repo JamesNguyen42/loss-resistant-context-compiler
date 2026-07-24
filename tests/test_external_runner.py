@@ -718,6 +718,35 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             external_protocol_path=mismatched_limits_protocol,
         )
 
+    mismatched_poll_candidate = tmp_path / "mismatched-poll-candidate.json"
+    mismatched_poll_manifest_path = tmp_path / "mismatched-poll-manifest.json"
+    mismatched_poll_manifest = run_external_cases(
+        valid_adapter_command(),
+        system="fixture-adapter",
+        corpus_path=corpus_path,
+        candidate_path=mismatched_poll_candidate,
+        limits=RunnerLimits(
+            timeout_seconds=300,
+            max_memory_mb=256,
+            poll_interval_seconds=0.01,
+        ),
+        identity=claim_identity(),
+    )
+    mismatched_poll_manifest_path.write_text(
+        mismatched_poll_manifest.to_json(),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="run manifest limits do not match the frozen protocol",
+    ):
+        run_benchmark(
+            config,
+            external_manifest_paths=(mismatched_poll_manifest_path,),
+            expected_external_systems=systems,
+            external_protocol_path=protocol_path,
+        )
+
     mismatched_model_candidate = tmp_path / "mismatched-model-candidate.json"
     mismatched_model_manifest_path = tmp_path / "mismatched-model-manifest.json"
     mismatched_model_manifest = run_external_cases(

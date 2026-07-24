@@ -237,8 +237,9 @@ non-win. Claim-eligible runner schema
 revision, the canonical `sha256:` identity of the dependency lock, context
 length 8192, the evaluator tokenizer, one slot, zero retries, and zero service
 cost. The scorer rejects any identity, isolation mode, timeout, output,
-candidate, or memory limit that differs from the frozen protocol. The candidate
-may still be retained for interchange diagnostics.
+candidate, memory, or 20 ms enforcement-polling limit that differs from the
+frozen protocol. The candidate may still be retained for interchange
+diagnostics.
 
 Score all intended systems in one explicitly registered invocation:
 

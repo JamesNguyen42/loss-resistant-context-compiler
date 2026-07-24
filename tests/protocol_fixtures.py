@@ -131,6 +131,7 @@ def write_frozen_external_protocol(
         "runner": {
             "isolation_mode": "per_case",
             "timeout_seconds": 300,
+            "poll_interval_seconds": 0.02,
             "max_stdout_bytes": 1_000_000,
             "max_stderr_bytes": 1_000_000,
             "max_candidate_bytes": 20_000_000,

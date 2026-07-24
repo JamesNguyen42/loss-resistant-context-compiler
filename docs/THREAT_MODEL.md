@@ -227,16 +227,17 @@ self-consistent report can also compute new self-hashes. Trusted publication
 still requires an external signature or independently anchored digest.
 
 External scoring additionally requires a strict frozen
-`lrcbench-external-protocol-0.2` manifest. The manifest self-hash binds its
+`lrcbench-external-protocol-0.3` manifest. The manifest self-hash binds its
 Markdown document digest, comparison decisions and immutable revisions,
 adapter/dependency evidence, exact local-Qwen constraints, dataset manifests,
-statistics, runner policy, and blockers. The benchmark imports the registered
-set from that manifest and refuses a different synthetic dataset digest or
-adapter revision. Current `lrcbench-report-0.2` evidence records the protocol
-and document hashes, dataset digest, and registered set. Report replay checks
-those fields for internal consistency but does not by itself prove that the
-referenced protocol was independently anchored or frozen before results; retain
-and verify the protocol artifact separately.
+statistics, every execution-affecting runner limit, and blockers. The benchmark
+imports the registered set from that manifest and refuses a different synthetic
+dataset digest, adapter/environment identity, model contract, isolation mode,
+or runner limit. Current `lrcbench-report-0.2` evidence records the protocol and
+document hashes, dataset digest, and registered set. Report replay checks those
+fields for internal consistency but does not by itself prove that the referenced
+protocol was independently anchored or frozen before results; retain and verify
+the protocol artifact separately.
 
 Gold-free corpus exports carry versioned producer metadata and a canonical
 `corpus_sha256`; candidates carry versioned adapter/model metadata and

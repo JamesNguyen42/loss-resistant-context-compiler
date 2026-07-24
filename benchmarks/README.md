@@ -278,9 +278,9 @@ cost. Current `lrcbench-external-run-manifest-0.4` claim metadata requires an
 immutable adapter revision, `environment_id` equal to
 `sha256:<dependency-lock-sha256>`, context length 8192, the evaluator tokenizer,
 zero retries, and the exact Qwen/one-slot/zero-service-cost identity. Scoring
-also requires every isolation, timeout, output, candidate, and memory limit to
-match the frozen protocol. `--isolation whole-corpus` remains useful for
-diagnostics but is a registered certificate non-win.
+also requires every isolation, timeout, polling, output, candidate, and memory
+limit to match the frozen protocol. `--isolation whole-corpus` remains useful
+for diagnostics but is a registered certificate non-win.
 
 Evaluation also recomputes active tokens from the final rendered string for
 every bundled or programmatic candidate. A valid character span alone is not
