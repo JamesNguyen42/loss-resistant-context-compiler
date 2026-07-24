@@ -165,3 +165,9 @@ ids, and replays them through `LiteralModelExtractor`; it does not send that
 extractor's prompt to Qwen. The replay measured 63.1579% literal-only
 precision, 60% recall, and two final verification failures. See
 [the post-hoc method and result](QWEN_PHRASE_EVALUATION.md#post-hoc-unique-literal-offset-ablation).
+
+A new disjoint corpus and
+[paired pre-result protocol](QWEN_PAIRED_EVALUATION.md) are frozen for the
+first live coordinate-versus-unique-literal comparison. It will make 128
+sequential calls with alternating order and no retries. No target result is
+recorded yet.

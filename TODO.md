@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 849 tests (844 passing and 5 skipped locally); CI covers Python
+- [x] Collect 862 tests (857 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -457,9 +457,16 @@ than most related technology” within the exact dated evaluation scope.
   [self-hashed report](docs/results/qwen-literal-offset-ablation-v1.json), and
   preserve its 14 literal-only false positives and 2 final verification
   failures as limitations rather than claim-bearing evidence.
-- [ ] Evaluate `LiteralModelExtractor` on a newly frozen corpus and prompt;
-  treat replay against the already observed 64-case Qwen corpus as post-hoc
-  exploration only.
+- [x] Freeze a new self-hashed 64-case corpus disjoint from the first phrase
+  set and a clean-tree paired evaluator before any target-prompt result.
+  Counterbalance coordinate/unique-literal order, require 128 sequential calls,
+  make no retry, retain failures, record one uncontrolled draw per mode, and
+  install the first live report exclusively. See the
+  [pre-result protocol](docs/QWEN_PAIRED_EVALUATION.md).
+- [ ] Execute the frozen paired evaluator with the exact local Qwen Q4 build,
+  publish all coordinate and unique-literal outputs and failures, replay the
+  report offline, and do not tune the corpus, validators, recovery, or scoring
+  after observing results.
 - [ ] Never weaken deterministic recovery merely to improve model-only metrics.
 
 ### Temporal and semantic state
@@ -676,12 +683,11 @@ than most related technology” within the exact dated evaluation scope.
 
 The next chat should start here unless new evidence changes the priority:
 
-1. freeze a new held-out corpus, unique-literal prompt digest, report schema,
-   and analysis plan before observing any live model output;
-2. run the exact local Qwen Q4 model sequentially with one inference slot,
-   capture every prompt/output, and retain weak or failed results unchanged;
-3. replay the report offline and compare coordinate and unique-literal modes
+1. run the frozen held-out paired evaluator with the exact local Qwen Q4 model
+   and one inference slot, capturing all 128 calls without retries;
+2. replay the report offline and compare coordinate and unique-literal modes
    without weakening deterministic recovery or semantic admission;
+3. document and checkpoint all weak, failed, and verification-failing outcomes;
 4. resolve the remaining `TBD` fields in the external-comparison protocol;
 5. define inclusion rules and freeze the initial related-system set;
 6. add the first reproducible no-paid-service external adapter;

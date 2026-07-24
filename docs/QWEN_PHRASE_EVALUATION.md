@@ -261,3 +261,10 @@ verification. The result therefore diagnoses two distinct problems: generated
 offsets were a major failure source, and exact copying alone does not make
 model selection or typing trustworthy. A new held-out corpus and prompt must
 be frozen before any claim-bearing live comparison.
+
+That pre-result step is now complete. The separate
+[held-out paired protocol](QWEN_PAIRED_EVALUATION.md) fixes a disjoint 64-case
+corpus, 128 sequential calls, alternating prompt order, no retries, one
+uncontrolled draw per mode, clean-tree execution, and exact offline replay.
+No target result is recorded at this checkpoint; the old captured-output
+report and post-hoc ablation remain unchanged.

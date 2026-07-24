@@ -107,6 +107,28 @@ the benefit of deterministic coordinate derivation while showing that exact
 copying does not solve semantic selection or kind assignment. See
 [the evidence and claim boundary](../docs/QWEN_PHRASE_EVALUATION.md#post-hoc-unique-literal-offset-ablation).
 
+## Frozen held-out paired extractor protocol
+
+`python -m benchmarks.qwen_paired_eval` is frozen before any target output on
+the new
+[`heldout_literal_phrases_v1.json`](data/heldout_literal_phrases_v1.json)
+corpus. The corpus has 64 cases (40 positives and 24 semantic negatives), is
+self-hashed, and has no ids or source strings in common with the first phrase
+corpus.
+
+Each case receives one coordinate prompt and one unique-literal prompt. Order
+alternates by frozen case index, all 128 calls execute sequentially through the
+one-slot exact local Qwen adapter, and there are no retries. The installed LM
+Studio CLI exposes no seed or temperature flag, so the protocol records one
+uncontrolled draw per case and mode and treats sampling noise as a limitation.
+The live path requires a clean revision and an exclusive new report
+destination.
+
+No target result exists at this checkpoint. The exact corpus hash, report
+schema, metrics, replay rules, command, resource identity, and claim boundary
+are in the
+[pre-result paired protocol](../docs/QWEN_PAIRED_EVALUATION.md).
+
 ## External baselines
 
 The bundled baselines are deterministic controls, not claims about the current
@@ -324,7 +346,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 849 tests alongside it: 844 passed and 5
+The suite collected 862 tests alongside it: 857 passed and 5
 platform/optional checks were skipped.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |

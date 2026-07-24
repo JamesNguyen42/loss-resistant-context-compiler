@@ -188,3 +188,9 @@ that unique, exact source literals can be converted into hashed
 Python-character spans without trusting model arithmetic. It does not support
 provider generalization, production readiness, downstream task improvement,
 or a comparison with another memory system.
+
+A disjoint corpus and paired coordinate-versus-literal live procedure are now
+frozen in the
+[held-out paired Qwen protocol](QWEN_PAIRED_EVALUATION.md). No target result
+has been observed at this checkpoint, so it does not yet change the evidence
+claims above.

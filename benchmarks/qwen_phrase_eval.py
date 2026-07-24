@@ -323,16 +323,30 @@ def _model_extractor(
 
 
 def _model_prompt_sha256(source: SourceRecord) -> str:
+    return _extractor_prompt_sha256(
+        source,
+        extractor_factory=_model_extractor,
+    )
+
+
+def _extractor_prompt_sha256(
+    source: SourceRecord,
+    *,
+    extractor_factory: Callable[
+        [Callable[[str], str]],
+        ModelExtractor,
+    ],
+) -> str:
     observed: list[str] = []
 
     def capture_prompt(prompt: str) -> str:
         observed.append(prompt)
         return '{"items":[]}'
 
-    _model_extractor(capture_prompt).extract([source])
+    extractor_factory(capture_prompt).extract([source])
     if len(observed) != 1:
         raise QwenPhraseEvaluationError(
-            "ModelExtractor did not produce exactly one prompt"
+            "extractor did not produce exactly one prompt"
         )
     return hashlib.sha256(observed[0].encode("utf-8")).hexdigest()
 
@@ -340,10 +354,15 @@ def _model_prompt_sha256(source: SourceRecord) -> str:
 def _capture_live_case(
     case: PhraseCase,
     complete: Callable[[str], str],
+    *,
+    extractor_factory: Callable[
+        [Callable[[str], str]],
+        ModelExtractor,
+    ] = _model_extractor,
 ) -> CompletionCapture:
     timed = _TimedCompletion(case.id, complete)
     ContextCompiler(
-        extractor=_model_extractor(timed),
+        extractor=extractor_factory(timed),
         policy=_POLICY,
     ).compile([_source_for_case(case)])
     if timed.capture is None:
@@ -356,9 +375,14 @@ def _capture_live_case(
 def _primary_extraction(
     source: SourceRecord,
     capture: CompletionCapture,
+    *,
+    extractor_factory: Callable[
+        [Callable[[str], str]],
+        ModelExtractor,
+    ] = _model_extractor,
 ) -> tuple[ExtractionResult, str | None]:
     try:
-        result = _model_extractor(
+        result = extractor_factory(
             _ReplayCompletion(capture)
         ).extract([source])
     except Exception as exc:
@@ -381,6 +405,11 @@ def _case_score(
 def _analysis_for_capture(
     case: PhraseCase,
     capture: CompletionCapture,
+    *,
+    extractor_factory: Callable[
+        [Callable[[str], str]],
+        ModelExtractor,
+    ] = _model_extractor,
 ) -> tuple[
     dict[str, Any],
     Counter[_AtomKey],
@@ -388,12 +417,19 @@ def _analysis_for_capture(
     Counter[_AtomKey],
 ]:
     source = _source_for_case(case)
-    if _model_prompt_sha256(source) != capture.prompt_sha256:
+    if _extractor_prompt_sha256(
+        source,
+        extractor_factory=extractor_factory,
+    ) != capture.prompt_sha256:
         raise QwenPhraseEvaluationError(
             f"captured prompt mismatch for case {case.id!r}"
         )
     expected = _expected_counter(case, source_id=source.id)
-    primary, primary_error_type = _primary_extraction(source, capture)
+    primary, primary_error_type = _primary_extraction(
+        source,
+        capture,
+        extractor_factory=extractor_factory,
+    )
     primary_predicted = _counter_for_items(primary.items)
     primary_matched, primary_fp, primary_fn = _case_score(
         expected,
@@ -401,7 +437,7 @@ def _analysis_for_capture(
     )
 
     memory = ContextCompiler(
-        extractor=_model_extractor(_ReplayCompletion(capture)),
+        extractor=extractor_factory(_ReplayCompletion(capture)),
         policy=_POLICY,
     ).compile([source])
     final_predicted = _predicted_counter(memory)
@@ -633,6 +669,11 @@ def _latency_metrics(
 def _evaluate_captures(
     corpus: PhraseCorpus,
     captures: Sequence[CompletionCapture],
+    *,
+    extractor_factory: Callable[
+        [Callable[[str], str]],
+        ModelExtractor,
+    ] = _model_extractor,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if len(captures) != len(corpus.cases):
         raise QwenPhraseEvaluationError(
@@ -650,6 +691,7 @@ def _evaluate_captures(
         report, expected, primary, final = _analysis_for_capture(
             case,
             capture,
+            extractor_factory=extractor_factory,
         )
         case_reports.append(report)
         total_expected.update(expected)

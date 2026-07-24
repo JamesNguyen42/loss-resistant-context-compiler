@@ -261,6 +261,13 @@ Regeneration proves consistency with the checked-in captures and current
 validator code, not that the captures came from Qwen or that post-hoc metrics
 generalize.
 
+The held-out paired evaluator additionally requires the frozen corpus hash, a
+clean repository, alternating sequential call order, no retries, and exclusive
+creation of the first report. These controls reduce result-selection and
+overwrite risk but do not provide execution attestation. The local CLI exposes
+no seed or temperature setting, so one captured draw per mode remains subject
+to sampling noise.
+
 Manifest replay requires the retained corpus at its recorded absolute path and
 checks its canonical digest, file digest, dataset id, and case count. The
 manifest is still only a self-hash: anyone able to replace the corpus,

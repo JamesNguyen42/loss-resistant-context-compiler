@@ -10,7 +10,9 @@ before changing preprocessing or privacy claims. Read the
 [exact local-Qwen phrase protocol](QWEN_PHRASE_EVALUATION.md) before running or
 changing the captured-output evaluation. Read
 [unique-literal model extraction](LITERAL_MODEL_EXTRACTION.md) before changing
-the model response or provenance-derivation contract.
+the model response or provenance-derivation contract. Read the
+[held-out paired Qwen protocol](QWEN_PAIRED_EVALUATION.md) before running,
+changing, or interpreting the next live comparison.
 
 ## Snapshot
 
@@ -21,7 +23,7 @@ the model response or provenance-derivation contract.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 849 collected: 844 passing, 5 skipped |
+| Tests at this snapshot | 862 collected: 857 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -30,6 +32,7 @@ the model response or provenance-derivation contract.
 | Exact local Qwen phrase evaluation | 64 calls: 5% model-only recall, 96.9231% candidate rejection, 87.5% final recall |
 | Unique-literal model extraction | Opt-in; derives only unique exact spans and keeps the coordinate contract unchanged |
 | Post-hoc Qwen offset ablation | 0 calls: 63.1579% literal-only precision, 60% recall, 2 final verification failures; not claim-bearing |
+| Held-out paired Qwen protocol | Frozen disjoint 64-case corpus; 128 sequential calls planned; target result pending |
 | Common content-secret preprocessing | Opt-in, fixed-detector, offset-preserving, replayable |
 | External systems evaluated | None |
 | External 50%-better claim | Not established |
@@ -276,6 +279,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `benchmarks/performance_gate.py` | Fixed-digest CI compile latency/growth/traced-memory regression gate |
 | `benchmarks/qwen_phrase_eval.py` | Sequential exact-Qwen prompt/output capture, model-only/recovery scoring, and offline replay |
 | `benchmarks/qwen_literal_ablation.py` | Model-free frozen-output offset ablation, literal replay, self-hashed report, and strict regeneration |
+| `benchmarks/qwen_paired_eval.py` | Clean-tree paired coordinate/literal capture, alternating order, comparison metrics, and offline replay |
 | `benchmarks/protocols/` | Versioned external comparison protocol; v1 is still a non-claim-bearing draft |
 | `schemas/` | Source, coordinate/unique-literal model extraction, compiled artifact, and redaction-report contracts |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
@@ -468,7 +472,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 849 tests are collected: 844 pass and 5 platform/optional checks are skipped.
+- 862 tests are collected: 857 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all five schemas are included.
@@ -520,6 +524,13 @@ audited. Any selected superseded item independently fails verification as
   verification. The self-hashed report explicitly says the target prompt was
   not evaluated and the analysis is not claim-bearing; see
   `docs/results/qwen-literal-offset-ablation-v1.json`.
+- A second, disjoint 64-case corpus and paired evaluator are frozen before any
+  target result. The planned run makes 128 sequential calls, alternates prompt
+  order by case parity, records one draw per mode with no retry, requires a
+  clean repository, and exclusively creates its report. Perfect-oracle,
+  all-timeout, output/prompt/metric/protocol tamper, non-finite delta, and
+  replay tests pass. No coordinate-versus-literal result should be quoted
+  until the clean live report exists; see `docs/QWEN_PAIRED_EVALUATION.md`.
 - Public `DomainLabelExtractor`, `CompositeExtractor`, `Extractor`, and
   `ExtractionResult` APIs provide bounded exact-label domain packs and strict
   composition without changing the global regex vocabulary. Configuration is
@@ -807,6 +818,10 @@ lower quantile before results are observed.
   to 60% but reduced precision to 63.1579%, admitted 14 false positives, and
   left 2 final verification failures. It did not evaluate the new prompt and
   cannot substitute for a newly frozen live evaluation.
+- The newly frozen paired corpus is still locally authored, English-only, and
+  isolated to one message per case. The local CLI exposes no sampling seed or
+  temperature, so alternating prompt order cannot eliminate one-draw sampling
+  noise. No target result has been observed at this checkpoint.
 - Local controls are simple and are not state-of-the-art substitutes.
 - Atom recall is a proxy for agent success, not task completion.
 - Bootstrap intervals do not cover benchmark design bias.
@@ -852,14 +867,15 @@ currently implement this transaction manager.
 ## Exact next step
 
 The known in-process safety paths and internal benchmark estimands are closed.
-The highest-value next work is the external and natural-history evidence path:
+The highest-value next work is the frozen model diagnostic followed by the
+external and natural-history evidence path:
 
-1. freeze a new held-out corpus, unique-literal prompt digest, report schema,
-   and analysis plan before observing any live target-prompt output;
-2. run the exact local Qwen Q4 build sequentially with one inference slot,
-   retain every output, and publish weak or failed results unchanged;
-3. replay the new report offline and compare coordinate and unique-literal
+1. run the now-frozen paired evaluator with the exact local Qwen Q4 build and
+   one inference slot, retaining all 128 calls without retries;
+2. replay the new report offline and compare coordinate and unique-literal
    modes without weakening deterministic recovery or semantic admission;
+3. document and checkpoint every weak, failed, and verification-failing
+   outcome before any follow-up design change;
 4. resolve every `TBD` in the versioned draft external protocol without looking
    at comparative results;
 5. freeze the initial comparison set and pinned revisions;

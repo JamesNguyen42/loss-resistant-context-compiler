@@ -27,13 +27,14 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 849 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 862 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Novel English diagnostic | 64 local cases; 85.37% precision and 87.5% recall |
 | Exact local Qwen phrase evaluation | 64 calls; 5% model-only recall, 96.92% candidate rejection, 87.5% final recall |
 | Post-hoc Qwen offset ablation | 0 calls; 63.16% literal-only precision, 60% recall, and 2 final verification failures; non-claim-bearing |
+| Held-out paired Qwen protocol | Frozen 64-case disjoint corpus; 128 sequential calls planned; no target result observed yet |
 | Named external comparisons | Not run |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
@@ -179,12 +180,16 @@ The repository currently includes:
   model offsets, retains candidate text and cited source ids, replays the
   result through `LiteralModelExtractor`, and labels the target prompt as
   unevaluated;
+- a pre-result paired evaluator and disjoint self-hashed 64-case corpus that
+  counterbalance coordinate/unique-literal prompt order, require a clean
+  revision, retain failures without retry, and reserve an exclusive report
+  destination;
 - public, bounded domain-label and strict extractor-composition hooks that do
   not accept caller-supplied regexes or replace built-in recovery;
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 849 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 862 regression tests.
 
 ## In development
 
@@ -843,7 +848,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 849 tests are collected (844 pass and 5
+Current local snapshot (2026-07-24): 862 tests are collected (857 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
@@ -890,6 +895,14 @@ for `LiteralModelExtractor`. See the
 [method boundary](docs/QWEN_PHRASE_EVALUATION.md#post-hoc-unique-literal-offset-ablation)
 and [self-hashed replay](docs/results/qwen-literal-offset-ablation-v1.json).
 
+A separate pre-result protocol now freezes a disjoint 64-case corpus for a
+paired comparison of coordinate and unique-literal prompts. It requires 128
+strictly sequential calls, counterbalances prompt order by case parity, uses
+one captured draw per mode without retries, and refuses dirty-tree or
+overwrite-prone live runs. No target output or result is recorded at this
+checkpoint. See the
+[held-out paired protocol](docs/QWEN_PAIRED_EVALUATION.md).
+
 These local generated results are **not an external-system comparison** and do
 not establish the requested 50% advantage over most related technology. Rerun
 the commands above for the current revision and environment.
@@ -904,6 +917,7 @@ the commands above for the current revision and environment.
 - [Novel English phrase diagnostic](docs/PHRASE_EVALUATION.md)
 - [Exact local Qwen phrase-evaluation protocol](docs/QWEN_PHRASE_EVALUATION.md)
 - [Post-hoc Qwen literal-offset ablation evidence](docs/results/qwen-literal-offset-ablation-v1.json)
+- [Held-out paired Qwen extractor-evaluation protocol](docs/QWEN_PAIRED_EVALUATION.md)
 - [Unique-literal model extraction](docs/LITERAL_MODEL_EXTRACTION.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Compiled-artifact schema compatibility](docs/SCHEMA_COMPATIBILITY.md)
