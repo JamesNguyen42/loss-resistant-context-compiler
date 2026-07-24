@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import math
-from collections.abc import Callable, Iterable
+import os
+import stat
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -54,6 +58,7 @@ _ARTIFACT_FIELDS = frozenset(
         "artifact_sha256",
     }
 )
+_PATH_OPEN_ATTEMPTS = 3
 _ITEM_FIELDS = frozenset(
     {
         "id",
@@ -909,6 +914,123 @@ def _read_limited_text(
     return raw
 
 
+def _file_identity(value: os.stat_result) -> tuple[int, int]:
+    return value.st_dev, value.st_ino
+
+
+def _file_content_snapshot(
+    value: os.stat_result,
+) -> tuple[int, int, int, int]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_size,
+        value.st_mtime_ns,
+    )
+
+
+@contextmanager
+def _open_stable_text_path(
+    path: str | Path,
+    *,
+    max_input_bytes: int,
+    label: str,
+    limit_error: type[ValueError],
+    require_single_link: bool = False,
+) -> Iterator[TextIO]:
+    input_path = Path(path)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOINHERIT", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    for attempt in range(_PATH_OPEN_ATTEMPTS):
+        candidate_stat = input_path.lstat()
+        if not stat.S_ISREG(candidate_stat.st_mode):
+            raise ValueError(f"{label} path must be a regular file: {input_path}")
+        if require_single_link and candidate_stat.st_nlink != 1:
+            raise ValueError(f"{label} path must not have hard links: {input_path}")
+        try:
+            descriptor = os.open(input_path, flags)
+        except FileNotFoundError:
+            if attempt + 1 < _PATH_OPEN_ATTEMPTS:
+                continue
+            raise
+        except OSError as exc:
+            if exc.errno == errno.ELOOP:
+                raise ValueError(
+                    f"{label} path could not be opened without following links: "
+                    f"{input_path}"
+                ) from exc
+            raise
+        try:
+            opened_stat = os.fstat(descriptor)
+            if not stat.S_ISREG(opened_stat.st_mode):
+                raise ValueError(
+                    f"{label} path must be a regular file: {input_path}"
+                )
+            if require_single_link and opened_stat.st_nlink != 1:
+                raise ValueError(
+                    f"{label} path must not have hard links: {input_path}"
+                )
+            if _file_identity(candidate_stat) != _file_identity(opened_stat):
+                if attempt + 1 < _PATH_OPEN_ATTEMPTS:
+                    continue
+                raise ValueError(f"{label} path changed while opening: {input_path}")
+            if opened_stat.st_size > max_input_bytes:
+                raise limit_error(f"{label} exceeds {max_input_bytes} bytes")
+            os.set_inheritable(descriptor, False)
+            stream = os.fdopen(
+                descriptor,
+                "r",
+                encoding="utf-8",
+                newline="",
+            )
+            descriptor = -1
+            with stream:
+                yield stream
+                final_stat = os.fstat(stream.fileno())
+                if _file_content_snapshot(opened_stat) != _file_content_snapshot(
+                    final_stat
+                ):
+                    raise ValueError(
+                        f"{label} changed while it was being read: {input_path}"
+                    )
+            return
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+    raise ValueError(f"{label} path changed while opening: {input_path}")
+
+
+def _read_limited_path_text(
+    path: str | Path,
+    *,
+    max_input_bytes: int,
+    max_line_chars: int,
+    label: str,
+    limit_error: type[ValueError],
+    require_single_link: bool = False,
+) -> str:
+    with _open_stable_text_path(
+        path,
+        max_input_bytes=max_input_bytes,
+        label=label,
+        limit_error=limit_error,
+        require_single_link=require_single_link,
+    ) as stream:
+        return _read_limited_text(
+            stream,
+            max_input_bytes=max_input_bytes,
+            max_line_chars=max_line_chars,
+            label=label,
+            limit_error=limit_error,
+        )
+
+
 def _json_line_records(raw: str, limits: SourceLimits) -> list[Any]:
     records: list[Any] = []
     for line_number, line in enumerate(raw.splitlines(), start=1):
@@ -1012,11 +1134,12 @@ def load_sources_path(
 ) -> list[SourceRecord]:
     resolved_limits = resolve_source_limits(limits)
     source_path = Path(path)
-    if source_path.stat().st_size > resolved_limits.max_input_bytes:
-        raise SourceLimitError(
-            f"source input exceeds {resolved_limits.max_input_bytes} bytes"
-        )
-    with source_path.open("r", encoding="utf-8", newline="") as stream:
+    with _open_stable_text_path(
+        source_path,
+        max_input_bytes=resolved_limits.max_input_bytes,
+        label="source input",
+        limit_error=SourceLimitError,
+    ) as stream:
         return load_sources(
             stream,
             json_lines=source_path.suffix.casefold() == ".jsonl",
@@ -1058,11 +1181,12 @@ def load_artifact_path(
 ) -> Any:
     resolved_limits = resolve_artifact_limits(limits)
     artifact_path = Path(path)
-    if artifact_path.stat().st_size > resolved_limits.max_input_bytes:
-        raise ArtifactLimitError(
-            f"compiled artifact input exceeds {resolved_limits.max_input_bytes} bytes"
-        )
-    with artifact_path.open("r", encoding="utf-8", newline="") as stream:
+    with _open_stable_text_path(
+        artifact_path,
+        max_input_bytes=resolved_limits.max_input_bytes,
+        label="compiled artifact input",
+        limit_error=ArtifactLimitError,
+    ) as stream:
         return load_artifact(stream, limits=resolved_limits)
 
 

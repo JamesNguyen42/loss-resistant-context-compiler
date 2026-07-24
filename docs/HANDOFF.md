@@ -27,7 +27,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 899 collected: 893 passing, 6 skipped |
+| Tests at this snapshot | 904 collected: 897 passing, 7 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -489,7 +489,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 899 tests are collected: 893 pass and 6 platform/optional checks are skipped.
+- 904 tests are collected: 897 pass and 7 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all seven schemas are included.
@@ -579,6 +579,11 @@ audited. Any selected superseded item independently fails verification as
   canonical-size limits. Adversarial tests cover UTF-8 boundaries, oversized
   paths and lines, deep/ambiguous/non-finite JSON, high-count generators, huge
   tool schemas, binary-looking output, and atomic archive refusal.
+- Serialized source/artifact path loaders additionally require a stable
+  regular file, reject symlinks/directories/FIFOs, compare pre-open/open and
+  post-read identity/content metadata, request nonblocking/no-follow opens,
+  retry bounded atomic replacement races, and reject gzip bytes without
+  invoking a decompressor.
 - Artifact loaders, direct replay, `ctxc verify`, and `ctxc inspect` share
   strict raw/canonical byte, line, depth, item/selection, provenance, and issue
   limits. Tests cover BOM/multibyte boundaries, duplicate keys, non-finite

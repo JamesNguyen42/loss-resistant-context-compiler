@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import context_compiler.archive as archive_module
+import context_compiler.io as io_module
 from context_compiler import SourceArchive, SourceRecord
 
 
@@ -59,7 +59,7 @@ def test_archive_retries_an_atomic_replacement_during_open(
     record = source()
     assert archive.append([record]) == 1
     committed = archive.events_path.read_bytes()
-    real_open = archive_module.os.open
+    real_open = io_module.os.open
     replacements = 0
 
     def replace_before_first_open(path: object, flags: int, *args: object) -> int:
@@ -71,7 +71,7 @@ def test_archive_retries_an_atomic_replacement_during_open(
             replacements += 1
         return real_open(path, flags, *args)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(archive_module.os, "open", replace_before_first_open)
+    monkeypatch.setattr(io_module.os, "open", replace_before_first_open)
 
     assert archive.load() == [record]
     assert replacements == 1

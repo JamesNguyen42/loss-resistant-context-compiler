@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 899 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 904 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -191,7 +191,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 899 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 904 regression tests.
 
 ## In development
 
@@ -520,6 +520,14 @@ The same six limits are available through `SourceLimits` for the Python API.
 They are hard ingestion boundaries, not a promise that total process memory
 equals the byte caps; Python objects, compiler state, and caller-controlled
 extractors have additional overhead.
+
+Serialized source and compiled-artifact paths must resolve directly to stable
+regular files. Path loaders reject symlinks and special files, use no-follow
+and nonblocking-open flags where available, compare pre-open/open identity,
+retry a bounded atomic replacement race, and check content metadata again
+after the bounded read.
+Gzip bytes are rejected as invalid UTF-8 and are never decompressed. Direct
+text streams remain the caller's trust boundary.
 
 `ctxc verify`, `ctxc inspect`, and `ctxc diff` also decode compiled artifacts
 strictly and bound each input independently:
@@ -931,7 +939,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 899 tests are collected (893 pass and 6
+Current local snapshot (2026-07-24): 904 tests are collected (897 pass and 7
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

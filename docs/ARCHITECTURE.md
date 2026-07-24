@@ -79,12 +79,16 @@ characters, histories at 100,000 records, individual canonical records at
 4 MiB, total canonical records at 64 MiB, and JSON container depth at 128.
 Every field must be a positive non-boolean integer.
 
-Path input is size-checked before opening and then read in bounded chunks so a
-file-growth race is checked again. Text-stream UTF-8 size and physical line
-length are checked before JSON decoding. A quote-aware nesting scan rejects
-excessive container depth before the decoder recurses. Source JSON also rejects
-duplicate object keys, non-standard NaN/infinity constants, and overflowed
-non-finite floats.
+Serialized source and compiled-artifact path loaders share a stable
+regular-file boundary: lstat rejection of links/special files, OS no-follow
+and nonblocking-open flags where available, pre-open/open identity comparison,
+bounded retry when atomic replacement wins the inspection race, and post-read
+size/mtime comparison. They do not decompress input. Direct text streams
+remain the caller's trust boundary. UTF-8 size and physical line length are
+checked before JSON decoding. A quote-aware nesting scan rejects excessive
+container depth before the decoder recurses. Source JSON also rejects duplicate
+object keys, non-standard NaN/infinity constants, and overflowed non-finite
+floats.
 
 Direct Python iterables are stopped after the first record beyond the count
 limit. A non-allocating compact-JSON size walk bounds every supplied dictionary
