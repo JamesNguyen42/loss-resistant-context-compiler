@@ -20,6 +20,177 @@ This is an alpha research implementation. “Loss-resistant” means that explic
 invariants are checked and failures are surfaced; it does not mean arbitrary
 meaning can be compressed without loss.
 
+## Project status
+
+| Area | Current state |
+| --- | --- |
+| Release | Alpha research implementation, package version `0.1.0` |
+| Runtime | Python 3.11+, standard-library-only core |
+| Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
+| Regression suite | 102 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
+| Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
+| Named external comparisons | Not run |
+| Downstream agent task completion | Not measured |
+| “50% better than most related technology” | **Not established** |
+| Production readiness | Not production-ready |
+| Confirmed fail-closed blockers | Four P0 paths documented below |
+
+The local benchmark result is meaningful evidence that the current design can
+beat simple truncation and extraction policies on its own adversarial corpus.
+It is not evidence that the same result generalizes to natural histories,
+different languages, external context systems, or real agent task completion.
+
+## Mission
+
+Long-running agents accumulate terminal output, repeated files, superseded
+plans, installation logs, duplicate search results, tool schemas, abandoned
+approaches, and stale reasoning. Keeping all of it active wastes tokens and can
+distract the model. Replacing it with an ordinary prose summary creates a
+different risk: goals, prohibitions, corrections, exact failures, and open
+questions can disappear or change meaning.
+
+This project treats context reduction as compilation rather than
+summarization:
+
+1. parse source events into typed claims;
+2. attach every claim to exact source spans;
+3. resolve corrections, revocations, conflicts, and closed questions;
+4. select the most useful active state within a token budget;
+5. independently verify protected coverage and provenance;
+6. retain the full audit ledger and optional cold source archive.
+
+The intended result is a compact working-memory prompt for the next model call
+plus a larger machine-verifiable artifact for audit and replay.
+
+## Target and definition of success
+
+The product target has six parts. All six are required before the original
+goal should be considered complete.
+
+| Target | Required evidence |
+| --- | --- |
+| 5–10x less active context | At least 5x source-to-active compression on synthetic and held-out natural histories |
+| No lost explicit commitments | 100% recall for goals, constraints, user corrections, unresolved questions, exact errors, and exact references |
+| Exact provenance | 100% valid source ids, character offsets, quotes, and hashes for retained claims |
+| Safer temporal state | No stale superseded claims, authority violations, unsupported claims, or unresolved-to-fact promotions |
+| Better agent outcomes | Higher completion on at least two public long-horizon task suites under matched models, tools, budgets, and retries |
+| At least 50% better than most related systems | A preregistered, paired comparison must clear the statistical bar for a strict majority of the dated comparison set |
+
+For a component-level memory claim, “50% better” can mean at least 50% less
+critical semantic loss or at least 50% more memory quality per active token,
+with a positive preregistered paired bootstrap lower bound. For the original
+product claim, memory proxies are not enough: the compiler must also deliver at
+least 50% task-failure reduction or 1.5x successful completions per total token
+or cost against a strict majority of the dated comparison set. The exact
+estimand and percentile must be frozen before external runs. The complete claim
+protocol is in [Benchmarking](docs/BENCHMARKING.md).
+
+The 100% retention target means zero observed protected misses on the frozen
+synthetic and natural cohorts, with a confidence bound reported separately. It
+is not a universal proof that unseen phrasing can never be missed. The current
+LRCBench certificate thresholds of 98% critical and 99% exact recall are useful
+alpha gates but are not sufficient for the final no-loss release target.
+
+The target is deliberately harder than obtaining a high summary-similarity
+score. A compact output fails if it drops one protected requirement, promotes
+one open question to a fact, accepts one tool-output instruction as an
+authoritative goal, or cannot trace a claim back to the source.
+
+## What exists today
+
+The repository currently includes:
+
+- a typed memory model for goals, constraints, corrections, facts, decisions,
+  unresolved questions, exact errors and references, discarded attempts,
+  progress, and background context;
+- immutable source records with content and canonical-record SHA-256 digests;
+- exact character-offset provenance with quote hashes;
+- a deterministic rule extractor and an optional provider-neutral
+  `ModelExtractor`;
+- an independent deterministic recovery pass for rule-recognized content;
+- conservative correction, revocation, conflict, and unresolved-state
+  resolution;
+- budget-aware selection that never silently drops protected items;
+- verification and independent artifact replay, subject to the confirmed P0
+  gaps below;
+- a portable JSON artifact, compact prompt renderer, and three JSON Schemas;
+- an append-only local source archive with integrity checks and locking;
+- the `ctxc compile`, `verify`, `inspect`, and `archive` commands;
+- LRCBench, external-candidate import/export, paired bootstrap gates, and
+  auditable JSON reports;
+- cross-version CI, linting, wheel/schema checks, and 102 regression tests.
+
+## In development
+
+The next phase is mainly evidence, generalization, and integration rather than
+adding more claims to the README:
+
+- seal verified memory against post-verification mutation;
+- make the built-in protected-item certification pass non-replaceable;
+- fall back to deterministic extraction with an explicit warning when a model
+  provider fails;
+- prevent superseded state from entering a prompt labeled verified, or isolate
+  it in an explicitly non-executable audit view;
+- run matched external systems through the existing candidate interchange;
+- add held-out natural coding-agent histories with independent annotations;
+- measure end-to-end task completion on public long-horizon suites;
+- test the optional model extractor across providers and novel phrasing;
+- add exact provider tokenizers and framework adapters;
+- support efficient incremental compilation for live agent loops;
+- harden resource limits, secrets handling, storage authenticity, and
+  observability;
+- obtain independent reproduction before making a state-of-the-art claim.
+
+The ordered engineering backlog is in [TODO.md](TODO.md). The current design
+state, base revision, non-negotiable decisions, code map, and restart procedure
+for a new chat are in [docs/HANDOFF.md](docs/HANDOFF.md).
+
+### Confirmed P0 safety gaps
+
+Four in-process paths are known to violate the intended fail-closed contract
+and must be fixed before a production release:
+
+1. `CompiledMemory` and `MemoryItem` are mutable after verification. Changing
+   an item can change `to_prompt()` output while the old report still says
+   `passed: true`.
+2. A caller can replace both the primary and `safety_extractor` with empty
+   extractors. The current verifier then derives an empty protected obligation
+   and can certify an empty prompt even when the source contains a constraint.
+3. A primary model extractor exception occurs before the deterministic safety
+   pass. A provider timeout therefore propagates instead of producing verified
+   deterministic fallback memory with a degradation warning.
+4. `include_superseded=True` can select obsolete state into a prompt while both
+   compile-time and independent artifact verification still pass.
+
+The benchmark also has two claim-level blockers: it issues one certificate
+against a single strongest baseline rather than computing strict-majority
+per-system wins, and its aggregate and bootstrap efficiency/loss calculations
+need one preregistered, consistent estimand before external publication.
+
+These defects are recorded as the first items in [TODO.md](TODO.md), including
+their reproduction cases. They do not invalidate the recorded deterministic
+local run, but they prevent a general safety or external-superiority claim.
+
+## Intended use
+
+This project is aimed at long-running coding, research, operations, and tool
+agents where a small amount of durable state must survive a much larger noisy
+history. It is especially useful when histories contain:
+
+- requirements changed halfway through a task;
+- a correction buried thousands of tokens after the original instruction;
+- two files or functions with the same name;
+- an exact error code, test count, path, line range, or node id;
+- untrusted tool output that resembles an instruction;
+- unresolved questions that must remain questions;
+- hard context limits where protected overflow must be explicit.
+
+It is not a general semantic theorem prover, a secure identity system, a
+tamper-proof database, a secrets scanner, or proof that arbitrary meaning can
+be compressed without loss. Those boundaries are detailed in the
+[threat model](docs/THREAT_MODEL.md).
+
 ## Why typed memory
 
 Ordinary summaries blur important distinctions: a question can become a fact,
@@ -45,18 +216,19 @@ and SHA-256 digest.
 
 ## Current guarantees
 
-For inputs the extractors recognize, the current implementation enforces these
-structural properties:
+At compilation time, for inputs the extractors recognize and compiled objects
+that have not subsequently been mutated, the current implementation enforces
+these structural properties:
 
 - every memory item has source provenance;
 - goals, constraints, user corrections, unresolved questions, exact errors,
   and exact references are protected from budget-driven removal;
-- a full deterministic rule pass can recover every rule-recognized item missed
-  by a primary extractor, while the independent coverage certificate is scoped
-  to protected kinds;
-- independent commitments in labeled sections, bullets, sentences,
+- under the default configuration, a full deterministic rule pass can recover
+  every rule-recognized item missed by a primary extractor, while the
+  independent coverage certificate is scoped to protected kinds;
+- independent constraint commitments in labeled sections, bullets, sentences,
   conjunctions, and semicolon-separated clauses are atomized before temporal
-  resolution, so correcting one does not retire its neighbors;
+  resolution, so correcting one does not retire its neighboring constraints;
 - model-produced ordinary claims must equal a complete atomic source span;
   model paraphrases and truncated clauses are rejected;
 - exact items must equal every cited source literal;
@@ -99,7 +271,7 @@ python -m pip install -e ".[dev]"
 
 ## CLI quick start
 
-Compile the included JSONL history to a compact prompt:
+Compile the included small JSONL history to a typed prompt:
 
 ```console
 ctxc compile examples/auth_timeout.jsonl --format prompt
@@ -134,8 +306,10 @@ report, reruns the invariant verifier, and compares the embedded verification
 report with that replay. A self-hash is an integrity check, not a signature;
 an attacker who can rewrite both an artifact and its expected trust anchors is
 outside this guarantee.
-`--active-only` intentionally omits cold and superseded ledger entries for
-compact transport. Its artifact is marked `ledger_complete: false`;
+`--active-only` intentionally omits unselected ledger entries for compact
+transport. It emits only selected items; selected superseded items remain
+possible when the diagnostic `--include-superseded` option is also set. Its
+artifact is marked `ledger_complete: false`;
 independent `ctxc verify` rejects it with `incomplete_ledger` because omitted
 protected coverage cannot receive a full certificate.
 
@@ -146,6 +320,7 @@ Important compile options:
 - `--strict-budget`: fail instead of reporting a protected-item overflow;
 - `--require-target`: return a failure status if the compression target misses;
 - `--include-superseded`: include superseded items in active selection;
+  diagnostic-only until the verified-stale-state P0 issue is fixed;
 - `--no-recovery`: disable the independent full deterministic recovery pass;
 - `--format json|prompt`: choose the output representation;
 - `--active-only`: emit a compact, intentionally incomplete non-audit ledger.
@@ -209,16 +384,20 @@ assert checked["passed"]
 The id must identify the exact tokenizer and configuration. A custom counter
 without `token_counter_id`, or verification without the matching callback and
 id, fails compression replay with `unverifiable_token_counter`.
+The CLI does not accept a custom counter callback, so custom-token artifacts
+must be verified through `verify_artifact_dict()` in Python rather than
+`ctxc verify`.
 
 Pass a `ModelExtractor(complete)` as the primary extractor to use any provider
 that can return the documented JSON envelope. This adapter is deliberately
 extractive: each ordinary candidate must equal a complete atomic cited span,
 and exact candidates must equal every cited span. It does not accept model
 paraphrases. Invalid kinds, roles, tags, and spans are rejected before they
-enter memory; the full deterministic rule recovery pass still runs by default,
-and protected-only candidates define the independent coverage certificate.
-The completion callable and any data it sends remain the integrator’s security
-and privacy responsibility.
+enter memory. After the completion callable returns, the full deterministic
+rule recovery pass runs by default, and protected-only candidates define the
+independent coverage certificate. Provider exceptions currently propagate
+before fallback; this is a confirmed P0 gap. The callable and any data it sends
+remain the integrator’s security and privacy responsibility.
 
 `CompilationPolicy(verify=False)` is an explicitly unsafe diagnostic mode. It
 returns a failed report with `verification_not_performed`; normal
@@ -228,17 +407,36 @@ diagnostics and must not be used to feed an agent.
 
 ## Validate
 
-Run the cross-runner unit suite:
+Run the complete regression and static checks:
 
 ```console
-python -m unittest discover -s tests -v
 python -m pytest -q
+python -m ruff check src tests benchmarks
+python -m compileall -q src benchmarks tests
 ```
 
-Run the deterministic LRCBench harness:
+Build the wheel and verify the three packaged schemas:
 
 ```console
-python -m benchmarks --histories 24
+python -c "
+import pathlib, subprocess, sys, tempfile, zipfile
+with tempfile.TemporaryDirectory() as directory:
+    subprocess.run(
+        [sys.executable, '-m', 'pip', 'wheel', '.', '--no-deps',
+         '--wheel-dir', directory],
+        check=True,
+    )
+    wheels = list(pathlib.Path(directory).glob('*.whl'))
+    assert len(wheels) == 1, wheels
+    names = zipfile.ZipFile(wheels[0]).namelist()
+    assert sum(name.endswith('.schema.json') for name in names) == 3
+"
+```
+
+Run the same deterministic LRCBench cohort used by CI:
+
+```console
+python -m benchmarks --histories 24 --json-out lrcbench-24.json --include-histories
 ```
 
 Validate the fail-closed external-candidate interchange, or export the exact
@@ -257,9 +455,12 @@ LRCBench requires exact gold-atom offsets for credited provenance. A candidate
 cannot cite a broad enclosing source span to obtain recall credit for a smaller
 literal inside it.
 
-The benchmark exits `0` only when every absolute gate and the paired 50% local
-frontier check passes; otherwise it exits `2` and explains why. A failed
-certificate is a valid evaluation result, not necessarily a harness error.
+For a valid certificate-producing run, the benchmark exits `0` only when every
+absolute gate and the paired 50% local frontier check passes; an unsupported
+certificate exits `2` and explains why. `--self-test` has its own success
+contract, and malformed CLI/configuration failures can use a different nonzero
+status. A failed certificate is a valid evaluation result, not necessarily a
+harness error.
 
 Current local snapshot (2026-07-23): all 102 tests pass, and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
@@ -280,6 +481,8 @@ the commands above for the current revision and environment.
 
 ## Documentation
 
+- [TODO and development roadmap](TODO.md)
+- [Next-chat handoff and current project state](docs/HANDOFF.md)
 - [Architecture and invariants](docs/ARCHITECTURE.md)
 - [Benchmark design and the exact 50% bar](docs/BENCHMARKING.md)
 - [Threat model](docs/THREAT_MODEL.md)

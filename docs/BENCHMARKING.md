@@ -111,7 +111,7 @@ A local certificate is issued only if all of the following hold:
 11. The compiler and every baseline respect the matched token budget.
 12. Corpus compression meets the configured floor, normally 5x.
 13. At least one paired 50% gain basis below passes both its point estimate and
-    its one-sided bootstrap margin.
+    its 2.5th-percentile paired bootstrap margin.
 
 ### Relative gain basis A: critical semantic loss
 
@@ -146,6 +146,12 @@ the paired per-history bootstrap margin
 
 Raw bounded quality is deliberately not used for a “50% better” ratio: a
 perfect score cannot be 50% higher than any baseline above two thirds.
+
+Despite the current field name, this is memory-quality efficiency, not observed
+agent task-completion efficiency. The current aggregate point estimate and
+paired bootstrap also use different weighting formulations. Both must be
+aligned under one preregistered estimand and renamed before external
+publication; see [`TODO.md`](../TODO.md).
 
 ## Run and audit
 
@@ -261,8 +267,8 @@ today” requires a separate, preregistered study:
    provenance, authority, cost, and compression. Use blinded or deterministic
    grading where possible.
 5. For each external competitor, require all absolute gates above and at least
-   one 50% relative basis with a positive paired 95% lower margin. Report all
-   comparisons, including failures.
+   one 50% relative basis with a positive preregistered paired bootstrap lower
+   bound. Report all comparisons, including failures.
 6. “Most” means a strict majority: the qualifying win set `W` must satisfy
    `|W| > |R| / 2`. For four preregistered related systems, at least three must
    independently clear the 50% bar.
@@ -272,6 +278,12 @@ today” requires a separate, preregistered study:
 Until those conditions are met, the accurate statement is: **the repository
 contains a local synthetic certificate against three bundled baselines, not an
 external state-of-the-art certificate.**
+
+For the original product-level claim, component memory metrics are not enough.
+The strict-majority result must additionally show at least 50% task-failure
+reduction or 1.5x successful completions per total token or cost on matched
+downstream runs. It must also show zero observed protected and exact misses on
+the frozen claim cohorts and at least 5x real-token compression per cohort.
 
 ## Known benchmark limitations
 
@@ -291,3 +303,6 @@ external state-of-the-art certificate.**
 - Atom recall is a proxy for downstream completion, not completion itself.
 - The paired bootstrap quantifies sampling variation over generated histories;
   it does not cover benchmark-design bias or implementation mistakes.
+- The current certificate selects one strongest baseline. It does not compute a
+  separate win set or enforce the strict-majority rule required for a claim
+  about “most” external systems.

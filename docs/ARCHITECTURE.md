@@ -181,7 +181,9 @@ Opposite settings in different recognized environments, such as development
 and production, remain separately active instead of becoming a false conflict.
 
 The old item remains in the full ledger for audit. It is omitted from active
-selection by default unless `include_superseded=True`.
+selection by default unless `include_superseded=True`. That option currently
+allows a passing artifact and prompt containing labeled obsolete state; treat
+it as diagnostic-only until P0-S4 in [`TODO.md`](../TODO.md) is fixed.
 
 These operations are lexical heuristics. Paraphrases with little token overlap
 may remain unlinked, and superficially similar propositions may need user
@@ -317,6 +319,13 @@ in scope.
 - Change selection and recovery behavior through `CompilationPolicy`.
 - Store or transmit `CompiledMemory.to_dict()` without tying consumers to a
   particular underlying LLM.
+
+The current `safety_extractor` constructor seam can replace rather than extend
+the built-in protected scanner. Until the P0 issue in
+[`TODO.md`](../TODO.md) is fixed, do not pass a custom safety extractor in a
+production path. Provider exceptions also occur before the default safety pass,
+so hosts must currently treat model extraction failure as a compile failure,
+not as verified fallback.
 
 New extractors should be evaluated against adversarial role injection,
 uncertainty, corrections, duplicate symbols, exact literals, and invalid spans

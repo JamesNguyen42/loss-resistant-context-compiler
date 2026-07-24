@@ -32,10 +32,10 @@ TokenCounter = Callable[[str], int]
 class ContextCompiler:
     """Compile verbose histories into typed, verifiable active context.
 
-    A provider-specific model extractor may improve semantic coverage, but the
-    independent rule-based safety pass always runs by default.  Consequently,
-    an LLM parse failure cannot silently erase obvious requirements, user
-    corrections, open questions, errors, or exact references.
+    A provider-specific model extractor may improve semantic coverage, and an
+    independent rule-based safety pass runs by default after primary extraction
+    succeeds. Provider exceptions currently propagate before that pass; this
+    alpha limitation is tracked as a P0 item in the project roadmap.
     """
 
     def __init__(

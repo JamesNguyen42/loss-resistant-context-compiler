@@ -88,7 +88,7 @@ Unknown fields, wrong hashes, missing or extra cases, invalid spans, duplicate
 system names, and any over-budget case fail closed before a report is emitted.
 
 Evaluation also recomputes active tokens from the final rendered string for
-every bundled or programmatic candidate. A valid byte span alone is not
+every bundled or programmatic candidate. A valid character span alone is not
 semantic support: ordered content tokens, numeric identifiers, negation, and
 uncertainty must agree with the cited text. Unsupported or hallucinated claims,
 inactive/superseded claims, and authority-gated goals, constraints, or user

@@ -35,14 +35,16 @@ to verify it, hashes cannot recover the original truth.
 
 | Threat | Current control | Residual risk |
 | --- | --- | --- |
-| Omission of an explicit protected commitment | Clause atomization, full deterministic rule recovery, and an independently recomputed protected-only certification obligation | Novel syntax, phrasing, or unsupported languages may evade the bounded parser and both rule passes |
+| Omission of an explicit protected commitment | In the default configuration, clause atomization, deterministic recovery, and a protected-only certification obligation | Novel syntax may evade both rule passes; a caller can currently replace the safety extractor and empty the obligation |
+| Post-verification item mutation | No complete control in `0.1.0` | Mutable items can change rendered prompt text while a stale report remains passed |
+| Primary model-provider failure | The exception prevents prompt creation | Deterministic fallback does not currently run because primary extraction runs first |
 | Tool-output prompt injection | Goals, constraints, and corrections require `user`, `system`, or `developer`; decisions and unresolved state reject tool provenance; facts reject tool provenance unless the host sets `metadata.trusted_for_state: true` | Spoofed upstream roles or host-supplied trust metadata defeat the gate; errors and references still preserve untrusted tool literals |
 | Memory text closes its prompt envelope | Selected items are JSON-encoded and `<`, `>`, and `&` are escaped inside an explicitly untrusted envelope | Syntactic containment does not stop a model from semantically following quoted instructions |
 | Fabricated model provenance | Model spans are rebuilt from known source ids and offsets; ordinary text must equal a complete atomic cited span, and paraphrases are rejected | A real literal can still be assigned an incorrect non-authority-gated type that passes lexical checks |
 | Hallucinated model claim | Exact atomic extraction, role checks, ordered token support, numeric/negation checks, and consistent evidence polarity | Literal support is not logical entailment or proof that a memory kind is pragmatically correct |
 | Uncertainty promoted to fact | Rule ordering favors unresolved; verifier rejects facts citing uncertainty without confirmation markers | Novel uncertainty phrasing or mixed confirmed/uncertain spans can be misclassified |
 | Exact literal corruption | Exact items must equal every cited source quote | Correctly copied source text can itself be false or malicious |
-| Stale requirement treated as current | Explicit corrections supersede linked earlier items; recognized revocations retire them without inventing replacement state; old state remains auditable | Lexically distant or ambiguous corrections and novel revocation wording remain unlinked and require review |
+| Stale requirement treated as current | Explicit corrections supersede linked earlier items; recognized revocations retire them without inventing replacement state; old state remains auditable | Novel correction wording can remain unlinked; `include_superseded=True` currently permits a verified prompt containing labeled obsolete state |
 | Conflicting state silently resolved | Clear polarity/numeric conflicts mark both claims conflicting and add an unresolved item | Semantic contradictions outside the lexical heuristic can be missed |
 | Source/artifact modification | Source metadata is canonical-JSON-only and recursively immutable; canonical record hashes bind timestamp and metadata as well as content; higher-level digests and artifact replay bind derived structures | Hashes provide integrity comparison, not authorship, freshness, signatures, or rollback protection; an attacker can recompute an artifact self-hash |
 | Custom-tokenizer mismatch | A named counter records `custom:<id>`; independent verification requires the same callback and stable id and recomputes all compression fields | The id is a caller-managed label, not code signing or proof that two implementations are identical |
@@ -134,6 +136,14 @@ truncation.
 failed report with `verification_not_performed`. Normal Python and CLI prompt
 rendering refuse that result. The Python-only `allow_unverified=True` override
 must not be used in an agent execution path.
+
+Four P0 fail-closed gaps remain in `0.1.0`: post-verification ledger mutation,
+replacement of the configured safety extractor, model-provider exceptions
+before deterministic fallback, and verified rendering with selected superseded
+state. Until they are fixed, treat compiled objects as immutable by convention,
+do not override `safety_extractor`, treat provider exceptions as a failed
+compile, and do not use `include_superseded` in an agent execution path. See
+[`TODO.md`](../TODO.md) for reproductions and acceptance criteria.
 
 Custom token accounting is portable only when compilation uses both
 `token_counter` and a stable `token_counter_id`, and artifact verification is
