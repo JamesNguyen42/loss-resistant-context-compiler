@@ -27,7 +27,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 884 collected: 879 passing, 5 skipped |
+| Tests at this snapshot | 885 collected: 880 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -478,7 +478,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 884 tests are collected: 879 pass and 5 platform/optional checks are skipped.
+- 885 tests are collected: 880 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all five schemas are included.
@@ -661,17 +661,18 @@ audited. Any selected superseded item independently fails verification as
   evidence, and sampled inference-service identity/peak-memory evidence;
   incomplete controls are a per-system non-win.
 - External scoring requires a strict frozen
-  `lrcbench-external-protocol-0.7` manifest. The protocol's set is authoritative,
+  `lrcbench-external-protocol-0.8` manifest. The protocol's set is authoritative,
   and the benchmark rejects a draft, dataset mismatch, unregistered system, or
   adapter, dependency-environment, model, tokenizer, retry, network-evidence,
   or runner-limit mismatch before scoring. Current runner schema
-  `lrcbench-external-run-manifest-0.9` freezes immutable adapter/environment
+  `lrcbench-external-run-manifest-0.10` freezes immutable adapter/environment
   identity, revalidated dependency-lock, adapter-entrypoint, and bounded
-  adapter-source-tree bytes, the canonical command digest, exact 8192-context
-  Qwen, one slot, zero retries/service cost, retained network-isolation
-  evidence, sampled service process/executable/peak-memory accounting, and
-  bounded runner controls including enforcement polling cadence. The committed
-  v1 protocol is valid but intentionally blocked and not claim-ready.
+  adapter-source-tree bytes, the resolved runtime executable, and the portable
+  per-case-validated command contract, exact 8192-context Qwen, one slot, zero
+  retries/service cost, retained network-isolation evidence, sampled service
+  process/executable/peak-memory accounting, and bounded runner controls
+  including enforcement polling cadence. The committed v1 protocol is valid
+  but intentionally blocked and not claim-ready.
 - CI runs a 24-history fail-closed benchmark certificate.
 - The performance profile is a broad shared-runner tripwire, not an SLO: it
   excludes source construction, `tracemalloc` is not RSS, and the separate
@@ -925,7 +926,7 @@ next work is the external and natural-history evidence path:
    protocol without looking at comparative results;
 3. complete result-blind inclusion decisions and freeze the initial comparison
    set, dependency locks, adapter revisions, retained source roots and
-   entrypoints, and command templates;
+   entrypoints, runtime executable digests, and portable command contracts;
 4. freeze the implemented pre-existing inference-service executable, memory
    metric, and ceiling (or replace monitoring with stronger containment);
 5. add the first reproducible, no-paid-service external adapter;

@@ -603,17 +603,19 @@ generation config, cases, sources, and evaluator gold. The
 `candidate_payload_sha256`. The runner accepts legacy `0.1` output only as a
 raw adapter boundary, upgrades it using the registered runner identity, and
 cross-checks that identity again during manifest reload. Current runner
-manifest schema `0.9` requires an immutable adapter revision, a retained
+manifest schema `0.10` requires an immutable adapter revision, a retained
 dependency lock whose bytes define the canonical
 `sha256:<dependency-lock-sha256>` environment, exact model/context/tokenizer,
 one inference slot, zero retries/service cost, and bounded retained
 network-isolation evidence for claim eligibility. The runner rehashes a
 retained adapter entrypoint, requires the command to reference that file and a
-bounded link-free source-tree inventory to cover it, and binds the canonical
-command digest. It also binds a pre-existing service's PID creation identity
-and executable digest and records sampled Windows working set or Linux RSS plus
-its ceiling. External scoring additionally compares all of those fields, the
-lock/entrypoint/source-tree/command/network-evidence digests, service
+bounded link-free source-tree inventory to cover it, hashes the resolved
+runtime executable, and binds a path-independent command contract shared by
+every per-case invocation. Claim execution uses the source root as the working
+directory. It also binds a pre-existing service's PID creation identity and
+executable digest and records sampled Windows working set or Linux RSS plus its
+ceiling. External scoring additionally compares all of those fields, the
+lock/entrypoint/source-tree/runtime/command/network-evidence digests, service
 metric/executable digest/ceiling, and retained runner limits, including the
 enforcement polling cadence, with the frozen protocol.
 

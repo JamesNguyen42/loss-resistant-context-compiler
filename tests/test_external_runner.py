@@ -729,6 +729,166 @@ def test_adapter_source_tree_is_bounded_complete_and_immutable(
     assert not mutated.ready_for_scoring
 
 
+def test_command_contract_is_portable_and_binds_each_case_and_runtime(
+    tmp_path: Path,
+) -> None:
+    manifests = []
+    documents = []
+    for label in ("first-host-path", "second-host-path"):
+        directory = tmp_path / label
+        directory.mkdir()
+        corpus_path = directory / "corpus.json"
+        _config, document = write_corpus(corpus_path, histories=2)
+        command = valid_adapter_command(directory)
+        manifests.append(
+            run_external_cases(
+                command,
+                system="portable-fixture",
+                corpus_path=corpus_path,
+                candidate_path=directory / "candidate.json",
+                limits=RunnerLimits(
+                    timeout_seconds=5,
+                    max_memory_mb=256,
+                ),
+                identity=claim_identity(),
+                dependency_lock=retained_dependency_lock(directory),
+                adapter_entrypoint=capture_adapter_entrypoint_evidence(
+                    command[1]
+                ),
+                adapter_source=capture_adapter_source_evidence(
+                    Path(command[1]).parent
+                ),
+                network_isolation=retained_network_isolation(
+                    directory
+                ),
+                inference_service=retained_inference_service(),
+            )
+        )
+        documents.append(document)
+
+    first, second = manifests
+    assert first.command != second.command
+    assert first.command_contract == second.command_contract
+    assert first.command_sha256 == second.command_sha256
+    assert (
+        first.adapter_runtime.executable_sha256
+        == second.adapter_runtime.executable_sha256
+    )
+    assert first.adapter_source.tree_sha256 == second.adapter_source.tree_sha256
+    assert first.claim_metadata_complete
+    assert second.claim_metadata_complete
+    assert first.working_directory == first.adapter_source.source_root
+    assert second.working_directory == second.adapter_source.source_root
+
+    embedded_directory = tmp_path / "embedded-template"
+    embedded_directory.mkdir()
+    embedded_corpus = embedded_directory / "corpus.json"
+    _config, embedded_document = write_corpus(
+        embedded_corpus,
+        histories=2,
+    )
+    embedded_source = embedded_directory / "adapter-source"
+    embedded_source.mkdir()
+    embedded_entrypoint = embedded_source / "adapter.py"
+    embedded_entrypoint.write_text(
+        "import json,sys;"
+        "args=dict(value[2:].split('=',1) for value in sys.argv[1:]);"
+        "corpus=json.load(open(args['corpus'],encoding='utf-8'));"
+        "payload={'schema':'lrcbench-candidate-output-0.1',"
+        "'dataset_sha256':corpus['dataset_sha256'],"
+        "'system':args['system'],"
+        "'cases':[{'case_id':case['case_id'],"
+        "'rendered_text':args['case'],'claims':[]}"
+        " for case in corpus['cases']]};"
+        "json.dump(payload,open(args['candidate'],'w',encoding='utf-8'))",
+        encoding="utf-8",
+    )
+    embedded_manifest = run_external_cases(
+        [
+            sys.executable,
+            str(embedded_entrypoint),
+            "--corpus={corpus}",
+            "--candidate={candidate}",
+            "--system={system}",
+            "--case={case_id}",
+        ],
+        system="embedded-fixture",
+        corpus_path=embedded_corpus,
+        candidate_path=embedded_directory / "candidate.json",
+        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        identity=claim_identity(),
+        dependency_lock=retained_dependency_lock(embedded_directory),
+        adapter_entrypoint=capture_adapter_entrypoint_evidence(
+            embedded_entrypoint
+        ),
+        adapter_source=capture_adapter_source_evidence(
+            embedded_source
+        ),
+        network_isolation=retained_network_isolation(
+            embedded_directory
+        ),
+        inference_service=retained_inference_service(),
+    )
+    assert embedded_manifest.ready_for_scoring
+    assert embedded_manifest.claim_metadata_complete
+    assert any(
+        value.startswith("template:")
+        for value in embedded_manifest.command_contract
+    )
+    embedded_manifest_path = embedded_directory / "manifest.json"
+    embedded_manifest_path.write_text(
+        embedded_manifest.to_json(),
+        encoding="utf-8",
+    )
+    load_external_run_manifest(
+        embedded_manifest_path,
+        expected_dataset_sha256=embedded_document["dataset_sha256"],
+    )
+
+    original_payload = first.to_dict()
+    tampered_case = json.loads(json.dumps(original_payload))
+    tampered_case["case_runs"][0]["command"].append("--unexpected")
+    tampered_case.pop("manifest_sha256")
+    tampered_case["manifest_sha256"] = _canonical_sha256(tampered_case)
+    tampered_case_path = tmp_path / "tampered-case-manifest.json"
+    tampered_case_path.write_text(
+        json.dumps(tampered_case),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="command does not match the command contract",
+    ):
+        load_external_run_manifest(
+            tampered_case_path,
+            expected_dataset_sha256=documents[0]["dataset_sha256"],
+        )
+
+    tampered_runtime = json.loads(json.dumps(original_payload))
+    tampered_runtime["adapter_runtime"] = {
+        "executable_path": first.adapter_entrypoint.entrypoint_path,
+        "executable_sha256": first.adapter_entrypoint.entrypoint_sha256,
+        "executable_bytes": first.adapter_entrypoint.entrypoint_bytes,
+    }
+    tampered_runtime.pop("manifest_sha256")
+    tampered_runtime["manifest_sha256"] = _canonical_sha256(
+        tampered_runtime
+    )
+    tampered_runtime_path = tmp_path / "tampered-runtime-manifest.json"
+    tampered_runtime_path.write_text(
+        json.dumps(tampered_runtime),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="command does not use its adapter runtime",
+    ):
+        load_external_run_manifest(
+            tampered_runtime_path,
+            expected_dataset_sha256=documents[0]["dataset_sha256"],
+        )
+
+
 def test_corpus_export_digest_detects_gold_free_source_tampering(tmp_path) -> None:
     corpus_path = tmp_path / "corpus.json"
     _config, document = write_corpus(corpus_path)
@@ -1270,6 +1430,9 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
     adapter_source_tree_sha256s = {
         "fixture-adapter": manifest.adapter_source.tree_sha256,
     }
+    adapter_runtime_executable_sha256s = {
+        "fixture-adapter": manifest.adapter_runtime.executable_sha256,
+    }
     adapter_command_sha256s = {
         "fixture-adapter": manifest.command_sha256,
     }
@@ -1284,6 +1447,9 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         },
         adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
         adapter_source_tree_sha256s=adapter_source_tree_sha256s,
+        adapter_runtime_executable_sha256s=(
+            adapter_runtime_executable_sha256s
+        ),
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
     )
@@ -1338,6 +1504,9 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         },
         adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
         adapter_source_tree_sha256s=adapter_source_tree_sha256s,
+        adapter_runtime_executable_sha256s=(
+            adapter_runtime_executable_sha256s
+        ),
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
     )
@@ -1367,6 +1536,9 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             "fixture-adapter": "f" * 64,
         },
         adapter_source_tree_sha256s=adapter_source_tree_sha256s,
+        adapter_runtime_executable_sha256s=(
+            adapter_runtime_executable_sha256s
+        ),
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
     )
@@ -1396,6 +1568,9 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_source_tree_sha256s={
             "fixture-adapter": "f" * 64,
         },
+        adapter_runtime_executable_sha256s=(
+            adapter_runtime_executable_sha256s
+        ),
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
     )
@@ -1408,6 +1583,36 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             external_manifest_paths=(manifest_path,),
             expected_external_systems=systems,
             external_protocol_path=mismatched_source_protocol,
+        )
+
+    mismatched_runtime_directory = tmp_path / "mismatched-runtime"
+    mismatched_runtime_directory.mkdir()
+    mismatched_runtime_protocol = write_frozen_external_protocol(
+        mismatched_runtime_directory,
+        systems,
+        adapter_revisions={
+            "fixture-adapter": FIXTURE_ADAPTER_REVISION,
+        },
+        environment_ids={
+            "fixture-adapter": FIXTURE_ENVIRONMENT_ID,
+        },
+        adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
+        adapter_source_tree_sha256s=adapter_source_tree_sha256s,
+        adapter_runtime_executable_sha256s={
+            "fixture-adapter": "f" * 64,
+        },
+        adapter_command_sha256s=adapter_command_sha256s,
+        synthetic_dataset_sha256=document["dataset_sha256"],
+    )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="adapter runtime does not match the frozen protocol",
+    ):
+        run_benchmark(
+            config,
+            external_manifest_paths=(manifest_path,),
+            expected_external_systems=systems,
+            external_protocol_path=mismatched_runtime_protocol,
         )
 
     mismatched_command_directory = tmp_path / "mismatched-command"
@@ -1423,6 +1628,9 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         },
         adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
         adapter_source_tree_sha256s=adapter_source_tree_sha256s,
+        adapter_runtime_executable_sha256s=(
+            adapter_runtime_executable_sha256s
+        ),
         adapter_command_sha256s={
             "fixture-adapter": "f" * 64,
         },
@@ -1452,6 +1660,9 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         },
         adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
         adapter_source_tree_sha256s=adapter_source_tree_sha256s,
+        adapter_runtime_executable_sha256s=(
+            adapter_runtime_executable_sha256s
+        ),
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
         max_memory_mb=512,
@@ -1480,6 +1691,9 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         },
         adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
         adapter_source_tree_sha256s=adapter_source_tree_sha256s,
+        adapter_runtime_executable_sha256s=(
+            adapter_runtime_executable_sha256s
+        ),
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
         network_isolation_evidence_sha256="f" * 64,
@@ -1508,6 +1722,9 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         },
         adapter_entrypoint_sha256s=adapter_entrypoint_sha256s,
         adapter_source_tree_sha256s=adapter_source_tree_sha256s,
+        adapter_runtime_executable_sha256s=(
+            adapter_runtime_executable_sha256s
+        ),
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
         inference_service_executable_sha256="f" * 64,
@@ -2068,6 +2285,11 @@ def test_failed_exact_contract_manifest_becomes_a_registered_invalid_nonwin(
         },
         adapter_source_tree_sha256s={
             "timeout-fixture": manifest.adapter_source.tree_sha256,
+        },
+        adapter_runtime_executable_sha256s={
+            "timeout-fixture": (
+                manifest.adapter_runtime.executable_sha256
+            ),
         },
         adapter_command_sha256s={
             "timeout-fixture": manifest.command_sha256,

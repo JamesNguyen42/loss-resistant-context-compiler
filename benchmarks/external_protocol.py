@@ -27,7 +27,7 @@ from .json_io import (
 )
 from .lrcbench import TOKENIZER_ID
 
-EXTERNAL_PROTOCOL_SCHEMA = "lrcbench-external-protocol-0.7"
+EXTERNAL_PROTOCOL_SCHEMA = "lrcbench-external-protocol-0.8"
 DEFAULT_EXTERNAL_PROTOCOL = (
     Path(__file__).resolve().parent
     / "protocols"
@@ -92,6 +92,7 @@ _CANDIDATE_FIELDS = {
     "adapter_revision",
     "adapter_entrypoint_sha256",
     "adapter_source_tree_sha256",
+    "adapter_runtime_executable_sha256",
     "adapter_command_sha256",
     "decision_reason",
 }
@@ -225,6 +226,7 @@ class VerifiedExternalProtocol:
     environment_ids: tuple[tuple[str, str], ...]
     adapter_entrypoint_sha256s: tuple[tuple[str, str], ...]
     adapter_source_tree_sha256s: tuple[tuple[str, str], ...]
+    adapter_runtime_executable_sha256s: tuple[tuple[str, str], ...]
     adapter_command_sha256s: tuple[tuple[str, str], ...]
     execution_contract: ExternalExecutionContract
     candidate_count: int
@@ -257,6 +259,10 @@ class VerifiedExternalProtocol:
             "adapter_source_tree_sha256s": {
                 system: digest
                 for system, digest in self.adapter_source_tree_sha256s
+            },
+            "adapter_runtime_executable_sha256s": {
+                system: digest
+                for system, digest in self.adapter_runtime_executable_sha256s
             },
             "adapter_command_sha256s": {
                 system: digest
@@ -532,6 +538,16 @@ def _validate_candidates(
                 adapter_source_tree_sha256,
                 context=f"{context}.adapter_source_tree_sha256",
             )
+        adapter_runtime_executable_sha256 = candidate[
+            "adapter_runtime_executable_sha256"
+        ]
+        if adapter_runtime_executable_sha256 is not None:
+            _sha256(
+                adapter_runtime_executable_sha256,
+                context=(
+                    f"{context}.adapter_runtime_executable_sha256"
+                ),
+            )
         adapter_command_sha256 = candidate["adapter_command_sha256"]
         if adapter_command_sha256 is not None:
             _sha256(
@@ -555,6 +571,7 @@ def _validate_candidates(
                 or adapter_revision is None
                 or adapter_entrypoint_sha256 is None
                 or adapter_source_tree_sha256 is None
+                or adapter_runtime_executable_sha256 is None
                 or adapter_command_sha256 is None
             ):
                 raise ExternalProtocolError(
@@ -1027,6 +1044,17 @@ def load_external_protocol(
             (
                 system,
                 str(candidates[system]["adapter_source_tree_sha256"]),
+            )
+            for system in registered
+        ),
+        adapter_runtime_executable_sha256s=tuple(
+            (
+                system,
+                str(
+                    candidates[system][
+                        "adapter_runtime_executable_sha256"
+                    ]
+                ),
             )
             for system in registered
         ),

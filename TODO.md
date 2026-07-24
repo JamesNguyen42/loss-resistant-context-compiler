@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 884 tests (879 passing and 5 skipped locally); CI covers Python
+- [x] Collect 885 tests (880 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -338,8 +338,9 @@ Acceptance:
   it to the frozen protocol. They also retain and rehash the adapter entrypoint
   and every regular file in a bounded immutable source root, require the exact
   command to reference that covered entrypoint, and match the entrypoint,
-  source-tree, and command digests to the preregistration rather than trusting
-  the supplied adapter revision alone.
+  source-tree, resolved runtime-executable, and portable command-contract
+  digests to the preregistration rather than trusting the supplied adapter
+  revision alone. Every per-case invocation is checked against that contract.
 - [x] Count the final rendered output and provenance ledger under the same
   evaluator-owned tokenizer and token budget for every system; external
   candidates receive a canonical typed-claim/provenance sidecar, and tests show

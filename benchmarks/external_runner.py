@@ -20,7 +20,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from functools import lru_cache
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from context_compiler.atomic import atomic_write_text
@@ -48,7 +48,7 @@ from .lrcbench import (
     decode_external_candidate,
 )
 
-RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.9"
+RUNNER_MANIFEST_SCHEMA = "lrcbench-external-run-manifest-0.10"
 _SYSTEM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 _REVISION_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 _ENVIRONMENT_ID_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -71,6 +71,7 @@ _ADAPTER_SOURCE_MAX_FILE_BYTES = 256_000_000
 _ADAPTER_SOURCE_MAX_TOTAL_BYTES = 512_000_000
 _ADAPTER_SOURCE_MAX_RELATIVE_PATH_BYTES = 4_096
 _ADAPTER_SOURCE_MAX_PATH_BYTES = 1_000_000
+_ADAPTER_RUNTIME_EXECUTABLE_MAX_BYTES = 2_000_000_000
 _INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES = 2_000_000_000
 _INFERENCE_SERVICE_MEMORY_METRICS = frozenset(
     {"resident-set-bytes", "working-set-bytes"}
@@ -112,6 +113,7 @@ class ExternalRunReference:
     dependency_lock: DependencyLockEvidence
     adapter_entrypoint: AdapterEntrypointEvidence
     adapter_source: AdapterSourceEvidence
+    adapter_runtime: AdapterRuntimeEvidence
     network_isolation: NetworkIsolationEvidence
     inference_service: InferenceServiceAccounting
     command_sha256: str
@@ -434,6 +436,48 @@ class AdapterSourceEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class AdapterRuntimeEvidence:
+    """Exact executable bytes used to launch the adapter command."""
+
+    executable_path: str | None = None
+    executable_sha256: str | None = None
+    executable_bytes: int | None = None
+
+    def __post_init__(self) -> None:
+        fields = (
+            self.executable_path,
+            self.executable_sha256,
+            self.executable_bytes,
+        )
+        if all(value is None for value in fields):
+            return
+        if (
+            not isinstance(self.executable_path, str)
+            or not self.executable_path
+            or not Path(self.executable_path).is_absolute()
+        ):
+            raise ValueError(
+                "adapter runtime evidence requires an absolute executable path"
+            )
+        if not _is_sha256(self.executable_sha256):
+            raise ValueError(
+                "adapter runtime evidence requires a SHA-256 digest"
+            )
+        if (
+            isinstance(self.executable_bytes, bool)
+            or not isinstance(self.executable_bytes, int)
+            or self.executable_bytes <= 0
+        ):
+            raise ValueError(
+                "adapter runtime evidence requires a positive byte count"
+            )
+
+    @property
+    def claim_evidence_complete(self) -> bool:
+        return self.executable_path is not None
+
+
+@dataclass(frozen=True, slots=True)
 class NetworkIsolationEvidence:
     """Retained host/container evidence for an externally enforced offline run."""
 
@@ -618,6 +662,8 @@ class _InferenceProcessSnapshot:
 class CaseRunRecord:
     case_id: str
     command: tuple[str, ...]
+    corpus_path: str
+    candidate_path: str
     started_at: str
     duration_seconds: float
     corpus_sha256: str
@@ -642,6 +688,7 @@ class ExternalRunManifest:
     case_count: int
     case_runs: tuple[CaseRunRecord, ...]
     command: tuple[str, ...]
+    command_contract: tuple[str, ...]
     command_sha256: str
     working_directory: str
     started_at: str
@@ -670,6 +717,7 @@ class ExternalRunManifest:
     dependency_lock: DependencyLockEvidence
     adapter_entrypoint: AdapterEntrypointEvidence
     adapter_source: AdapterSourceEvidence
+    adapter_runtime: AdapterRuntimeEvidence
     network_isolation: NetworkIsolationEvidence
     inference_service: InferenceServiceAccounting
     claim_metadata_complete: bool
@@ -1027,6 +1075,66 @@ def _adapter_source_covers_entrypoint(
         and item.file_bytes == entrypoint.entrypoint_bytes
         for item in source.files
     )
+
+
+def capture_adapter_runtime_evidence(
+    executable_path: Path | str | None = None,
+) -> AdapterRuntimeEvidence:
+    """Hash the exact executable used as command argument zero."""
+
+    if executable_path is None:
+        return AdapterRuntimeEvidence()
+    resolved = Path(executable_path).expanduser().resolve()
+    evidence = _bounded_file_evidence(
+        resolved,
+        max_bytes=_ADAPTER_RUNTIME_EXECUTABLE_MAX_BYTES,
+        label="adapter runtime executable",
+    )
+    if evidence.byte_count <= 0:
+        raise ExternalRunnerError(
+            "adapter runtime executable cannot be empty"
+        )
+    return AdapterRuntimeEvidence(
+        executable_path=str(resolved),
+        executable_sha256=evidence.file_sha256,
+        executable_bytes=evidence.byte_count,
+    )
+
+
+def _adapter_runtime_evidence_matches(
+    evidence: AdapterRuntimeEvidence,
+) -> bool:
+    if not evidence.claim_evidence_complete:
+        return True
+    try:
+        observed = _bounded_file_evidence(
+            Path(evidence.executable_path or ""),
+            max_bytes=_ADAPTER_RUNTIME_EXECUTABLE_MAX_BYTES,
+            label="adapter runtime executable",
+        )
+    except ExternalRunnerError:
+        return False
+    return (
+        observed.file_sha256 == evidence.executable_sha256
+        and observed.byte_count == evidence.executable_bytes
+    )
+
+
+def _command_uses_adapter_runtime(
+    command: Sequence[str],
+    evidence: AdapterRuntimeEvidence,
+) -> bool:
+    if not evidence.claim_evidence_complete:
+        return True
+    if not command:
+        return False
+    try:
+        return (
+            Path(command[0]).expanduser().resolve()
+            == Path(evidence.executable_path or "")
+        )
+    except OSError:
+        return False
 
 
 def capture_network_isolation_evidence(
@@ -1769,6 +1877,241 @@ def _resolve_command(command: Sequence[str]) -> tuple[str, ...]:
     return (str(Path(executable).resolve()), *command[1:])
 
 
+def _portable_command_contract(
+    command: Sequence[str],
+    *,
+    working_directory: Path,
+    system: str,
+    corpus_path: Path,
+    candidate_path: Path,
+    case_id: str | None,
+    adapter_entrypoint: AdapterEntrypointEvidence,
+    adapter_source: AdapterSourceEvidence,
+    adapter_runtime: AdapterRuntimeEvidence,
+) -> tuple[str, ...]:
+    """Normalize bound paths and runner substitutions into stable tokens."""
+
+    source_root = (
+        Path(adapter_source.source_root or "")
+        if adapter_source.claim_evidence_complete
+        else None
+    )
+    entrypoint_path = (
+        Path(adapter_entrypoint.entrypoint_path or "")
+        if adapter_entrypoint.claim_evidence_complete
+        else None
+    )
+    runtime_path = (
+        Path(adapter_runtime.executable_path or "")
+        if adapter_runtime.claim_evidence_complete
+        else None
+    )
+    source_paths: dict[Path, str] = {}
+    if source_root is not None:
+        source_paths[source_root] = ""
+        for record in adapter_source.files:
+            relative = PurePosixPath(record.relative_path)
+            current = source_root
+            for part in relative.parts:
+                current = current / part
+                source_paths[current] = current.relative_to(
+                    source_root
+                ).as_posix()
+
+    def resolved_argument_path(argument: str) -> Path | None:
+        if not argument or argument.startswith("{"):
+            return None
+        candidate = Path(argument).expanduser()
+        if not candidate.is_absolute():
+            candidate = working_directory / candidate
+        try:
+            return candidate.resolve()
+        except OSError:
+            return None
+
+    entrypoint_relative = (
+        entrypoint_path.relative_to(source_root).as_posix()
+        if entrypoint_path is not None and source_root is not None
+        else entrypoint_path.name
+        if entrypoint_path is not None
+        else ""
+    )
+
+    def embedded_contract(argument: str) -> str | None:
+        replacements: list[tuple[str, str, str]] = [
+            ("{corpus}", "corpus", ""),
+            ("{candidate}", "candidate", ""),
+            ("{system}", "system", ""),
+            ("{case_id}", "case-id", ""),
+            (str(corpus_path), "corpus", ""),
+            (str(candidate_path), "candidate", ""),
+        ]
+        if case_id is not None:
+            replacements.append((case_id, "case-id", ""))
+        replacements.append((system, "system", ""))
+        if entrypoint_path is not None:
+            replacements.append(
+                (
+                    str(entrypoint_path),
+                    "adapter-entrypoint",
+                    entrypoint_relative,
+                )
+            )
+        if source_root is not None:
+            replacements.append(
+                (str(source_root), "adapter-source-root", "")
+            )
+        unique: dict[str, tuple[str, str]] = {}
+        for needle, kind, value in replacements:
+            if needle and needle not in unique:
+                unique[needle] = (kind, value)
+        position = 0
+        segments: list[list[str]] = []
+        matched = False
+        while position < len(argument):
+            choices = [
+                (argument.find(needle, position), needle, kind, value)
+                for needle, (kind, value) in unique.items()
+            ]
+            choices = [choice for choice in choices if choice[0] >= 0]
+            if not choices:
+                segments.append(["literal", argument[position:]])
+                break
+            found_at, needle, kind, value = min(
+                choices,
+                key=lambda choice: (choice[0], -len(choice[1])),
+            )
+            if found_at > position:
+                segments.append(
+                    ["literal", argument[position:found_at]]
+                )
+            segments.append([kind, value])
+            matched = True
+            position = found_at + len(needle)
+        if not matched:
+            return None
+        return "template:" + json.dumps(
+            segments,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+
+    contract: list[str] = []
+    for index, argument in enumerate(command):
+        argument_path = resolved_argument_path(argument)
+        if index == 0 and runtime_path is not None:
+            if argument_path != runtime_path:
+                contract.append(f"literal:{argument}")
+                continue
+            if entrypoint_path is not None and runtime_path == entrypoint_path:
+                contract.append(
+                    f"runtime-entrypoint:{entrypoint_relative}"
+                )
+            else:
+                contract.append("runtime-executable:")
+            continue
+        if argument == "{corpus}" or argument_path == corpus_path:
+            contract.append("placeholder:corpus")
+            continue
+        if (
+            argument == "{candidate}"
+            or argument_path == candidate_path
+        ):
+            contract.append("placeholder:candidate")
+            continue
+        if argument == "{system}" or argument == system:
+            contract.append("placeholder:system")
+            continue
+        if argument == "{case_id}" or (
+            case_id is not None and argument == case_id
+        ):
+            contract.append("placeholder:case-id")
+            continue
+        if (
+            entrypoint_path is not None
+            and argument_path == entrypoint_path
+        ):
+            contract.append(
+                f"adapter-entrypoint:{entrypoint_relative}"
+            )
+            continue
+        if (
+            source_root is not None
+            and argument_path is not None
+            and argument_path in source_paths
+        ):
+            contract.append(
+                "adapter-source:" + source_paths[argument_path]
+            )
+            continue
+        embedded = embedded_contract(argument)
+        if embedded is not None:
+            contract.append(embedded)
+            continue
+        contract.append(f"literal:{argument}")
+    return tuple(contract)
+
+
+def _claim_command_contract_complete(
+    contract: Sequence[str],
+) -> bool:
+    kinds: set[str] = set()
+    literals: list[str] = []
+    for value in contract:
+        if value == "runtime-executable:":
+            kinds.add("runtime")
+            continue
+        if value.startswith("runtime-entrypoint:"):
+            kinds.update({"runtime", "adapter-entrypoint"})
+            continue
+        if value.startswith("adapter-entrypoint:"):
+            kinds.add("adapter-entrypoint")
+            continue
+        if value.startswith("placeholder:"):
+            kinds.add(value.removeprefix("placeholder:"))
+            continue
+        if value.startswith("literal:"):
+            literals.append(value.removeprefix("literal:"))
+            continue
+        if value.startswith("template:"):
+            try:
+                segments = json.loads(value.removeprefix("template:"))
+            except (json.JSONDecodeError, TypeError, ValueError):
+                return False
+            if not isinstance(segments, list):
+                return False
+            for segment in segments:
+                if (
+                    not isinstance(segment, list)
+                    or len(segment) != 2
+                    or not all(
+                        isinstance(item, str) for item in segment
+                    )
+                ):
+                    return False
+                kind, segment_value = segment
+                if kind == "literal":
+                    literals.append(segment_value)
+                else:
+                    kinds.add(kind)
+            continue
+    if not {
+        "runtime",
+        "adapter-entrypoint",
+        "corpus",
+        "candidate",
+        "system",
+    }.issubset(kinds):
+        return False
+    for literal in literals:
+        if (
+            PurePosixPath(literal).is_absolute()
+            or PureWindowsPath(literal).is_absolute()
+        ):
+            return False
+    return True
+
+
 def _command_references_adapter_entrypoint(
     command: Sequence[str],
     *,
@@ -1879,9 +2222,12 @@ def _claim_controls_complete(
     identity: RunnerIdentity,
     limits: RunnerLimits,
     isolation_mode: str,
+    working_directory: Path,
+    command_contract: Sequence[str],
     dependency_lock: DependencyLockEvidence,
     adapter_entrypoint: AdapterEntrypointEvidence,
     adapter_source: AdapterSourceEvidence,
+    adapter_runtime: AdapterRuntimeEvidence,
     network_isolation: NetworkIsolationEvidence,
     inference_service: InferenceServiceAccounting,
     minimum_inference_samples: int,
@@ -1899,6 +2245,10 @@ def _claim_controls_complete(
             adapter_source,
             adapter_entrypoint,
         )
+        and adapter_runtime.claim_evidence_complete
+        and _claim_command_contract_complete(command_contract)
+        and working_directory
+        == Path(adapter_source.source_root or "")
         and network_isolation.claim_evidence_complete
         and inference_service.claim_evidence_complete
         and inference_service.sample_count >= minimum_inference_samples
@@ -1930,6 +2280,16 @@ def _validated_case_runs(value: object) -> list[dict[str, Any]]:
             or not all(isinstance(part, str) and part for part in command)
         ):
             raise ExternalRunnerError(f"{context} command is invalid")
+        for name in ("corpus_path", "candidate_path"):
+            path_value = raw_record[name]
+            if (
+                not isinstance(path_value, str)
+                or not path_value
+                or not Path(path_value).is_absolute()
+            ):
+                raise ExternalRunnerError(
+                    f"{context} {name} is invalid"
+                )
         started_at = raw_record["started_at"]
         if not isinstance(started_at, str) or not started_at:
             raise ExternalRunnerError(f"{context} started_at is invalid")
@@ -2098,11 +2458,22 @@ def load_external_run_manifest(
         or not all(isinstance(part, str) and part for part in command)
     ):
         raise ExternalRunnerError("run manifest command is invalid")
+    command_contract = payload["command_contract"]
     if (
+        not isinstance(command_contract, list)
+        or not command_contract
+        or not all(
+            isinstance(part, str) and part
+            for part in command_contract
+        )
+        or
         not _is_sha256(payload["command_sha256"])
-        or payload["command_sha256"] != _canonical_sha256(command)
+        or payload["command_sha256"]
+        != _canonical_sha256(command_contract)
     ):
-        raise ExternalRunnerError("run manifest command SHA-256 is invalid")
+        raise ExternalRunnerError(
+            "run manifest command contract or SHA-256 is invalid"
+        )
     try:
         limits_payload = payload["limits"]
         if not isinstance(limits_payload, dict):
@@ -2216,6 +2587,67 @@ def load_external_run_manifest(
             "run manifest adapter source does not cover its entrypoint"
         )
     try:
+        runtime_payload = payload["adapter_runtime"]
+        if not isinstance(runtime_payload, dict):
+            raise TypeError("adapter_runtime must be an object")
+        if set(runtime_payload) != set(
+            AdapterRuntimeEvidence.__dataclass_fields__
+        ):
+            raise TypeError(
+                "adapter_runtime fields do not match the schema"
+            )
+        decoded_adapter_runtime = AdapterRuntimeEvidence(
+            **runtime_payload
+        )
+    except (TypeError, ValueError) as exc:
+        raise ExternalRunnerError(
+            f"run manifest adapter runtime evidence is invalid: {exc}"
+        ) from exc
+    if not _adapter_runtime_evidence_matches(decoded_adapter_runtime):
+        raise ExternalRunnerError(
+            "run manifest adapter runtime executable does not match"
+        )
+    if not _command_uses_adapter_runtime(
+        command,
+        decoded_adapter_runtime,
+    ):
+        raise ExternalRunnerError(
+            "run manifest command does not use its adapter runtime"
+        )
+    observed_command_contract = _portable_command_contract(
+        command,
+        working_directory=Path(payload["working_directory"]),
+        system=system,
+        corpus_path=Path(payload["corpus_path"]),
+        candidate_path=Path(payload["candidate_path"]),
+        case_id=None,
+        adapter_entrypoint=decoded_adapter_entrypoint,
+        adapter_source=decoded_adapter_source,
+        adapter_runtime=decoded_adapter_runtime,
+    )
+    if observed_command_contract != tuple(command_contract):
+        raise ExternalRunnerError(
+            "run manifest command contract does not match its command"
+        )
+    if isolation_mode == "per_case":
+        for index, record in enumerate(case_runs):
+            case_contract = _portable_command_contract(
+                record["command"],
+                working_directory=Path(payload["working_directory"]),
+                system=system,
+                corpus_path=Path(record["corpus_path"]),
+                candidate_path=Path(record["candidate_path"]),
+                case_id=str(record["case_id"]),
+                adapter_entrypoint=decoded_adapter_entrypoint,
+                adapter_source=decoded_adapter_source,
+                adapter_runtime=decoded_adapter_runtime,
+            )
+            if case_contract != observed_command_contract:
+                raise ExternalRunnerError(
+                    "run manifest case_runs"
+                    f"[{index}] command does not match the command contract"
+                )
+    try:
         network_payload = payload["network_isolation"]
         if not isinstance(network_payload, dict):
             raise TypeError("network_isolation must be an object")
@@ -2249,9 +2681,12 @@ def load_external_run_manifest(
         decoded_identity,
         decoded_limits,
         isolation_mode,
+        Path(payload["working_directory"]),
+        command_contract,
         decoded_dependency_lock,
         decoded_adapter_entrypoint,
         decoded_adapter_source,
+        decoded_adapter_runtime,
         decoded_network_isolation,
         decoded_inference_service,
         2 * case_count if isolation_mode == "per_case" else 2,
@@ -2390,9 +2825,10 @@ def load_external_run_manifest(
             failure_reason = (
                 "run manifest lacks complete claim controls: exact-Qwen identity, "
                 "per-case isolation, an enforced memory limit, retained "
-                "dependency-lock, adapter-entrypoint, and adapter-source bytes, "
-                "network-isolation evidence, and measured inference-service "
-                "accounting are required"
+                "dependency-lock, adapter-entrypoint, adapter-source, and "
+                "runtime bytes, a portable command contract rooted at the "
+                "source directory, network-isolation evidence, and measured "
+                "inference-service accounting are required"
             )
     else:
         failure_reason = (
@@ -2417,6 +2853,7 @@ def load_external_run_manifest(
         dependency_lock=decoded_dependency_lock,
         adapter_entrypoint=decoded_adapter_entrypoint,
         adapter_source=decoded_adapter_source,
+        adapter_runtime=decoded_adapter_runtime,
         network_isolation=decoded_network_isolation,
         inference_service=decoded_inference_service,
         command_sha256=payload["command_sha256"],
@@ -2439,6 +2876,7 @@ def run_external_command(
     dependency_lock: DependencyLockEvidence | None = None,
     adapter_entrypoint: AdapterEntrypointEvidence | None = None,
     adapter_source: AdapterSourceEvidence | None = None,
+    adapter_runtime: AdapterRuntimeEvidence | None = None,
     network_isolation: NetworkIsolationEvidence | None = None,
     inference_service: InferenceServiceContract | None = None,
     working_directory: Path | str | None = None,
@@ -2446,6 +2884,7 @@ def run_external_command(
     _inference_monitor: _InferenceServiceMonitor | None = None,
     _check_adapter_entrypoint: bool = True,
     _check_adapter_source: bool = True,
+    _check_adapter_runtime: bool = True,
 ) -> ExternalRunManifest:
     """Run one adapter command and validate its candidate output fail-closed."""
 
@@ -2531,6 +2970,8 @@ def run_external_command(
     cwd = (
         Path(working_directory).expanduser().resolve()
         if working_directory is not None
+        else Path(adapter_source.source_root or "")
+        if adapter_source.claim_evidence_complete
         else Path.cwd().resolve()
     )
     if not cwd.is_dir():
@@ -2543,6 +2984,23 @@ def run_external_command(
         for part in command
     )
     resolved_command = _resolve_command(substituted)
+    adapter_runtime = adapter_runtime or capture_adapter_runtime_evidence(
+        resolved_command[0]
+    )
+    if (
+        _check_adapter_runtime
+        and not _adapter_runtime_evidence_matches(adapter_runtime)
+    ):
+        raise ExternalRunnerError(
+            "adapter runtime executable does not match before execution"
+        )
+    if not _command_uses_adapter_runtime(
+        resolved_command,
+        adapter_runtime,
+    ):
+        raise ExternalRunnerError(
+            "adapter command does not use its retained runtime"
+        )
     if not _command_references_adapter_entrypoint(
         resolved_command,
         working_directory=cwd,
@@ -2551,7 +3009,18 @@ def run_external_command(
         raise ExternalRunnerError(
             "adapter command does not reference its retained entrypoint"
         )
-    command_sha256 = _canonical_sha256(list(resolved_command))
+    command_contract = _portable_command_contract(
+        resolved_command,
+        working_directory=cwd,
+        system=system,
+        corpus_path=corpus,
+        candidate_path=candidate,
+        case_id=case_id,
+        adapter_entrypoint=adapter_entrypoint,
+        adapter_source=adapter_source,
+        adapter_runtime=adapter_runtime,
+    )
+    command_sha256 = _canonical_sha256(list(command_contract))
     process_environment = dict(environment) if environment is not None else os.environ.copy()
     if not all(
         isinstance(key, str) and isinstance(value, str)
@@ -2702,6 +3171,12 @@ def run_external_command(
         termination_reason = "adapter_source_evidence_modified"
     if (
         termination_reason is None
+        and _check_adapter_runtime
+        and not _adapter_runtime_evidence_matches(adapter_runtime)
+    ):
+        termination_reason = "adapter_runtime_evidence_modified"
+    if (
+        termination_reason is None
         and not _network_isolation_evidence_matches(network_isolation)
     ):
         termination_reason = "network_isolation_evidence_modified"
@@ -2818,6 +3293,7 @@ def run_external_command(
         case_count=len(cases),
         case_runs=(),
         command=resolved_command,
+        command_contract=command_contract,
         command_sha256=command_sha256,
         working_directory=str(cwd),
         started_at=started_at,
@@ -2846,15 +3322,19 @@ def run_external_command(
         dependency_lock=dependency_lock,
         adapter_entrypoint=adapter_entrypoint,
         adapter_source=adapter_source,
+        adapter_runtime=adapter_runtime,
         network_isolation=network_isolation,
         inference_service=inference_accounting,
         claim_metadata_complete=_claim_controls_complete(
             identity,
             limits,
             "whole_corpus",
+            cwd,
+            command_contract,
             dependency_lock,
             adapter_entrypoint,
             adapter_source,
+            adapter_runtime,
             network_isolation,
             inference_accounting,
             2,
@@ -2876,6 +3356,7 @@ def run_external_cases(
     dependency_lock: DependencyLockEvidence | None = None,
     adapter_entrypoint: AdapterEntrypointEvidence | None = None,
     adapter_source: AdapterSourceEvidence | None = None,
+    adapter_runtime: AdapterRuntimeEvidence | None = None,
     network_isolation: NetworkIsolationEvidence | None = None,
     inference_service: InferenceServiceContract | None = None,
     working_directory: Path | str | None = None,
@@ -2945,6 +3426,8 @@ def run_external_cases(
     cwd = (
         Path(working_directory).expanduser().resolve()
         if working_directory is not None
+        else Path(adapter_source.source_root or "")
+        if adapter_source.claim_evidence_complete
         else Path.cwd().resolve()
     )
     if not cwd.is_dir():
@@ -2956,6 +3439,20 @@ def run_external_cases(
     ):
         raise ExternalRunnerError("environment must map strings to strings")
     resolved_template = _resolve_command(command)
+    adapter_runtime = adapter_runtime or capture_adapter_runtime_evidence(
+        resolved_template[0]
+    )
+    if not _adapter_runtime_evidence_matches(adapter_runtime):
+        raise ExternalRunnerError(
+            "adapter runtime executable does not match before execution"
+        )
+    if not _command_uses_adapter_runtime(
+        resolved_template,
+        adapter_runtime,
+    ):
+        raise ExternalRunnerError(
+            "adapter command does not use its retained runtime"
+        )
     if not _command_references_adapter_entrypoint(
         resolved_template,
         working_directory=cwd,
@@ -2964,7 +3461,18 @@ def run_external_cases(
         raise ExternalRunnerError(
             "adapter command does not reference its retained entrypoint"
         )
-    command_sha256 = _canonical_sha256(list(resolved_template))
+    command_contract = _portable_command_contract(
+        resolved_template,
+        working_directory=cwd,
+        system=system,
+        corpus_path=corpus,
+        candidate_path=candidate,
+        case_id=None,
+        adapter_entrypoint=adapter_entrypoint,
+        adapter_source=adapter_source,
+        adapter_runtime=adapter_runtime,
+    )
+    command_sha256 = _canonical_sha256(list(command_contract))
 
     started_at = datetime.now(UTC).isoformat()
     started = time.monotonic()
@@ -3021,6 +3529,7 @@ def run_external_cases(
                 dependency_lock=dependency_lock,
                 adapter_entrypoint=adapter_entrypoint,
                 adapter_source=adapter_source,
+                adapter_runtime=adapter_runtime,
                 network_isolation=network_isolation,
                 inference_service=inference_service,
                 working_directory=cwd,
@@ -3028,7 +3537,12 @@ def run_external_cases(
                 _inference_monitor=inference_monitor,
                 _check_adapter_entrypoint=False,
                 _check_adapter_source=False,
+                _check_adapter_runtime=False,
             )
+            if case_manifest.command_contract != command_contract:
+                raise ExternalRunnerError(
+                    "per-case adapter command diverged from its contract"
+                )
             adapter_integrity_failure: str | None = None
             if not _adapter_entrypoint_evidence_matches(
                 adapter_entrypoint
@@ -3040,9 +3554,15 @@ def run_external_cases(
                 adapter_integrity_failure = (
                     "adapter_source_evidence_modified"
                 )
+            elif not _adapter_runtime_evidence_matches(adapter_runtime):
+                adapter_integrity_failure = (
+                    "adapter_runtime_evidence_modified"
+                )
             case_run = CaseRunRecord(
                 case_id=case.id,
                 command=case_manifest.command,
+                corpus_path=str(case_corpus_path),
+                candidate_path=str(case_candidate_path),
                 started_at=case_manifest.started_at,
                 duration_seconds=case_manifest.duration_seconds,
                 corpus_sha256=case_manifest.corpus_sha256,
@@ -3155,6 +3675,11 @@ def run_external_cases(
         termination_reason = "adapter_source_evidence_modified"
     if (
         termination_reason is None
+        and not _adapter_runtime_evidence_matches(adapter_runtime)
+    ):
+        termination_reason = "adapter_runtime_evidence_modified"
+    if (
+        termination_reason is None
         and not _network_isolation_evidence_matches(network_isolation)
     ):
         termination_reason = "network_isolation_evidence_modified"
@@ -3251,6 +3776,7 @@ def run_external_cases(
         case_count=len(cases),
         case_runs=tuple(case_runs),
         command=resolved_template,
+        command_contract=command_contract,
         command_sha256=command_sha256,
         working_directory=str(cwd),
         started_at=started_at,
@@ -3279,15 +3805,19 @@ def run_external_cases(
         dependency_lock=dependency_lock,
         adapter_entrypoint=adapter_entrypoint,
         adapter_source=adapter_source,
+        adapter_runtime=adapter_runtime,
         network_isolation=network_isolation,
         inference_service=inference_accounting,
         claim_metadata_complete=_claim_controls_complete(
             identity,
             limits,
             "per_case",
+            cwd,
+            command_contract,
             dependency_lock,
             adapter_entrypoint,
             adapter_source,
+            adapter_runtime,
             network_isolation,
             inference_accounting,
             2 * len(cases),

@@ -51,6 +51,7 @@ def write_frozen_external_protocol(
     environment_ids: Mapping[str, str] | None = None,
     adapter_entrypoint_sha256s: Mapping[str, str] | None = None,
     adapter_source_tree_sha256s: Mapping[str, str] | None = None,
+    adapter_runtime_executable_sha256s: Mapping[str, str] | None = None,
     adapter_command_sha256s: Mapping[str, str] | None = None,
     synthetic_dataset_sha256: str = "9" * 64,
     max_memory_mb: int = 256,
@@ -75,6 +76,7 @@ def write_frozen_external_protocol(
     environments = dict(environment_ids or {})
     entrypoints = dict(adapter_entrypoint_sha256s or {})
     source_trees = dict(adapter_source_tree_sha256s or {})
+    runtimes = dict(adapter_runtime_executable_sha256s or {})
     commands = dict(adapter_command_sha256s or {})
     protocol_document = tmp_path / "external-protocol.md"
     protocol_document.write_text("# Frozen external fixture\n", encoding="utf-8")
@@ -110,6 +112,10 @@ def write_frozen_external_protocol(
                 "adapter_source_tree_sha256": source_trees.get(
                     system,
                     _identity(f"{system}-source-tree"),
+                ),
+                "adapter_runtime_executable_sha256": runtimes.get(
+                    system,
+                    _identity(f"{system}-runtime"),
                 ),
                 "adapter_command_sha256": commands.get(
                     system,

@@ -330,13 +330,18 @@ claim controls require `environment_id` to equal
 `sha256:<dependency-lock-sha256>`. The retained adapter entrypoint must appear
 in the recorded command and in the bounded recursive inventory of
 `--adapter-source-root`. Loader replay rehashes every regular file in that
-link-free source tree and recomputes the canonical command digest; external
-scoring matches the entrypoint, source-tree, and command digests to the frozen
-per-system protocol fields. The fixed tree policy allows at most 10,000 regular
-files, 256 MB per file, and 512 MB total, so the source root should be a
+link-free source tree and recomputes the portable command-contract digest;
+external
+scoring matches the entrypoint, source-tree, resolved-runtime, and portable
+command-contract digests to the frozen per-system protocol fields. The
+contract uses typed tokens for runner substitutions and bound paths, so
+different clean-host absolute paths produce the same digest. Every per-case
+exact invocation must normalize to that contract, and claim runs use the source
+root as their working directory. The fixed tree policy allows at most 10,000
+regular files, 256 MB per file, and 512 MB total, so the source root should be a
 dedicated immutable adapter directory rather than a build-output directory.
-The per-case runner revalidates it after each case and stops before launching
-another process if any inventory record changes.
+The per-case runner revalidates it and the resolved runtime executable after
+each case and stops before launching another process if either changes.
 
 `--max-memory-mb` bounds the adapter process tree with `RLIMIT_AS` on POSIX and
 a Job Object assigned before process resume on Windows. The service PID and
@@ -361,15 +366,16 @@ cost. Missing per-case isolation, no enforced process-tree memory limit,
 unrecorded identity, a model other than the exact local Qwen Q4 build,
 concurrency other than one, or nonzero model service cost is a
 certificate-invalid non-win even when the candidate interchange itself is
-valid. In current runner schema `lrcbench-external-run-manifest-0.9`, a
+valid. In current runner schema `lrcbench-external-run-manifest-0.10`, a
 claim-eligible identity requires an immutable adapter revision, environment id
 `sha256:<dependency-lock-sha256>`, the exact retained lock bytes, the exact
 8192-context Qwen model, evaluator tokenizer, one slot, zero retries, zero
 service cost, retained network-isolation evidence, a retained
-command-referenced adapter entrypoint, its bounded immutable source tree, and
+command-referenced adapter entrypoint, its bounded immutable source tree, the
+resolved runtime-executable digest, a portable complete command contract, and
 at least two stable inference-service memory samples within the ceiling.
 Scoring also matches the manifest's environment/network-evidence digests,
-adapter entrypoint/source-tree/command digests, service memory
+adapter entrypoint/source-tree/runtime/command digests, service memory
 metric/executable digest/ceiling, isolation, and
 time/polling/output/candidate/adapter-memory limits to the frozen protocol.
 
@@ -420,7 +426,7 @@ and documentation together.
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 884 tests: 879 passed and 5 platform/optional checks were
+The suite collected 885 tests: 880 passed and 5 platform/optional checks were
 skipped. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |
