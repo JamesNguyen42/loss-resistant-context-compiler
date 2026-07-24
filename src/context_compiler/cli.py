@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .archive import SourceArchive
+from .artifact_diff import diff_artifacts
 from .atomic import atomic_write_text
 from .compiler import ContextCompiler
 from .io import (
@@ -436,6 +437,27 @@ def _inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _diff(args: argparse.Namespace) -> int:
+    try:
+        artifact_limits = _artifact_limits(args)
+        before = load_artifact_path(args.before, limits=artifact_limits)
+        after = load_artifact_path(args.after, limits=artifact_limits)
+        report = diff_artifacts(
+            before,
+            after,
+            include_item_details=not args.summary_only,
+            limits=artifact_limits,
+        )
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        _write_error(args, exc)
+        return 2
+    _write_output(
+        json.dumps(report, indent=2, ensure_ascii=False),
+        args.output,
+    )
+    return 0
+
+
 def _add_source_limit_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--max-source-bytes",
@@ -594,6 +616,22 @@ def build_parser() -> argparse.ArgumentParser:
     _add_artifact_limit_arguments(inspect_parser)
     _add_error_format_argument(inspect_parser)
     inspect_parser.set_defaults(handler=_inspect)
+
+    diff_parser = subparsers.add_parser(
+        "diff",
+        help="compare two integrity-checked compiled artifacts",
+    )
+    diff_parser.add_argument("before", help="earlier compiled artifact")
+    diff_parser.add_argument("after", help="later compiled artifact")
+    diff_parser.add_argument("-o", "--output")
+    diff_parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="omit per-item change details",
+    )
+    _add_artifact_limit_arguments(diff_parser)
+    _add_error_format_argument(diff_parser)
+    diff_parser.set_defaults(handler=_diff)
 
     archive_parser = subparsers.add_parser("archive", help="manage immutable cold source events")
     archive_subparsers = archive_parser.add_subparsers(dest="archive_command", required=True)

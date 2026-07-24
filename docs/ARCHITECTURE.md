@@ -124,6 +124,16 @@ canonical `artifact_sha256`. This source-independent check detects corruption
 but cannot establish authorship or replay semantic truth; those guarantees
 still require trusted source events and `verify_artifact_dict()`.
 
+`diff_artifacts()` applies the same bounded envelope validation independently
+to both inputs and emits deterministic `ctxc-artifact-diff-0.1`. The report
+separates serialized-payload additions/removals from active-selection changes,
+records same-id field changes and verification/compression/metrics summaries,
+and binds the result with `diff_sha256`. Per-item views omit raw metadata in
+favor of its canonical digest. When either ledger is incomplete, the report
+marks the ledger comparison incomplete instead of presenting omitted payload
+items as proven removals. Like the input self-hashes, the diff digest detects
+inconsistency but does not authenticate either artifact.
+
 Malformed direct Python artifacts preserve the verifier's failure-report
 contract: cycles and non-JSON objects become `invalid_artifact_json` rather
 than escaping as an unhandled error. Such caller-allocated objects necessarily

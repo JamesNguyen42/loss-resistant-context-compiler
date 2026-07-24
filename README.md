@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 328 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 337 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
@@ -143,7 +143,7 @@ The repository currently includes:
 - a portable JSON artifact, compact prompt renderer, and three JSON Schemas;
 - a logically append-only local source archive with integrity checks, exclusive
   locking, and bounded old-or-new atomic commits;
-- the `ctxc compile`, `verify`, `inspect`, and `archive` commands;
+- the `ctxc compile`, `verify`, `inspect`, `diff`, and `archive` commands;
 - LRCBench, external-candidate import/export, history-weighted paired bootstrap
   gates, per-system decisions, and self-hashed JSON reports with producer/run
   metadata;
@@ -152,7 +152,7 @@ The repository currently includes:
   and valid or failed manifests that feed per-system certificate decisions;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
-- cross-version CI, linting, wheel/schema checks, and 328 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 337 regression tests.
 
 ## In development
 
@@ -310,6 +310,23 @@ ctxc verify compiled-memory.json examples/auth_timeout.jsonl
 ctxc inspect compiled-memory.json
 ```
 
+Compare two integrity-checked artifact envelopes without requiring their source
+histories:
+
+```console
+ctxc diff before.json after.json -o artifact-diff.json
+ctxc diff before.json after.json --summary-only
+```
+
+The deterministic `ctxc-artifact-diff-0.1` report identifies payload additions,
+removals, same-id field changes, active-selection changes, verification,
+compression, and metric changes. It binds itself with `diff_sha256`.
+Per-item details preserve item text and compact provenance coordinates while
+hashing rather than copying arbitrary item metadata. If either input is
+active-only, the report marks `ledger_comparison_complete: false` and warns
+that payload changes do not prove complete-ledger changes; selection changes
+remain exact.
+
 To place the complete compile pipeline inside a killable process-tree boundary:
 
 ```console
@@ -377,8 +394,8 @@ They are hard ingestion boundaries, not a promise that total process memory
 equals the byte caps; Python objects, compiler state, and caller-controlled
 extractors have additional overhead.
 
-`ctxc verify` and `ctxc inspect` also decode compiled artifacts strictly and
-bound them independently:
+`ctxc verify`, `ctxc inspect`, and `ctxc diff` also decode compiled artifacts
+strictly and bound each input independently:
 
 | Boundary | Default | CLI override |
 | --- | ---: | --- |
@@ -401,6 +418,10 @@ before reporting health. The exported `validate_artifact_envelope()` function
 provides the same source-independent check to Python callers. It detects stale
 or malformed envelopes; it is not authenticity or semantic verification, which
 still requires trusted sources and `verify_artifact_dict()`.
+
+`diff_artifacts()` and `ctxc diff` apply that envelope check to both inputs
+before comparing them. A self-consistent diff remains an artifact-derived view,
+not proof that either input is authentic or true.
 
 The default JSON output contains the complete typed ledger and is the format to
 retain for audit. It carries `artifact_sha256`, which `ctxc verify`
@@ -459,6 +480,7 @@ from context_compiler import (
     ContextCompiler,
     SourceLimits,
     SourceRecord,
+    diff_artifacts,
     validate_artifact_envelope,
 )
 
@@ -487,6 +509,9 @@ if not memory.verification.passed:
 
 print(memory.to_prompt())
 ```
+
+`diff_artifacts(before, after, include_item_details=False)` returns the same
+self-hashed summary used by `ctxc diff --summary-only`.
 
 Pass `timeout_seconds` to execute the entire compiler pipeline in a dedicated
 process tree:
@@ -682,7 +707,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 328 tests are collected (323 pass and 5
+Current local snapshot (2026-07-24): 337 tests are collected (332 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 328 collected: 323 passing, 5 skipped |
+| Tests at this snapshot | 337 collected: 332 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -247,6 +247,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `src/context_compiler/atomic.py` | Shared same-directory replace-or-create UTF-8 transactions and durability helpers |
 | `src/context_compiler/file_lock.py` | Cross-platform persistent advisory-file locking |
 | `src/context_compiler/archive.py` | Logically append-only local archive, advisory locking, atomic commits, loading, and verification |
+| `src/context_compiler/artifact_diff.py` | Integrity-gated deterministic artifact comparison and self-hashed diff reports |
 | `src/context_compiler/cli.py` | `ctxc` parsing, atomic output transactions, versioned error/completion diagnostics, and exit codes |
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
 | `benchmarks/json_io.py` | Shared bounded regular-file hashing and strict JSON decoding for benchmark evidence |
@@ -265,6 +266,7 @@ counters are deterministic, apart from timestamps and measured duration.
 ctxc compile HISTORY [--format json|prompt]
 ctxc verify ARTIFACT HISTORY
 ctxc inspect ARTIFACT
+ctxc diff BEFORE_ARTIFACT AFTER_ARTIFACT [--summary-only]
 ctxc archive append ARCHIVE HISTORY
 ctxc archive verify ARCHIVE
 ```
@@ -283,7 +285,7 @@ Important compile options:
 - `--max-source-bytes`, `--max-source-records`,
   `--max-source-line-chars`, `--max-source-record-bytes`,
   `--max-total-source-bytes`, and `--max-source-json-depth`;
-- `verify` and `inspect` also expose `--max-artifact-bytes`,
+- `verify`, `inspect`, and `diff` also expose `--max-artifact-bytes`,
   `--max-artifact-line-chars`, `--max-artifact-canonical-bytes`,
   `--max-artifact-json-depth`, `--max-artifact-items`,
   `--max-artifact-selected-items`, `--max-artifact-provenance-spans`, and
@@ -320,6 +322,8 @@ Primary exported objects:
 - `SourceLimitError`;
 - `ArtifactLimits`;
 - `ArtifactLimitError`;
+- `ARTIFACT_DIFF_SCHEMA`;
+- `diff_artifacts`;
 - `validate_artifact_envelope`;
 - `VerificationReport`.
 
@@ -346,6 +350,9 @@ and enforces a subprocess timeout. See [Local Qwen integration](LOCAL_QWEN.md).
 | CLI command | `ctxc` |
 | Package version | `0.1.0` |
 | Compiled artifact schema | `1.0` |
+| Artifact diff schema | `ctxc-artifact-diff-0.1` |
+| Compile completion event schema | `ctxc-event-0.1` |
+| CLI diagnostic schema | `ctxc-diagnostic-0.1` |
 | LRCBench report version | `lrcbench-0.2` |
 | LRCBench corpus schema | `lrcbench-corpus-0.3` |
 | LRCBench candidate schema | `lrcbench-candidate-output-0.2` |
@@ -399,7 +406,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 328 tests are collected: 323 pass and 5 platform/optional checks are skipped.
+- 337 tests are collected: 332 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -421,6 +428,10 @@ audited. Any selected superseded item independently fails verification as
   duplicate/missing item-selection references, and stale `artifact_sha256`
   values before reporting explicit shape/schema/self-hash health. Python
   callers can use `validate_artifact_envelope()` for the same bounded check.
+- `ctxc diff` validates both envelopes before emitting a deterministic,
+  self-hashed `ctxc-artifact-diff-0.1` report. It separates payload and
+  selection changes, summarizes report/metric changes, supports
+  `--summary-only`, and explicitly marks incomplete-ledger comparisons.
 - New artifacts carry strict `compilation-metrics-0.1` telemetry for item flow,
   post-resolution recovery, conflicts, protected-budget pressure, verification
   outcomes, and compile duration. `ctxc inspect` exposes it; replay rejects
