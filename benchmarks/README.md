@@ -138,12 +138,23 @@ rules, command, resource identity, result audit, and claim boundary are in the
 ## External baselines
 
 The bundled baselines are deterministic controls, not claims about the current
-state of the art. Export the exact gold-free corpus before running ACON,
-FoldAgent, AMA, or another external implementation:
+state of the art. The self-hashed
+[machine protocol](protocols/external-comparison-v1.json) is currently a
+verified draft, not a claim-bearing registration:
+
+```powershell
+python -m benchmarks.external_protocol `
+  --verify benchmarks/protocols/external-comparison-v1.json
+```
+
+`--require-frozen` intentionally rejects that draft until every recorded
+blocker is resolved. After a new protocol version is frozen, export its exact
+gold-free corpus before running ACON, FoldAgent, AMA, or another included
+implementation:
 
 ```powershell
 $env:PYTHONPATH = "src"
-python -m benchmarks --histories 24 --export-corpus lrcbench-corpus.json
+python -m benchmarks --histories 32 --export-corpus lrcbench-corpus.json
 ```
 
 The export has schema `lrcbench-corpus-0.3`, the full benchmark config,
@@ -279,18 +290,24 @@ Import one or more candidates with repeatable options. The generation options
 must match those used for the corpus export:
 
 ```powershell
-python -m benchmarks --histories 24 `
+python -m benchmarks --histories 32 `
+  --external-protocol benchmarks/protocols/external-comparison-v1.json `
   --expected-external-system acon `
   --expected-external-system foldagent `
   --external-run-manifest acon-manifest.json `
   --external-run-manifest foldagent-manifest.json
 ```
 
-Every intended participant must be registered with
-`--expected-external-system`. A missing registered output is retained as an
-invalid non-win; an unexpected supplied system is rejected. The certificate
-computes a separate win, tie, loss, or invalid decision for each registered
-system and requires wins against a strict majority. Run
+The verified frozen protocol is authoritative for the registered set. Optional
+`--expected-external-system` assertions must match that complete set exactly.
+A missing registered output is retained as an invalid non-win; an unexpected
+supplied system is rejected. The harness also rejects a draft protocol, a
+different synthetic dataset digest, or a candidate/run-manifest adapter
+revision that differs from the frozen revision. The current report binds the
+protocol id, protocol/document/dataset hashes, and registered set into
+certificate evidence. The certificate computes a separate win, tie, loss, or
+invalid decision for each registered system and requires wins against a strict
+majority. Run
 `python -m benchmarks --self-test` for a deterministic export/import
 round-trip plus negative checks for hash mismatch, missing cases, and budget
 overflow.
@@ -322,10 +339,11 @@ deliberately broad. This gate catches major regressions; it does not satisfy
 the separate roadmap item to characterize latency and peak RSS from 10,000 to
 1,000,000 events.
 
-`--external-baseline` remains available for direct interchange diagnostics,
-but a registered system without a validated run manifest is an invalid
-certificate non-win. A failed manifest contributes its exact bounded-run
-failure reason to the per-system decision and evidence digest.
+`--external-baseline` remains available for direct interchange diagnostics
+inside a frozen protocol, but a registered system without a validated run
+manifest is an invalid certificate non-win. A failed manifest contributes its
+exact bounded-run failure reason to the per-system decision and evidence
+digest.
 
 The certificate fails closed. It requires at least 24 histories in every
 registered adversarial stratum, near-perfect critical and exact recall,
@@ -352,7 +370,7 @@ external set, the scope is `external-inclusive`.
 
 The reviewed 2026-07-24 default run covers 32 histories and dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 866 tests alongside it: 861 passed and 5
+The suite collected 877 tests alongside it: 872 passed and 5
 platform/optional checks were skipped.
 
 | System | Critical | Exact | Provenance | Support | Authority | Stale | Promotion | Perfect | Compression |
@@ -370,13 +388,17 @@ source fixtures unless intentionally reviewed and committed.
 Reports and corpus exports are installed by same-directory atomic replacement.
 Runner manifests use exclusive atomic installation, so a competing destination
 created during the run is preserved rather than overwritten.
-JSON reports use schema id `lrcbench-report-0.1`. Their `run_metadata` records
+New JSON reports use schema id `lrcbench-report-0.2`. Their `run_metadata` records
 the repository revision/dirty state, package and interchange versions, exact
 command, timestamp, duration, environment, tokenizer/model, baseline revisions,
 cost, and failures. `report_sha256` binds that whole envelope while the
 certificate's `evidence_sha256` remains deterministic across equivalent runs.
+Version `0.2` adds external-protocol evidence. The verifier continues to replay
+the committed local-only `lrcbench-report-0.1` snapshot, but refuses a legacy
+external-inclusive claim.
 
-Verify a newly generated current-schema report offline:
+Verify a newly generated report, or replay the retained local `0.1` report,
+offline:
 
 ```console
 python -m benchmarks --verify-report benchmarks/result.json
@@ -391,5 +413,8 @@ experimental fairness. A valid `NOT ISSUED` report passes verification because
 certificate outcome and document integrity are separate questions.
 
 The dated inclusion, failure, estimand, and freeze rules are in the
-[draft external comparison protocol](protocols/external-comparison-v1.md).
-It remains explicitly non-claim-bearing while required fields are `TBD`.
+[draft external comparison protocol](protocols/external-comparison-v1.md) and
+its [strict machine-readable companion](protocols/external-comparison-v1.json).
+The draft records four screened candidates and eight explicit blockers. It
+remains non-claim-bearing until every blocker is resolved and the strict
+verifier accepts it with `--require-frozen`.

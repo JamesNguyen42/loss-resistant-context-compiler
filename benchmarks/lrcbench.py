@@ -33,7 +33,8 @@ from context_compiler.atomic import atomic_write_text
 from .json_io import StrictJsonError, StrictJsonLimits, load_strict_json_file
 
 BENCHMARK_VERSION = "lrcbench-0.2"
-REPORT_SCHEMA = "lrcbench-report-0.1"
+REPORT_SCHEMA = "lrcbench-report-0.2"
+LEGACY_REPORT_SCHEMA = "lrcbench-report-0.1"
 CORPUS_SCHEMA = "lrcbench-corpus-0.3"
 CANDIDATE_SCHEMA = "lrcbench-candidate-output-0.2"
 CORPUS_PRODUCER_SCHEMA = "lrcbench-corpus-producer-0.1"
@@ -391,6 +392,50 @@ class RunManifestEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class ExternalProtocolEvidence:
+    protocol_id: str
+    protocol_sha256: str
+    document_sha256: str
+    synthetic_dataset_sha256: str
+    registered_systems: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.protocol_id, str)
+            or _SYSTEM_RE.fullmatch(self.protocol_id) is None
+            or self.protocol_id != self.protocol_id.lower()
+        ):
+            raise ValueError("external protocol id is invalid")
+        for name in (
+            "protocol_sha256",
+            "document_sha256",
+            "synthetic_dataset_sha256",
+        ):
+            value = getattr(self, name)
+            if (
+                not isinstance(value, str)
+                or re.fullmatch(r"[0-9a-f]{64}", value) is None
+            ):
+                raise ValueError(f"external protocol {name} is invalid")
+        if (
+            not isinstance(self.registered_systems, tuple)
+            or len(self.registered_systems) < 4
+            or self.registered_systems
+            != tuple(sorted(set(self.registered_systems)))
+            or not all(
+                isinstance(system, str)
+                and _SYSTEM_RE.fullmatch(system) is not None
+                and system == system.lower()
+                for system in self.registered_systems
+            )
+        ):
+            raise ValueError(
+                "external protocol must register at least four valid, unique, "
+                "lowercase, sorted systems"
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class GainCertificate:
     issued: bool
     candidate: str
@@ -411,6 +456,7 @@ class GainCertificate:
     external_required_wins: int
     external_majority_passed: bool | None
     external_manifests: tuple[RunManifestEvidence, ...]
+    external_protocol: ExternalProtocolEvidence | None
     comparisons: tuple[SystemComparison, ...]
     reasons: tuple[str, ...]
     claim: str
@@ -2208,6 +2254,7 @@ def _make_certificate(
     external_systems: Sequence[str] = (),
     external_failures: Mapping[str, str] | None = None,
     external_manifest_sha256: Mapping[str, str] | None = None,
+    external_protocol: ExternalProtocolEvidence | None = None,
 ) -> GainCertificate:
     external_failures = dict(external_failures or {})
     external_manifest_sha256 = dict(external_manifest_sha256 or {})
@@ -2262,6 +2309,58 @@ def _make_certificate(
             candidate_gate_reasons.append(reason)
 
     external_names = tuple(sorted(set(external_systems)))
+    if (
+        len(external_names) != len(external_systems)
+        or any(
+            not isinstance(name, str)
+            or _SYSTEM_RE.fullmatch(name) is None
+            for name in external_names
+        )
+    ):
+        raise ValueError(
+            "external systems must contain unique valid identifiers"
+        )
+    unexpected_external_evidence = (
+        set(external_failures) | set(external_manifest_sha256)
+    ) - set(external_names)
+    if unexpected_external_evidence:
+        raise ValueError(
+            "external evidence names are outside the comparison set"
+        )
+    if any(
+        not isinstance(reason, str) or not reason
+        for reason in external_failures.values()
+    ):
+        raise ValueError("external failure reasons must be non-empty strings")
+    if any(
+        not isinstance(value, str)
+        or re.fullmatch(r"[0-9a-f]{64}", value) is None
+        for value in external_manifest_sha256.values()
+    ):
+        raise ValueError("external manifest hashes must be lowercase SHA-256")
+    for name in external_names:
+        if name not in external_manifest_sha256:
+            external_failures.setdefault(
+                name,
+                "no validated external run manifest was supplied",
+            )
+    if external_names:
+        if external_protocol is None:
+            candidate_gate_reasons.append(
+                "frozen external comparison protocol evidence is missing"
+            )
+        elif external_protocol.registered_systems != external_names:
+            candidate_gate_reasons.append(
+                "external comparison set does not match the frozen protocol"
+            )
+        elif external_protocol.synthetic_dataset_sha256 != digest:
+            candidate_gate_reasons.append(
+                "benchmark dataset does not match the frozen external protocol"
+            )
+    elif external_protocol is not None:
+        candidate_gate_reasons.append(
+            "external protocol evidence was supplied without an external comparison"
+        )
     comparison_names = sorted(
         {result.system for result in baselines} | set(external_names)
     )
@@ -2340,6 +2439,11 @@ def _make_certificate(
             }
             for name in sorted(external_manifest_sha256)
         ],
+        "external_protocol": (
+            asdict(external_protocol)
+            if external_protocol is not None
+            else None
+        ),
     }
     evidence_sha = hashlib.sha256(
         json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -2393,6 +2497,7 @@ def _make_certificate(
             )
             for name in sorted(external_manifest_sha256)
         ),
+        external_protocol=external_protocol,
         comparisons=comparisons,
         reasons=tuple(reasons),
         claim=claim,
@@ -2478,6 +2583,7 @@ def run_benchmark(
     external_baseline_paths: Sequence[Path | str] = (),
     external_manifest_paths: Sequence[Path | str] = (),
     expected_external_systems: Sequence[str] = (),
+    external_protocol_path: Path | str | None = None,
     corpus_export_path: Path | str | None = None,
     command: Sequence[str] | None = None,
     max_external_candidate_bytes: int = DEFAULT_EXTERNAL_CANDIDATE_BYTES,
@@ -2495,16 +2601,67 @@ def run_benchmark(
         raise ExternalBaselineError(
             "expected external system names must be unique valid identifiers"
         )
-    reserved = {"compiler", "head", "tail", "extractive"}
+    reserved = set(BUNDLED_SYSTEMS)
     if reserved & set(expected):
-        raise ExternalBaselineError("expected external system names collide with built-ins")
-    if (external_baseline_paths or external_manifest_paths) and not expected:
         raise ExternalBaselineError(
-            "external candidate scoring requires an explicitly registered "
-            "expected external comparison set"
+            "expected external system names collide with built-ins"
+        )
+    external_requested = bool(
+        external_baseline_paths
+        or external_manifest_paths
+        or expected
+        or external_protocol_path is not None
+    )
+    if external_requested and external_protocol_path is None:
+        raise ExternalBaselineError(
+            "external comparison scoring requires a frozen external protocol"
+        )
+    external_protocol: ExternalProtocolEvidence | None = None
+    protocol_adapter_revisions: dict[str, str] = {}
+    if external_protocol_path is not None:
+        from .external_protocol import ExternalProtocolError, load_external_protocol
+
+        try:
+            verified_protocol = load_external_protocol(
+                external_protocol_path,
+                require_frozen=True,
+            )
+        except (ExternalProtocolError, OSError, TypeError, ValueError) as exc:
+            raise ExternalBaselineError(
+                f"invalid external comparison protocol: {exc}"
+            ) from exc
+        if expected and tuple(sorted(expected)) != verified_protocol.registered_systems:
+            raise ExternalBaselineError(
+                "expected external systems do not match the frozen protocol"
+            )
+        if verified_protocol.synthetic_dataset_sha256 is None:
+            raise ExternalBaselineError(
+                "frozen external protocol lacks a synthetic dataset digest"
+            )
+        expected = verified_protocol.registered_systems
+        protocol_adapter_revisions = dict(verified_protocol.adapter_revisions)
+        external_protocol = ExternalProtocolEvidence(
+            protocol_id=verified_protocol.protocol_id,
+            protocol_sha256=verified_protocol.protocol_sha256,
+            document_sha256=verified_protocol.document_sha256,
+            synthetic_dataset_sha256=(
+                verified_protocol.synthetic_dataset_sha256
+            ),
+            registered_systems=verified_protocol.registered_systems,
+        )
+    if reserved & set(expected):
+        raise ExternalBaselineError(
+            "external protocol system names collide with built-ins"
         )
     cases = generate_histories(config)
     digest = dataset_digest(cases, config)
+    if (
+        external_protocol is not None
+        and digest != external_protocol.synthetic_dataset_sha256
+    ):
+        raise ExternalBaselineError(
+            "benchmark dataset does not match the frozen external protocol"
+        )
     corpus_producer = CorpusProducerMetadata(
         created_at=started_at,
         repository_commit=repository_commit,
@@ -2534,7 +2691,9 @@ def run_benchmark(
     manifest_candidate_evidence: dict[Path, tuple[int, str]] = {}
     external_failures: dict[str, str] = {}
     external_manifest_sha256: dict[str, str] = {}
-    external_adapter_revisions: dict[str, str] = {}
+    external_adapter_revisions: dict[str, str] = dict(
+        protocol_adapter_revisions
+    )
     external_model_ids: dict[str, str] = {}
     external_model_costs: dict[str, float] = {}
     if external_manifest_paths:
@@ -2554,8 +2713,20 @@ def run_benchmark(
                 raise ExternalBaselineError(
                     f"external system {reference.system!r} has multiple run manifests"
                 )
+            if reference.system not in expected:
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} is not registered "
+                    "by the frozen protocol"
+                )
+            if (
+                reference.adapter_revision
+                != protocol_adapter_revisions[reference.system]
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest adapter "
+                    "revision does not match the frozen protocol"
+                )
             external_manifest_sha256[reference.system] = reference.manifest_sha256
-            external_adapter_revisions[reference.system] = reference.adapter_revision
             external_model_ids[reference.system] = reference.model_id
             external_model_costs[reference.system] = reference.model_service_cost_usd
             if reference.candidate_path is not None:
@@ -2589,6 +2760,10 @@ def run_benchmark(
         expected_file_evidence=manifest_candidate_evidence,
     )
     for system, producer in external_candidate_producers.items():
+        if system not in expected:
+            raise ExternalBaselineError(
+                f"external system {system!r} is not registered by the frozen protocol"
+            )
         recorded_revision = external_adapter_revisions.get(system)
         if (
             recorded_revision is not None
@@ -2596,7 +2771,7 @@ def run_benchmark(
         ):
             raise ExternalBaselineError(
                 f"external system {system!r} candidate producer revision "
-                "does not match its run manifest"
+                "does not match the frozen protocol or run manifest"
             )
         recorded_model = external_model_ids.get(system)
         if recorded_model is not None and recorded_model != producer.model_id:
@@ -2659,6 +2834,7 @@ def run_benchmark(
         external_systems=external_comparison_set,
         external_failures=external_failures,
         external_manifest_sha256=external_manifest_sha256,
+        external_protocol=external_protocol,
     )
     local_revision = repository_commit or f"package:{PACKAGE_VERSION}"
     baseline_revisions = tuple(
@@ -3008,8 +3184,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="append",
         default=[],
         help=(
-            "register an external system in the strict-majority denominator; "
-            "repeatable, and missing outputs count as invalid non-wins"
+            "assert a system registered by --external-protocol; repeatable, "
+            "and the complete set must match the frozen protocol"
+        ),
+    )
+    parser.add_argument(
+        "--external-protocol",
+        type=Path,
+        help=(
+            "strictly verify and bind a frozen external-comparison protocol; "
+            "required for every external-inclusive run"
         ),
     )
     parser.add_argument("--include-histories", action="store_true")
@@ -3022,7 +3206,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--verify-report",
         type=Path,
         metavar="PATH",
-        help="strictly verify a saved current-schema JSON report and exit",
+        help=(
+            "strictly verify a saved current-schema JSON report or the retained "
+            "local v0.1 report and exit"
+        ),
     )
     parser.add_argument(
         "--max-report-bytes",
@@ -3048,6 +3235,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             or args.max_external_candidate_bytes != DEFAULT_EXTERNAL_CANDIDATE_BYTES
             or bool(args.external_run_manifest)
             or bool(args.expected_external_system)
+            or args.external_protocol is not None
             or args.include_histories
         )
         if generation_options:
@@ -3086,6 +3274,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             external_baseline_paths=args.external_baseline,
             external_manifest_paths=args.external_run_manifest,
             expected_external_systems=args.expected_external_system,
+            external_protocol_path=args.external_protocol,
             corpus_export_path=args.export_corpus,
             command=(sys.executable, "-m", "benchmarks", *effective_argv),
             max_external_candidate_bytes=args.max_external_candidate_bytes,

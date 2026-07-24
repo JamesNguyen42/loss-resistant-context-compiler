@@ -5,8 +5,17 @@ Status: **DRAFT — NOT PREREGISTERED OR CLAIM-BEARING**
 Created: 2026-07-24
 
 This file defines the decisions that must be frozen before any external
-comparison result is inspected. Empty fields are deliberate blockers. A run
-under this draft may be used only to debug adapters and infrastructure.
+comparison result is inspected. Its self-hashed machine-readable companion is
+[`external-comparison-v1.json`](external-comparison-v1.json). The JSON records
+every unresolved item as an explicit blocker and can be verified with:
+
+```console
+python -m benchmarks.external_protocol \
+  --verify benchmarks/protocols/external-comparison-v1.json
+```
+
+Adding `--require-frozen` intentionally fails while this document is a draft.
+A run under this draft may be used only to debug adapters and infrastructure.
 
 ## Claim and unit of comparison
 
@@ -70,10 +79,19 @@ screening:
 
 | Candidate | Inclusion status | Pinned revision | License check | Adapter |
 | --- | --- | --- | --- | --- |
-| ACON | pending | **TBD** | **TBD** | **TBD** |
-| FoldAgent | pending | **TBD** | **TBD** | **TBD** |
-| AMA-Agent | pending | **TBD** | **TBD** | **TBD** |
-| MemIR | pending | **TBD** | **TBD** | **TBD** |
+| ACON | screening | `d63f9ae18959dc7215ff62899c94c5e8c56847ae` | MIT file verified | required |
+| FoldAgent | screening | `58a2d6964ecebe99940529eace50a0558901b8a5` | Apache-2.0 file verified | required |
+| AMA-Agent | screening | `ddfd319e0be33424288c13806f1eafc63e625b59` | MIT file verified | required |
+| MemIR | screening | No public implementation revision identified | No code license identified | blocked on artifact |
+
+The first three revisions above were observed directly with `git ls-remote` on
+2026-07-24. Their repositories provide dependency declarations, but not a
+complete resolved environment lock suitable for a claim-bearing run. ACON's
+documented quick start uses an OpenAI key; FoldAgent documents remote grading
+and a local vLLM path; AMA-Agent documents both hosted APIs and local vLLM.
+None yet has an adapter proven against the exact one-slot LM Studio Qwen
+transport. The MemIR v1 paper describes prompts and experiments but does not
+identify a public implementation artifact.
 
 This is not yet a registered set. Before freezing:
 
@@ -84,15 +102,17 @@ This is not yet a registered set. Before freezing:
   systems exist;
 - state the final set `R` explicitly below.
 
-Frozen comparison set `R`: **TBD**
+Frozen comparison set `R`: **not frozen; no systems registered**
 
-Freeze timestamp: **TBD**
+Freeze timestamp: **not assigned while status is draft**
 
-Protocol file SHA-256 at freeze: **TBD**
+Protocol file SHA-256 at freeze: **not assigned while status is draft**
 
-Adapter process-tree memory limit (MB): **TBD**
+Adapter process-tree memory limit (MB): **unresolved blocker
+`adapter-memory-limit`**
 
-Pre-existing inference-service containment or accounting rule: **TBD**
+Pre-existing inference-service containment or accounting rule: **unresolved
+blocker `inference-service-accounting`**
 
 ## Datasets and tasks
 
@@ -104,13 +124,13 @@ The claim-bearing study must include all of:
 3. one public long-horizon coding task suite; and
 4. one materially different public tool-using or research task suite.
 
-Natural cohort manifest: **TBD**
+Natural cohort manifest: **unresolved blocker `natural-history-cohort`**
 
-Coding task suite and revision: **TBD**
+Coding task suite and revision: **unresolved blocker `coding-task-suite`**
 
-Second task suite and revision: **TBD**
+Second task suite and revision: **unresolved blocker `second-task-suite`**
 
-No claim-bearing run may begin while any field above is `TBD`.
+No claim-bearing run may begin while any blocker exists.
 
 ## Frozen metrics and estimands
 
@@ -150,7 +170,8 @@ per-task unit. Do not switch to atom weighting after seeing results.
   and exact misses on every frozen cohort
 - at least 5x compression and 100% matched-budget compliance
 
-Sample sizes and task seeds for the two downstream suites: **TBD**
+Sample sizes and task seeds for the two downstream suites: **unresolved
+blocker `downstream-samples`**
 
 Changing any primary metric, quantile, seed, sample size, comparison system, or
 exclusion rule after results requires a new protocol version and complete
@@ -214,15 +235,20 @@ Score all intended systems in one explicitly registered invocation:
 
 ```console
 python -m benchmarks \
+  --external-protocol benchmarks/protocols/external-comparison-v1.json \
   --expected-external-system SYSTEM_A \
   --expected-external-system SYSTEM_B \
   --external-run-manifest SYSTEM_A-manifest.json \
   --external-run-manifest SYSTEM_B-manifest.json
 ```
 
-Every name in `R` must appear as `--expected-external-system`, including a
-system whose output is missing. Runner manifests, failed setup logs, and invalid
-outputs remain in the evidence bundle.
+The verified frozen protocol is authoritative for `R`; every registered system
+remains in the denominator even when its output is missing. If
+`--expected-external-system` assertions are supplied, they must enumerate the
+complete frozen set exactly. The harness refuses a draft protocol, a different
+synthetic dataset digest, an unregistered output, or a run/candidate adapter
+revision that differs from the frozen revision. Runner manifests, failed setup
+logs, and invalid outputs remain in the evidence bundle.
 
 ## Blinding and change control
 

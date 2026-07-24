@@ -2,24 +2,51 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
+from benchmarks.external_protocol import DEFAULT_EXTERNAL_PROTOCOL
 from benchmarks.lrcbench import (
     REQUIRED_STRATA,
     AggregateMetrics,
     BenchmarkConfig,
     CandidateProducerMetadata,
     ExternalBaselineError,
+    ExternalProtocolEvidence,
     HistoryCase,
     HistoryMetrics,
     _aggregate,
+    _canonical_sha256,
     _make_certificate,
     candidate_document,
     dataset_digest,
     generate_histories,
     run_benchmark,
 )
+from tests.protocol_fixtures import write_frozen_external_protocol
+
+
+def protocol_evidence(
+    systems: tuple[str, ...] | list[str],
+    *,
+    synthetic_dataset_sha256: str,
+    protocol_sha256: str = "e" * 64,
+) -> ExternalProtocolEvidence:
+    return ExternalProtocolEvidence(
+        protocol_id="fixture-protocol-v1",
+        protocol_sha256=protocol_sha256,
+        document_sha256="f" * 64,
+        synthetic_dataset_sha256=synthetic_dataset_sha256,
+        registered_systems=tuple(sorted(systems)),
+    )
+
+
+def manifest_hashes(systems: tuple[str, ...] | list[str]) -> dict[str, str]:
+    return {
+        system: f"{index:x}" * 64
+        for index, system in enumerate(sorted(systems), start=1)
+    }
 
 
 def history(
@@ -185,6 +212,11 @@ def test_external_certificate_requires_independent_strict_majority_wins() -> Non
         cases,
         results,
         external_systems=systems,
+        external_manifest_sha256=manifest_hashes(systems),
+        external_protocol=protocol_evidence(
+            systems,
+            synthetic_dataset_sha256="a" * 64,
+        ),
     )
 
     assert certificate.issued
@@ -218,6 +250,11 @@ def test_missing_registered_external_output_is_an_invalid_non_win() -> None:
         cases,
         results,
         external_systems=systems,
+        external_manifest_sha256=manifest_hashes(systems),
+        external_protocol=protocol_evidence(
+            systems,
+            synthetic_dataset_sha256="b" * 64,
+        ),
     )
 
     assert not certificate.issued
@@ -235,15 +272,20 @@ def test_missing_registered_external_output_is_an_invalid_non_win() -> None:
 
 def test_valid_candidate_cannot_bypass_a_failed_or_missing_run_manifest() -> None:
     config, cases, candidate, weak = benchmark_fixture()
+    systems = ("external-a", "external-b", "external-c", "external-d")
     certificate = _make_certificate(
         config,
         "c" * 64,
         cases,
         [candidate, replace(weak, system="external-a")],
-        external_systems=("external-a",),
+        external_systems=systems,
         external_failures={
             "external-a": "no validated external run manifest was supplied"
         },
+        external_protocol=protocol_evidence(
+            systems,
+            synthetic_dataset_sha256="c" * 64,
+        ),
     )
 
     comparison = next(
@@ -259,23 +301,42 @@ def test_valid_candidate_cannot_bypass_a_failed_or_missing_run_manifest() -> Non
 
 def test_external_manifest_hash_is_bound_into_certificate_evidence() -> None:
     config, cases, candidate, weak = benchmark_fixture()
-    results = [candidate, replace(weak, system="external-a")]
+    systems = ("external-a", "external-b", "external-c", "external-d")
+    results = [
+        candidate,
+        *(
+            replace(weak, system=system)
+            for system in systems
+        ),
+    ]
+    first_hashes = manifest_hashes(systems)
+    second_hashes = dict(first_hashes)
+    first_hashes["external-a"] = "1" * 64
+    second_hashes["external-a"] = "2" * 64
 
     first = _make_certificate(
         config,
         "d" * 64,
         cases,
         results,
-        external_systems=("external-a",),
-        external_manifest_sha256={"external-a": "1" * 64},
+        external_systems=systems,
+        external_manifest_sha256=first_hashes,
+        external_protocol=protocol_evidence(
+            systems,
+            synthetic_dataset_sha256="d" * 64,
+        ),
     )
     second = _make_certificate(
         config,
         "d" * 64,
         cases,
         results,
-        external_systems=("external-a",),
-        external_manifest_sha256={"external-a": "2" * 64},
+        external_systems=systems,
+        external_manifest_sha256=second_hashes,
+        external_protocol=protocol_evidence(
+            systems,
+            synthetic_dataset_sha256="d" * 64,
+        ),
     )
 
     assert first.issued and second.issued
@@ -283,8 +344,70 @@ def test_external_manifest_hash_is_bound_into_certificate_evidence() -> None:
     assert first.external_manifests[0].manifest_sha256 == "1" * 64
 
 
+def test_external_protocol_hash_is_bound_into_certificate_evidence() -> None:
+    config, cases, candidate, weak = benchmark_fixture()
+    systems = ("external-a", "external-b", "external-c", "external-d")
+    results = [
+        candidate,
+        *(replace(weak, system=system) for system in systems),
+    ]
+    manifests = manifest_hashes(systems)
+
+    first = _make_certificate(
+        config,
+        "e" * 64,
+        cases,
+        results,
+        external_systems=systems,
+        external_manifest_sha256=manifests,
+        external_protocol=protocol_evidence(
+            systems,
+            synthetic_dataset_sha256="e" * 64,
+            protocol_sha256="1" * 64,
+        ),
+    )
+    second = _make_certificate(
+        config,
+        "e" * 64,
+        cases,
+        results,
+        external_systems=systems,
+        external_manifest_sha256=manifests,
+        external_protocol=protocol_evidence(
+            systems,
+            synthetic_dataset_sha256="e" * 64,
+            protocol_sha256="2" * 64,
+        ),
+    )
+
+    assert first.issued and second.issued
+    assert first.evidence_sha256 != second.evidence_sha256
+
+
+def test_external_certificate_fails_closed_without_protocol_evidence() -> None:
+    config, cases, candidate, weak = benchmark_fixture()
+    systems = ("external-a", "external-b", "external-c", "external-d")
+
+    certificate = _make_certificate(
+        config,
+        "f" * 64,
+        cases,
+        [
+            candidate,
+            *(replace(weak, system=system) for system in systems),
+        ],
+        external_systems=systems,
+        external_manifest_sha256=manifest_hashes(systems),
+    )
+
+    assert not certificate.issued
+    assert "frozen external comparison protocol evidence is missing" in (
+        certificate.reasons
+    )
+
+
 def test_external_scoring_requires_an_explicit_registered_comparison_set() -> None:
-    with pytest.raises(ExternalBaselineError, match="explicitly registered"):
+    with pytest.raises(ExternalBaselineError, match="frozen external protocol"):
         run_benchmark(
             BenchmarkConfig(
                 histories=1,
@@ -293,6 +416,36 @@ def test_external_scoring_requires_an_explicit_registered_comparison_set() -> No
                 bootstrap_samples=100,
             ),
             external_baseline_paths=("not-read-without-registration.json",),
+        )
+
+
+def test_external_scoring_rejects_draft_and_mismatched_protocols(
+    tmp_path: Path,
+) -> None:
+    config = BenchmarkConfig(
+        histories=1,
+        messages_per_history=24,
+        noise_lines_per_message=1,
+        bootstrap_samples=100,
+    )
+    with pytest.raises(ExternalBaselineError, match="not claim-ready"):
+        run_benchmark(
+            config,
+            external_protocol_path=DEFAULT_EXTERNAL_PROTOCOL,
+        )
+
+    systems = ("alpha", "beta", "delta", "gamma")
+    protocol_path = write_frozen_external_protocol(tmp_path, systems)
+    with pytest.raises(ExternalBaselineError, match="do not match"):
+        run_benchmark(
+            config,
+            expected_external_systems=("alpha", "beta", "delta", "other"),
+            external_protocol_path=protocol_path,
+        )
+    with pytest.raises(ExternalBaselineError, match="dataset does not match"):
+        run_benchmark(
+            config,
+            external_protocol_path=protocol_path,
         )
 
 
@@ -308,12 +461,25 @@ def test_registered_missing_and_degenerate_outputs_remain_external_nonwins(
     )
     cases = generate_histories(config)
     digest = dataset_digest(cases, config)
+    systems = (
+        "registered-empty",
+        "registered-missing",
+        "registered-missing-b",
+        "registered-missing-c",
+    )
+    adapter_revision = "a" * 40
+    protocol_path = write_frozen_external_protocol(
+        tmp_path,
+        systems,
+        adapter_revisions={"registered-empty": adapter_revision},
+        synthetic_dataset_sha256=digest,
+    )
     candidate_path = tmp_path / "candidate.json"
     candidate_payload = candidate_document(
         dataset_sha256=digest,
         system="registered-empty",
         producer=CandidateProducerMetadata(
-            adapter_revision="fixture-adapter",
+            adapter_revision=adapter_revision,
             environment_id="fixture-environment",
             model_id="fixture-model",
             model_context_length=4096,
@@ -339,18 +505,19 @@ def test_registered_missing_and_degenerate_outputs_remain_external_nonwins(
     report = run_benchmark(
         config,
         external_baseline_paths=(candidate_path,),
-        expected_external_systems=("registered-empty", "registered-missing"),
+        expected_external_systems=systems,
+        external_protocol_path=protocol_path,
     )
 
     revisions = {
         value.name: value.revision
         for value in report.run_metadata.baseline_revisions
     }
-    assert revisions["registered-empty"] == "fixture-adapter"
+    assert revisions["registered-empty"] == adapter_revision
     assert report.certificate.scope == "external-inclusive"
     assert not report.certificate.issued
     assert report.certificate.external_wins == 0
-    assert report.certificate.external_required_wins == 2
+    assert report.certificate.external_required_wins == 3
     assert {
         comparison.system: comparison.decision
         for comparison in report.certificate.comparisons
@@ -358,7 +525,29 @@ def test_registered_missing_and_degenerate_outputs_remain_external_nonwins(
     } == {
         "registered-empty": "invalid",
         "registered-missing": "invalid",
+        "registered-missing-b": "invalid",
+        "registered-missing-c": "invalid",
     }
+
+    candidate_payload["producer"]["adapter_revision"] = "b" * 40
+    candidate_payload.pop("candidate_payload_sha256")
+    candidate_payload["candidate_payload_sha256"] = _canonical_sha256(
+        candidate_payload
+    )
+    candidate_path.write_text(
+        json.dumps(candidate_payload),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="does not match the frozen protocol",
+    ):
+        run_benchmark(
+            config,
+            external_baseline_paths=(candidate_path,),
+            expected_external_systems=systems,
+            external_protocol_path=protocol_path,
+        )
 
 
 @pytest.mark.parametrize("name", [" leading", "trailing ", "two words", "compiler"])

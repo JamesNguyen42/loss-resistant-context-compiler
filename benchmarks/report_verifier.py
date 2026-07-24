@@ -19,6 +19,7 @@ from .lrcbench import (
     CANDIDATE_SCHEMA,
     CORPUS_PRODUCER_SCHEMA,
     CORPUS_SCHEMA,
+    LEGACY_REPORT_SCHEMA,
     REPORT_SCHEMA,
     TOKENIZER_ID,
     BenchmarkConfig,
@@ -116,7 +117,7 @@ _COMPARISON_FIELDS = {
     "memory_quality_efficiency_margin_lower",
     "reasons",
 }
-_CERTIFICATE_FIELDS = {
+_LEGACY_CERTIFICATE_FIELDS = {
     "issued",
     "candidate",
     "strongest_baseline",
@@ -139,6 +140,14 @@ _CERTIFICATE_FIELDS = {
     "comparisons",
     "reasons",
     "claim",
+}
+_CERTIFICATE_FIELDS = _LEGACY_CERTIFICATE_FIELDS | {"external_protocol"}
+_EXTERNAL_PROTOCOL_FIELDS = {
+    "protocol_id",
+    "protocol_sha256",
+    "document_sha256",
+    "synthetic_dataset_sha256",
+    "registered_systems",
 }
 _RUN_METADATA_FIELDS = {
     "started_at",
@@ -672,6 +681,7 @@ def _component_revisions(
 def _validate_run_metadata(
     value: object,
     *,
+    report_schema: str,
     certificate_reasons: tuple[str, ...],
     compared_baselines: tuple[str, ...],
     external_baselines: tuple[str, ...],
@@ -718,7 +728,7 @@ def _validate_run_metadata(
         raise BenchmarkReportError(f"{context} is invalid: {exc}") from exc
 
     expected_schemas = {
-        "report": REPORT_SCHEMA,
+        "report": report_schema,
         "corpus": CORPUS_SCHEMA,
         "candidate": CANDIDATE_SCHEMA,
         "corpus_producer": CORPUS_PRODUCER_SCHEMA,
@@ -789,13 +799,20 @@ def _validate_comparison(
 def _validate_certificate(
     value: object,
     *,
+    report_schema: str,
+    dataset_sha256: str,
     config: BenchmarkConfig,
     system_summaries: dict[str, dict[str, Any]],
     limits: BenchmarkReportLimits,
 ) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
     context = "report.certificate"
     certificate = _object(value, context)
-    _exact_keys(certificate, _CERTIFICATE_FIELDS, context)
+    expected_fields = (
+        _CERTIFICATE_FIELDS
+        if report_schema == REPORT_SCHEMA
+        else _LEGACY_CERTIFICATE_FIELDS
+    )
+    _exact_keys(certificate, expected_fields, context)
     issued = _boolean(certificate["issued"], f"{context}.issued")
     candidate = _system_name(certificate["candidate"], f"{context}.candidate")
     strongest = _system_name(
@@ -878,6 +895,74 @@ def _validate_certificate(
         raise BenchmarkReportError(f"{context}.compared_baselines omits bundled baselines")
     if candidate in compared:
         raise BenchmarkReportError(f"{context}.candidate cannot also be a baseline")
+    if report_schema == LEGACY_REPORT_SCHEMA:
+        if external:
+            raise BenchmarkReportError(
+                f"{context} legacy schema cannot carry external-inclusive claims"
+            )
+    else:
+        raw_protocol = certificate["external_protocol"]
+        if not external:
+            if raw_protocol is not None:
+                raise BenchmarkReportError(
+                    f"{context}.external_protocol requires external baselines"
+                )
+        else:
+            protocol_context = f"{context}.external_protocol"
+            protocol = _object(raw_protocol, protocol_context)
+            _exact_keys(
+                protocol,
+                _EXTERNAL_PROTOCOL_FIELDS,
+                protocol_context,
+            )
+            protocol_id = _string(
+                protocol["protocol_id"],
+                f"{protocol_context}.protocol_id",
+            )
+            if (
+                _SYSTEM_RE.fullmatch(protocol_id) is None
+                or protocol_id != protocol_id.lower()
+            ):
+                raise BenchmarkReportError(
+                    f"{protocol_context}.protocol_id is invalid"
+                )
+            _sha256(
+                protocol["protocol_sha256"],
+                f"{protocol_context}.protocol_sha256",
+            )
+            _sha256(
+                protocol["document_sha256"],
+                f"{protocol_context}.document_sha256",
+            )
+            synthetic_dataset_sha256 = _sha256(
+                protocol["synthetic_dataset_sha256"],
+                f"{protocol_context}.synthetic_dataset_sha256",
+            )
+            if synthetic_dataset_sha256 != dataset_sha256:
+                raise BenchmarkReportError(
+                    f"{protocol_context}.synthetic_dataset_sha256 does not "
+                    "match the report dataset"
+                )
+            registered = _string_array(
+                protocol["registered_systems"],
+                f"{protocol_context}.registered_systems",
+                limits=limits,
+                unique=True,
+            )
+            if (
+                len(registered) < 4
+                or registered != tuple(sorted(registered))
+                or any(system != system.lower() for system in registered)
+            ):
+                raise BenchmarkReportError(
+                    f"{protocol_context}.registered_systems must contain at "
+                    "least four unique lowercase sorted systems"
+                )
+            if registered != external:
+                raise BenchmarkReportError(
+                    f"{protocol_context}.registered_systems does not match "
+                    "external_baselines"
+                )
 
     raw_comparisons = _array(
         certificate["comparisons"],
@@ -1012,7 +1097,7 @@ def _evidence_document(
     system_summaries: dict[str, dict[str, Any]],
     certificate: dict[str, Any],
 ) -> dict[str, object]:
-    return {
+    evidence: dict[str, object] = {
         "benchmark": report["benchmark"],
         "config": report["config"],
         "dataset": report["dataset_sha256"],
@@ -1027,10 +1112,13 @@ def _evidence_document(
         "external_required_wins": certificate["external_required_wins"],
         "external_run_manifests": certificate["external_manifests"],
     }
+    if report["report_schema"] == REPORT_SCHEMA:
+        evidence["external_protocol"] = certificate["external_protocol"]
+    return evidence
 
 
 def _certificate_evidence_sha256(value: object) -> str:
-    """Match the frozen LRCBench 0.2 evidence serialization exactly."""
+    """Match the schema-selected LRCBench evidence serialization exactly."""
 
     encoded = json.dumps(
         value,
@@ -1047,7 +1135,7 @@ def verify_benchmark_report(
     source_label: str = "<report>",
     limits: BenchmarkReportLimits | None = None,
 ) -> VerifiedBenchmarkReport:
-    """Verify a decoded current-schema report without trusting its self-hashes."""
+    """Verify a decoded current or retained local legacy report."""
 
     resolved_limits = limits or DEFAULT_BENCHMARK_REPORT_LIMITS
     if not isinstance(resolved_limits, BenchmarkReportLimits):
@@ -1066,8 +1154,16 @@ def verify_benchmark_report(
     if actual_report_digest != report_digest:
         raise BenchmarkReportError(f"{source_label}.report_sha256 mismatch")
 
+    report_schema = _string(
+        report["report_schema"],
+        f"{source_label}.report_schema",
+    )
+    if report_schema not in {REPORT_SCHEMA, LEGACY_REPORT_SCHEMA}:
+        raise BenchmarkReportError(
+            f"{source_label}.report_schema must be {REPORT_SCHEMA!r} or "
+            f"{LEGACY_REPORT_SCHEMA!r}"
+        )
     expected_identifiers = {
-        "report_schema": REPORT_SCHEMA,
         "benchmark": BENCHMARK_VERSION,
         "corpus_schema": CORPUS_SCHEMA,
         "candidate_schema": CANDIDATE_SCHEMA,
@@ -1170,6 +1266,8 @@ def verify_benchmark_report(
 
     certificate, compared, external, reasons = _validate_certificate(
         report["certificate"],
+        report_schema=report_schema,
+        dataset_sha256=recorded_dataset_digest,
         config=config,
         system_summaries=system_summaries,
         limits=resolved_limits,
@@ -1203,6 +1301,7 @@ def verify_benchmark_report(
 
     metadata = _validate_run_metadata(
         report["run_metadata"],
+        report_schema=report_schema,
         certificate_reasons=reasons,
         compared_baselines=compared,
         external_baselines=external,
@@ -1234,7 +1333,7 @@ def load_benchmark_report(
     *,
     limits: BenchmarkReportLimits | None = None,
 ) -> VerifiedBenchmarkReport:
-    """Load and verify a current-schema report through strict bounded JSON."""
+    """Load and verify a current or retained local legacy report."""
 
     resolved_limits = limits or DEFAULT_BENCHMARK_REPORT_LIMITS
     if not isinstance(resolved_limits, BenchmarkReportLimits):

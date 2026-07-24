@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 866 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 877 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -35,6 +35,7 @@ meaning can be compressed without loss.
 | Exact local Qwen phrase evaluation | 64 calls; 5% model-only recall, 96.92% candidate rejection, 87.5% final recall |
 | Post-hoc Qwen offset ablation | 0 calls; 63.16% literal-only precision, 60% recall, and 2 final verification failures; non-claim-bearing |
 | Held-out paired Qwen result | 128 sequential calls; literal mode raised model-only recall from 17.5% to 92.5%, but reduced precision from 100% to 74% and caused 4 final verification failures |
+| External protocol | Strict self-hashed draft with 4 screened candidates and 8 explicit blockers; not claim-ready |
 | Named external comparisons | Not run |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
@@ -189,7 +190,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 866 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 877 regression tests.
 
 ## In development
 
@@ -227,8 +228,10 @@ controls:
 
 LRCBench also now uses one history-weighted memory estimand for point estimates
 and paired bootstrap bounds, records per-system decisions, and applies a strict
-majority rule to an explicitly registered external comparison set. External
-systems and natural-history task outcomes still have not been run, so the
+majority rule to a frozen external comparison set. Any external scoring now
+requires a verified self-hashed protocol whose system set, adapter revisions,
+and synthetic dataset digest match the run. External systems and
+natural-history task outcomes still have not been run, so the
 external-superiority claim remains unestablished.
 
 ## Intended use
@@ -785,6 +788,7 @@ gold-free corpus for a separately run system:
 python -m benchmarks --self-test
 python -m benchmarks --histories 24 --export-corpus lrcbench-corpus.json
 python -m benchmarks --verify-report lrcbench-24.json
+python -m benchmarks.external_protocol --verify benchmarks/protocols/external-comparison-v1.json
 python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
 python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json
 ```
@@ -794,13 +798,15 @@ same-directory replacement as CLI artifacts. External-run manifests use an
 exclusive atomic install: a competing file created after the initial check is
 preserved and the manifest commit fails instead of overwriting it.
 
-Each JSON report carries `report_schema: lrcbench-report-0.1`,
+New JSON reports carry `report_schema: lrcbench-report-0.2`,
 `report_sha256`, and `run_metadata` containing the producer commit and dirty
 state, package and interchange versions, exact command, UTC start time,
 duration, Python/platform, tokenizer/model identity, baseline revisions,
 model-service cost, and failures. The certificate `evidence_sha256` remains the
 deterministic metric digest; `report_sha256` additionally binds the
-run-specific envelope.
+run-specific envelope. Schema `0.2` adds frozen external-protocol evidence.
+The verifier retains local-only `0.1` support so the dated committed report
+continues to replay; legacy external-inclusive reports are rejected.
 
 The `ctxc-performance-gate-0.1` CI profile compiles fixed 128- and 256-event
 item-dense histories three times after a warmup. It fails on a median above
@@ -818,15 +824,18 @@ duplicate keys, non-finite numbers, excessive depth/size, and unknown fields,
 regenerates the deterministic dataset id, recomputes both digests, validates
 run metadata and comparison accounting, and reconciles raw history counts with
 their recorded rates when `--include-histories` evidence is present. Its
-success means the current-schema document is internally consistent; self-hashes
-are not signatures and do not authenticate who produced it. A structurally
-valid report with a non-issued certificate still verifies successfully.
+success means a current document, or the retained local-only `0.1` document, is
+internally consistent; self-hashes are not signatures and do not authenticate
+who produced it. A structurally valid report with a non-issued certificate
+still verifies successfully.
 
 External outputs can be imported directly with repeatable
-`--external-baseline` for diagnostics. A counted registered comparison also
-requires a validated `--external-run-manifest`; otherwise it is an invalid
-non-win. Every intended participant must be preregistered with
-`--expected-external-system`, including missing or failed systems. See
+`--external-baseline` for diagnostics, but every external run requires
+`--external-protocol` and the protocol must be frozen. A counted registered
+comparison also requires a validated `--external-run-manifest`; otherwise it
+is an invalid non-win. The protocol's registered set is authoritative, and
+repeatable `--expected-external-system` assertions, when supplied, must match
+that complete set. Missing or failed systems remain non-wins. See
 [Benchmarking](docs/BENCHMARKING.md) for the strict schema and claim scope.
 `python -m benchmarks.external_runner` supplies a shell-free, timeout-, output-,
 and process-tree-memory-bounded adapter wrapper. Its default mode executes every
@@ -850,7 +859,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 866 tests are collected (861 pass and 5
+Current local snapshot (2026-07-24): 877 tests are collected (872 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
@@ -935,6 +944,7 @@ the commands above for the current revision and environment.
 - [Exact local Qwen integration](docs/LOCAL_QWEN.md)
 - [LRCBench harness notes](benchmarks/README.md)
 - [Draft external comparison protocol](benchmarks/protocols/external-comparison-v1.md)
+- [Machine-verifiable external protocol](benchmarks/protocols/external-comparison-v1.json)
 - JSON Schemas:
   [source event](schemas/source-event.schema.json),
   [model extraction](schemas/model-extraction.schema.json),

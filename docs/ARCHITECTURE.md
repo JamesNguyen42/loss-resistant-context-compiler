@@ -546,20 +546,31 @@ hard-link support therefore refuses exclusive installation safely.
 Benchmark reports add a separate integrity envelope. The deterministic
 certificate `evidence_sha256` continues to commit to comparable dataset,
 configuration, system metrics, and decisions. Top-level `report_sha256`
-canonically commits to that certificate plus `lrcbench-report-0.1`
+canonically commits to that certificate plus `lrcbench-report-0.2`
 `run_metadata`: source revision/dirty state, package and interchange versions,
 command, time and duration, runtime platform, tokenizer/model, baseline
 revisions, cost, and observed failures. This makes individual runs auditable
 without making time- or machine-specific fields part of the reproducible
-certificate estimand.
+certificate estimand. Version `0.2` adds external protocol id, protocol and
+document hashes, the frozen synthetic dataset digest, and the complete
+registered set to the certificate evidence. The verifier retains only the
+local-only `0.1` compatibility path needed for the dated committed report;
+legacy external-inclusive claims fail closed.
 
-`benchmarks/report_verifier.py` verifies saved current-schema reports beyond
-the envelope hash. It rejects duplicate and non-finite JSON under explicit
-byte/depth/collection limits, regenerates the deterministic dataset identity,
-reconstructs the frozen certificate evidence document, validates run and
-comparison metadata, and reconciles per-history counts/rates/aggregates when
-raw histories are retained. This is an integrity and consistency check, not an
-authentication mechanism.
+`benchmarks/external_protocol.py` independently validates the self-hashed
+protocol manifest, its retained Markdown digest, candidate revisions, licenses,
+dependency/adapter pins, exact-model and one-slot constraints, required
+datasets, statistics, runner policy, and blockers. `run_benchmark()` accepts
+external inputs only with a claim-ready frozen protocol and then requires exact
+registered-set, adapter-revision, and synthetic-dataset identity matches.
+
+`benchmarks/report_verifier.py` verifies saved current-schema reports and the
+retained local `0.1` report beyond the envelope hash. It rejects duplicate and
+non-finite JSON under explicit byte/depth/collection limits, regenerates the
+deterministic dataset identity, reconstructs the schema-selected certificate
+evidence document, validates protocol/run/comparison metadata, and reconciles
+per-history counts/rates/aggregates when raw histories are retained. This is an
+integrity and consistency check, not an authentication mechanism.
 
 `benchmarks/performance_gate.py` is a distinct operational regression boundary,
 not part of the LRCBench quality certificate. Its fixed `ci-compile-v1` warmup

@@ -55,8 +55,13 @@ jobs:
           python -c "import glob, zipfile; p=glob.glob('dist/*.whl')[0]; names=zipfile.ZipFile(p).namelist(); assert sum(name.endswith('.schema.json') for name in names) == 5, names"
       - name: Validate external candidate interchange
         run: python -m benchmarks --self-test
+      - name: Verify external protocol readiness artifact
+        run: >-
+          python -m benchmarks.external_protocol
+          --verify benchmarks/protocols/external-comparison-v1.json
       - name: Replay frozen diagnostic evidence offline
         run: |
+          python -m benchmarks --verify-report docs/results/lrcbench-local.json
           python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json
           python -m benchmarks.qwen_phrase_eval --verify-report docs/results/qwen-novel-english-phrases-v1.json
           python -m benchmarks.qwen_literal_ablation --verify-report docs/results/qwen-literal-offset-ablation-v1.json

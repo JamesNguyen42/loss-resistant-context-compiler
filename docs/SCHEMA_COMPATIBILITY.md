@@ -39,6 +39,15 @@ Python callers can use `artifact_schema_registry()` and
 `artifact_schema_support(version)`. Both return
 `ctxc-artifact-schema-compatibility-0.1` records.
 
+## Independent benchmark-report window
+
+LRCBench report compatibility is separate from compiled-artifact compatibility.
+The benchmark writes `lrcbench-report-0.2`; its strict verifier reads `0.2` and
+the retained local-only `lrcbench-report-0.1` snapshot. Version `0.2` adds
+frozen external-protocol evidence. A `0.1` report with any external comparison
+is rejected, so the legacy path cannot bypass the current protocol gate.
+Neither version is silently migrated or rewritten during verification.
+
 ## No silent migration
 
 This release has no artifact migration function and performs no automatic or

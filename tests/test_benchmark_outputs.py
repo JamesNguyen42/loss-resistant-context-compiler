@@ -20,6 +20,7 @@ from benchmarks.report_verifier import (
     load_benchmark_report,
     verify_benchmark_report,
 )
+from tests.protocol_fixtures import write_frozen_external_protocol
 
 
 def small_config() -> BenchmarkConfig:
@@ -180,10 +181,29 @@ def test_report_verifier_reconciles_raw_history_metrics() -> None:
         verify_benchmark_report(payload)
 
 
-def test_report_verifier_accepts_retained_missing_external_nonwin() -> None:
+def test_report_verifier_accepts_retained_missing_external_nonwin(
+    tmp_path: Path,
+) -> None:
+    config = small_config()
+    digest = lrcbench_module.dataset_digest(
+        lrcbench_module.generate_histories(config),
+        config,
+    )
+    systems = (
+        "missing-adapter",
+        "missing-adapter-b",
+        "missing-adapter-c",
+        "missing-adapter-d",
+    )
+    protocol_path = write_frozen_external_protocol(
+        tmp_path,
+        systems,
+        synthetic_dataset_sha256=digest,
+    )
     payload = lrcbench_module.run_benchmark(
-        small_config(),
-        expected_external_systems=("missing-adapter",),
+        config,
+        expected_external_systems=systems,
+        external_protocol_path=protocol_path,
         command=("python", "-m", "benchmarks"),
     ).to_dict()
 
@@ -193,6 +213,61 @@ def test_report_verifier_accepts_retained_missing_external_nonwin() -> None:
     assert verified.systems == ("compiler", "head", "tail", "extractive")
     assert verified.model_id == "unrecorded"
     assert verified.model_service_cost_usd is None
+
+
+def test_report_verifier_rejects_external_protocol_tampering(
+    tmp_path: Path,
+) -> None:
+    config = small_config()
+    digest = lrcbench_module.dataset_digest(
+        lrcbench_module.generate_histories(config),
+        config,
+    )
+    systems = ("alpha", "beta", "delta", "gamma")
+    protocol_path = write_frozen_external_protocol(
+        tmp_path,
+        systems,
+        synthetic_dataset_sha256=digest,
+    )
+    payload = lrcbench_module.run_benchmark(
+        config,
+        external_protocol_path=protocol_path,
+    ).to_dict()
+    payload["certificate"]["external_protocol"]["protocol_sha256"] = "0" * 64
+    rehash_report(payload)
+
+    with pytest.raises(BenchmarkReportError, match="evidence_sha256 mismatch"):
+        verify_benchmark_report(payload)
+
+    mismatch = lrcbench_module.run_benchmark(
+        config,
+        external_protocol_path=protocol_path,
+    ).to_dict()
+    mismatch["certificate"]["external_protocol"]["registered_systems"] = [
+        "alpha",
+        "beta",
+        "gamma",
+        "other",
+    ]
+    rehash_report(mismatch, evidence=True)
+    with pytest.raises(BenchmarkReportError, match="does not match"):
+        verify_benchmark_report(mismatch)
+
+
+def test_report_verifier_replays_committed_local_v01_report() -> None:
+    report_path = (
+        Path(__file__).resolve().parents[1]
+        / "docs"
+        / "results"
+        / "lrcbench-local.json"
+    )
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+
+    verified = load_benchmark_report(report_path)
+
+    assert payload["report_schema"] == lrcbench_module.LEGACY_REPORT_SCHEMA
+    assert verified.report_sha256 == payload["report_sha256"]
+    assert verified.certificate_scope == "local-bundled-only"
 
 
 def test_report_loader_rejects_duplicate_nonfinite_and_oversized_json(

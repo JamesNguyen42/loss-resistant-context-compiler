@@ -64,7 +64,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 866 tests (861 passing and 5 skipped locally); CI covers Python
+- [x] Collect 877 tests (872 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -271,20 +271,30 @@ same quantity:
 
 ### P0-E1 Freeze the related-system comparison protocol
 
-- [ ] Write a dated inclusion and exclusion protocol before running external
+- [x] Write a dated inclusion and exclusion protocol before running external
   experiments.
-- [ ] Define “materially comparable” in terms of active-context reduction,
+- [x] Define “materially comparable” in terms of active-context reduction,
   long-horizon memory, runnable artifacts, and support for matched evaluation.
-- [ ] Select at least four serious candidates when possible so “most” is not a
-  comparison against one convenient baseline.
+- [x] Select at least four serious screening candidates so “most” is not a
+  comparison against one convenient baseline; inclusion decisions remain open.
 - [ ] Evaluate ACON, FoldAgent, AMA-Agent, and MemIR for inclusion using the
-  protocol; record a technical reason for every exclusion.
+  protocol; record a technical reason for every exclusion. The result-blind
+  initial screen now records repository/license evidence and open adapter or
+  artifact issues, but final decisions remain blocked.
 - [ ] Pin repository revisions, dependency locks, models, prompts, system
   settings, and licenses for every included system.
 - [ ] Freeze the primary metrics, failure policy, seeds, sample sizes, and
-  statistical test before seeing comparative results.
+  statistical test before seeing comparative results. Metrics, synthetic seed,
+  bootstrap rule, failure policy, and thresholds are fixed in the draft;
+  downstream samples remain an explicit blocker.
 - [x] Publish a versioned draft under `benchmarks/protocols/`; it remains
-  explicitly non-claim-bearing until every `TBD` field is frozen.
+  explicitly non-claim-bearing until every recorded blocker is resolved.
+- [x] Add a bounded strict self-hashed JSON protocol verifier that binds the
+  dated Markdown, rejects incomplete frozen identities/datasets/resources, and
+  exposes `claim_ready: false` for the current draft.
+- [x] Require every external LRCBench run to load a frozen protocol and match
+  its complete registered set, adapter revisions, and synthetic dataset digest;
+  bind that evidence in `lrcbench-report-0.2`.
 
 Acceptance:
 
@@ -583,8 +593,9 @@ than most related technology” within the exact dated evaluation scope.
   `evidence_sha256`.
 - [x] Add a bounded strict verifier for saved current-schema benchmark reports
   that rejects duplicate/non-finite JSON, regenerates the dataset identity,
-  recomputes report and certificate digests, validates comparison/run metadata,
-  and reconciles included per-history counts and rates.
+  recomputes report and certificate digests, validates protocol/comparison/run
+  metadata, reconciles included per-history counts and rates, and retains a
+  local-only replay path for the committed `lrcbench-report-0.1` snapshot.
 - [x] Route serialized benchmark reports, corpora, candidates, and manifests
   through one strict regular-file reader with byte, line, and depth limits;
   reject ambiguous/non-finite JSON and bind validation to the exact candidate
@@ -695,8 +706,9 @@ The next chat should start here unless new evidence changes the priority:
 
 1. preserve and replay the completed held-out paired result without tuning its
    corpus, validators, recovery, scoring, or recorded metrics;
-2. resolve the remaining `TBD` fields in the external-comparison protocol;
-3. define inclusion rules and freeze the initial related-system set;
+2. resolve the eight explicit blockers in the external-comparison manifest;
+3. complete result-blind inclusion decisions and freeze the initial
+   related-system set;
 4. add the first reproducible no-paid-service external adapter;
 5. run the interchange self-test and adapter on a small diagnostic corpus;
 6. design the privacy/licensing and annotation protocol for natural histories;

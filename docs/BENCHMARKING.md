@@ -193,21 +193,23 @@ python -m benchmarks \
   --include-histories
 ```
 
-The `lrcbench-report-0.1` JSON report includes the full config, deterministic
+The current `lrcbench-report-0.2` JSON report includes the full config, deterministic
 dataset SHA-256, aggregate system metrics, optional per-history evidence,
 certificate margins/reasons, and two digests. `certificate.evidence_sha256`
 binds deterministic comparison evidence. Top-level `report_sha256` also binds
 the run-specific envelope: repository commit and dirty state, package and
 schema versions, Python/platform, exact command, UTC start, duration, tokenizer
 and model identity, baseline revisions, model-service cost, and failures.
+Version `0.2` additionally binds frozen external-protocol identity, document
+hash, synthetic dataset digest, and registered set into certificate evidence.
 Generated reports are measurements, not source fixtures, unless intentionally
 reviewed and committed.
 Report and corpus-export files are installed through a flushed, `fsync`ed
 same-directory atomic replacement, so a pre-replacement failure preserves an
 older evidence file rather than truncating it.
 
-Saved current-schema reports can be checked without rerunning the scored
-systems:
+Saved current-schema reports and the retained local-only `0.1` snapshot can be
+checked without rerunning the scored systems:
 
 ```console
 python -m benchmarks --verify-report benchmarks/result.json
@@ -223,10 +225,11 @@ authorship, preregistration, or fairness.
 
 ## External candidate interchange
 
-LRCBench can export the exact generated corpus without gold atoms:
+LRCBench can export the exact generated corpus without gold atoms. A
+claim-bearing external run must use the corpus digest frozen in its protocol:
 
 ```console
-python -m benchmarks --histories 24 --export-corpus lrcbench-corpus.json
+python -m benchmarks --histories 32 --export-corpus lrcbench-corpus.json
 ```
 
 The export records schema `lrcbench-corpus-0.3`, full generation config,
@@ -249,29 +252,34 @@ and file growth past the limit during hashing. Candidate validation and
 per-case aggregation compare the exact byte count and digest observed at each
 step, so a concurrent replacement cannot silently change the scored payload.
 
-Import one or more external candidates under the identical generation config:
+Import one or more external candidates under the identical frozen generation
+config:
 
 ```console
-python -m benchmarks --histories 24 \
+python -m benchmarks --histories 32 \
+  --external-protocol benchmarks/protocols/external-comparison-v1.json \
   --expected-external-system acon \
   --expected-external-system foldagent \
   --external-run-manifest acon-manifest.json \
   --external-run-manifest foldagent-manifest.json
 ```
 
-Every intended participant must be listed with repeatable
-`--expected-external-system`. An unexpected file is rejected, while a registered
-system with no output remains in the majority denominator as an invalid
-non-win. The loader fails closed on a schema or dataset-hash mismatch, missing
-or extra cases, duplicate systems, unknown fields, invalid spans, claims absent
-from rendered output, or an over-budget case. External systems do not supply
-trusted token counts: the harness adds a canonical claim/provenance sidecar and
-derives active tokens itself.
+Every external run requires a strict, self-hashed protocol with status
+`frozen`. Its registered set is authoritative; repeatable
+`--expected-external-system` values are optional assertions, but when present
+must equal that complete set. An unexpected file is rejected, while a
+registered system with no output remains in the majority denominator as an
+invalid non-win. The loader also rejects a protocol/corpus digest mismatch or
+an adapter revision that differs from the frozen candidate record. It fails
+closed on a schema mismatch, missing or extra cases, duplicate systems, unknown
+fields, invalid spans, claims absent from rendered output, or an over-budget
+case. External systems do not supply trusted token counts: the harness adds a
+canonical claim/provenance sidecar and derives active tokens itself.
 
-Direct `--external-baseline` imports remain useful for interchange diagnostics,
-but they cannot count as certificate wins without a validated bounded-run
-manifest. A failed manifest contributes its retained reason and hash to the
-per-system invalid decision and evidence digest.
+Direct `--external-baseline` imports remain useful for interchange diagnostics
+inside a frozen protocol, but they cannot count as certificate wins without a
+validated bounded-run manifest. A failed manifest contributes its retained
+reason and hash to the per-system invalid decision and evidence digest.
 
 The repository also provides a standard process boundary:
 
@@ -333,12 +341,13 @@ python -m benchmarks --self-test
 ```
 
 A report without external candidates is labeled `local-bundled-only`. A report
-with a registered external set is labeled `external-inclusive`. Every registered
-system receives a win, tie, loss, or invalid decision. The certificate records
-the comparison set, number of wins, required strict majority, every result, and
-all margins in its evidence digest. **External-inclusive does not mean state of
-the art or “better than most.”** The dated inclusion protocol and downstream
-evidence requirements below still apply.
+with a frozen registered external set is labeled `external-inclusive`. Every
+registered system receives a win, tie, loss, or invalid decision. The
+certificate records the protocol hashes and dataset binding, comparison set,
+number of wins, required strict majority, every result, and all margins in its
+evidence digest. **External-inclusive does not mean state of the art or
+“better than most.”** The dated inclusion protocol and downstream evidence
+requirements below still apply.
 
 ## Bounded CI performance gate
 
@@ -372,7 +381,7 @@ and documentation together.
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 866 tests: 861 passed and 5 platform/optional checks were
+The suite collected 877 tests: 872 passed and 5 platform/optional checks were
 skipped. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |
@@ -418,9 +427,22 @@ external state-of-the-art certificate.**
 
 The current versioned
 [external comparison protocol](../benchmarks/protocols/external-comparison-v1.md)
-is a draft. Its comparison revisions, final registered set, natural cohort,
-task suites, and downstream sample sizes remain `TBD`, so it cannot yet serve
-as a preregistration.
+and [self-hashed JSON manifest](../benchmarks/protocols/external-comparison-v1.json)
+form a verified draft. The result-blind screen records observed revisions and
+license evidence for ACON, FoldAgent, and AMA-Agent, plus the unresolved MemIR
+artifact. Eight explicit blockers cover final candidate decisions/adapters,
+dependency locks, adapter memory, inference-service accounting, the natural
+cohort, two downstream suites, and frozen downstream samples. The draft
+therefore cannot serve as a preregistration yet. Verify its internal state
+without claiming readiness:
+
+```console
+python -m benchmarks.external_protocol \
+  --verify benchmarks/protocols/external-comparison-v1.json
+```
+
+Adding `--require-frozen` must continue to fail until those blockers are
+resolved.
 
 For the original product-level claim, component memory metrics are not enough.
 The strict-majority result must additionally show at least 50% task-failure

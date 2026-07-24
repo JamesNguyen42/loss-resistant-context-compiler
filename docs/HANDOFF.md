@@ -12,7 +12,11 @@ changing the captured-output evaluation. Read
 [unique-literal model extraction](LITERAL_MODEL_EXTRACTION.md) before changing
 the model response or provenance-derivation contract. Read the
 [held-out paired Qwen protocol and result](QWEN_PAIRED_EVALUATION.md) before
-changing or interpreting the recorded comparison.
+changing or interpreting the recorded comparison. Read the
+[external comparison protocol](../benchmarks/protocols/external-comparison-v1.md)
+and its [strict JSON manifest](../benchmarks/protocols/external-comparison-v1.json)
+before changing candidate selection, adapter identity, resources, datasets, or
+claim rules.
 
 ## Snapshot
 
@@ -23,7 +27,7 @@ changing or interpreting the recorded comparison.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 866 collected: 861 passing, 5 skipped |
+| Tests at this snapshot | 877 collected: 872 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -34,6 +38,7 @@ changing or interpreting the recorded comparison.
 | Post-hoc Qwen offset ablation | 0 calls: 63.1579% literal-only precision, 60% recall, 2 final verification failures; not claim-bearing |
 | Held-out paired Qwen result | 128 sequential calls; literal model-only P/R/F1 74%/92.5%/82.2222%, coordinate 100%/17.5%/29.7872%; literal final verification failures 4 |
 | Common content-secret preprocessing | Opt-in, fixed-detector, offset-preserving, replayable |
+| External protocol | Valid self-hashed draft; 4 screened candidates, 8 explicit blockers, `claim_ready: false` |
 | External systems evaluated | None |
 | External 50%-better claim | Not established |
 | Downstream task completion evidence | None yet |
@@ -275,12 +280,13 @@ counters are deterministic, apart from timestamps and measured duration.
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
 | `benchmarks/json_io.py` | Shared bounded regular-file hashing and strict JSON decoding for benchmark evidence |
 | `benchmarks/report_verifier.py` | Bounded strict saved-report verification and deterministic replay |
+| `benchmarks/external_protocol.py` | Strict self-hashed external-protocol validation and claim-readiness gate |
 | `benchmarks/external_runner.py` | Shell-free adapter process limits, validation, and self-hashed run manifests |
 | `benchmarks/performance_gate.py` | Fixed-digest CI compile latency/growth/traced-memory regression gate |
 | `benchmarks/qwen_phrase_eval.py` | Sequential exact-Qwen prompt/output capture, model-only/recovery scoring, and offline replay |
 | `benchmarks/qwen_literal_ablation.py` | Model-free frozen-output offset ablation, literal replay, self-hashed report, and strict regeneration |
 | `benchmarks/qwen_paired_eval.py` | Clean-tree paired coordinate/literal capture, alternating order, comparison metrics, and offline replay |
-| `benchmarks/protocols/` | Versioned external comparison protocol; v1 is still a non-claim-bearing draft |
+| `benchmarks/protocols/` | Human-readable and machine-verifiable external comparison protocol; v1 is a valid non-claim-bearing draft with explicit blockers |
 | `schemas/` | Source, coordinate/unique-literal model extraction, compiled artifact, and redaction-report contracts |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
 | `.github/workflows/ci.yml` | Cross-version tests, lint, wheel checks, interchange, benchmark |
@@ -472,7 +478,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 866 tests are collected: 861 pass and 5 platform/optional checks are skipped.
+- 877 tests are collected: 872 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all five schemas are included.
@@ -617,14 +623,17 @@ audited. Any selected superseded item independently fails verification as
   manifests use atomic commits. Failure injection proves old evidence survives
   failed replacement, temporary files are cleaned, and a manifest creation race
   cannot clobber the competing file.
-- Benchmark reports use `lrcbench-report-0.1`, embed producer/run metadata, and
-  carry a canonical `report_sha256`. Tests prove metadata changes affect the
-  report digest without destabilizing deterministic certificate evidence.
+- New benchmark reports use `lrcbench-report-0.2`, embed producer/run metadata,
+  and carry a canonical `report_sha256`. Tests prove metadata changes affect
+  the report digest without destabilizing deterministic certificate evidence.
+  Version `0.2` binds frozen external protocol/document/dataset identity and
+  registered systems; the verifier retains local-only `0.1` replay.
 - `python -m benchmarks --verify-report PATH` strictly loads a bounded regular
   file, rejects duplicate/non-finite or structurally unknown JSON, regenerates
   the dataset id, recomputes both report digests, validates run/comparison
-  metadata, and reconciles included per-history metrics. Passing verifies
-  internal consistency, not authorship or fairness.
+  metadata and current external-protocol evidence, and reconciles included
+  per-history metrics. Passing verifies internal consistency, not authorship or
+  fairness.
 - Benchmark report, corpus, candidate, and manifest inputs now share the same
   strict regular-file JSON boundary. Tests cover duplicate/non-finite values,
   size/line/depth limits, special files, and candidate mutation between hash,
@@ -648,6 +657,11 @@ audited. Any selected superseded item independently fails verification as
   exact local Qwen Q4 model, one inference slot, context and tokenizer ids,
   retries, and zero model-service cost; incomplete controls are a per-system
   non-win.
+- External scoring requires a strict frozen
+  `lrcbench-external-protocol-0.1` manifest. The protocol's set is authoritative,
+  and the benchmark rejects a draft, dataset mismatch, unregistered system, or
+  adapter revision mismatch before scoring. The committed v1 manifest is valid
+  but intentionally blocked and not claim-ready.
 - CI runs a 24-history fail-closed benchmark certificate.
 - The performance profile is a broad shared-runner tripwire, not an SLO: it
   excludes source construction, `tracemalloc` is not RSS, and the separate
@@ -716,9 +730,11 @@ Therefore:
 
 Newly generated reports embed the producing commit plus dirty state, package and
 schema versions, Python/platform, exact command, UTC timestamp, duration,
-tokenizer/model identity, baseline revisions, cost, and failures. The older
-committed `docs/results/lrcbench-local.json` predates `lrcbench-report-0.1` and
-must not be retroactively presented as carrying that metadata.
+tokenizer/model identity, baseline revisions, cost, and failures. The committed
+`docs/results/lrcbench-local.json` is the retained local-only
+`lrcbench-report-0.1` snapshot and still replays exactly. It does not carry the
+new external-protocol field and cannot be repurposed as external-inclusive
+evidence.
 
 ## LRCBench claim protocol
 
@@ -751,9 +767,10 @@ Its certificate requires:
 
 Critical recall, exact recall, and memory-quality efficiency use the same
 history-weighted estimand for point estimates and paired bootstrap samples.
-External runs must explicitly register the comparison set. Every system gets a
-separate win, tie, loss, or invalid decision; a missing registered output is an
-invalid non-win, and “most” requires `|W| > |R| / 2`.
+External runs must load a frozen protocol; its complete registered set is
+authoritative. Every system gets a separate win, tie, loss, or invalid
+decision; a missing registered output is an invalid non-win, and “most”
+requires `|W| > |R| / 2`.
 
 Those are current alpha component-certificate gates. The final product gate is
 stricter: zero observed protected and exact misses on frozen synthetic and
@@ -888,9 +905,10 @@ next work is the external and natural-history evidence path:
 
 1. preserve the paired report and its four verification failures without
    post-result tuning or rescoring;
-2. resolve every `TBD` in the versioned draft external protocol without looking
-   at comparative results;
-3. freeze the initial comparison set and pinned revisions;
+2. resolve the eight explicit blockers in the machine-readable external
+   protocol without looking at comparative results;
+3. complete result-blind inclusion decisions and freeze the initial comparison
+   set, dependency locks, and adapter revisions;
 4. freeze containment or accounting for a pre-existing inference service
    outside the now-bounded adapter process tree;
 5. add the first reproducible, no-paid-service external adapter;
@@ -910,10 +928,13 @@ python -m pytest -q
 python -m ruff check src tests benchmarks
 python -m compileall -q src benchmarks tests
 python -m benchmarks --self-test
+python -m benchmarks.external_protocol --verify benchmarks/protocols/external-comparison-v1.json
+python -m benchmarks --verify-report docs/results/lrcbench-local.json
 python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
 python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json
 python -m benchmarks.qwen_phrase_eval --verify-report docs/results/qwen-novel-english-phrases-v1.json
 python -m benchmarks.qwen_literal_ablation --verify-report docs/results/qwen-literal-offset-ablation-v1.json
+python -m benchmarks.qwen_paired_eval --verify-report docs/results/qwen-heldout-paired-extractors-v1.json
 python -m benchmarks --histories 24 --json-out lrcbench-24.json --include-histories
 python -c "
 import pathlib, subprocess, sys, tempfile, zipfile
@@ -1002,6 +1023,9 @@ and commits solely under JamesNguyen42.
   one inference slot; do not use a model API.
 - Use history-weighted memory estimands and explicit per-system majority
   decisions in LRCBench.
+- Require a strict frozen external protocol before any external scoring; make
+  its registered set authoritative and bind its adapter and dataset identities
+  into the current report.
 - Use LRCBench certificates as scoped evidence, never universal product claims.
 - Require real downstream task completion and external comparisons for the
   original 50%-better target.

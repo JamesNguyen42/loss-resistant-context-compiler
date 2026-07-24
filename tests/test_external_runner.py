@@ -34,6 +34,9 @@ from benchmarks.lrcbench import (
     run_benchmark,
 )
 from context_compiler.local_qwen import QWEN_Q4_VARIANT
+from tests.protocol_fixtures import write_frozen_external_protocol
+
+FIXTURE_ADAPTER_REVISION = "a" * 40
 
 
 def corpus_producer(
@@ -96,7 +99,7 @@ def valid_adapter_command() -> list[str]:
 
 def claim_identity() -> RunnerIdentity:
     return RunnerIdentity(
-        adapter_revision="fixture-revision",
+        adapter_revision=FIXTURE_ADAPTER_REVISION,
         environment_id="fixture-environment",
         model_id=QWEN_Q4_VARIANT,
         model_context_length=8192,
@@ -202,6 +205,17 @@ def test_interchange_file_loaders_reject_duplicate_keys_and_size_overflow(
     }
     candidate_path = tmp_path / "candidate.json"
     candidate_text = json.dumps(candidate_payload)
+    systems = (
+        "strict-fixture",
+        "strict-fixture-b",
+        "strict-fixture-c",
+        "strict-fixture-d",
+    )
+    protocol_path = write_frozen_external_protocol(
+        tmp_path,
+        systems,
+        synthetic_dataset_sha256=document["dataset_sha256"],
+    )
     candidate_path.write_text(
         candidate_text.replace(
             "{",
@@ -214,7 +228,8 @@ def test_interchange_file_loaders_reject_duplicate_keys_and_size_overflow(
         run_benchmark(
             config,
             external_baseline_paths=(candidate_path,),
-            expected_external_systems=("strict-fixture",),
+            expected_external_systems=systems,
+            external_protocol_path=protocol_path,
         )
 
     candidate_path.write_text(candidate_text, encoding="utf-8")
@@ -222,7 +237,8 @@ def test_interchange_file_loaders_reject_duplicate_keys_and_size_overflow(
         run_benchmark(
             config,
             external_baseline_paths=(candidate_path,),
-            expected_external_systems=("strict-fixture",),
+            expected_external_systems=systems,
+            external_protocol_path=protocol_path,
             max_external_candidate_bytes=len(candidate_text.encode("utf-8")) - 1,
         )
     with pytest.raises(ExternalBaselineError, match="max_bytes must be positive"):
@@ -575,6 +591,20 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         identity=claim_identity(),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
+    systems = (
+        "fixture-adapter",
+        "fixture-adapter-b",
+        "fixture-adapter-c",
+        "fixture-adapter-d",
+    )
+    protocol_path = write_frozen_external_protocol(
+        tmp_path,
+        systems,
+        adapter_revisions={
+            "fixture-adapter": FIXTURE_ADAPTER_REVISION,
+        },
+        synthetic_dataset_sha256=document["dataset_sha256"],
+    )
 
     reference = load_external_run_manifest(
         manifest_path,
@@ -583,7 +613,8 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
     report = run_benchmark(
         config,
         external_manifest_paths=(manifest_path,),
-        expected_external_systems=("fixture-adapter",),
+        expected_external_systems=systems,
+        external_protocol_path=protocol_path,
     )
 
     assert reference.system == "fixture-adapter"
@@ -593,15 +624,15 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         candidate_path.read_bytes()
     ).hexdigest()
     assert reference.failure_reason is None
-    assert reference.adapter_revision == "fixture-revision"
+    assert reference.adapter_revision == FIXTURE_ADAPTER_REVISION
     assert reference.model_id == QWEN_Q4_VARIANT
     assert reference.model_service_cost_usd == 0.0
-    assert report.run_metadata.model_id == QWEN_Q4_VARIANT
-    assert report.run_metadata.model_service_cost_usd == 0.0
+    assert report.run_metadata.model_id == "unrecorded"
+    assert report.run_metadata.model_service_cost_usd is None
     assert {
         revision.name: revision.revision
         for revision in report.run_metadata.baseline_revisions
-    }["fixture-adapter"] == "fixture-revision"
+    }["fixture-adapter"] == FIXTURE_ADAPTER_REVISION
     assert report.certificate.external_manifests[0].system == "fixture-adapter"
     assert (
         report.certificate.external_manifests[0].manifest_sha256
@@ -631,7 +662,8 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         run_benchmark(
             config,
             external_manifest_paths=(manifest_path,),
-            expected_external_systems=("fixture-adapter",),
+            expected_external_systems=systems,
+            external_protocol_path=protocol_path,
         )
 
     corpus_path.write_text(
@@ -732,11 +764,11 @@ def test_ready_manifest_rejects_rehashed_candidate_producer_mismatch(
         )
 
 
-def test_ready_candidate_with_unrecorded_identity_is_a_certificate_nonwin(
+def test_ready_candidate_with_unrecorded_identity_cannot_cross_frozen_protocol(
     tmp_path,
 ) -> None:
     corpus_path = tmp_path / "corpus.json"
-    config, _document = write_corpus(corpus_path)
+    config, document = write_corpus(corpus_path)
     candidate_path = tmp_path / "candidate.json"
     manifest_path = tmp_path / "manifest.json"
     manifest = run_external_cases(
@@ -747,20 +779,34 @@ def test_ready_candidate_with_unrecorded_identity_is_a_certificate_nonwin(
         limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
-
-    report = run_benchmark(
-        config,
-        external_manifest_paths=(manifest_path,),
-        expected_external_systems=("fixture-adapter",),
+    systems = (
+        "fixture-adapter",
+        "fixture-adapter-b",
+        "fixture-adapter-c",
+        "fixture-adapter-d",
+    )
+    protocol_path = write_frozen_external_protocol(
+        tmp_path,
+        systems,
+        adapter_revisions={
+            "fixture-adapter": FIXTURE_ADAPTER_REVISION,
+        },
+        synthetic_dataset_sha256=document["dataset_sha256"],
     )
 
-    comparison = next(
-        value for value in report.certificate.comparisons if value.system == "fixture-adapter"
-    )
+    with pytest.raises(
+        ExternalBaselineError,
+        match="adapter revision does not match the frozen protocol",
+    ):
+        run_benchmark(
+            config,
+            external_manifest_paths=(manifest_path,),
+            expected_external_systems=systems,
+            external_protocol_path=protocol_path,
+        )
+
     assert manifest.ready_for_scoring
     assert not manifest.claim_metadata_complete
-    assert comparison.decision == "invalid"
-    assert any("exact-Qwen identity" in reason for reason in comparison.reasons)
 
 
 def test_manifest_tampering_is_rejected_before_candidate_scoring(tmp_path) -> None:
@@ -977,7 +1023,7 @@ def test_windows_job_memory_limit_blocks_descendant_allocation(tmp_path) -> None
 
 def test_failed_manifest_reason_becomes_a_registered_invalid_nonwin(tmp_path) -> None:
     corpus_path = tmp_path / "corpus.json"
-    config, _document = write_corpus(corpus_path)
+    config, document = write_corpus(corpus_path)
     candidate_path = tmp_path / "candidate.json"
     manifest_path = tmp_path / "manifest.json"
     manifest = run_external_command(
@@ -986,13 +1032,29 @@ def test_failed_manifest_reason_becomes_a_registered_invalid_nonwin(tmp_path) ->
         corpus_path=corpus_path,
         candidate_path=candidate_path,
         limits=RunnerLimits(timeout_seconds=0.05, poll_interval_seconds=0.01),
+        identity=claim_identity(),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
+    systems = (
+        "timeout-fixture",
+        "timeout-fixture-b",
+        "timeout-fixture-c",
+        "timeout-fixture-d",
+    )
+    protocol_path = write_frozen_external_protocol(
+        tmp_path,
+        systems,
+        adapter_revisions={
+            "timeout-fixture": FIXTURE_ADAPTER_REVISION,
+        },
+        synthetic_dataset_sha256=document["dataset_sha256"],
+    )
 
     report = run_benchmark(
         config,
         external_manifest_paths=(manifest_path,),
-        expected_external_systems=("timeout-fixture",),
+        expected_external_systems=systems,
+        external_protocol_path=protocol_path,
     )
 
     comparison = next(
