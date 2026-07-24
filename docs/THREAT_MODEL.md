@@ -48,7 +48,7 @@ to verify it, hashes cannot recover the original truth.
 | Conflicting state silently resolved | Clear polarity/numeric conflicts mark both claims conflicting and add an unresolved item | Semantic contradictions outside the lexical heuristic can be missed |
 | Source/artifact modification | Source metadata is canonical-JSON-only and recursively immutable; canonical record hashes bind timestamp and metadata as well as content; higher-level digests and artifact replay bind derived structures | Hashes provide integrity comparison, not authorship, freshness, signatures, or rollback protection; an attacker can recompute an artifact self-hash |
 | Custom-tokenizer mismatch | A named counter records `custom:<id>`; independent verification requires the same callback and stable id and recomputes all compression fields | The id is a caller-managed label, not code signing or proof that two implementations are identical |
-| Partial or conflicting archive write through the API | Exclusive local lock, id/sequence collision rejection, load-time hash validation, and bounded full-file atomic replacement; readers observe an old or new complete log | A filesystem administrator can rewrite/delete files; a crash can leave a stale lock; locks and rename durability may not be reliable on every network filesystem |
+| Partial or conflicting archive write through the API | Persistent OS advisory lock released on descriptor close/process death, id/sequence collision rejection, load-time hash validation, and bounded full-file atomic replacement; readers observe an old or new complete log | A filesystem administrator can rewrite/delete files; advisory locks and rename durability may not be reliable on every network filesystem |
 | Truncated transactional file output | CLI files and archives flush and `fsync` the complete payload in a same-directory temporary file before `os.replace`; failed pre-replacement writes preserve the old destination and clean the temp | Stdout is non-transactional; Windows lacks portable directory `fsync`; rename/durability guarantees depend on filesystem semantics |
 | Budget pressure removes requirements | Protected kinds bypass optional selection; overflow is explicit or strict-fail | Enough protected content can exceed the downstream model’s hard context window |
 | Source resource exhaustion | Shared positive limits cap serialized source/archive bytes, physical line length, JSON depth, record count, per-record and total canonical size across loaders, compiler, verifier, and archive; strict JSON rejects ambiguous/non-finite input | Python objects may already be allocated before a direct API call; configured maxima are not process-RSS limits |
@@ -158,10 +158,11 @@ given the matching pair. Unnamed counters and missing or mismatched verifier
 callbacks fail with `unverifiable_token_counter`; do not bypass that failure by
 trusting the artifact's embedded compression report.
 
-Archive locking has a finite timeout. A crashed process normally removes its
-lock in `finally`, but process termination can leave a stale lock file that
-requires operator review. Never delete a lock without first establishing that
-no writer is active.
+Archive locking has a finite timeout and uses a persistent `.append.lock`
+marker. File existence is not ownership: the OS advisory lock is released when
+the descriptor closes or the process dies, while the marker remains available
+for the next writer. Do not delete or replace that marker while writers may be
+running; use a local filesystem with documented advisory-lock semantics.
 
 ## Benchmark and claim threats
 

@@ -408,15 +408,21 @@ changing the artifact contract.
 
 ## Cold source archive
 
-`SourceArchive` stores newline-delimited source records in `events.jsonl`. An
-exclusive local lock serializes appends, existing ids and sequences cannot be
+`SourceArchive` stores newline-delimited source records in `events.jsonl`. A
+persistent `.append.lock` regular file carries an exclusive OS advisory lock
+that serializes writers. The marker stays on disk, but only kernel lock
+ownership means a writer is active; descriptor close and process death release
+ownership automatically. Timeouts are finite and non-negative, and a
+non-regular lock path is refused. Existing ids and sequences cannot be
 overwritten through the API, and archive loads revalidate each content hash and
-canonical record hash, including timestamp and metadata. Under the lock, each
-logical append reloads and validates the bounded archive, sorts the combined
-history by sequence, and atomically installs the complete JSONL file. Readers
-therefore observe either the previous complete history or the next complete
-history rather than a partially written final record. This intentionally costs
-O(archive size) serialization and temporary space per append.
+canonical record hash, including timestamp and metadata.
+
+Under the lock, each logical append reloads and validates the bounded archive,
+sorts the combined history by sequence, and atomically installs the complete
+JSONL file. Readers therefore observe either the previous complete history or
+the next complete history rather than a partially written final record. This
+intentionally costs O(archive size) serialization and temporary space per
+append.
 
 The archive is append-only by convention and API behavior, not by filesystem
 enforcement. It is neither hash-chained nor signed. Anyone able to rewrite the

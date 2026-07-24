@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Run 254 tests; CI covers Python 3.11, 3.12, and 3.13.
+- [x] Run 268 tests; CI covers Python 3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
 
@@ -522,8 +522,9 @@ than most related technology” within the exact dated evaluation scope.
   in every benchmark evidence artifact.
 - [ ] Add metrics for item counts, protected overflow, recovery additions,
   conflicts, verification failures, and compile latency.
-- [ ] Add explicit stale-lock inspection and conservative operator-driven
-  recovery without risking deletion of a live writer lock.
+- [x] Eliminate ordinary stale-lock recovery by replacing create/delete lock
+  ownership with a persistent OS advisory lock that releases on descriptor
+  close or process death; document that marker existence does not mean held.
 - [ ] Test filesystem semantics on Windows, Linux, macOS, and network storage.
 - [ ] Define schema migrations and backward-compatibility guarantees.
 - [ ] Add reproducible performance regression thresholds to CI.

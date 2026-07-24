@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
-import os
+import math
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .atomic import atomic_write_text
+from .file_lock import close_lock_file, open_lock_file, try_lock_file
 from .io import load_sources_path
 from .limits import (
     SourceLimitError,
@@ -44,10 +45,17 @@ class SourceArchive:
         lock_timeout: float = 5.0,
         source_limits: SourceLimits | None = None,
     ) -> None:
+        if (
+            isinstance(lock_timeout, bool)
+            or not isinstance(lock_timeout, (int, float))
+            or not math.isfinite(lock_timeout)
+            or lock_timeout < 0
+        ):
+            raise ValueError("lock_timeout must be a finite non-negative number")
         self.directory = Path(directory)
         self.events_path = self.directory / "events.jsonl"
         self.lock_path = self.directory / ".append.lock"
-        self.lock_timeout = lock_timeout
+        self.lock_timeout = float(lock_timeout)
         self.source_limits = resolve_source_limits(source_limits)
 
     def append(self, records: Iterable[SourceRecord]) -> int:
@@ -79,6 +87,7 @@ class SourceArchive:
         # turning a successful append into an immediately corrupt event log.
         self.directory.mkdir(parents=True, exist_ok=True)
         lock_fd = self._acquire_lock()
+        archive_error: BaseException | None = None
         try:
             existing = self.load() if self.events_path.exists() else []
             by_id = {record.id: record for record in existing}
@@ -124,9 +133,11 @@ class SourceArchive:
                 )
             atomic_write_text(self.events_path, payload)
             return len(accepted)
+        except BaseException as exc:
+            archive_error = exc
+            raise
         finally:
-            os.close(lock_fd)
-            self.lock_path.unlink(missing_ok=True)
+            close_lock_file(lock_fd, prior_error=archive_error)
 
     def load(self) -> list[SourceRecord]:
         if not self.events_path.exists():
@@ -181,10 +192,15 @@ class SourceArchive:
 
     def _acquire_lock(self) -> int:
         deadline = time.monotonic() + self.lock_timeout
-        while True:
-            try:
-                return os.open(self.lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            except FileExistsError:
-                if time.monotonic() >= deadline:
-                    raise TimeoutError(f"archive is locked: {self.lock_path}") from None
-                time.sleep(0.025)
+        lock_fd = open_lock_file(self.lock_path)
+        try:
+            while True:
+                if try_lock_file(lock_fd):
+                    return lock_fd
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(f"archive is locked: {self.lock_path}")
+                time.sleep(min(0.025, remaining))
+        except BaseException as exc:
+            close_lock_file(lock_fd, prior_error=exc)
+            raise

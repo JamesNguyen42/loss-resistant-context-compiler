@@ -28,6 +28,12 @@ def physical_sequences(path: Path) -> list[int]:
     ]
 
 
+def assert_archive_lock_available(archive: SourceArchive) -> None:
+    assert archive.lock_path.is_file()
+    descriptor = archive._acquire_lock()
+    os.close(descriptor)
+
+
 def test_archive_atomic_commit_rewrites_complete_sorted_history(tmp_path: Path) -> None:
     archive = SourceArchive(tmp_path / "archive")
 
@@ -61,7 +67,7 @@ def test_archive_replace_failure_preserves_committed_history(
     assert archive.events_path.read_bytes() == committed
     assert archive.load() == [first]
     assert list(archive.directory.glob(".ctxc-*.tmp")) == []
-    assert not archive.lock_path.exists()
+    assert_archive_lock_available(archive)
 
 
 def test_archive_file_fsync_failure_preserves_committed_history(
@@ -84,7 +90,7 @@ def test_archive_file_fsync_failure_preserves_committed_history(
     assert archive.events_path.read_bytes() == committed
     assert archive.load() == [first]
     assert list(archive.directory.glob(".ctxc-*.tmp")) == []
-    assert not archive.lock_path.exists()
+    assert_archive_lock_available(archive)
 
 
 def test_archive_is_old_then_new_at_replace_boundary(
@@ -144,4 +150,4 @@ def test_post_replace_directory_fsync_failure_leaves_complete_new_archive(
 
     assert [record.sequence for record in archive.load()] == [0, 1]
     assert list(archive.directory.glob(".ctxc-*.tmp")) == []
-    assert not archive.lock_path.exists()
+    assert_archive_lock_available(archive)

@@ -1,0 +1,163 @@
+from __future__ import annotations
+
+import os
+import stat
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import pytest
+
+from context_compiler import SourceArchive, SourceRecord
+from context_compiler.file_lock import close_lock_file
+
+
+def source(sequence: int) -> SourceRecord:
+    return SourceRecord.create(
+        id=f"source-{sequence}",
+        sequence=sequence,
+        role="user",
+        content=f"goal: preserve lock record {sequence}",
+    )
+
+
+def test_close_lock_file_surfaces_unpaired_close_failure() -> None:
+    with pytest.raises(OSError):
+        close_lock_file(-1)
+
+
+def test_close_lock_file_preserves_prior_error_and_adds_note() -> None:
+    prior_error = ValueError("primary archive failure")
+
+    close_lock_file(-1, prior_error=prior_error)
+
+    assert prior_error.__notes__
+    assert "descriptor close also failed" in prior_error.__notes__[0]
+
+
+@pytest.mark.parametrize(
+    "timeout",
+    [True, -0.01, float("inf"), float("-inf"), float("nan"), "1"],
+)
+def test_archive_rejects_unsafe_lock_timeouts(
+    tmp_path: Path,
+    timeout: object,
+) -> None:
+    with pytest.raises(ValueError, match="finite non-negative"):
+        SourceArchive(tmp_path / "archive", lock_timeout=timeout)  # type: ignore[arg-type]
+
+
+def test_persistent_lock_marker_is_not_treated_as_lock_ownership(tmp_path: Path) -> None:
+    directory = tmp_path / "archive"
+    first = SourceArchive(directory)
+    second = SourceArchive(directory)
+
+    assert first.append([source(0)]) == 1
+    assert first.lock_path.is_file()
+    assert second.append([source(1)]) == 1
+    assert [record.sequence for record in first.load()] == [0, 1]
+
+
+def test_live_advisory_lock_times_out_then_releases(tmp_path: Path) -> None:
+    directory = tmp_path / "archive"
+    directory.mkdir()
+    holder = SourceArchive(directory)
+    contender = SourceArchive(directory, lock_timeout=0.05)
+    descriptor = holder._acquire_lock()
+    try:
+        assert not os.get_inheritable(descriptor)
+        with pytest.raises(TimeoutError, match="archive is locked"):
+            contender.append([source(0)])
+    finally:
+        os.close(descriptor)
+
+    assert contender.append([source(0)]) == 1
+
+
+def test_process_death_releases_archive_lock(tmp_path: Path) -> None:
+    directory = tmp_path / "archive"
+    directory.mkdir()
+    ready_path = tmp_path / "lock-ready"
+    script = """
+import sys
+import time
+from pathlib import Path
+from context_compiler import SourceArchive
+
+archive = SourceArchive(sys.argv[1])
+descriptor = archive._acquire_lock()
+Path(sys.argv[2]).write_text("ready", encoding="utf-8")
+time.sleep(60)
+"""
+    child = subprocess.Popen(
+        [sys.executable, "-c", script, str(directory), str(ready_path)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 5.0
+        while not ready_path.exists():
+            if child.poll() is not None:
+                _stdout, stderr = child.communicate()
+                pytest.fail(f"lock-holder process exited early: {stderr}")
+            if time.monotonic() >= deadline:
+                pytest.fail("lock-holder process did not become ready")
+            time.sleep(0.01)
+
+        contender = SourceArchive(directory, lock_timeout=0.05)
+        with pytest.raises(TimeoutError, match="archive is locked"):
+            contender.append([source(0)])
+
+        child.kill()
+        child.communicate(timeout=5.0)
+
+        assert contender.append([source(0)]) == 1
+        assert contender.lock_path.is_file()
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.communicate(timeout=5.0)
+
+
+def test_non_regular_lock_path_is_refused_without_writing_archive(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "archive"
+    directory.mkdir()
+    lock_path = directory / ".append.lock"
+    lock_path.mkdir()
+    archive = SourceArchive(directory, lock_timeout=0)
+
+    with pytest.raises(OSError):
+        archive.append([source(0)])
+
+    assert lock_path.is_dir()
+    assert not archive.events_path.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX lock-file mode semantics")
+def test_new_lock_file_is_owner_only_on_posix(tmp_path: Path) -> None:
+    archive = SourceArchive(tmp_path / "archive")
+
+    assert archive.append([source(0)]) == 1
+
+    assert stat.S_IMODE(archive.lock_path.stat().st_mode) == 0o600
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX O_NOFOLLOW semantics")
+def test_symlink_lock_path_is_refused_without_touching_target(tmp_path: Path) -> None:
+    directory = tmp_path / "archive"
+    directory.mkdir()
+    target = tmp_path / "outside"
+    target.write_text("untouched", encoding="utf-8")
+    (directory / ".append.lock").symlink_to(target)
+    archive = SourceArchive(directory, lock_timeout=0)
+
+    with pytest.raises(OSError):
+        archive.append([source(0)])
+
+    assert target.read_text(encoding="utf-8") == "untouched"
+    assert not archive.events_path.exists()
