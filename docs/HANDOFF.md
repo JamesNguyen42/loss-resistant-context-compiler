@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 313 collected: 308 passing, 5 skipped |
+| Tests at this snapshot | 318 collected: 313 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -247,7 +247,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `src/context_compiler/atomic.py` | Shared same-directory replace-or-create UTF-8 transactions and durability helpers |
 | `src/context_compiler/file_lock.py` | Cross-platform persistent advisory-file locking |
 | `src/context_compiler/archive.py` | Logically append-only local archive, advisory locking, atomic commits, loading, and verification |
-| `src/context_compiler/cli.py` | `ctxc` parsing, atomic output transactions, versioned error diagnostics, and exit codes |
+| `src/context_compiler/cli.py` | `ctxc` parsing, atomic output transactions, versioned error/completion diagnostics, and exit codes |
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
 | `benchmarks/json_io.py` | Shared bounded regular-file hashing and strict JSON decoding for benchmark evidence |
 | `benchmarks/report_verifier.py` | Bounded strict saved-report verification and deterministic replay |
@@ -398,7 +398,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 313 tests are collected: 308 pass and 5 platform/optional checks are skipped.
+- 318 tests are collected: 313 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -427,6 +427,12 @@ audited. Any selected superseded item independently fails verification as
   prove ordinary timeout, worker-side source mutation containment, sealed
   success reconstruction, JSON timeout diagnostics, and removal of a spawned
   descendant before its delayed side effect.
+- `ctxc compile --event-format jsonl` emits one opt-in `ctxc-event-0.1`
+  completion record on stderr. JSON output events bind the emitted full or
+  active-only artifact; prompt events bind the corresponding complete audit
+  envelope. Events expose exit outcome, rejection/failure counts, recovery,
+  verification, compression/budget state, and compile metrics. Default success
+  stderr remains empty.
 - CLI file outputs use flushed same-directory temporary files and atomic
   replacement. Failure-injection tests prove pre-replacement `fsync`/replace
   failures preserve the old file and remove temporary files; POSIX tests also

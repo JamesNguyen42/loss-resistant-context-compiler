@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 313 tests (308 passing and 5 skipped locally); CI covers Python
+- [x] Collect 318 tests (313 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -513,9 +513,10 @@ than most related technology” within the exact dated evaluation scope.
 - [x] Add opt-in versioned JSON runtime diagnostics that distinguish resource,
   I/O, invalid JSON/type/value, integrity, timeout, and policy failures while
   retaining the default human-readable CLI contract.
-- [ ] Extend structured event diagnostics to successful-run extraction
-  rejections, recovery contributions, verification outcomes, and budget/
-  compression warnings already carried inside artifacts and reports.
+- [x] Add opt-in `ctxc-event-0.1` JSONL completion events on stderr with the
+  actual artifact digest/ledger mode, extraction rejection and failure state,
+  recovery contributions, verification outcomes, compression/budget state,
+  and versioned compilation metrics; preserve silent default stderr.
 - [x] Make every CLI `-o/--output` write a same-directory flushed, `fsync`ed,
   atomic replacement that cleans failed temporary files and preserves existing
   regular-file permissions.

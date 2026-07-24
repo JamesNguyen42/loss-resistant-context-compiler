@@ -464,8 +464,17 @@ time. The record is inside the artifact self-hash. Independent replay
 recomputes every deterministic field available from trusted sources and the
 complete ledger; primary-extractor output volume and wall-clock duration remain
 shape-checked observations. Metrics are optional so older schema-1.0 artifacts
-remain readable. A future event stream may surface successful-run diagnostics
-on stderr without changing the artifact contract.
+remain readable.
+
+`ctxc compile --event-format jsonl` additionally emits one opt-in
+`ctxc-event-0.1` record on stderr after output is committed (or immediately
+before an unverified prompt is refused). For JSON output it binds the exact
+emitted artifact digest and ledger mode; for prompt output it binds the
+corresponding complete audit envelope. It carries extraction rejection/failure
+counts, recovery contributions, verification severity/code summaries,
+compression/budget state, and the versioned metrics record. The default remains
+no success event. Event output is operational telemetry, not part of the
+artifact contract or its self-hash.
 
 ## Cold source archive
 

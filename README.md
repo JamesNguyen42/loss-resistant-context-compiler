@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 313 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 318 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
@@ -133,6 +133,10 @@ The repository currently includes:
   commits, benchmark reports, corpus exports, and runner manifests, plus opt-in
   versioned JSON error diagnostics with stable resource, I/O, input, integrity,
   timeout, and policy categories;
+- opt-in `ctxc-event-0.1` JSONL completion events that bind the corresponding
+  artifact envelope and expose extraction rejections/failures, recovery,
+  verification, compression, and compilation telemetry without changing
+  default stderr;
 - an opt-in whole-compile deadline that runs materialized inputs in an isolated
   POSIX process group or Windows Job Object, terminates the owned descendant
   tree on timeout, and reconstructs successful output from bounded strict JSON;
@@ -148,7 +152,7 @@ The repository currently includes:
   and valid or failed manifests that feed per-system certificate decisions;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
-- cross-version CI, linting, wheel/schema checks, and 313 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 318 regression tests.
 
 ## In development
 
@@ -312,6 +316,23 @@ To place the complete compile pipeline inside a killable process-tree boundary:
 ctxc compile examples/auth_timeout.jsonl -o compiled-memory.json \
   --compile-timeout-seconds 60
 ```
+
+Successful and completed nonzero outcomes can emit one compact JSONL event on
+stderr while the normal artifact or prompt stays on stdout or at `-o`:
+
+```console
+ctxc compile examples/auth_timeout.jsonl -o compiled-memory.json \
+  --event-format jsonl
+```
+
+For JSON output, the opt-in `ctxc-event-0.1` record includes the exact emitted
+artifact digest and ledger mode. For prompt output it binds the corresponding
+complete audit envelope. It also carries the exit outcome, extraction
+rejection/failure counts, recovery contributions, a verification summary, the
+compression report, and versioned compile metrics. Default
+`--event-format none` preserves silent success stderr. A verification-failed
+prompt request may emit a completion event followed by its ordinary error
+diagnostic; each remains one JSON line when JSON error format is also enabled.
 
 Use an append-only local cold archive while keeping only compiled state active:
 
@@ -652,7 +673,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 313 tests are collected (308 pass and 5
+Current local snapshot (2026-07-24): 318 tests are collected (313 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256

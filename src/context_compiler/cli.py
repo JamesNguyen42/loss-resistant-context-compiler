@@ -26,9 +26,10 @@ from .limits import (
     SourceLimitError,
     SourceLimits,
 )
-from .models import CompilationPolicy
+from .models import CompilationPolicy, CompiledMemory
 
 _DIAGNOSTIC_SCHEMA = "ctxc-diagnostic-0.1"
+_EVENT_SCHEMA = "ctxc-event-0.1"
 
 
 def _source_limits(args: argparse.Namespace) -> SourceLimits:
@@ -147,6 +148,107 @@ def _write_error(
     sys.stderr.write(f"ctxc: {exc}\n")
 
 
+def _compile_event(
+    result: CompiledMemory,
+    artifact: dict,
+    *,
+    exit_code: int,
+    output_format: str,
+) -> dict:
+    metadata = result.compiler_metadata
+    primary_rejections = metadata.get("primary_rejections")
+    additive_rejections = metadata.get("additive_safety_rejections")
+    verification_report = result.verification.to_dict()
+    verification_issues = verification_report["issues"]
+    verification = {
+        key: value
+        for key, value in verification_report.items()
+        if key != "issues"
+    }
+    verification["issue_count"] = len(verification_issues)
+    verification["error_count"] = sum(
+        issue["severity"] == "error" for issue in verification_issues
+    )
+    verification["warning_count"] = sum(
+        issue["severity"] == "warning" for issue in verification_issues
+    )
+    verification["info_count"] = sum(
+        issue["severity"] == "info" for issue in verification_issues
+    )
+    verification["issue_codes"] = sorted(
+        {issue["code"] for issue in verification_issues}
+    )
+    outcomes = {
+        0: "accepted",
+        3: "verification_failed",
+        4: "compression_target_not_met",
+    }
+    return {
+        "schema": _EVENT_SCHEMA,
+        "command": "compile",
+        "event": "compilation_completed",
+        "outcome": outcomes[exit_code],
+        "exit_code": exit_code,
+        "output_format": output_format,
+        "compiled_at": result.compiled_at,
+        "source_count": result.source_count,
+        "source_digest": result.source_digest,
+        "artifact_sha256": artifact["artifact_sha256"],
+        "ledger_complete": artifact["ledger_complete"],
+        "extraction": {
+            "primary_extractor": metadata.get("extractor"),
+            "primary_rejections": (
+                len(primary_rejections)
+                if isinstance(primary_rejections, list)
+                else 0
+            ),
+            "additive_safety_rejections": (
+                len(additive_rejections)
+                if isinstance(additive_rejections, list)
+                else 0
+            ),
+            "recovered_items": metadata.get("recovered_items", 0),
+            "primary_failure": metadata.get("primary_failure"),
+            "primary_degradation": metadata.get("primary_degradation"),
+            "additive_safety_failure": metadata.get(
+                "additive_safety_failure"
+            ),
+        },
+        "verification": verification,
+        "compression": result.compression.to_dict(),
+        "metrics": metadata.get("metrics", {}),
+    }
+
+
+def _emit_compile_event(
+    args: argparse.Namespace,
+    result: CompiledMemory,
+    artifact: dict | None,
+    *,
+    exit_code: int,
+) -> None:
+    if args.event_format != "jsonl":
+        return
+    if artifact is None:
+        raise ValueError("compile event requires an artifact envelope")
+    event = _compile_event(
+        result,
+        artifact,
+        exit_code=exit_code,
+        output_format=args.format,
+    )
+    sys.stderr.write(
+        json.dumps(
+            event,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        + "\n"
+    )
+
+
 def _compile(args: argparse.Namespace) -> int:
     try:
         source_limits = _source_limits(args)
@@ -179,29 +281,59 @@ def _compile(args: argparse.Namespace) -> int:
     ) as exc:
         _write_error(args, exc)
         return 2
-    if args.format == "prompt" and not result.verification.passed:
-        _write_error(
-            args,
-            ValueError("refusing to render prompt from unverified memory"),
-            exit_code=3,
-            category="verification",
-            code="unverified_prompt_refused",
+    exit_code = (
+        3
+        if not result.verification.passed
+        else (
+            4
+            if args.require_target and not result.compression.target_met
+            else 0
         )
-        return 3
+    )
+    artifact: dict | None = None
     try:
+        if args.format == "json" or args.event_format == "jsonl":
+            artifact = result.to_dict(
+                include_all_items=(
+                    not args.active_only if args.format == "json" else True
+                )
+            )
+        if args.format == "prompt" and not result.verification.passed:
+            _emit_compile_event(
+                args,
+                result,
+                artifact,
+                exit_code=exit_code,
+            )
+            _write_error(
+                args,
+                ValueError("refusing to render prompt from unverified memory"),
+                exit_code=3,
+                category="verification",
+                code="unverified_prompt_refused",
+            )
+            return 3
         if args.format == "prompt":
             rendered = result.to_prompt()
         else:
-            rendered = result.to_json(include_all_items=not args.active_only)
+            if artifact is None:
+                raise ValueError("JSON output requires an artifact envelope")
+            rendered = json.dumps(
+                artifact,
+                indent=2,
+                ensure_ascii=False,
+            )
         _write_output(rendered, args.output)
+        _emit_compile_event(
+            args,
+            result,
+            artifact,
+            exit_code=exit_code,
+        )
     except (OSError, TypeError, ValueError) as exc:
         _write_error(args, exc)
         return 2
-    if not result.verification.passed:
-        return 3
-    if args.require_target and not result.compression.target_met:
-        return 4
-    return 0
+    return exit_code
 
 
 def _archive_append(args: argparse.Namespace) -> int:
@@ -413,6 +545,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "run compilation in an isolated process tree and terminate it "
             "after this whole-run deadline"
+        ),
+    )
+    compile_parser.add_argument(
+        "--event-format",
+        choices=("none", "jsonl"),
+        default="none",
+        help=(
+            "emit a versioned compile completion event to stderr as JSON Lines"
         ),
     )
     compile_parser.add_argument("--strict-budget", action="store_true")
