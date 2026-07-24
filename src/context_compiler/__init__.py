@@ -25,12 +25,18 @@ from .models import (
     SourceRecord,
     VerificationReport,
 )
+from .schema_compatibility import (
+    ARTIFACT_SCHEMA_COMPATIBILITY_SCHEMA,
+    artifact_schema_registry,
+    artifact_schema_support,
+)
 
 __all__ = [
     "ArtifactLimitError",
     "ArtifactLimits",
     "ARTIFACT_DIFF_SCHEMA",
     "ARTIFACT_INSPECTION_SCHEMA",
+    "ARTIFACT_SCHEMA_COMPATIBILITY_SCHEMA",
     "COMPILATION_METRICS_SCHEMA",
     "CompilationIsolationError",
     "CompilationMetrics",
@@ -50,6 +56,8 @@ __all__ = [
     "SourceLimits",
     "SourceRecord",
     "VerificationReport",
+    "artifact_schema_registry",
+    "artifact_schema_support",
     "diff_artifacts",
     "render_artifact_text",
     "summarize_artifact",

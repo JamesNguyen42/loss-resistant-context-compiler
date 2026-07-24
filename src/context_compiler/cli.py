@@ -29,6 +29,7 @@ from .limits import (
     SourceLimits,
 )
 from .models import CompilationPolicy, CompiledMemory
+from .schema_compatibility import artifact_schema_registry, artifact_schema_support
 
 _DIAGNOSTIC_SCHEMA = "ctxc-diagnostic-0.1"
 _EVENT_SCHEMA = "ctxc-event-0.1"
@@ -453,6 +454,23 @@ def _diff(args: argparse.Namespace) -> int:
     return 0
 
 
+def _schema(args: argparse.Namespace) -> int:
+    try:
+        report = (
+            artifact_schema_support(args.artifact_version)
+            if args.artifact_version is not None
+            else artifact_schema_registry()
+        )
+    except (TypeError, ValueError) as exc:
+        _write_error(args, exc)
+        return 2
+    _write_output(
+        json.dumps(report, indent=2, ensure_ascii=True),
+        args.output,
+    )
+    return 0
+
+
 def _add_source_limit_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--max-source-bytes",
@@ -657,6 +675,18 @@ def build_parser() -> argparse.ArgumentParser:
     _add_artifact_limit_arguments(diff_parser)
     _add_error_format_argument(diff_parser)
     diff_parser.set_defaults(handler=_diff)
+
+    schema_parser = subparsers.add_parser(
+        "schema",
+        help="report compiled-artifact schema compatibility",
+    )
+    schema_parser.add_argument(
+        "--artifact-version",
+        help="query one canonical MAJOR.MINOR artifact schema version",
+    )
+    schema_parser.add_argument("-o", "--output")
+    _add_error_format_argument(schema_parser)
+    schema_parser.set_defaults(handler=_schema)
 
     archive_parser = subparsers.add_parser("archive", help="manage immutable cold source events")
     archive_subparsers = archive_parser.add_subparsers(dest="archive_command", required=True)

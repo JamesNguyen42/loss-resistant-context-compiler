@@ -27,7 +27,7 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 342 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | 362 tests; CI runs Python 3.11, 3.12, and 3.13 |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
 | Named external comparisons | Not run |
@@ -141,12 +141,15 @@ The repository currently includes:
   POSIX process group or Windows Job Object, terminates the owned descendant
   tree on timeout, and reconstructs successful output from bounded strict JSON;
 - a portable JSON artifact, compact prompt renderer, and three JSON Schemas;
+- a machine-readable artifact reader/writer registry with an explicit
+  no-silent-migration policy;
 - a fail-closed JSON inspector plus a bounded terminal item view with escaped
   control/format characters, provenance coordinates, status, conflicts, and
   active-selection state;
 - a logically append-only local source archive with integrity checks, exclusive
   locking, and bounded old-or-new atomic commits;
-- the `ctxc compile`, `verify`, `inspect`, `diff`, and `archive` commands;
+- the `ctxc compile`, `verify`, `inspect`, `diff`, `schema`, and `archive`
+  commands;
 - LRCBench, external-candidate import/export, history-weighted paired bootstrap
   gates, per-system decisions, and self-hashed JSON reports with producer/run
   metadata;
@@ -155,7 +158,7 @@ The repository currently includes:
   and valid or failed manifests that feed per-system certificate decisions;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
-- cross-version CI, linting, wheel/schema checks, and 342 regression tests.
+- cross-version CI, linting, wheel/schema checks, and 362 regression tests.
 
 ## In development
 
@@ -343,6 +346,22 @@ active-only, the report marks `ledger_comparison_complete: false` and warns
 that payload changes do not prove complete-ledger changes; selection changes
 remain exact.
 
+Query the exact artifact reader/writer support window before an upgrade or
+deployment:
+
+```console
+ctxc schema
+ctxc schema --artifact-version 1.0
+ctxc schema --artifact-version 2.0
+```
+
+The versioned `ctxc-artifact-schema-compatibility-0.1` response reports only
+artifact schema `1.0` as readable and writable. A query for an unknown
+well-formed version succeeds with `status: "unsupported"`; malformed version
+syntax is an input error. The package never silently migrates artifacts.
+See [Schema compatibility](docs/SCHEMA_COMPATIBILITY.md) for the preservation
+and trusted-source-replay requirements imposed on any future migration.
+
 To place the complete compile pipeline inside a killable process-tree boundary:
 
 ```console
@@ -439,6 +458,13 @@ still requires trusted sources and `verify_artifact_dict()`.
 before comparing them. A self-consistent diff remains an artifact-derived view,
 not proof that either input is authentic or true.
 
+`artifact_schema_registry()` and `artifact_schema_support(version)` expose the
+same compatibility policy as `ctxc schema`. The only current reader/writer
+version is `1.0`; the optional absence of
+`compiler_metadata.metrics` is the one documented additive compatibility case
+within that version. Unknown artifact versions are never inferred or silently
+migrated.
+
 The default JSON output contains the complete typed ledger and is the format to
 retain for audit. It carries `artifact_sha256`, which `ctxc verify`
 recomputes over the canonical artifact payload before checking its contents.
@@ -496,6 +522,7 @@ from context_compiler import (
     ContextCompiler,
     SourceLimits,
     SourceRecord,
+    artifact_schema_support,
     diff_artifacts,
     validate_artifact_envelope,
 )
@@ -519,6 +546,7 @@ compiler = ContextCompiler(
 )
 memory = compiler.compile(sources)
 validate_artifact_envelope(memory.to_dict())
+assert artifact_schema_support(memory.schema_version)["readable"]
 
 if not memory.verification.passed:
     raise RuntimeError(memory.verification.to_dict())
@@ -723,7 +751,7 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 342 tests are collected (337 pass and 5
+Current local snapshot (2026-07-24): 362 tests are collected (357 pass and 5
 platform/optional checks are skipped), and the recorded default
 32-history LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
@@ -748,6 +776,7 @@ the commands above for the current revision and environment.
 - [Architecture and invariants](docs/ARCHITECTURE.md)
 - [Benchmark design and the exact 50% bar](docs/BENCHMARKING.md)
 - [Threat model](docs/THREAT_MODEL.md)
+- [Compiled-artifact schema compatibility](docs/SCHEMA_COMPATIBILITY.md)
 - [Related work](docs/RELATED_WORK.md)
 - [Exact local Qwen integration](docs/LOCAL_QWEN.md)
 - [LRCBench harness notes](benchmarks/README.md)

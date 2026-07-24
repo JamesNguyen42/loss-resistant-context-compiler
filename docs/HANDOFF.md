@@ -15,7 +15,7 @@ claims.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 342 collected: 337 passing, 5 skipped |
+| Tests at this snapshot | 362 collected: 357 passing, 5 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -249,6 +249,7 @@ counters are deterministic, apart from timestamps and measured duration.
 | `src/context_compiler/archive.py` | Logically append-only local archive, advisory locking, atomic commits, loading, and verification |
 | `src/context_compiler/artifact_diff.py` | Integrity-gated deterministic artifact comparison and self-hashed diff reports |
 | `src/context_compiler/artifact_inspection.py` | Versioned bounded artifact summaries and control-character-safe terminal rendering |
+| `src/context_compiler/schema_compatibility.py` | Machine-readable artifact reader/writer window and no-silent-migration policy |
 | `src/context_compiler/cli.py` | `ctxc` parsing, atomic output transactions, versioned error/completion diagnostics, and exit codes |
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
 | `benchmarks/json_io.py` | Shared bounded regular-file hashing and strict JSON decoding for benchmark evidence |
@@ -269,6 +270,7 @@ ctxc verify ARTIFACT HISTORY
 ctxc inspect ARTIFACT
 ctxc inspect ARTIFACT --format text --show-items
 ctxc diff BEFORE_ARTIFACT AFTER_ARTIFACT [--summary-only]
+ctxc schema [--artifact-version VERSION]
 ctxc archive append ARCHIVE HISTORY
 ctxc archive verify ARCHIVE
 ```
@@ -329,6 +331,9 @@ Primary exported objects:
 - `ArtifactLimitError`;
 - `ARTIFACT_DIFF_SCHEMA`;
 - `ARTIFACT_INSPECTION_SCHEMA`;
+- `ARTIFACT_SCHEMA_COMPATIBILITY_SCHEMA`;
+- `artifact_schema_registry`;
+- `artifact_schema_support`;
 - `diff_artifacts`;
 - `summarize_artifact`;
 - `render_artifact_text`;
@@ -358,6 +363,7 @@ and enforces a subprocess timeout. See [Local Qwen integration](LOCAL_QWEN.md).
 | CLI command | `ctxc` |
 | Package version | `0.1.0` |
 | Compiled artifact schema | `1.0` |
+| Artifact schema compatibility registry | `ctxc-artifact-schema-compatibility-0.1` |
 | Artifact diff schema | `ctxc-artifact-diff-0.1` |
 | Artifact inspection schema | `ctxc-artifact-inspection-0.1` |
 | Compile completion event schema | `ctxc-event-0.1` |
@@ -415,7 +421,7 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 342 tests are collected: 337 pass and 5 platform/optional checks are skipped.
+- 362 tests are collected: 357 pass and 5 platform/optional checks are skipped.
 - Ruff checks pass.
 - CI covers Python 3.11, 3.12, and 3.13.
 - CI builds a wheel and verifies that all three schemas are included.
@@ -445,6 +451,12 @@ audited. Any selected superseded item independently fails verification as
   self-hashed `ctxc-artifact-diff-0.1` report. It separates payload and
   selection changes, summarizes report/metric changes, supports
   `--summary-only`, and explicitly marks incomplete-ledger comparisons.
+- `ctxc schema` and the exported compatibility helpers report artifact `1.0`
+  as the exact reader/writer window. Unknown well-formed versions receive a
+  stable unsupported result, malformed versions fail, and no automatic or
+  silent migration path exists. A future explicit migration must preserve the
+  origin, require trusted-source replay, record its origin digest/identifier,
+  and emit a new digest; see `docs/SCHEMA_COMPATIBILITY.md`.
 - New artifacts carry strict `compilation-metrics-0.1` telemetry for item flow,
   post-resolution recovery, conflicts, protected-budget pressure, verification
   outcomes, and compile duration. `ctxc inspect` exposes it; replay rejects

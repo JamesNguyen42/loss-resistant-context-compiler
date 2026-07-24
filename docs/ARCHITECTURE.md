@@ -147,6 +147,23 @@ marks the ledger comparison incomplete instead of presenting omitted payload
 items as proven removals. Like the input self-hashes, the diff digest detects
 inconsistency but does not authenticate either artifact.
 
+Artifact version support is intentionally explicit rather than inferred.
+`schema_compatibility.py` exposes
+`ctxc-artifact-schema-compatibility-0.1` through
+`artifact_schema_registry()` and `artifact_schema_support()`, and `ctxc schema`
+renders the same records. The current reader and writer window is exactly
+`1.0`; unknown versions remain unsupported even when their version syntax is
+valid. Older `1.0` artifacts may omit the additive
+`compiler_metadata.metrics` record.
+
+No artifact path performs automatic or silent migration. Any future migration
+must preserve the origin artifact, replay against separately trusted source
+events, record the origin artifact digest and a stable migration identifier,
+and emit a new digest. An active-only artifact cannot establish complete
+protected coverage and therefore cannot be the sole migration input. The
+complete operational contract is in
+[SCHEMA_COMPATIBILITY.md](SCHEMA_COMPATIBILITY.md).
+
 Malformed direct Python artifacts preserve the verifier's failure-report
 contract: cycles and non-JSON objects become `invalid_artifact_json` rather
 than escaping as an unhandled error. Such caller-allocated objects necessarily

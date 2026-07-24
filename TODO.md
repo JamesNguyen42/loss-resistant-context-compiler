@@ -59,7 +59,7 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 342 tests (337 passing and 5 skipped locally); CI covers Python
+- [x] Collect 362 tests (357 passing and 5 skipped locally); CI covers Python
   3.11, 3.12, and 3.13.
 
 ## P0: close confirmed fail-closed gaps
@@ -554,7 +554,9 @@ than most related technology” within the exact dated evaluation scope.
   ownership with a persistent OS advisory lock that releases on descriptor
   close or process death; document that marker existence does not mean held.
 - [ ] Test filesystem semantics on Windows, Linux, macOS, and network storage.
-- [ ] Define schema migrations and backward-compatibility guarantees.
+- [x] Publish the exact artifact reader/writer support window through
+  `ctxc-artifact-schema-compatibility-0.1`; document and test that unknown
+  versions fail closed and that no automatic or silent migration exists.
 - [ ] Add reproducible performance regression thresholds to CI.
 
 ### Packaging and release
@@ -618,7 +620,8 @@ than most related technology” within the exact dated evaluation scope.
 - incremental compiler;
 - at least two agent integrations;
 - operational limits and metrics;
-- schema migration policy.
+- machine-readable artifact schema compatibility and no-silent-migration
+  policy;
 
 ### `1.0.0` — evidence-backed production release
 
