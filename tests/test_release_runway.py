@@ -90,10 +90,15 @@ def test_source_distribution_manifest_includes_release_runway_assets() -> None:
 
 
 def test_release_install_smoke_runner_has_a_standalone_help_contract() -> None:
+    runner = ROOT / "scripts" / "release_install_smoke.py"
+    source = runner.read_text(encoding="utf-8")
+    assert "Path(tempfile.gettempdir()).resolve(strict=True)" in source
+
+
     completed = subprocess.run(
         [
             sys.executable,
-            str(ROOT / "scripts" / "release_install_smoke.py"),
+            str(runner),
             "--help",
         ],
         check=False,

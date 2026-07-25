@@ -118,10 +118,17 @@ def _assert_installed_package(
         raise RuntimeError(f"installed trust round trip failed: {report}")
 
 
+def _temporary_root() -> Path:
+    return Path(tempfile.gettempdir()).resolve(strict=True)
+
+
 def _smoke_artifact(path: Path, expected_schema_names: list[str]) -> dict[str, str]:
     artifact = path.resolve(strict=True)
     kind = _artifact_kind(artifact)
-    with tempfile.TemporaryDirectory(prefix=f"ctxc-{kind}-install-") as directory:
+    with tempfile.TemporaryDirectory(
+        prefix=f"ctxc-{kind}-install-",
+        dir=_temporary_root(),
+    ) as directory:
         environment = Path(directory) / "venv"
         _run([sys.executable, "-m", "venv", str(environment)])
         python = _venv_python(environment)
