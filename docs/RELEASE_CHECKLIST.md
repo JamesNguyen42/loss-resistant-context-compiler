@@ -18,8 +18,8 @@ a production PyPI upload, or a broader product/evidence claim.
 ## Code and platform gates
 
 - [ ] Run the complete test suite on CPython 3.11, 3.12, and 3.13.
-- [ ] Run Ruff and `compileall` across `src`, `tests`, `benchmarks`, and
-  `scripts`.
+- [ ] Run Ruff and `compileall` across `src`, `tests`, `benchmarks`, `scripts`,
+  and `conformance`.
 - [ ] Run the cross-platform lock/path/package smoke coverage on Ubuntu,
   Windows, and macOS; record skips and filesystem limitations explicitly.
 - [ ] Run every new conformance and natural-history negative vector; verify
@@ -45,16 +45,52 @@ a production PyPI upload, or a broader product/evidence claim.
 ## Distribution gates
 
 - [ ] Build exactly one wheel and one source distribution from the candidate.
-- [ ] Inspect both archives for the expected package, CLI, documentation,
+- [ ] Inspect the wheel for the expected package, CLI entry point, and all 25
+  installed core/connector JSON Schemas.
+- [ ] Inspect the source distribution separately for release documentation,
   connector conformance assets, six natural-history schemas, seven contract
-  fixtures, and all 25 installed JSON Schemas.
+  fixtures, and the source copies of the 25 installed schemas.
 - [ ] Install the wheel and sdist into separate clean environments and run
   import, metadata, schema parsing, `ctxc --help`, compile, trust-create, and
-  trust-verify smoke tests.
+  trust-verify smoke tests. Require lexical real distribution paths and
+  regular single-link archives; retain any link or replacement rejection.
 - [ ] Confirm the installed core has no third-party runtime requirement.
-- [ ] Generate SHA-256 checksums. Public artifacts additionally require the
-  external signatures/attestations specified by the release policy; their
-  absence remains a red gate.
+- [ ] Provide a reviewed hash-pinned offline wheelhouse and exact requirements
+  file for sdist build tools. Run `scripts/release_install_smoke.py` with both
+  `--build-wheelhouse <directory>` and
+  `--build-requirements <requirements.txt>`. Require the reported
+  `hash-pinned-offline-wheelhouse` bootstrap; that path enforces no index,
+  binary-only build tools, and pip hash checking. This gate is red because the
+  repository does not yet retain the reviewed cross-platform wheelhouse and
+  requirements inputs. The default `online-lower-bounds` result remains only an
+  online diagnostic.
+- [ ] Independently verify that the clean checkout, candidate commit, and
+  archive inputs match the revision supplied to the evidence tool; the tool
+  binds that value but does not discover or attest source provenance.
+- [ ] From an empty evidence-output path, run the module-form
+  `python -m scripts.release_artifact_manifest create` command with
+  `--dist-dir dist`, the exact `--revision`,
+  `--manifest-out dist/release-artifacts.json`, and
+  `--checksums-out dist/SHA256SUMS`. Require exit zero and retain the printed
+  manifest SHA-256 outside the artifact bundle. `create` self-verifies the
+  completed pair. A nonzero exit, missing manifest, or lone checksum file is a
+  retained failed attempt, not release evidence.
+- [ ] Re-run `python -m scripts.release_artifact_manifest verify` with the exact
+  archives, manifest, checksum file, and
+  `--expected-manifest-sha256 <trusted-digest>` immediately before upload.
+  Keep the distribution workspace write-restricted between verification and
+  upload, and compare upload-side digests where the index exposes them.
+- [ ] Rebuild twice in clean environments with fixed timestamp and hash-seed
+  inputs. Run `python -m scripts.release_reproducibility --first-dist
+  <first-dist> --second-dist <second-dist> --json-out
+  <new-reproducibility-report.json>` and retain the report even when the command
+  exits 1. Require status `passed` and byte-identical wheel and sdist results.
+  This gate is red: the current wheel repeated exactly, but Setuptools 83.0.0
+  left sdist tar member mtimes build-time-dependent, so the whole-archive bytes
+  differed despite matching member content.
+- [ ] Public artifacts additionally require the external
+  signatures/attestations specified by the release policy; their absence
+  remains a red gate. The checksum manifest is not an SBOM or signature.
 
 ## Documentation and handoff
 

@@ -41,10 +41,29 @@ def test_ci_covers_supported_python_and_platform_release_smokes() -> None:
         in workflow
     )
     assert "scripts/release_install_smoke.py" in workflow
+    assert "python -m scripts.release_artifact_manifest create" in workflow
+    assert "python -m scripts.release_artifact_manifest verify" in workflow
+    assert "dist/SHA256SUMS" in workflow
+    assert "dist/release-artifacts.json" in workflow
     assert "python conformance/run_connector_conformance.py" in workflow
     assert "python -m benchmarks.natural_history" in workflow
     assert "tests/test_archive_locking.py" in workflow
+    assert "tests/test_release_install_smoke.py" in workflow
     assert "permissions:\n  contents: read" in workflow
+
+
+def test_codeql_uses_a_pinned_python_analysis_with_narrow_permissions() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "codeql.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "languages: python" in workflow
+    assert "queries: security-extended" in workflow
+    assert "contents: read" in workflow
+    assert "security-events: write" in workflow
+    assert "contents: write" not in workflow
+    assert "github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81" in workflow
+    assert "github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81" in workflow
 
 
 def test_supply_chain_configuration_tracks_actions_and_python_manifests() -> None:
@@ -81,7 +100,13 @@ def test_release_and_security_documents_preserve_claim_boundaries() -> None:
     assert "Do not overwrite files in" in contributing
     assert "does not authorize a merge" in checklist
     assert "Keep every failing external adapter" in checklist
+    assert "python -m scripts.release_artifact_manifest create" in checklist
+    assert "hash-pinned offline wheelhouse" in checklist
     assert "does not yet publish signed artifacts" in " ".join(supply_chain.split())
+    assert "source distribution is not yet byte-for-byte reproducible" in " ".join(
+        supply_chain.split()
+    )
+    assert "hash-pinned build wheelhouse" in supply_chain
 
 
 def test_source_distribution_manifest_includes_release_runway_assets() -> None:

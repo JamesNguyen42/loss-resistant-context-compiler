@@ -26,6 +26,30 @@ Validate the retained records and the executable blocker with:
 .venv/Scripts/python -m pytest -q tests/test_external_compatibility.py
 ```
 
+Run the bounded offline reconciliation audit with:
+
+```console
+.venv/Scripts/python -m benchmarks.compatibility_audit
+```
+
+Exit status 2 is expected while the protocol is draft or any evidence gate is
+open. The audit accepts only the same verified protocol byte snapshot across
+its verification and reconciliation paths. It applies closed field sets and
+exact types to both compatibility records, the original blocker, and the later
+failed external-runner attempt; binds repository, revision, license, source
+tree, entrypoint, runtime, environment, command, limits, and failure identity;
+requires both a hash-pinned dependency lock and offline wheelhouse; validates
+required command options together with nonempty or canonical positive-integer
+values; and verifies the retained failure self-hash and non-scoreable case
+boundary. A future present lock state requires a versioned schema and bound
+evidence rather than changing the existing record in place.
+
+The audit runs no adapter, service, model, network operation, or scoring step
+and never inspects comparative output. The retained runner attempt used Python
+3.12.13 while the pinned ACON diagnostic requires Python 3.11, so that mismatch
+is an explicit blocker in addition to the retained failed process, absent lock
+and wheelhouse, unverified network isolation, and unmeasured inference service.
+
 
 ## Retained ACON runner failure
 

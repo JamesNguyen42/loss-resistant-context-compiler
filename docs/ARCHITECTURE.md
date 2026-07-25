@@ -142,6 +142,14 @@ Hosts should keep explicit event ids and sequences stable across retries.
 Without both, default sequence allocation advances and repeated content is a
 new immutable source rather than an idempotent retry.
 
+A checkpoint, explicit source-record set, or archive may preserve an authority
+marker that the authenticated host admitted earlier. Those serialized values
+are therefore authority-bearing host state, not untrusted bearer credentials.
+Their self-hashes preserve the host assertion but do not authenticate its
+origin. Supplying attacker-controlled, rehashed connector state crosses the
+same trust boundary as letting that attacker submit authenticated
+`SourceEvent` envelopes; integrations must protect these inputs accordingly.
+
 ### Context bundles and bindings
 
 `compile_memory` emits `localai-context-bundle-0.1`. Its `artifact` is the

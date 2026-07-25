@@ -12,8 +12,9 @@ boundary and must be reviewable rather than implicitly inherited from a host.
   manifests.
 - Pull requests run GitHub dependency review and fail when a newly introduced
   dependency has a known high-or-critical vulnerability.
-- Workflows use read-only repository contents permissions unless a future,
-  separately reviewed publishing job requires narrower additional authority.
+- A pinned CodeQL Python workflow runs `security-extended` queries on pushes,
+  pull requests, and a weekly schedule. Repository contents remain read-only;
+  only the CodeQL job receives `security-events: write` to upload its findings.
 - CI does not publish packages. Release builds and smoke installs are evidence,
   not deployment authorization.
 
@@ -28,6 +29,24 @@ backend, or package index is uncompromised.
 `dependencies` must remain empty. A new core dependency requires explicit
 architecture, security, license, and release review. Build and development
 requirements must stay bounded and visible.
+
+The build and development extras currently use lower bounds and CI resolves
+compatible releases from the live package index. No cross-version, hash-pinned
+dev/build lock or offline wheelhouse is retained. A credible replacement needs
+resolver output for CPython 3.11-3.13 and every CI platform, hashes for each
+allowed distribution, a documented update cadence, and an offline installation
+check; a single host-generated lock would overstate portability.
+
+By default, the standalone sdist install smoke bootstraps the lower-bounded
+`setuptools>=77` and `wheel>=0.41` requirements from the configured package
+index. That path is an explicitly reported online clean-environment diagnostic,
+not proof of an offline or reproducible source install. An alternate mode
+requires both `--build-wheelhouse` and `--build-requirements`, rejects linked
+inputs, and invokes pip with `--no-index`, `--only-binary=:all:`, and
+`--require-hashes`; the artifact installation itself always uses `--no-index`.
+The repository does not yet retain a reviewed requirements file and matching
+hash-pinned build wheelhouse for every supported platform. That offline smoke
+therefore remains a red gate rather than an inferred pass.
 
 Every claim-bearing external adapter has a stricter boundary: retain and hash
 its dependency lock, source tree, entrypoint, runtime executable, portable
@@ -48,10 +67,52 @@ Before any public package release:
    attempts with the release record;
 6. require explicit approval before any test-index or production-index upload.
 
-This repository currently implements build, inventory, cross-platform clean-
-install, dependency-review, immutable-action, and checksum groundwork only. It
-does not yet publish signed artifacts, use a production release environment,
-or claim SLSA conformance.
+`python -m scripts.release_artifact_manifest` creates bounded checksum evidence
+for exactly the current-version `py3-none-any` wheel and source distribution in
+a lexical real directory. It rejects symlink or junction distribution roots,
+noncanonical archive names, extra archives, empty or non-regular files, and any
+archive change observed across two complete validation passes. `create` writes
+a no-overwrite `SHA256SUMS` first and a self-hashed manifest last, then
+immediately verifies both archives and both evidence files against the freshly
+computed manifest digest. The manifest is the completion marker: a checksum
+file left by a failed second write is a retained failed attempt, not successful
+evidence. CI retains the completed pair with the built archives.
+
+The manifest's `revision` is a caller-supplied assertion. The tool validates and
+binds the lowercase 40-character value, but it does not establish that the
+working tree or archive bytes came from that commit and does not prove
+publisher identity. A later `verify --expected-manifest-sha256 <trusted-digest>`
+can bind the retained files to an independently stored digest. The two-pass
+checks detect mutation during validation; they still assume the distribution
+workspace remains trusted after the final pass. An actor that retains write
+access could substitute files before upload, so signatures or attestations and
+upload-side digest checks remain required.
+
+`python -m scripts.release_reproducibility` compares exactly one wheel and one
+source distribution from each of two build directories. It performs bounded,
+link-free archive inspection, exact streaming byte comparison, and writes a
+no-overwrite self-hashed report. A failure identifies the first member-content,
+tar/ZIP metadata, or container-encoding difference; the report remains failed
+and is not converted into a pass. The verifier deliberately does not normalize
+or rewrite either candidate artifact.
+
+The repeated-build gate is currently red. With fixed `SOURCE_DATE_EPOCH` and
+`PYTHONHASHSEED=0`, the diagnostic wheel hashes matched byte for byte and the
+sdist member contents matched, but Setuptools 83.0.0 did not apply
+`SOURCE_DATE_EPOCH` to sdist tar member mtimes. The source distribution is not
+yet byte-for-byte reproducible; no release should represent it as reproducible
+until the backend or a separately reviewed deterministic builder fixes that
+metadata and the two-build verifier passes independently.
+
+The report establishes output equality only. It does not discover or attest
+the source revision, build frontend/backend versions, dependency hashes,
+platform image, or build environment; those inputs must be retained and
+independently checked before any reproducible-build claim.
+
+This is checksum and substitution-detection groundwork, not a signature,
+authorship proof, reproducible-build proof, SBOM, vulnerability scan, or
+provenance attestation. This repository does not yet publish signed artifacts,
+use a production release environment, or claim SLSA conformance.
 
 The retained ACON diagnostic demonstrates the fail-closed boundary rather than
 satisfying it: the source tree, immutable upstream revision, license bytes,

@@ -485,7 +485,7 @@ and enforces a subprocess timeout. See [Local Qwen integration](LOCAL_QWEN.md).
 | External comparison protocol | `lrcbench-external-protocol-0.9` |
 | Connector request/response | `ctxc-connector-request-0.1` / `ctxc-connector-response-0.1` |
 | Connector source/bundle/checkpoint | `localai-source-event-0.1` / `localai-context-bundle-0.1` / `ctxc-incremental-checkpoint-0.1` |
-| Natural-history evidence family | `lrc-natural-history-*-0.1` contracts; synthetic fixtures only |
+| Natural-history evidence family | `ctxc-natural-history-*-0.1` contracts; synthetic fixtures only |
 | Adapter process-environment evidence | `lrcbench-process-environment-0.1` |
 | Installed schema directory | `share/loss-resistant-context-compiler/schemas` |
 

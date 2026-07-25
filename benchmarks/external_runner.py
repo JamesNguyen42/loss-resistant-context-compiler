@@ -2362,7 +2362,7 @@ def _claim_command_contract_complete(
         if value.startswith("template:"):
             try:
                 segments = json.loads(value.removeprefix("template:"))
-            except (json.JSONDecodeError, TypeError, ValueError):
+            except (json.JSONDecodeError, RecursionError, TypeError, ValueError):
                 return False
             if not isinstance(segments, list):
                 return False

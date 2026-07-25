@@ -751,6 +751,13 @@ def test_adapter_source_tree_is_bounded_complete_and_immutable(
     assert not mutated.ready_for_scoring
 
 
+def test_claim_command_contract_rejects_deep_embedded_template() -> None:
+    deep_template = "template:" + "[" * 2_000 + "0" + "]" * 2_000
+    assert not external_runner_module._claim_command_contract_complete(
+        [deep_template]
+    )
+
+
 def test_command_contract_is_portable_and_binds_each_case_and_runtime(
     tmp_path: Path,
 ) -> None:

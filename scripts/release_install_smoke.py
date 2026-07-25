@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -43,6 +44,91 @@ def _artifact_kind(path: Path) -> str:
     if path.name.endswith(".tar.gz"):
         return "sdist"
     raise ValueError(f"unsupported release artifact: {path}")
+
+
+def _is_reparse_point(path_stat: os.stat_result) -> bool:
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return bool(getattr(path_stat, "st_file_attributes", 0) & reparse_flag)
+
+
+def _path_identity(path_stat: os.stat_result) -> tuple[int, int]:
+    return path_stat.st_dev, path_stat.st_ino
+
+
+def _artifact_fingerprint(path_stat: os.stat_result) -> tuple[int, ...]:
+    return (
+        path_stat.st_dev,
+        path_stat.st_ino,
+        path_stat.st_mode,
+        path_stat.st_nlink,
+        path_stat.st_size,
+        path_stat.st_mtime_ns,
+        path_stat.st_ctime_ns,
+    )
+
+
+def _verified_artifact_snapshot(path: Path) -> tuple[Path, tuple[int, ...]]:
+    lexical = path.expanduser().absolute()
+    try:
+        lexical_stat = lexical.lstat()
+    except OSError as exc:
+        raise ValueError(f"release artifact is unavailable: {lexical}") from exc
+    if (
+        not stat.S_ISREG(lexical_stat.st_mode)
+        or stat.S_ISLNK(lexical_stat.st_mode)
+        or _is_reparse_point(lexical_stat)
+        or lexical_stat.st_nlink != 1
+    ):
+        raise ValueError(
+            f"release smoke requires a lexical regular single-link artifact: {lexical}"
+        )
+    try:
+        resolved = lexical.resolve(strict=True)
+        resolved_stat = resolved.stat()
+    except OSError as exc:
+        raise ValueError(f"release artifact cannot be resolved: {lexical}") from exc
+    if (
+        not stat.S_ISREG(resolved_stat.st_mode)
+        or _is_reparse_point(resolved_stat)
+        or resolved_stat.st_nlink != 1
+        or _artifact_fingerprint(resolved_stat) != _artifact_fingerprint(lexical_stat)
+    ):
+        raise ValueError(f"release artifact changed while resolving: {lexical}")
+    return resolved, _artifact_fingerprint(resolved_stat)
+
+
+def _assert_artifact_snapshot(
+    path: Path,
+    expected: tuple[Path, tuple[int, ...]],
+) -> None:
+    if _verified_artifact_snapshot(path) != expected:
+        raise ValueError(f"release artifact changed during smoke install: {path}")
+
+
+def _verified_distribution_directory(directory: Path) -> Path:
+    lexical = directory.expanduser().absolute()
+    try:
+        lexical_stat = lexical.lstat()
+    except OSError as exc:
+        raise ValueError(f"release smoke directory is unavailable: {lexical}") from exc
+    is_junction = bool(hasattr(os.path, "isjunction") and os.path.isjunction(lexical))
+    if (
+        not stat.S_ISDIR(lexical_stat.st_mode)
+        or stat.S_ISLNK(lexical_stat.st_mode)
+        or _is_reparse_point(lexical_stat)
+        or is_junction
+    ):
+        raise ValueError(f"release smoke requires a lexical real directory: {lexical}")
+    try:
+        resolved = lexical.resolve(strict=True)
+        resolved_stat = resolved.stat()
+    except OSError as exc:
+        raise ValueError(f"release smoke directory cannot be resolved: {lexical}") from exc
+    if not stat.S_ISDIR(resolved_stat.st_mode) or _path_identity(resolved_stat) != _path_identity(
+        lexical_stat
+    ):
+        raise ValueError(f"release smoke directory changed while resolving: {lexical}")
+    return resolved
 
 
 def _assert_installed_package(
@@ -122,9 +208,69 @@ def _temporary_root() -> Path:
     return Path(tempfile.gettempdir()).resolve(strict=True)
 
 
-def _smoke_artifact(path: Path, expected_schema_names: list[str]) -> dict[str, str]:
-    artifact = path.resolve(strict=True)
+def _offline_build_inputs(
+    wheelhouse: Path | None,
+    requirements: Path | None,
+) -> tuple[Path, tuple[Path, tuple[int, ...]]] | None:
+    if (wheelhouse is None) != (requirements is None):
+        raise ValueError("--build-wheelhouse and --build-requirements must be supplied together")
+    if wheelhouse is None or requirements is None:
+        return None
+    verified_wheelhouse = _verified_distribution_directory(wheelhouse)
+    requirements_snapshot = _verified_artifact_snapshot(requirements)
+    return verified_wheelhouse, requirements_snapshot
+
+
+def _build_tool_install_command(
+    python: Path,
+    offline_inputs: tuple[Path, tuple[Path, tuple[int, ...]]] | None,
+) -> tuple[list[str], str]:
+    base = [str(python), "-m", "pip", "install", "--disable-pip-version-check"]
+    if offline_inputs is None:
+        return [*base, "setuptools>=77", "wheel>=0.41"], "online-lower-bounds"
+    wheelhouse, requirements_snapshot = offline_inputs
+    requirements, _fingerprint = requirements_snapshot
+    return (
+        [
+            *base,
+            "--no-index",
+            "--find-links",
+            str(wheelhouse),
+            "--only-binary=:all:",
+            "--require-hashes",
+            "-r",
+            str(requirements),
+        ],
+        "hash-pinned-offline-wheelhouse",
+    )
+
+
+def _artifact_install_command(python: Path, artifact: Path, *, kind: str) -> list[str]:
+    command = [
+        str(python),
+        "-m",
+        "pip",
+        "install",
+        "--disable-pip-version-check",
+        "--no-index",
+        "--no-deps",
+    ]
+    if kind == "sdist":
+        command.append("--no-build-isolation")
+    command.append(str(artifact))
+    return command
+
+
+def _smoke_artifact(
+    path: Path,
+    expected_schema_names: list[str],
+    *,
+    offline_build_inputs: tuple[Path, tuple[Path, tuple[int, ...]]] | None,
+) -> dict[str, str]:
+    artifact_snapshot = _verified_artifact_snapshot(path)
+    artifact, _ = artifact_snapshot
     kind = _artifact_kind(artifact)
+    build_bootstrap = "not-applicable"
     with tempfile.TemporaryDirectory(
         prefix=f"ctxc-{kind}-install-",
         dir=_temporary_root(),
@@ -132,29 +278,34 @@ def _smoke_artifact(path: Path, expected_schema_names: list[str]) -> dict[str, s
         environment = Path(directory) / "venv"
         _run([sys.executable, "-m", "venv", str(environment)])
         python = _venv_python(environment)
-        install = [str(python), "-m", "pip", "install"]
-        if kind == "wheel":
-            install.extend(["--no-index", "--no-deps"])
-        else:
-            _run(
-                [
-                    str(python),
-                    "-m",
-                    "pip",
-                    "install",
-                    "setuptools>=77",
-                    "wheel>=0.41",
-                ]
+        if kind == "sdist":
+            bootstrap_command, build_bootstrap = _build_tool_install_command(
+                python,
+                offline_build_inputs,
             )
-            install.extend(["--no-build-isolation", "--no-deps"])
-        install.append(str(artifact))
-        _run(install)
+            _run(bootstrap_command)
+            if offline_build_inputs is not None:
+                wheelhouse, requirements_snapshot = offline_build_inputs
+                _assert_artifact_snapshot(requirements_snapshot[0], requirements_snapshot)
+                if _verified_distribution_directory(wheelhouse) != wheelhouse:
+                    raise ValueError("offline build wheelhouse changed during bootstrap")
+        _assert_artifact_snapshot(path, artifact_snapshot)
+        _run(_artifact_install_command(python, artifact, kind=kind))
+        _assert_artifact_snapshot(path, artifact_snapshot)
         _assert_installed_package(python, environment, expected_schema_names)
-    return {"artifact": artifact.name, "kind": kind, "status": "passed"}
+    return {
+        "artifact": artifact.name,
+        "kind": kind,
+        "status": "passed",
+        "build_bootstrap": build_bootstrap,
+    }
 
 
 def _release_artifacts(directory: Path) -> list[Path]:
-    artifacts = sorted(directory.glob("*.whl")) + sorted(directory.glob("*.tar.gz"))
+    verified_directory = _verified_distribution_directory(directory)
+    artifacts = sorted(verified_directory.glob("*.whl")) + sorted(
+        verified_directory.glob("*.tar.gz")
+    )
     kinds = [_artifact_kind(path) for path in artifacts]
     if kinds.count("wheel") != 1 or kinds.count("sdist") != 1:
         raise ValueError(
@@ -170,18 +321,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dist-dir", type=Path, default=Path("dist"))
     parser.add_argument("--schema-dir", type=Path, default=Path("schemas"))
+    parser.add_argument("--build-wheelhouse", type=Path)
+    parser.add_argument("--build-requirements", type=Path)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    expected_schema_names = sorted(
-        path.name for path in args.schema_dir.glob(SCHEMA_GLOB)
+    offline_build_inputs = _offline_build_inputs(
+        args.build_wheelhouse,
+        args.build_requirements,
     )
+    expected_schema_names = sorted(path.name for path in args.schema_dir.glob(SCHEMA_GLOB))
     if not expected_schema_names:
         raise ValueError(f"no packaged schemas found in {args.schema_dir}")
     results = [
-        _smoke_artifact(path, expected_schema_names)
+        _smoke_artifact(
+            path,
+            expected_schema_names,
+            offline_build_inputs=offline_build_inputs,
+        )
         for path in _release_artifacts(args.dist_dir)
     ]
     print(

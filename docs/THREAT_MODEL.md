@@ -27,7 +27,10 @@ The compiler assumes:
 4. the local host and Python process are not fully compromised;
 5. any callable supplied to `ModelExtractor` or `LiteralModelExtractor` is
    trusted to receive the source text, even though its output remains
-   untrusted data.
+   untrusted data;
+6. connector checkpoints, explicit source records, and archives carrying a
+   previously admitted authority marker are protected host state and do not
+   arrive from an untrusted bearer.
 
 If an attacker controls both an artifact and the “trusted” source history used
 to verify it, hashes cannot recover the original truth.
@@ -55,11 +58,11 @@ to verify it, hashes cannot recover the original truth.
 | Hidden performance regression | CI runs a fixed-digest, self-hashed profile with median latency, input-doubling growth, and exclusive `tracemalloc` peak ceilings | Shared-runner timing is noisy; `tracemalloc` is not RSS and misses native allocations; the small profile does not characterize production or million-event scale |
 | Custom-tokenizer mismatch | A named counter records `custom:<id>`; independent verification requires the same callback and stable id and recomputes all compression fields | The id is a caller-managed label, not code signing or proof that two implementations are identical |
 | Partial, conflicting, redirected, or rolled-back archive state through the API | Persistent OS advisory lock released on descriptor close/process death, stable single-link regular-file reads and a single-link lock marker, full ancestor-chain checks, POSIX parent-relative opens, bounded replacement-race retries, id/sequence collision rejection, canonical entry hash chaining, optional externally retained head preconditions, load-time hash validation, and bounded full-file atomic replacement; readers observe an old or new complete log | Standalone verification accepts a valid older prefix; rollback detection requires a separately protected newer head. An administrator can recompute/rewrite/delete files; advisory locks and rename durability may not be reliable on every network filesystem |
-| Truncated or raced transactional file output | CLI files, archives, reports, corpora, and manifests flush and `fsync` the complete payload in a same-directory temporary file before atomic install; linked/reparse ancestors and special destinations are refused, POSIX installs are relative to a pinned parent descriptor, failed pre-install writes preserve the old destination, and external-run manifests use exclusive no-clobber installation | Stdout is non-transactional. Windows lacks portable parent-relative replacement and directory `fsync`; a privileged rename in the final syscall window, orphan cleanup after such a rename, and durability guarantees remain host/filesystem trust boundaries |
+| Truncated or raced transactional file output | CLI files, archives, reports, corpora, and manifests flush and `fsync` the complete payload in a same-directory temporary file before atomic install; linked/reparse ancestors and special destinations are refused, POSIX installs are relative to a pinned parent descriptor, failed pre-install writes preserve the old destination, failed cleanup rechecks the temporary-file identity, and external-run manifests use exclusive no-clobber installation | Stdout is non-transactional. Windows lacks portable parent-relative replacement and directory `fsync`; a privileged rename in the final syscall window, the remaining check/unlink cleanup race after the identity recheck, and durability guarantees remain host/filesystem trust boundaries |
 | Budget pressure removes requirements | Protected kinds bypass optional selection; overflow is explicit or strict-fail | Enough protected content can exceed the downstream model’s hard context window |
 | Source/artifact path redirection or resource exhaustion | Serialized source/artifact paths require stable regular files, reject linked/reparse ancestors, freeze and recheck every ancestor identity, use POSIX parent-relative access, use no-follow flags and pre/open identity checks, retry bounded atomic replacement races, compare post-read content metadata, and never decompress input; shared positive limits cap serialized source/archive bytes, physical line length, JSON depth, record count, per-record and total canonical size across loaders, compiler, verifier, and archive; fixed 1,024/128/256-character id/role/timestamp ceilings bound identity-field replication; strict JSON rejects ambiguous/non-finite input | Direct caller streams remain host trust boundaries. On hosts without parent-relative APIs, a privileged rename inside pathname resolution can cause an unintended descriptor to be opened before the post-open ancestor check rejects it. Python objects may already be allocated before a direct API call; accepted maxima and derived-item multiplicity are not process-RSS limits |
 | Benchmark evidence resource exhaustion or parser ambiguity | Reports, corpora, candidates, and manifests share ancestor-guarded bounded regular-file hashing, pre/open/final file snapshots, and strict UTF-8 JSON decoding with duplicate-key, non-finite, byte, line, and depth rejection | Direct already-decoded Python objects are caller allocations; configured file limits do not cap total verifier RSS |
-| Connector contract ambiguity or schema-only trust | Seventeen bounded Draft 2020-12 schemas, strict runtime decoding, six golden stateful transcripts, 65 negative vectors, and in-process/stdio semantic-equivalence checks constrain the wire shape | JSON Schema acceptance is structural. It does not prove source authority, provenance truth, replay validity, checkpoint freshness, protected completeness, or digest authenticity; runtime verification remains authoritative |
+| Connector contract ambiguity or schema-only trust | Seventeen bounded Draft 2020-12 schemas, strict runtime decoding, six golden stateful transcripts, 66 negative vectors, and in-process/stdio semantic-equivalence checks constrain the wire shape | JSON Schema acceptance is structural. It does not prove source authority, provenance truth, replay validity, checkpoint freshness, protected completeness, or digest authenticity; runtime verification remains authoritative |
 | Artifact resource exhaustion | Strict bounded loaders cap raw/canonical bytes, physical lines, JSON depth, item/selection collections, provenance spans, and embedded issues before inspect or replay | Direct Python objects may already be allocated; limits do not make a self-hashed artifact trustworthy |
 | Compile/provider resource exhaustion | Built-in extraction checks an incremental item ceiling; every extractor result is bounded by item/rejection/canonical/auxiliary size, all passes share candidate/resolved/provenance ceilings, and recovery, resolution, conflict search, selection, and independent verification consume one shared item-work budget. Model responses/candidate counts and unique-literal cited-source search are separately bounded; optional whole-compile isolation owns a POSIX process group or Windows Job Object and terminates its descendant tree at the deadline | A custom extractor executes before its returned result can be bounded. Item/search work are deterministic proxies, not wall-clock or RSS caps, and do not cover every regex, token, allocation, or custom-counter cost. A deliberately daemonized POSIX child can escape its process group; deadline job configuration uses local pickle and therefore requires trusted serializable objects |
 | Common content-secret disclosure | Optional preprocessing uses nine fixed lexical detectors, length/line-boundary-preserving masks, recomputed record hashes, explicit limits, deterministic replay, and a strict self-hashed coordinate report that omits original content-secret text and hashes | Detection is heuristic; false positives and false negatives remain. Original input enters process memory first. Metadata, ids, timestamps, PII, unknown formats, report coordinates, storage, logs, and previous artifacts are outside the redaction scope |
@@ -88,6 +91,15 @@ flag once accepted, but hashing does not justify the trust decision.
 copies and freezes nested objects and arrays. This prevents later mutation from
 silently changing an accepted trust flag. It does not make the original trust
 decision correct.
+
+The connector downgrades assistant, tool, and function records whose
+connector-owned authentication marker is missing. It intentionally preserves
+an explicit marker across checkpoint, direct-record, and archive restart paths
+so authenticated host state keeps batch/restart equivalence. A self-hash is not
+proof that the host authored that marker: accepting attacker-controlled,
+rehashable connector state would let the attacker assert the same authority as
+an authenticated `SourceEvent`. Protect these serialized inputs as part of the
+host boundary; they are not safe bearer credentials.
 
 `ModelExtractor` applies the same role policies before accepting candidates.
 It also requires ordinary candidate text to equal a complete atomic cited span
@@ -309,8 +321,14 @@ that envelope from the matching raw merged case and registered producer. POSIX
 processes are assigned while suspended and verified in the job before adapter
 code resumes. These controls limit cross-case contamination and resource
 exhaustion, but they are not a filesystem sandbox and do not establish network
-isolation. Claim-bearing
-manifests must retain a bounded host firewall, container, or network-namespace
+isolation.
+The stdout, stderr, and candidate-file byte caps are polling-enforced at an
+approximately 20 ms cadence. A process can therefore transiently overshoot a
+cap on disk before detection and termination. These checks are not filesystem
+quotas, do not prevent writes elsewhere, and do not turn the runner into a
+filesystem sandbox.
+Claim-bearing manifests must retain a bounded host firewall, container, or
+network-namespace
 policy artifact; the runner hashes it before and after execution and reload
 checks the same file. A self-consistent file still does not prove that the host
 enforced the policy. These controls also do not contain a model server that was

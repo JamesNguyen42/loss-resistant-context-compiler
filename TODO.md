@@ -746,7 +746,20 @@ of sublinear compile cost.
 - [ ] Publish signed source and wheel artifacts to an explicitly approved test
   package index and retain install evidence from that index.
 - [x] Add immutable GitHub Action pins, Python/Actions Dependabot, CODEOWNERS,
-  and high-severity pull-request dependency review.
+  high-severity pull-request dependency review, and pinned Python CodeQL with
+  narrow upload authority.
+- [x] Add bounded exact-name SHA-256 evidence for one wheel and one sdist, with
+  lexical real-directory and single-link archive checks, two-pass mutation
+  detection, no-overwrite outputs, a self-hashed manifest completion marker,
+  and CI retention. This is substitution-detection groundwork, not provenance
+  or signing.
+- [ ] Make repeated clean candidate builds byte-for-byte reproducible. The
+  fixed timestamp/hash-seed diagnostic reproduced the wheel, but sdist tar
+  member mtimes and the whole-archive hash differed; keep this gate red until
+  timestamp normalization is fixed and independently rechecked.
+- [ ] Replace the sdist smoke's online lower-bounded `setuptools`/`wheel`
+  bootstrap with a reviewed hash-pinned offline build wheelhouse and retain the
+  offline install evidence.
 - [ ] Add resolved locks plus vulnerability and license scanning for each
   optional external adapter.
 - [ ] Publish `0.2.0` only after the external runner and natural-history corpus

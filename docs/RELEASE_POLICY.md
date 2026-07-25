@@ -3,8 +3,8 @@
 ## Stable identities
 
 The stable Python distribution name is
-`loss-resistant-context-compiler`. Its normalized wheel prefix is
-`loss_resistant_context_compiler`. The import package remains
+`loss-resistant-context-compiler`. Its normalized wheel and sdist filename
+prefix is `loss_resistant_context_compiler`. The import package remains
 `context_compiler`, the command-line entry point remains `ctxc`, and installed
 JSON Schemas live under
 `share/loss-resistant-context-compiler/schemas`.

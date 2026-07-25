@@ -163,7 +163,7 @@ The repository currently includes:
   operations, a strict versioned JSONL process boundary, immutable
   `SourceEvent` mapping, self-hashed `ContextBundle` output, and deterministic
   checkpoints;
-- seventeen packaged connector schemas, six-operation golden JSONL, 65
+- seventeen packaged connector schemas, six-operation golden JSONL, 66
   intentional negative vectors, and a standalone conformance runner that proves
   in-process and stdio semantic equivalence;
 - a machine-readable artifact reader/writer registry with an explicit
@@ -777,7 +777,7 @@ substitute for `verify_memory` against trusted sources.
 The 17 connector schemas under `schemas/` cover request/response, the connector
 `SourceEvent`, `ContextBundle`, checkpoint, and payload/result pairs for all six
 operations. Run `python conformance/run_connector_conformance.py` to validate
-the schema graph, six golden state transitions, 65 negative vectors, and exact
+the schema graph, six golden state transitions, 66 negative vectors, and exact
 in-process/stdio equivalence. JSON Schema validation is structural; the runtime
 remains authoritative for provenance, artifact replay, authority, and digest
 semantics.
@@ -826,6 +826,10 @@ events, checkpoints, direct source records, or a configured archive; changing
 the entry path cannot promote unauthenticated history. For retry-safe ingestion,
 hosts should reuse an explicit event id and sequence. If both are omitted, the
 next default sequence advances and the retried content is a new source record.
+A checkpoint, explicit record set, or archive can also preserve an authority
+marker previously admitted by the host. Treat those bytes as protected
+host-boundary state, not as untrusted bearer credentials: their self-hashes do
+not authenticate who asserted the marker.
 
 `ContextBundle.trusted_memory` contains:
 

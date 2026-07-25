@@ -39,7 +39,7 @@ versioning and release rules in
   replay paths.
 - A fixed-digest performance regression gate and offline wheel/schema checks.
 - Seventeen packaged connector JSON Schemas, six-operation golden JSONL,
-  65 intentional negative vectors, and a standalone dependency-free
+  66 intentional negative vectors, and a standalone dependency-free
   conformance runner proving in-process/stdio semantic equivalence.
 - Six strict natural-history evidence schemas with bounded self-hashed corpus,
   annotation, adjudication, repository/task-group split, gold-free export, and
@@ -49,6 +49,29 @@ versioning and release rules in
 - A cross-platform release runway with Windows/macOS smoke installs,
   `SECURITY.md`, `CONTRIBUTING.md`, release checklist, immutable GitHub Action
   pins, dependency review, Dependabot, and supply-chain guidance.
+
+### Migration notes
+
+- Code that mutated a returned `CompiledMemory`, `MemoryItem`, or nested value
+  must instead construct new input and recompile. Verified snapshots are now
+  recursively sealed, and serialized copies remain untrusted until validated
+  and replayed.
+- Primary provider failures still use explicit deterministic fallback by
+  default. Applications that require provider output must opt into
+  `CompilationPolicy(fail_on_primary_extractor_error=True)` and handle the
+  exception without rendering partial or unverified state.
+- Source, compilation, artifact, and model-output work now has finite defaults.
+  Integrations may pass explicit positive limit objects when a documented
+  workload needs different bounds; serialized strict-JSON integers longer than
+  640 digits are rejected as a resource-limit error.
+- Connector bundles must carry structurally valid trusted-memory records.
+  `render_context` and `inspect_memory` reject a projection that disagrees with
+  its embedded artifact, while `verify_memory` retains its independent
+  `trusted_memory_artifact_mismatch` diagnostic for structurally valid input.
+- Connector checkpoints, direct source records, and archives can preserve
+  authority admitted by the authenticated host. Protect those serialized
+  values as host state; their self-hashes do not make them safe bearer
+  credentials.
 
 ### Security
 
