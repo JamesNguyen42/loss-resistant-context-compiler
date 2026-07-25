@@ -1,0 +1,186 @@
+{
+  "adapter_entrypoint": {
+    "entrypoint_bytes": 11683,
+    "entrypoint_path": "C:\\Users\\nguye\\OneDrive\\Documents\\GitHub\\loss-resistant-context-compiler\\benchmarks\\adapters\\acon_diagnostic\\adapter.py",
+    "entrypoint_sha256": "bffa6f860d787bb42ab91d6125020722f30aa544e1d975248b2027a76d4fb22a"
+  },
+  "adapter_runtime": {
+    "executable_bytes": 262144,
+    "executable_path": "C:\\Users\\nguye\\OneDrive\\Documents\\GitHub\\loss-resistant-context-compiler\\.venv\\Scripts\\python.exe",
+    "executable_sha256": "5912d0884b23c0343983a864c6064242391e2265536f50b88624857e353882c9"
+  },
+  "adapter_source": {
+    "file_count": 2,
+    "files": [
+      {
+        "file_bytes": 1136,
+        "file_sha256": "db24bd98a51759e12e2a812b07f75c582b86aa7d1e8d3f84406c74e4386ee674",
+        "relative_path": "README.md"
+      },
+      {
+        "file_bytes": 11683,
+        "file_sha256": "bffa6f860d787bb42ab91d6125020722f30aa544e1d975248b2027a76d4fb22a",
+        "relative_path": "adapter.py"
+      }
+    ],
+    "source_root": "C:\\Users\\nguye\\OneDrive\\Documents\\GitHub\\loss-resistant-context-compiler\\benchmarks\\adapters\\acon_diagnostic",
+    "total_bytes": 12819,
+    "tree_algorithm": "lrcbench-adapter-source-tree-0.1",
+    "tree_sha256": "56663172d8d73aa66165a160c97065c69b638276b0d6058824643364d13fd38c"
+  },
+  "candidate_bytes": null,
+  "candidate_path": "C:\\Users\\nguye\\OneDrive\\Documents\\GitHub\\loss-resistant-context-compiler\\benchmarks\\compatibility\\acon-diagnostic-candidate.json",
+  "candidate_schema": "lrcbench-candidate-output-0.2",
+  "candidate_sha256": null,
+  "candidate_valid": false,
+  "case_count": 1,
+  "case_runs": [
+    {
+      "candidate_bytes": null,
+      "candidate_path": "C:\\Users\\nguye\\OneDrive\\Documents\\GitHub\\loss-resistant-context-compiler\\benchmarks\\compatibility\\.lrcbench-case-000000-0yzci0fg\\candidate.json",
+      "candidate_payload_sha256": null,
+      "candidate_sha256": null,
+      "candidate_valid": false,
+      "case_id": "history-000",
+      "command": [
+        "C:\\Users\\nguye\\OneDrive\\Documents\\GitHub\\loss-resistant-context-compiler\\.venv\\Scripts\\python.exe",
+        "benchmarks\\adapters\\acon_diagnostic\\adapter.py",
+        "run",
+        "--corpus",
+        "C:\\Users\\nguye\\OneDrive\\Documents\\GitHub\\loss-resistant-context-compiler\\benchmarks\\compatibility\\.lrcbench-case-000000-0yzci0fg\\corpus.json",
+        "--candidate",
+        "C:\\Users\\nguye\\OneDrive\\Documents\\GitHub\\loss-resistant-context-compiler\\benchmarks\\compatibility\\.lrcbench-case-000000-0yzci0fg\\candidate.json",
+        "--system",
+        "acon-diagnostic",
+        "--case-id",
+        "history-000"
+      ],
+      "corpus_file_sha256": "9af41b555acc5877b27bd386bb9321e2be4c0d9e5db0a097de5aa9f4bc43cffc",
+      "corpus_path": "C:\\Users\\nguye\\OneDrive\\Documents\\GitHub\\loss-resistant-context-compiler\\benchmarks\\compatibility\\.lrcbench-case-000000-0yzci0fg\\corpus.json",
+      "corpus_sha256": "03b9d90467a700214668a283d33c4aead96b67818f4e3b7b1bb4ba846a138a58",
+      "duration_seconds": 0.265,
+      "exit_code": 2,
+      "process_succeeded": false,
+      "started_at": "2026-07-25T06:56:38.495882+00:00",
+      "stderr_bytes": 605,
+      "stderr_sha256": "051891682c1e19cfb969f2f6ab8dcf9a6f9e0fb1a0eeebaa5a2dc765dd6a6fc1",
+      "stdout_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "termination_reason": "nonzero_exit",
+      "validation_error": null
+    }
+  ],
+  "claim_metadata_complete": false,
+  "command": [
+    "C:\\Users\\nguye\\OneDrive\\Documents\\GitHub\\loss-resistant-context-compiler\\.venv\\Scripts\\python.exe",
+    "benchmarks\\adapters\\acon_diagnostic\\adapter.py",
+    "run",
+    "--corpus",
+    "{corpus}",
+    "--candidate",
+    "{candidate}",
+    "--system",
+    "{system}",
+    "--case-id",
+    "{case_id}"
+  ],
+  "command_contract": [
+    "runtime-executable:",
+    "adapter-entrypoint:adapter.py",
+    "literal:run",
+    "literal:--corpus",
+    "placeholder:corpus",
+    "literal:--candidate",
+    "placeholder:candidate",
+    "literal:--system",
+    "placeholder:system",
+    "literal:--case-id",
+    "placeholder:case-id"
+  ],
+  "command_sha256": "5e293ec553ca63e2f1b24806678fa95a8d7c7afee32e16826373437740116419",
+  "corpus_file_sha256": "9af41b555acc5877b27bd386bb9321e2be4c0d9e5db0a097de5aa9f4bc43cffc",
+  "corpus_path": "C:\\Users\\nguye\\OneDrive\\Documents\\GitHub\\loss-resistant-context-compiler\\benchmarks\\compatibility\\acon-diagnostic-corpus.json",
+  "corpus_schema": "lrcbench-corpus-0.3",
+  "corpus_sha256": "03b9d90467a700214668a283d33c4aead96b67818f4e3b7b1bb4ba846a138a58",
+  "dataset_sha256": "0267866a43e7f122e167000f22fc55919eeb456602c4ce1570a8650be6ad1f62",
+  "dependency_lock": {
+    "evidence_bytes": null,
+    "evidence_path": null,
+    "evidence_sha256": null
+  },
+  "duration_seconds": 0.406,
+  "exit_code": 2,
+  "identity": {
+    "adapter_revision": "d63f9ae18959dc7215ff62899c94c5e8c56847ae",
+    "environment_id": "unrecorded",
+    "inference_concurrency": 1,
+    "model_context_length": 8192,
+    "model_id": "qwen/qwen3.6-35b-a3b@q4_k_m",
+    "model_service_cost_usd": 0.0,
+    "retry_count": 0,
+    "tokenizer_id": "character-estimate-v1"
+  },
+  "inference_service": {
+    "executable_bytes": null,
+    "executable_path": null,
+    "executable_sha256": null,
+    "max_memory_mb": null,
+    "memory_metric": null,
+    "peak_memory_bytes": null,
+    "process_id": null,
+    "process_start_token": null,
+    "sample_count": 0
+  },
+  "isolation_mode": "per_case",
+  "limits": {
+    "max_candidate_bytes": 20000000,
+    "max_memory_mb": 32768,
+    "max_stderr_bytes": 1000000,
+    "max_stdout_bytes": 1000000,
+    "poll_interval_seconds": 0.02,
+    "timeout_seconds": 300.0
+  },
+  "manifest_sha256": "4688dcedd1091dc82c3d60769fe0d72b5772ec170f4e79245026dfdc5e3402b2",
+  "memory_limit_enforced": true,
+  "network_isolation": {
+    "evidence_bytes": null,
+    "evidence_path": null,
+    "evidence_sha256": null,
+    "mode": "unverified"
+  },
+  "platform": "Windows-11-10.0.26200-SP0",
+  "process_environment": {
+    "algorithm": "lrcbench-process-environment-0.1",
+    "encoded_bytes": 1270,
+    "environment_sha256": "ea81a67775b7d1acade30d68146f3ecac351be9bb3fe5a0356e13fe5441ea956",
+    "platform": "windows",
+    "variable_names": [
+      "COMSPEC",
+      "OS",
+      "PATH",
+      "PATHEXT",
+      "PYTHONDONTWRITEBYTECODE",
+      "PYTHONHASHSEED",
+      "PYTHONIOENCODING",
+      "PYTHONNOUSERSITE",
+      "SYSTEMDRIVE",
+      "SYSTEMROOT",
+      "TEMP",
+      "TMP",
+      "WINDIR"
+    ]
+  },
+  "process_succeeded": false,
+  "python_version": "3.12.13",
+  "ready_for_scoring": false,
+  "schema": "lrcbench-external-run-manifest-0.13",
+  "started_at": "2026-07-25T06:56:38.458932+00:00",
+  "stderr_bytes": 605,
+  "stderr_sha256": "ad1cfaab934d4e4fe9befce677deb4ce9a99f2883a18fa7b765d5a78e8b4bef8",
+  "stdout_bytes": 0,
+  "stdout_sha256": "7e4c028232b674e555bda576a578e435b254b221ee4913579bd56d2cc67b616e",
+  "system": "acon-diagnostic",
+  "termination_reason": "case_failure:history-000:nonzero_exit",
+  "validation_error": null,
+  "working_directory": "C:\\Users\\nguye\\OneDrive\\Documents\\GitHub\\loss-resistant-context-compiler"
+}

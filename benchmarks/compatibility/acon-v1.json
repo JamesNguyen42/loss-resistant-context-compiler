@@ -1,0 +1,73 @@
+{
+  "schema": "lrcbench-compatibility-preflight-0.1",
+  "preflight_id": "acon-d63f9ae-result-blind",
+  "system": "acon",
+  "display_name": "ACON",
+  "status": "screening",
+  "result_blind": true,
+  "comparative_output_generated": false,
+  "comparative_output_inspected": false,
+  "claim_ready": false,
+  "source": {
+    "repository": "https://github.com/microsoft/acon",
+    "revision": "d63f9ae18959dc7215ff62899c94c5e8c56847ae",
+    "commit_url": "https://github.com/microsoft/acon/commit/d63f9ae18959dc7215ff62899c94c5e8c56847ae",
+    "tree_url": "https://github.com/microsoft/acon/tree/d63f9ae18959dc7215ff62899c94c5e8c56847ae",
+    "local_tree_state": "not-materialized",
+    "clean_tree_required": true
+  },
+  "license": {
+    "spdx": "MIT",
+    "file_url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/LICENSE",
+    "file_sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+  },
+  "dependencies": {
+    "declaration_url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/pyproject.toml",
+    "declared_python": ">=3.11",
+    "resolved_lock_state": "absent",
+    "offline_wheelhouse_state": "absent",
+    "notes": "The upstream pyproject declares unpinned direct dependencies and no resolved hash-pinned environment lock."
+  },
+  "interface": {
+    "entrypoint_url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/src/productive_agents/ctxopt/history_optimizer.py",
+    "prompt_url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/experiments/appworld/prompts/context_opt/prompt_history_v2.jinja",
+    "adapter_seam": "HistoryOptimizer accepts an injected object exposing generate(prompt, temperature).",
+    "rendered_context_available": true,
+    "exact_source_provenance_available": false
+  },
+  "upstream_execution": {
+    "quickstart_url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/README.md",
+    "documented_command": "python run_all.py --split train --model_name gpt-4.1-mini --tag baseline --co_config_path configs/context_opt/gpt-4.1-mini_history.yaml",
+    "documented_paid_or_network_secret": "configs/private_config.yaml openai_key",
+    "matched_offline_command_state": "adapter-required"
+  },
+  "required_diagnostic_contract": {
+    "model_id": "qwen/qwen3.6-35b-a3b@q4_k_m",
+    "quantization": "Q4_K_M",
+    "model_context_length": 8192,
+    "inference_concurrency": 1,
+    "retry_count": 0,
+    "model_service_cost_usd": 0,
+    "adapter_isolation": "per-case",
+    "adapter_memory_limit_mb": 32768,
+    "timeout_seconds": 300,
+    "network_access": false,
+    "network_isolation_evidence_required": true,
+    "inference_service_pid_and_memory_evidence_required": true
+  },
+  "diagnostic_adapter": {
+    "path": "benchmarks/adapters/acon_diagnostic/adapter.py",
+    "candidate_schema": "lrcbench-candidate-output-0.1",
+    "claims": "empty-by-design",
+    "scoring_permitted": false
+  },
+  "blockers": [
+    "clean pinned ACON source tree is not retained locally",
+    "resolved hash-pinned offline dependency lock and wheelhouse are absent",
+    "adapter environment and portable command digests are not frozen",
+    "exact Qwen service executable digest and memory ceiling are not frozen",
+    "enforced network-isolation evidence is not retained",
+    "ACON summary output does not expose exact source provenance"
+  ],
+  "decision": "Remain in result-blind screening; do not include, exclude, score, or claim superiority from this preflight."
+}
