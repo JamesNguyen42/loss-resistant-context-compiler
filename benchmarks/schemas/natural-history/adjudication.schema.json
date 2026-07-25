@@ -4,26 +4,28 @@
   "additionalProperties": false,
   "properties": {
     "adjudication_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
+      "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
       "type": "string"
     },
     "adjudicator": {
       "additionalProperties": false,
       "properties": {
         "attestation_sha256": {
-          "pattern": "^[0-9a-f]{64}$",
+          "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
           "type": "string"
         },
         "complete": {
           "const": true
         },
         "completed_at_utc": {
-          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9]Z(?![\\s\\S])", "minLength": 20, "maxLength": 20,
           "type": "string"
         },
         "id": {
           "maxLength": 256,
           "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
           "type": "string"
         }
       },
@@ -37,7 +39,7 @@
     },
     "annotation_sha256s": {
       "items": {
-        "pattern": "^[0-9a-f]{64}$",
+        "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
         "type": "string"
       },
       "maxItems": 2,
@@ -46,7 +48,7 @@
       "uniqueItems": true
     },
     "corpus_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
+      "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
       "type": "string"
     },
     "histories": {
@@ -58,13 +60,13 @@
               "additionalProperties": false,
               "properties": {
                 "disagreement_label_sha256": {
-                  "pattern": "^[0-9a-f]{64}$",
+                  "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
                   "type": "string"
                 },
                 "final_label_sha256": {
                   "oneOf": [
                     {
-                      "pattern": "^[0-9a-f]{64}$",
+                      "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
                       "type": "string"
                     },
                     {
@@ -100,6 +102,7 @@
           "history_id": {
             "maxLength": 256,
             "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
             "type": "string"
           }
         },

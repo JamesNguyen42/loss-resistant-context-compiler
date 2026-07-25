@@ -4,14 +4,14 @@
   "additionalProperties": false,
   "properties": {
     "corpus_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
+      "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
       "type": "string"
     },
     "export_scope": {
       "const": "all-splits"
     },
     "gold_free_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
+      "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
       "type": "string"
     },
     "histories": {
@@ -21,11 +21,13 @@
           "history_id": {
             "maxLength": 256,
             "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
             "type": "string"
           },
           "repository_id": {
             "maxLength": 256,
             "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
             "type": "string"
           },
           "sources": {
@@ -46,11 +48,13 @@
           "task_group_id": {
             "maxLength": 256,
             "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
             "type": "string"
           },
           "task_id": {
             "maxLength": 256,
             "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
             "type": "string"
           }
         },
@@ -72,7 +76,7 @@
       "const": "ctxc-natural-history-gold-free-0.1"
     },
     "split_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
+      "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
       "type": "string"
     }
   },

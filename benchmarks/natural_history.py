@@ -11,11 +11,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from context_compiler.atomic import atomic_write_text
@@ -55,9 +58,11 @@ _MAX_LABELS_PER_HISTORY = 10_000
 _MAX_TOTAL_LABELS = 1_000_000
 _MAX_SPANS_PER_LABEL = 32
 _MAX_STRING_CHARS = 2_048
+_MAX_DIRECT_JSON_NODES = 2_000_000
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _IDENTIFIER = re.compile(r"[a-z0-9][a-z0-9._:-]{0,255}\Z")
+_SPDX_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9.+-]{0,127}\Z")
 _UTC_TIMESTAMP = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T"
     r"[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z"
@@ -254,11 +259,151 @@ def _canonical_sha256(value: Any) -> str:
             separators=(",", ":"),
             allow_nan=False,
         ).encode("utf-8")
-    except (TypeError, ValueError, RecursionError) as exc:
+    except (MemoryError, OverflowError, TypeError, ValueError, RecursionError) as exc:
         raise NaturalHistoryError(
             "natural-history evidence is not canonical finite JSON"
         ) from exc
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _freeze_json(value: Any) -> Any:
+    if isinstance(value, dict):
+        return MappingProxyType(
+            {key: _freeze_json(nested) for key, nested in value.items()}
+        )
+    if isinstance(value, list):
+        return tuple(_freeze_json(nested) for nested in value)
+    return value
+
+
+def _thaw_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _thaw_json(nested) for key, nested in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_json(nested) for nested in value]
+    return value
+
+
+def _encoded_json_string_size(
+    value: str,
+    *,
+    label: str,
+    max_chars: int,
+) -> int:
+    if len(value) > max_chars:
+        raise NaturalHistoryError(
+            f"{label} exceeds {max_chars} characters before hashing"
+        )
+    size = 2
+    try:
+        for character in value:
+            codepoint = ord(character)
+            if character in {'"', "\\"}:
+                size += 2
+            elif codepoint < 0x20:
+                size += 6
+            else:
+                size += len(character.encode("utf-8"))
+    except UnicodeError as exc:
+        raise NaturalHistoryError(
+            f"{label} is not valid UTF-8 JSON text"
+        ) from exc
+    return size
+
+
+def _preflight_json(value: Any, *, label: str) -> None:
+    """Bound a direct in-memory JSON tree before canonical hashing."""
+
+    stack: list[tuple[Any, int]] = [(value, 1)]
+    seen_containers: set[int] = set()
+    node_count = 0
+    encoded_bytes = 0
+    while stack:
+        current, depth = stack.pop()
+        node_count += 1
+        if node_count > _MAX_DIRECT_JSON_NODES:
+            raise NaturalHistoryError(
+                f"{label} exceeds {_MAX_DIRECT_JSON_NODES} JSON nodes"
+            )
+        if isinstance(current, dict):
+            if len(current) > _MAX_DIRECT_JSON_NODES:
+                raise NaturalHistoryError(
+                    f"{label} exceeds {_MAX_DIRECT_JSON_NODES} JSON nodes"
+                )
+            if depth > _DOCUMENT_LIMITS.max_depth:
+                raise NaturalHistoryError(
+                    f"{label} exceeds JSON depth {_DOCUMENT_LIMITS.max_depth}"
+                )
+            identity = id(current)
+            if identity in seen_containers:
+                raise NaturalHistoryError(
+                    f"{label} must be an acyclic JSON tree without shared containers"
+                )
+            seen_containers.add(identity)
+            encoded_bytes += 2 + max(0, len(current) - 1) + len(current)
+            for key, nested in current.items():
+                if not isinstance(key, str):
+                    raise NaturalHistoryError(
+                        f"{label} JSON object keys must be strings"
+                    )
+                encoded_bytes += _encoded_json_string_size(
+                    key,
+                    label=f"{label} JSON object key",
+                    max_chars=_MAX_STRING_CHARS,
+                )
+                stack.append((nested, depth + 1))
+        elif isinstance(current, list):
+            if len(current) > _MAX_DIRECT_JSON_NODES:
+                raise NaturalHistoryError(
+                    f"{label} exceeds {_MAX_DIRECT_JSON_NODES} JSON nodes"
+                )
+            if depth > _DOCUMENT_LIMITS.max_depth:
+                raise NaturalHistoryError(
+                    f"{label} exceeds JSON depth {_DOCUMENT_LIMITS.max_depth}"
+                )
+            identity = id(current)
+            if identity in seen_containers:
+                raise NaturalHistoryError(
+                    f"{label} must be an acyclic JSON tree without shared containers"
+                )
+            seen_containers.add(identity)
+            encoded_bytes += 2 + max(0, len(current) - 1)
+            stack.extend((nested, depth + 1) for nested in current)
+        elif isinstance(current, str):
+            encoded_bytes += _encoded_json_string_size(
+                current,
+                label=f"{label} JSON string",
+                max_chars=_MAX_SOURCE_CHARS,
+            )
+        elif current is None:
+            encoded_bytes += 4
+        elif isinstance(current, bool):
+            encoded_bytes += 4 if current else 5
+        elif isinstance(current, int):
+            max_digits = _DOCUMENT_LIMITS.max_integer_digits
+            if abs(current).bit_length() > int(max_digits * 3.322) + 8:
+                raise NaturalHistoryError(
+                    f"{label} exceeds {max_digits} JSON integer digits"
+                )
+            rendered = str(current)
+            digits = rendered[1:] if rendered.startswith("-") else rendered
+            if len(digits) > max_digits:
+                raise NaturalHistoryError(
+                    f"{label} exceeds {max_digits} JSON integer digits"
+                )
+            encoded_bytes += len(rendered)
+        elif isinstance(current, float):
+            if not math.isfinite(current):
+                raise NaturalHistoryError(
+                    f"{label} JSON numbers must be finite"
+                )
+            encoded_bytes += len(json.dumps(current, allow_nan=False))
+        else:
+            raise NaturalHistoryError(f"{label} contains a non-JSON value")
+        if encoded_bytes > _DOCUMENT_LIMITS.max_bytes:
+            raise NaturalHistoryError(
+                f"{label} exceeds {_DOCUMENT_LIMITS.max_bytes} canonical JSON bytes"
+            )
 
 
 def _object(
@@ -340,8 +485,14 @@ def _timestamp(value: Any, *, label: str) -> str:
     result = _string(value, label=label, max_chars=20)
     if _UTC_TIMESTAMP.fullmatch(result) is None:
         raise NaturalHistoryError(
-            f"{label} must be a UTC whole-second timestamp"
+            f"{label} must be a valid UTC whole-second timestamp"
         )
+    try:
+        datetime.strptime(result, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as exc:
+        raise NaturalHistoryError(
+            f"{label} must be a valid UTC whole-second timestamp"
+        ) from exc
     return result
 
 
@@ -386,6 +537,14 @@ def _decode_origin(value: Any, *, history_id: str) -> dict[str, Any]:
         label=f"history {history_id!r} license_spdx",
         max_chars=128,
     )
+    if (
+        license_spdx is not None
+        and _SPDX_IDENTIFIER.fullmatch(license_spdx) is None
+    ):
+        raise NaturalHistoryError(
+            f"history {history_id!r} license_spdx is not a canonical "
+            "SPDX license identifier"
+        )
     license_digest = _nullable_sha256(
         raw["license_evidence_sha256"],
         label=f"history {history_id!r} license_evidence_sha256",
@@ -555,6 +714,7 @@ def _decode_sources(
 def decode_corpus(document: Any) -> Corpus:
     """Validate a bounded, self-hashed natural-history corpus."""
 
+    _preflight_json(document, label="natural-history corpus")
     fields = frozenset(
         {"schema", "evidence_state", "collection_accounting", "histories", "corpus_sha256"}
     )
@@ -674,6 +834,14 @@ def decode_corpus(document: Any) -> Corpus:
             history_raw["sources"],
             history_id=history_id,
         )
+        reviewed_at = privacy_review["reviewed_at_utc"]
+        if any(
+            source.timestamp is not None and source.timestamp > reviewed_at
+            for source in sources
+        ):
+            raise NaturalHistoryError(
+                f"history {history_id!r} privacy review precedes dated source content"
+            )
         total_sources += len(sources)
         total_source_chars += sum(len(source.content) for source in sources)
         if total_sources > _MAX_SOURCES:
@@ -690,8 +858,8 @@ def decode_corpus(document: Any) -> Corpus:
                 repository_id=repository_id,
                 task_group_id=task_group_id,
                 task_id=task_id,
-                origin=origin,
-                privacy_review=privacy_review,
+                origin=_freeze_json(origin),
+                privacy_review=_freeze_json(privacy_review),
                 sources=sources,
             )
         )
@@ -779,8 +947,8 @@ def decode_corpus(document: Any) -> Corpus:
             "attempted, included, and excluded histories"
         )
     return Corpus(
-        evidence_state=dict(state),
-        collection_accounting=dict(accounting),
+        evidence_state=_freeze_json(dict(state)),
+        collection_accounting=_freeze_json(dict(accounting)),
         histories=tuple(histories),
         corpus_sha256=corpus_sha256,
     )
@@ -868,6 +1036,7 @@ def _decode_labels(
     *,
     history: History,
     context: str,
+    seen_document_ids: set[str],
 ) -> tuple[Label, ...]:
     if not isinstance(value, list) or len(value) > _MAX_LABELS_PER_HISTORY:
         raise NaturalHistoryError(
@@ -886,7 +1055,6 @@ def _decode_labels(
         }
     )
     labels: list[Label] = []
-    seen_ids: set[str] = set()
     seen_semantic: set[str] = set()
     for index, label_value in enumerate(value):
         raw = _object(
@@ -900,11 +1068,11 @@ def _decode_labels(
             max_chars=256,
             identifier=True,
         )
-        if label_id in seen_ids:
+        if label_id in seen_document_ids:
             raise NaturalHistoryError(
                 f"{context} has duplicate label id {label_id!r}"
             )
-        seen_ids.add(label_id)
+        seen_document_ids.add(label_id)
         kind = raw["kind"]
         if kind not in _KINDS:
             raise NaturalHistoryError(
@@ -952,6 +1120,30 @@ def _decode_labels(
             )
             for span_index, span_value in enumerate(span_values)
         )
+        span_keys = {
+            (span.source_id, span.start, span.end, span.quote_sha256)
+            for span in spans
+        }
+        if len(span_keys) != len(spans):
+            raise NaturalHistoryError(
+                f"label {label_id!r} repeats a provenance span"
+            )
+        source_sequence = {
+            source.id: source.sequence for source in history.sources
+        }
+        span_order = [
+            (
+                source_sequence[span.source_id],
+                span.start,
+                span.end,
+                span.quote_sha256,
+            )
+            for span in spans
+        ]
+        if span_order != sorted(span_order):
+            raise NaturalHistoryError(
+                f"label {label_id!r} provenance is not in canonical source order"
+            )
         if any(span.quote != text for span in spans):
             raise NaturalHistoryError(
                 f"label {label_id!r} text must equal every exact source span"
@@ -982,6 +1174,7 @@ def _label_sha256(label: Label) -> str:
 def decode_annotation(document: Any, corpus: Corpus) -> AnnotationSet:
     """Validate one complete independent annotation pass."""
 
+    _preflight_json(document, label="natural-history annotation")
     fields = frozenset(
         {
             "schema",
@@ -1040,6 +1233,14 @@ def decode_annotation(document: Any, corpus: Corpus) -> AnnotationSet:
         annotator["attestation_sha256"],
         label="natural-history annotation attestation_sha256",
     )
+    latest_privacy_review = max(
+        history.privacy_review["reviewed_at_utc"]
+        for history in corpus.histories
+    )
+    if annotator["completed_at_utc"] < latest_privacy_review:
+        raise NaturalHistoryError(
+            "natural-history annotation precedes corpus privacy review"
+        )
     history_values = raw["histories"]
     if not isinstance(history_values, list):
         raise NaturalHistoryError(
@@ -1052,6 +1253,7 @@ def decode_annotation(document: Any, corpus: Corpus) -> AnnotationSet:
     history_fields = frozenset({"history_id", "labels"})
     decoded: list[tuple[str, tuple[Label, ...]]] = []
     total_labels = 0
+    seen_label_ids: set[str] = set()
     for index, (history_value, expected_history) in enumerate(
         zip(history_values, corpus.histories, strict=True)
     ):
@@ -1068,6 +1270,7 @@ def decode_annotation(document: Any, corpus: Corpus) -> AnnotationSet:
             history_raw["labels"],
             history=expected_history,
             context=f"annotation history {expected_history.id!r}",
+            seen_document_ids=seen_label_ids,
         )
         total_labels += len(labels)
         if total_labels > _MAX_TOTAL_LABELS:
@@ -1076,7 +1279,7 @@ def decode_annotation(document: Any, corpus: Corpus) -> AnnotationSet:
             )
         decoded.append((expected_history.id, labels))
     return AnnotationSet(
-        annotator=dict(annotator),
+        annotator=_freeze_json(dict(annotator)),
         histories=tuple(decoded),
         annotation_sha256=annotation_sha256,
     )
@@ -1126,6 +1329,7 @@ def decode_adjudication(
 ) -> Adjudication:
     """Validate complete adjudication of exactly two independent passes."""
 
+    _preflight_json(document, label="natural-history adjudication")
     _validate_independent_pair(first, second)
     fields = frozenset(
         {
@@ -1196,6 +1400,20 @@ def decode_adjudication(
         adjudicator["attestation_sha256"],
         label="natural-history adjudication attestation_sha256",
     )
+    if adjudicator["attestation_sha256"] in {
+        first.annotator["attestation_sha256"],
+        second.annotator["attestation_sha256"],
+    }:
+        raise NaturalHistoryError(
+            "adjudicator requires distinct attestation evidence"
+        )
+    if adjudicator["completed_at_utc"] < max(
+        first.annotator["completed_at_utc"],
+        second.annotator["completed_at_utc"],
+    ):
+        raise NaturalHistoryError(
+            "adjudication cannot precede either independent annotation"
+        )
     history_values = raw["histories"]
     if not isinstance(history_values, list) or len(history_values) != len(
         corpus.histories
@@ -1214,6 +1432,9 @@ def decode_adjudication(
     first_by_history = first.labels_by_history
     second_by_history = second.labels_by_history
     decoded: list[tuple[str, tuple[Label, ...]]] = []
+    total_final_labels = 0
+    total_decisions = 0
+    seen_final_label_ids: set[str] = set()
     for index, (history_value, history) in enumerate(
         zip(history_values, corpus.histories, strict=True)
     ):
@@ -1230,7 +1451,14 @@ def decode_adjudication(
             history_raw["final_labels"],
             history=history,
             context=f"adjudication history {history.id!r}",
+            seen_document_ids=seen_final_label_ids,
         )
+        total_final_labels += len(final_labels)
+        if total_final_labels > _MAX_TOTAL_LABELS:
+            raise NaturalHistoryError(
+                f"natural-history adjudication exceeds "
+                f"{_MAX_TOTAL_LABELS} final labels"
+            )
         final_hashes = {_label_sha256(label) for label in final_labels}
         first_hashes = {
             _label_sha256(label)
@@ -1249,6 +1477,11 @@ def decode_adjudication(
         ):
             raise NaturalHistoryError(
                 f"adjudication history {history.id!r} decisions must be a bounded array"
+            )
+        total_decisions += len(decision_values)
+        if total_decisions > 2 * _MAX_TOTAL_LABELS:
+            raise NaturalHistoryError(
+                "natural-history adjudication exceeds the total decision limit"
             )
         seen_disagreements: set[str] = set()
         resolved_final = set(consensus)
@@ -1313,7 +1546,7 @@ def decode_adjudication(
         decoded.append((history.id, final_labels))
     return Adjudication(
         annotation_sha256s=expected_annotation_hashes,
-        adjudicator=dict(adjudicator),
+        adjudicator=_freeze_json(dict(adjudicator)),
         histories=tuple(decoded),
         adjudication_sha256=adjudication_sha256,
     )
@@ -1338,6 +1571,7 @@ def load_adjudication(
 def decode_split(document: Any, corpus: Corpus) -> SplitManifest:
     """Validate one frozen repository/task-group-disjoint split."""
 
+    _preflight_json(document, label="natural-history split")
     fields = frozenset(
         {"schema", "corpus_sha256", "policy", "assignments", "split_sha256"}
     )
@@ -1384,6 +1618,14 @@ def decode_split(document: Any, corpus: Corpus) -> SplitManifest:
         policy["seed_commitment_sha256"],
         label="natural-history split seed_commitment_sha256",
     )
+    latest_privacy_review = max(
+        history.privacy_review["reviewed_at_utc"]
+        for history in corpus.histories
+    )
+    if policy["created_at_utc"] < latest_privacy_review:
+        raise NaturalHistoryError(
+            "natural-history split precedes corpus privacy review"
+        )
     assignment_values = raw["assignments"]
     if not isinstance(assignment_values, list) or len(
         assignment_values
@@ -1434,7 +1676,7 @@ def decode_split(document: Any, corpus: Corpus) -> SplitManifest:
             "natural-history split must contain train, development, and test"
         )
     return SplitManifest(
-        policy=dict(policy),
+        policy=_freeze_json(dict(policy)),
         assignments=tuple(assignments),
         split_sha256=split_sha256,
     )
@@ -1457,7 +1699,7 @@ def load_split(
 def gold_free_document(
     corpus: Corpus,
     split: SplitManifest,
-) -> dict[str, Any]:
+) -> Mapping[str, Any]:
     """Build the canonical all-history export with no annotation structure."""
 
     split_by_history = split.split_by_history
@@ -1480,11 +1722,11 @@ def gold_free_document(
     }
     _assert_no_gold_keys(document)
     document["gold_free_sha256"] = _canonical_sha256(document)
-    return document
+    return _freeze_json(document)
 
 
 def _assert_no_gold_keys(value: Any) -> None:
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         leaked = set(value) & _GOLD_KEYS
         if leaked:
             raise NaturalHistoryError(
@@ -1493,7 +1735,7 @@ def _assert_no_gold_keys(value: Any) -> None:
             )
         for nested in value.values():
             _assert_no_gold_keys(nested)
-    elif isinstance(value, list):
+    elif isinstance(value, (list, tuple)):
         for nested in value:
             _assert_no_gold_keys(nested)
 
@@ -1502,9 +1744,10 @@ def decode_gold_free(
     document: Any,
     corpus: Corpus,
     split: SplitManifest,
-) -> dict[str, Any]:
+) -> Mapping[str, Any]:
     """Verify exact canonical gold-free export equivalence."""
 
+    _preflight_json(document, label="natural-history gold-free export")
     if not isinstance(document, dict):
         raise NaturalHistoryError("natural-history gold-free export must be an object")
     if document.get("schema") != GOLD_FREE_SCHEMA:
@@ -1521,19 +1764,19 @@ def decode_gold_free(
     unsigned.pop("gold_free_sha256")
     if _canonical_sha256(unsigned) != claimed:
         raise NaturalHistoryError("natural-history gold-free SHA-256 mismatch")
-    expected = gold_free_document(corpus, split)
+    expected = _thaw_json(gold_free_document(corpus, split))
     if document != expected:
         raise NaturalHistoryError(
             "natural-history gold-free export does not match corpus and split"
         )
-    return document
+    return _freeze_json(document)
 
 
 def load_gold_free(
     path: str | Path,
     corpus: Corpus,
     split: SplitManifest,
-) -> dict[str, Any]:
+) -> Mapping[str, Any]:
     """Strictly load and verify a gold-free export regular file."""
 
     loaded = load_strict_json_file(
@@ -1548,13 +1791,13 @@ def write_gold_free(
     path: str | Path,
     corpus: Corpus,
     split: SplitManifest,
-) -> dict[str, Any]:
+) -> Mapping[str, Any]:
     """Atomically write a canonical gold-free export."""
 
     document = gold_free_document(corpus, split)
     rendered = (
         json.dumps(
-            document,
+            _thaw_json(document),
             ensure_ascii=False,
             indent=2,
             sort_keys=True,
@@ -1591,14 +1834,18 @@ def _decode_run(value: Any) -> dict[str, Any]:
         raw["system_revision"],
         label="natural-history report system_revision",
     )
-    _timestamp(
+    started_at = _timestamp(
         raw["started_at_utc"],
         label="natural-history report started_at_utc",
     )
-    _timestamp(
+    finished_at = _timestamp(
         raw["finished_at_utc"],
         label="natural-history report finished_at_utc",
     )
+    if finished_at < started_at:
+        raise NaturalHistoryError(
+            "natural-history report finished_at_utc precedes started_at_utc"
+        )
     if raw["claim_scope"] != "diagnostic-only":
         raise NaturalHistoryError(
             "natural-history report claim_scope must remain diagnostic-only"
@@ -1621,9 +1868,10 @@ def decode_report(
     corpus: Corpus,
     adjudication: Adjudication,
     split: SplitManifest,
-) -> dict[str, Any]:
+) -> Mapping[str, Any]:
     """Validate a report that retains every success and failure."""
 
+    _preflight_json(document, label="natural-history report")
     fields = frozenset(
         {
             "schema",
@@ -1656,7 +1904,15 @@ def decode_report(
         raise NaturalHistoryError(
             "natural-history report split_sha256 does not match"
         )
-    _decode_run(raw["run"])
+    run = _decode_run(raw["run"])
+    if run["started_at_utc"] < adjudication.adjudicator["completed_at_utc"]:
+        raise NaturalHistoryError(
+            "natural-history report starts before adjudication completed"
+        )
+    if run["started_at_utc"] < split.policy["created_at_utc"]:
+        raise NaturalHistoryError(
+            "natural-history report starts before split creation"
+        )
     history_values = raw["histories"]
     if not isinstance(history_values, list) or len(history_values) != len(
         corpus.histories
@@ -1718,6 +1974,19 @@ def decode_report(
         expected_count = len(labels)
         protected_expected = sum(label.protected for label in labels)
         exact_expected = sum(label.exact for label in labels)
+        for name, minimum in (
+            ("expected_label_count", 0),
+            ("protected_expected", 0),
+            ("exact_expected", 0),
+            ("source_characters", 1),
+        ):
+            _integer(
+                result[name],
+                label=(
+                    f"natural-history report history {history.id!r} {name}"
+                ),
+                minimum=minimum,
+            )
         if result["expected_label_count"] != expected_count:
             raise NaturalHistoryError(
                 f"natural-history report history {history.id!r} expected "
@@ -1851,6 +2120,22 @@ def decode_report(
         fields=summary_fields,
         label="natural-history report summary",
     )
+    for name in summary_counts:
+        _integer(
+            summary[name],
+            label=f"natural-history report summary {name}",
+        )
+    for name in (
+        "all_histories_retained",
+        "complete_without_failures",
+        "natural_history_claimed",
+        "semantic_completeness_claimed",
+        "claim_ready",
+    ):
+        if not isinstance(summary[name], bool):
+            raise NaturalHistoryError(
+                f"natural-history report summary {name} must be a boolean"
+            )
     expected_summary = {
         **summary_counts,
         "all_histories_retained": True,
@@ -1869,7 +2154,7 @@ def decode_report(
         )
     result = dict(raw)
     result["report_sha256"] = report_sha256
-    return result
+    return _freeze_json(result)
 
 
 def load_report(
@@ -1877,7 +2162,7 @@ def load_report(
     corpus: Corpus,
     adjudication: Adjudication,
     split: SplitManifest,
-) -> dict[str, Any]:
+) -> Mapping[str, Any]:
     """Strictly load and verify a natural-history report regular file."""
 
     loaded = load_strict_json_file(
@@ -1956,7 +2241,7 @@ def verify_kit(
 def _render(value: Any) -> str:
     return (
         json.dumps(
-            value,
+            _thaw_json(value),
             ensure_ascii=False,
             indent=2,
             sort_keys=True,

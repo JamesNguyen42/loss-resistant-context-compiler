@@ -4,26 +4,28 @@
   "additionalProperties": false,
   "properties": {
     "annotation_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
+      "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
       "type": "string"
     },
     "annotator": {
       "additionalProperties": false,
       "properties": {
         "attestation_sha256": {
-          "pattern": "^[0-9a-f]{64}$",
+          "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
           "type": "string"
         },
         "blind_to_peer_labels": {
           "const": true
         },
         "completed_at_utc": {
-          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9]Z(?![\\s\\S])", "minLength": 20, "maxLength": 20,
           "type": "string"
         },
         "id": {
           "maxLength": 256,
           "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
           "type": "string"
         },
         "independent": {
@@ -40,7 +42,7 @@
       "type": "object"
     },
     "corpus_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
+      "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
       "type": "string"
     },
     "histories": {
@@ -50,6 +52,7 @@
           "history_id": {
             "maxLength": 256,
             "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
             "type": "string"
           },
           "labels": {
@@ -86,6 +89,70 @@
   "$defs": {
     "label": {
       "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "exact_error",
+                  "exact_reference"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "exact": {
+                "const": true
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "exact": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "goal",
+                  "constraint",
+                  "user_correction",
+                  "unresolved",
+                  "exact_error",
+                  "exact_reference"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "protected": {
+                "const": true
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "protected": {
+                "const": false
+              }
+            }
+          }
+        }
+      ],
       "properties": {
         "exact": {
           "type": "boolean"
@@ -93,6 +160,7 @@
         "id": {
           "maxLength": 256,
           "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
           "type": "string"
         },
         "kind": {
@@ -119,7 +187,8 @@
           },
           "maxItems": 32,
           "minItems": 1,
-          "type": "array"
+          "type": "array",
+          "uniqueItems": true
         },
         "status": {
           "enum": [
@@ -159,12 +228,13 @@
           "type": "string"
         },
         "quote_sha256": {
-          "pattern": "^[0-9a-f]{64}$",
+          "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
           "type": "string"
         },
         "source_id": {
           "maxLength": 256,
           "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
           "type": "string"
         },
         "start": {

@@ -65,7 +65,14 @@ canonical SHA-256 over all fields except its own digest field. Unknown and
 missing fields fail closed. JSON files enter through the shared benchmark
 regular-file boundary: bounded UTF-8 bytes, physical line length, and nesting;
 duplicate object keys, non-finite values, links, special files, and file
-mutation during the read are rejected.
+mutation during the read are rejected. Direct in-memory decoders apply the same
+JSON depth and integer-digit limits plus bounded canonical bytes, scalar size,
+and node count before self-hashing; cycles, shared containers, non-JSON values,
+and invalid UTF-8 fail as `NaturalHistoryError`. Validated envelopes and
+verified gold-free/report mappings expose read-only nested metadata, so later
+in-process mutation cannot silently invalidate their checked state. UTC fields
+must also name real calendar instants rather than merely matching a timestamp
+shape.
 
 The chain is:
 
@@ -98,8 +105,8 @@ intake manifest as an external audit input.
 
 Every history has one explicit origin:
 
-- `public` requires a non-empty SPDX license identifier, state
-  `verified-compatible`, and a license-evidence SHA-256;
+- `public` requires a syntactically canonical, non-empty SPDX license
+  identifier, state `verified-compatible`, and a license-evidence SHA-256;
 - `explicit-consent` requires state `authorized-by-consent`, consent state
   `documented`, and a consent-evidence SHA-256;
 - `synthetic` requires both license and consent to be explicitly
@@ -109,7 +116,8 @@ There is no implicit or unknown state. Every history must also carry an
 `approved` repository-publication privacy review with a reviewer id, UTC
 review time, completed content-secret review, completed personal-data review,
 and evidence digest. Pending, skipped, denied, or absent review state is
-rejected.
+rejected. For every dated source, privacy review completion must be at or after
+the source timestamp.
 
 Those fields record reviewed assertions; a digest does not prove that the
 license, consent, or privacy decision was correct. Before a real corpus is
@@ -139,14 +147,19 @@ Each annotation pass:
 - cites one or more exact Python-character `[start, end)` spans;
 - requires each quote to equal the immutable source slice and match its full
   UTF-8 SHA-256;
-- requires label text to equal each cited quote.
+- requires label text to equal each cited quote;
+- requires label ids to be unique across the full annotation envelope,
+  rejects duplicate provenance spans, and requires spans in source-sequence
+  then offset order.
 
-The kit can validate those assertions and distinct identities, but it cannot
-observe how annotators worked. Operational collection must prevent annotators
+Annotation completion cannot predate any corpus privacy review. The kit can
+validate those assertions and distinct identities, but it cannot observe how
+annotators worked. Operational collection must prevent annotators
 from seeing one another's labels before both documents are durably closed.
 
-Adjudication requires a third identifier, a completeness attestation, canonical
-coverage of every history, and a decision for every label in the symmetric
+Adjudication requires a third identifier, distinct attestation evidence, a
+completion time no earlier than either annotation, a completeness attestation,
+canonical coverage of every history, and a decision for every label in the symmetric
 difference between the two semantic label sets. Consensus labels must survive.
 Each disagreement must be accepted, rejected, or replaced. Final labels must
 equal exactly the consensus plus the decisions; unreviewed disagreements,
@@ -163,7 +176,8 @@ is sealed, and must bind a seed commitment plus creation time.
 
 These fields make violations detectable in the document; their timestamps and
 attestations are self-reported. A real held-out run must anchor the split
-manifest before rule, prompt, threshold, or adapter tuning, restrict test-gold
+manifest after all corpus privacy reviews and before rule, prompt, threshold,
+or adapter tuning, restrict test-gold
 access outside the repository, and record any access as a protocol violation
 requiring a new cohort.
 
@@ -182,7 +196,9 @@ is either:
 - `scored`, with a complete non-negative metric record; or
 - `failed`, with a stable failure code and all scored metrics set to `null`.
 
-A failed history cannot be partially scored. Expected, protected, exact, split,
+A failed history cannot be partially scored. Run timestamps must be real UTC
+instants, cannot finish before they start, and cannot start before the bound
+adjudication completed or split was created. Expected, protected, exact, split,
 and source-character counts are recomputed from the adjudication, split, and
 corpus. Summary counts are recomputed across all histories. Failed histories
 remain in the denominator with zero matched labels; they cannot be dropped,
