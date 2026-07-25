@@ -71,6 +71,7 @@ DEFAULT_QWEN_LITERAL_ABLATION_REPORT = (
     / "qwen-literal-offset-ablation-v1.json"
 )
 ABLATION_MAX_LOCATOR_WORK_CHARS = 10_000_000
+_MAX_CAPTURED_JSON_INTEGER_DIGITS = 640
 
 _REPORT_LIMITS = StrictJsonLimits(
     max_bytes=16 * 1024 * 1024,
@@ -148,6 +149,16 @@ def _finite_float(value: str) -> float:
     return decoded
 
 
+def _bounded_int(value: str) -> int:
+    digits = value[1:] if value.startswith("-") else value
+    if len(digits) > _MAX_CAPTURED_JSON_INTEGER_DIGITS:
+        raise QwenLiteralAblationError(
+            "captured JSON integer exceeds the supported length of "
+            f"{_MAX_CAPTURED_JSON_INTEGER_DIGITS} digits"
+        )
+    return int(value)
+
+
 def _reject_constant(value: str) -> None:
     raise QwenLiteralAblationError(
         f"captured JSON constant is not supported: {value}"
@@ -189,6 +200,7 @@ def _decode_source_output(raw_output: str) -> list[Any]:
             raw_output,
             object_pairs_hook=_strict_object,
             parse_float=_finite_float,
+            parse_int=_bounded_int,
             parse_constant=_reject_constant,
         )
     except (RecursionError, TypeError, ValueError) as exc:

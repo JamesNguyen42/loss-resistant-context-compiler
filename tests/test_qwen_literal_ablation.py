@@ -353,6 +353,10 @@ def test_transform_discards_only_integer_coordinates_and_deduplicates_ids() -> N
     (
         ('{"items":[],"items":[]}', "duplicate JSON object key"),
         ('{"items":[NaN]}', "constant is not supported"),
+        (
+            '{"items":[' + "9" * 641 + "]}",
+            "integer exceeds the supported length of 640 digits",
+        ),
         ('{"items":{}}', "items must be a list"),
         ('{"wrong":[]}', "envelope"),
         (

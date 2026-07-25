@@ -60,17 +60,25 @@ memory = compiler.compile(sources)
 Before each completion, `LmsQwenCompletion` checks both the on-disk and loaded
 model state. A process-wide nonblocking lock serializes inference. The command
 has a hard subprocess timeout, disables reasoning output, passes
-`--dont-fetch-catalog`, and strips terminal escape sequences.
+`--dont-fetch-catalog`. Terminal escape sequences and carriage returns are
+recognized only in the bounded status prefix; the JSON candidate is retained
+unchanged.
 
 LM Studio can print model-loading progress on chat stdout. The adapter accepts
 only up to 64 bounded lines beginning with
 `Loading qwen/qwen3.6-35b-a3b`, followed immediately by one JSON object. It
 removes no other prefix and rejects malformed JSON, a non-object top level,
 ambiguous status text, a second object, or any non-whitespace trailing data.
-Raw stdout is bounded before framing, and framing errors do not include the
-captured content in exceptions. This narrow rule recovers availability for the
-observed CLI behavior without turning arbitrary prose stripping into a trust
-boundary.
+Raw stdout is decoded incrementally as strict UTF-8. The owned process tree is
+isolated in a POSIX process group or Windows Job Object and terminated on a
+timeout, output overflow, decoding failure, or after the CLI leader exits, so
+descendants cannot retain the stdout pipe or continue work. Stderr is discarded
+rather than retained. Chat JSON rejects duplicate keys, non-finite numbers,
+integers longer than 64 digits, and nesting deeper than 64 levels. Framing and
+execution errors do not retain captured content, prompt-bearing commands, or OS
+details in their exception chains. This narrow rule recovers availability for
+the observed CLI behavior without turning arbitrary prose stripping into a
+trust boundary.
 
 The default compiler policy is loss-resistant degradation: a timeout, process
 failure, invalid model envelope, oversized response, or wholly unusable
@@ -101,10 +109,14 @@ passed verification; deterministic recovery supplied 11 candidates and the
 validator rejected 7 model candidates. This is an integration diagnostic, not
 a model-quality, latency, cost, or external-system performance claim.
 
-Automated tests mock the CLI boundary and cover exact identity, quantization,
-loaded-state and single-slot checks, ANSI removal, timeouts, bounded loading
-prefixes, ambiguous/trailing output, and refusal of a different configuration.
-They do not require the model in CI.
+Automated tests mock the CLI boundary and cover exact LLM identity,
+quantization, loaded-state and mandatory single-slot checks, bounded status
+prefixes, unchanged candidate framing, strict JSON limits, exception-chain
+sanitization, ambiguous/trailing output, and refusal of a different
+configuration. Real subprocess regressions also cover strict UTF-8, streaming
+output termination, a hard deadline when stdout remains open or closes early,
+and descendant termination with no late marker. They do not require the model
+in CI.
 
 ## Unique-literal response mode
 
