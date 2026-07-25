@@ -16,6 +16,7 @@ from .models import (
     VerificationReport,
     memory_item_covers_candidate,
     provenance_span_is_atomic,
+    source_is_untrusted_historical,
 )
 
 _SUPPORT_TOKEN = re.compile(
@@ -86,7 +87,7 @@ _CONFIRMATION_EVIDENCE = re.compile(
 )
 _DATABASE_VALUE = re.compile(
     r"\b(?:database|db)(?:\s+(?:engine|backend))?\s+"
-    r"(?:(?:must|shall)\s+)?(?:is|be|use|using)\s+"
+    r"(?:(?:must|shall)\s+)?(?:is|be|use|using|stays|remains)\s+"
     r"(?P<value>[A-Za-z][\w.-]*)",
     re.I,
 )
@@ -173,7 +174,13 @@ def _ordered_supports(item: MemoryItem) -> bool:
     return False
 
 
-def _source_can_assert_fact(source: SourceRecord) -> bool:
+def _source_can_assert_fact(
+    source: SourceRecord,
+    *,
+    untrusted_historical_roles: bool = False,
+) -> bool:
+    if untrusted_historical_roles and source_is_untrusted_historical(source):
+        return False
     return (
         source.role.casefold() in _NON_TOOL_ROLES
         or source.metadata.get("trusted_for_state") is True
@@ -332,9 +339,12 @@ def verify_memory(
     compression_target_met: bool = True,
     initial_issues: Iterable[VerificationIssue] = (),
     work_budget: _CompilationWorkBudget | None = None,
+    untrusted_historical_roles: bool = False,
 ) -> VerificationReport:
     """Verify structural loss-resistance independently of extraction."""
 
+    if not isinstance(untrusted_historical_roles, bool):
+        raise TypeError("untrusted_historical_roles must be a boolean")
     issues = list(initial_issues)
     source_map = {source.id: source for source in sources}
     item_map = {item.id: item for item in items}
@@ -522,6 +532,10 @@ def verify_memory(
                 for span in item.provenance
                 if span.source_id not in source_map
                 or source_map[span.source_id].role.casefold() not in _NON_TOOL_ROLES
+                or (
+                    untrusted_historical_roles
+                    and source_is_untrusted_historical(source_map[span.source_id])
+                )
             ]
             if unauthorized:
                 issues.append(
@@ -540,7 +554,10 @@ def verify_memory(
                 span.source_id
                 for span in item.provenance
                 if span.source_id not in source_map
-                or not _source_can_assert_fact(source_map[span.source_id])
+                or not _source_can_assert_fact(
+                    source_map[span.source_id],
+                    untrusted_historical_roles=untrusted_historical_roles,
+                )
             ]
             if unauthorized_facts:
                 issues.append(

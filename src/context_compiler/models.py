@@ -23,6 +23,7 @@ COMPILATION_METRICS_SCHEMA = "compilation-metrics-0.1"
 MAX_SOURCE_ID_CHARS = 1_024
 MAX_SOURCE_ROLE_CHARS = 128
 MAX_SOURCE_TIMESTAMP_CHARS = 256
+AUTHENTICATED_AUTHORITY_METADATA_KEY = "ctxc_authenticated_authority"
 PRIMARY_EXTRACTOR_FAILED_MESSAGE = (
     "The primary extractor failed; verified deterministic recovery was used."
 )
@@ -356,6 +357,19 @@ class SourceRecord:
             content_sha256=content_sha256,
             record_sha256=record_sha256,
         )
+
+
+def source_is_untrusted_historical(source: SourceRecord) -> bool:
+    """Return whether a connector explicitly marked assistant/tool state untrusted.
+
+    Absence of the marker intentionally preserves the standalone API's
+    historical authority behavior. Only the optional connector writes it.
+    """
+
+    return (
+        source.role.strip().casefold() in {"assistant", "tool", "function"}
+        and source.metadata.get(AUTHENTICATED_AUTHORITY_METADATA_KEY) is False
+    )
 
 
 @dataclass(frozen=True, slots=True)

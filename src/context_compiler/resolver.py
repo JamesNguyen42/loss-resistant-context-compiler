@@ -53,7 +53,7 @@ _POSITIVE_CONFIRMATION = re.compile(
 )
 _DATABASE_VALUE = re.compile(
     r"\b(?:database|db)(?:\s+(?:engine|backend))?\s+"
-    r"(?:(?:must|shall)\s+)?(?:is|be|use|using)\s+"
+    r"(?:(?:must|shall)\s+)?(?:is|be|use|using|stays|remains)\s+"
     r"(?P<value>[A-Za-z][\w.-]*)",
     re.I,
 )

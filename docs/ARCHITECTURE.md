@@ -11,6 +11,8 @@ the evidence needed to audit that prompt.
 
 ```mermaid
 flowchart LR
+    L["Optional SourceEvent / JSONL connector"] --> M["Authority-safe immutable mapping"]
+    M --> A
     A["Ordered SourceRecord events"] -->|"direct"| P["Integrity preflight"]
     A -->|"optional preprocessing"| R["Fixed content-secret redaction"]
     R --> P
@@ -29,6 +31,7 @@ flowchart LR
     G --> Z["Seal snapshot and bind digest"]
     Z --> I["JSON artifact"]
     Z --> J["Typed-memory prompt"]
+    Z --> Q["Optional bound ContextBundle"]
     H -. resolves spans .-> I
 ```
 
@@ -42,6 +45,192 @@ snapshot is reconstructed. This boundary prevents worker-side source mutation
 from changing caller objects; it is not a filesystem, network, or hostile-code
 sandbox. The project has no runtime dependencies outside the Python 3.11+
 standard library.
+
+## Optional LocalAI connector boundary
+
+`connector.py` is an optional integration layer around the ordinary compiler,
+renderer, verifier, inspector, and archive contracts. It has no import-time or
+runtime dependency on a sibling project: `localai-contracts`, ZoomCache,
+TokConductor, VRAM Compiler, and ExpertPack are not imported. Existing
+`ContextCompiler` and `ctxc` paths behave as before when the connector is not
+used.
+
+The connector exposes exactly six operations:
+
+| Operation | Result |
+| --- | --- |
+| `capabilities` | Protocol, transport, accounting, authority, checkpoint, and certificate capabilities |
+| `ingest_source_events` | Immutable source records, source identity, live session state, and checkpoint |
+| `compile_memory` | A bound `ContextBundle` and current checkpoint |
+| `render_context` | Verified typed-memory text and its digest |
+| `verify_memory` | Independent artifact replay plus connector-binding checks |
+| `inspect_memory` | Bounded artifact summary, trusted-memory counts, bindings, accounting, and certificate |
+
+The CLI entry point is `ctxc connector --stdio`. It reads sequential JSONL and
+writes one response line for each nonblank request line. The strict request
+envelope is exactly:
+
+```json
+{
+  "schema": "ctxc-connector-request-0.1",
+  "request_id": "caller-owned-id",
+  "operation": "capabilities",
+  "payload": {}
+}
+```
+
+The strict response envelope always has exactly `schema`, `request_id`,
+`operation`, `ok`, `result`, and `error`, using schema
+`ctxc-connector-response-0.1`. Exactly one of `result` and `error` is non-null.
+The decoder rejects duplicate object keys, non-finite numbers, non-object
+requests, excessive JSON depth, and lines above the configured UTF-8 byte
+limit. The top-level envelope and every operation payload reject unknown
+fields. A malformed line receives a structured error envelope with null request
+identity, after which the service continues. This gives hosts a plain,
+versioned process boundary without requiring shared Python types.
+
+In-process callers may supply a mapping, dataclass, or an object with
+`model_dump()`, `to_dict()`, or `dict()`. This is structural compatibility
+only; the core does not import or require `localai-contracts`. If such an
+object is accepted, it is converted to detached JSON-shaped data before
+validation.
+
+### Source events and authority
+
+`source_event_to_record()` accepts `localai-source-event-0.1`. It validates any
+supplied content hash and canonical record hash against the inbound event
+before adding connector-owned annotations. It then constructs a new immutable
+`SourceRecord`, so the final record digest also binds those annotations. The
+original inbound record digest, redaction descriptor, and source-provenance
+descriptor are retained under reserved metadata keys. Caller metadata cannot
+occupy those keys. The normal record, history-size, id, sequence, role,
+timestamp, canonical-JSON, and hash checks remain in force.
+
+Those descriptors remain host assertions, not proof that redaction was
+complete or that an upstream transport was authentic. They cannot replace the
+compiler's exact character-span provenance or bypass content/record hash
+validation. Hosts that need verified fixed-detector redaction must still use
+the redaction result and replay contracts.
+
+Assistant, tool, and function events receive an explicit connector authority
+marker. Without host-supplied `authority.authenticated: true`, their content is
+historical-only and cannot assert authoritative task state through the normal
+assistant or tool authority paths. An arbitrary
+`metadata.trusted_for_state` value is removed for these roles, so historical
+content cannot self-promote. An
+authenticated assistant may use only the assistant state categories already
+allowed by the core. An authenticated tool must additionally carry
+`authority.trusted_for_state: true`, and that opt-in remains restricted to
+confirmed facts; it does not grant goals, constraints, corrections, decisions,
+or unresolved state. Tool errors, references, and failed-attempt evidence
+remain historical evidence under the existing rules.
+
+This connector-only marker is absent from ordinary `SourceRecord` construction,
+so the established standalone Python and CLI authority behavior is unchanged.
+The host still owns authentication of upstream actor roles. Connector
+authority metadata records what the host asserted; it is not a secure identity
+system. For `ctxc connector --stdio`, the supervising process must restrict who
+can write requests carrying `authority.authenticated: true`; stdin access is
+part of the host trust boundary. A JSON value, bundle self-hash, or checkpoint
+self-hash does not authenticate that assertion.
+
+Every connector entry path applies the same normalization before a source can
+participate in compilation or verification: direct events, checkpoint records,
+explicit source records, and records loaded from a configured archive cannot
+use a missing connector marker to recover standalone assistant/tool authority.
+Hosts should keep explicit event ids and sequences stable across retries.
+Without both, default sequence allocation advances and repeated content is a
+new immutable source rather than an idempotent retry.
+
+### Context bundles and bindings
+
+`compile_memory` emits `localai-context-bundle-0.1`. Its `artifact` is the
+ordinary complete compiled-memory artifact. Its `trusted_memory` section
+projects selected active items into these explicit categories:
+
+- `active_goals`;
+- `constraints`;
+- `user_corrections`;
+- `decisions`;
+- `confirmed_facts`;
+- `unresolved_questions`;
+- `exact_errors`;
+- `exact_references`.
+
+The section also carries deduplicated exact `source_spans`, every source's
+content and canonical-record hashes, and
+`omitted_or_overflowed_protected_items`. A protected budget overflow identifies
+the retained item and overflow count; it is not misreported as an omission.
+The full artifact remains the audit ledger.
+
+Bundle bindings cover:
+
+- session id, source-set digest, and source count;
+- optional archive chain head and whether this connector verified it;
+- the complete compiler policy and its canonical digest;
+- tokenizer identity, exact-versus-estimated mode, and an explicit exact flag;
+- rendered typed-memory SHA-256;
+- compiled-artifact SHA-256.
+
+`bundle_sha256` binds the artifact, trusted-memory projection, bindings,
+certificate, and accounting record. `render_context` reconstructs the typed
+memory only from a verified artifact and checks the rendered digest.
+`verify_memory` requires a live session, checkpoint, supplied immutable source
+records, or supplied SourceEvents; it independently replays the artifact and
+then checks the source, policy, tokenizer, render, artifact, and optional
+archive-head bindings. Self-hashes detect inconsistency but do not authenticate
+the producer. An archive head is externally meaningful only when independently
+retained or verified against a configured `SourceArchive`. `inspect_memory`
+performs only source-independent envelope validation and bounded summarization;
+it is not a substitute for replay with trusted sources.
+
+The certificate claim is exactly
+`all detected protected commitments retained`. It is issued only when
+verification passes and every detected protected commitment is retained. Its
+scope is detector-scoped, and `semantic_completeness_claimed` is always false.
+It does not assert that the heuristic extractors detected every semantically
+relevant commitment.
+
+### Token accounting and incremental checkpoints
+
+`ExactTokenCounterAdapter` accepts one callable plus a stable tokenizer
+identity in-process. Exact bundles bind that identity and require the matching
+adapter for independent replay. Without an adapter, the connector uses the
+core character estimate and records `mode: "estimated"`, `exact: false`, and
+`character-estimate-v1`; verification rejects attempts to relabel it as exact.
+Compiled artifact schema `1.0` retains its historical
+`source_tokens_estimate` and `active_tokens_estimate` names even when an exact
+counter supplied the values, so connector consumers must use the bundle's
+explicit mode and exact flag. The standalone stdio CLI has no callback
+injection surface and therefore uses estimated accounting; an embedding host
+can pass a configured connector to `serve_stdio()`. These counts cover the
+compiler-controlled source text and typed-memory render, not host-added chat
+framing, tool schemas, or later prompt material. Rendering, inspection, and
+replay reject an exact-accounting bundle when the matching in-process adapter
+is unavailable.
+
+`IncrementalCompiler` accepts appended events, rejects mutable id or sequence
+collisions, and caches one sealed no-deadline compilation for an unchanged
+source digest. A `ctxc-incremental-checkpoint-0.1` record binds the complete
+immutable source prefix, source count and digest, session id, archive head and
+verification flag, and its own canonical digest. Resume validates all of those
+values before reconstructing the session.
+
+Compilation after resume delegates to the same `ContextCompiler.compile()` as
+batch mode. This preserves extraction, temporal resolution, selection,
+verification, artifact, and rendering semantics. It does not yet provide
+sublinear invalidation: after any accepted event, the changed prefix is fully
+reparsed and recompiled. Checkpoints are therefore deterministic
+correctness/restart support, not evidence of 10,000- to 1,000,000-event
+performance.
+
+The JSON checkpoint self-hash provides integrity, not authority or attestation.
+In particular, a serialized `archive_head_verified: true` is never sufficient
+on resume: that state must be re-established against the configured archive.
+Stdio dispatch is sequential and its sessions live only in process memory.
+A configured `SourceArchive` is owned by one connector session; the current
+implementation does not provide multi-session isolation inside one archive or
+connector instance.
 
 ## Core data model
 
@@ -318,13 +507,19 @@ references, and failed-attempt evidence, but it cannot assert durable task
 state unless the host explicitly sets `metadata.trusted_for_state` to the JSON
 boolean `true`, which enables confirmed-fact extraction only. This prevents a
 literal `Requirement:` or `fact:` in ordinary tool text from automatically
-becoming authoritative state.
+becoming authoritative state. At the optional connector boundary, an
+additional connector-owned marker disables assistant, tool, and function
+state unless authenticated host authority metadata permits the applicable
+core path; ordinary standalone `SourceRecord` behavior is unchanged.
 
 Constraint-bearing input is atomized before temporal resolution. The tested
 forms include labeled sections and bullets as well as independent commitments
 joined by sentences, conjunctions, or semicolons. This prevents a later
 correction to one clause from superseding an unrelated neighboring constraint.
-The atomizer is deliberately bounded rather than a general-purpose parser.
+Natural-language regressions also cover indirect preservation requirements
+such as “the database stays PostgreSQL” and “leave the authentication flow
+alone.” The atomizer is deliberately bounded rather than a general-purpose
+parser.
 
 Exact-literal recognition covers complete diagnostic forms for pytest
 assertions, expected/received output, TypeScript and Rust error codes, null or
@@ -806,6 +1001,12 @@ beyond the same rewrite boundary.
 - Supply an exact tokenizer through `token_counter`; add a stable
   `token_counter_id` and pass both to `verify_artifact_dict()` for portable
   independent replay.
+- Use `LocalAIConnector` for the six-operation in-process or versioned JSONL
+  integration contract, and `ExactTokenCounterAdapter` when its accounting can
+  be exact.
+- Use `IncrementalCompiler` for deterministic append/checkpoint/resume
+  semantics while treating changed-prefix compilation as a full batch
+  recompile until finer invalidation is implemented.
 - Change selection and recovery behavior through `CompilationPolicy`.
 - Store or transmit `CompiledMemory.to_dict()` without tying consumers to a
   particular underlying LLM.

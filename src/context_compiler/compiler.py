@@ -67,6 +67,7 @@ class ContextCompiler:
         token_counter_id: str | None = None,
         source_limits: SourceLimits | None = None,
         compilation_limits: CompilationLimits | None = None,
+        untrusted_historical_roles: bool = False,
     ) -> None:
         if token_counter is None and token_counter_id is not None:
             raise ValueError("token_counter_id requires token_counter")
@@ -74,6 +75,9 @@ class ContextCompiler:
             not isinstance(token_counter_id, str) or not token_counter_id.strip()
         ):
             raise TypeError("token_counter_id must be a non-empty string")
+        if not isinstance(untrusted_historical_roles, bool):
+            raise TypeError("untrusted_historical_roles must be a boolean")
+        self.untrusted_historical_roles = untrusted_historical_roles
         self.compilation_limits = resolve_compilation_limits(
             compilation_limits
         )
@@ -81,7 +85,8 @@ class ContextCompiler:
             extractor
             if extractor is not None
             else RuleBasedExtractor(
-                max_items=self.compilation_limits.max_extractor_items
+                max_items=self.compilation_limits.max_extractor_items,
+                untrusted_historical_roles=self.untrusted_historical_roles,
             )
         )
         self.policy = policy if policy is not None else CompilationPolicy()
@@ -120,11 +125,13 @@ class ContextCompiler:
         # extractors may add coverage, but cannot reduce the obligation against
         # which verified output is certified.
         recovery_extractor = RuleBasedExtractor(
-            max_items=self.compilation_limits.max_extractor_items
+            max_items=self.compilation_limits.max_extractor_items,
+            untrusted_historical_roles=self.untrusted_historical_roles,
         )
         certification_extractor = RuleBasedExtractor(
             protected_only=True,
             max_items=self.compilation_limits.max_extractor_items,
+            untrusted_historical_roles=self.untrusted_historical_roles,
         )
         recovery = self._validated_extraction(
             recovery_extractor.extract(ordered),
@@ -333,6 +340,11 @@ class ContextCompiler:
                 "fail_on_primary_extractor_error": (
                     self.policy.fail_on_primary_extractor_error
                 ),
+                **(
+                    {"connector_untrusted_historical_roles": True}
+                    if self.untrusted_historical_roles
+                    else {}
+                ),
             },
         )
         active_prompt = result.to_prompt()
@@ -366,6 +378,7 @@ class ContextCompiler:
                 compression_target_met=result.compression.target_met,
                 initial_issues=initial_issues,
                 work_budget=work_budget,
+                untrusted_historical_roles=self.untrusted_historical_roles,
             )
         else:
             result.verification = VerificationReport(

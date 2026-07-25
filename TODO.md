@@ -43,6 +43,24 @@ raw evidence when completing benchmark work.
   supplied source set.
 - [x] Provide `ctxc compile`, `verify`, `inspect`, `diff`, `redact`, and
   `archive`.
+- [x] Add the optional standard-library LocalAI connector with
+  `capabilities`, `ingest_source_events`, `compile_memory`, `render_context`,
+  `verify_memory`, and `inspect_memory` over one strict shared versioned
+  request/response JSONL envelope and `ctxc connector --stdio`.
+- [x] Keep ordinary API and CLI behavior independent of `localai-contracts`
+  and every sibling project; accept structural contract objects in-process and
+  plain versioned JSON across a process boundary.
+- [x] Map connector SourceEvents into fresh immutable SourceRecords while
+  preserving hashes, redaction/provenance metadata, and core role authority;
+  default assistant/tool history to untrusted unless the host authenticates
+  the applicable authority path.
+- [x] Emit a self-hashed ContextBundle with the required trusted-memory
+  categories, source spans/hashes, explicit protected overflow, and bindings
+  for source/archive state, compiler policy, tokenizer identity, rendered
+  memory, and the compiled artifact.
+- [x] Scope connector certification to
+  `all detected protected commitments retained` and explicitly refuse a
+  semantic-completeness claim.
 - [x] Provide JSON Schemas for source events, coordinate-bearing and
   unique-literal model output, compiled memory, and redaction reports.
 - [x] Provide a local append-only archive with collision, hash, and lock checks.
@@ -64,8 +82,9 @@ raw evidence when completing benchmark work.
   processes, POSIX/Windows process-tree memory limits, full candidate
   validation, and self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Collect 963 tests (955 passing and 8 skipped locally); CI covers Python
-  3.11, 3.12, and 3.13.
+- [x] Maintain unit and connector-contract coverage, including standalone
+  operation without sibling dependencies; CI covers Python 3.11, 3.12, and
+  3.13.
 
 ## P0: close confirmed fail-closed gaps
 
@@ -452,6 +471,9 @@ than most related technology” within the exact dated evaluation scope.
   semicolon/punctuation/conjunction clause boundaries.
 - [x] Add grammar-based fuzzing for labels, bullets, conjunctions, negation,
   numbers, units, paths, diagnostics, and corrections.
+- [x] Add natural-language regressions for indirect preservation requirements,
+  including “the database stays PostgreSQL” and “leave the authentication flow
+  alone.”
 - [x] Measure false positives and false negatives on a frozen, locally
   authored 64-case novel-English diagnostic, retaining all misses and explicit
   limits on independence and representativeness.
@@ -534,31 +556,59 @@ than most related technology” within the exact dated evaluation scope.
 
 ### Incremental compiler
 
-- [ ] Add an incremental session API that accepts one event at a time.
+The first correctness/restart slice is implemented. It intentionally delegates
+every changed source prefix to ordinary batch compilation; it is not evidence
+of sublinear compile cost.
+
+- [x] Add an incremental session API that accepts appended event batches,
+  including one event at a time.
 - [ ] Avoid reparsing the full history after every event while preserving the
-  same final artifact as batch compilation.
-- [ ] Define invalidation rules for corrections, conflicts, and archive reloads.
-- [ ] Add deterministic checkpoint and resume support.
+  same final artifact as batch compilation. Ordinary no-deadline calls for an
+  unchanged prefix reuse one sealed cached result, but every accepted event
+  currently reparses and recompiles the complete prefix.
+- [ ] Define fine-grained invalidation rules for corrections, conflicts, and
+  archive reloads. The current safe invalidation rule discards the cached result
+  and recompiles the full prefix.
+- [x] Add deterministic self-hashed checkpoint and resume support that
+  reconstructs the exact immutable source prefix and preserves batch ledger,
+  selection, verification, and prompt semantics.
 - [ ] Benchmark compile latency and peak memory from 10,000 to 1,000,000 events.
-- [ ] Add bounded caches without allowing cached state to bypass verification.
+- [ ] Add broader bounded caches without allowing cached state to bypass
+  verification. The current implementation caches only one already sealed
+  result for an unchanged source digest.
+- [ ] Add persistent/concurrent session storage and multi-session archive
+  isolation. Current stdio sessions are sequential and in-memory, and one
+  configured archive is owned by one connector session.
 
 ### Agent framework adapters
 
-- [ ] Define a small framework-neutral integration protocol.
+- [x] Define a small framework-neutral integration protocol with versioned
+  SourceEvent, ContextBundle, checkpoint, and strict request/response envelopes.
 - [ ] Add at least one production-quality coding-agent integration.
 - [ ] Add adapters for selected popular agent runtimes after verifying their
   role and event semantics.
-- [ ] Map tool, developer, system, assistant, and user authority explicitly.
-- [ ] Prevent retrieved documents and tool text from being mislabeled as
-  authoritative actors.
+- [x] Map tool, developer, system, assistant, and user authority explicitly at
+  the connector boundary; assistant and tool output defaults to untrusted
+  history unless authenticated host metadata enables a narrower core path.
+- [x] Prevent assistant/tool SourceEvent metadata from self-promoting
+  historical output into authoritative state; authenticated tool state remains
+  confirmed-fact-only.
+- [ ] Define and enforce retrieved-document role semantics so framework
+  adapters cannot mislabel retrieved text as an authoritative actor.
 - [ ] Add examples showing compilation before context-window overflow and
   rehydration of exact source spans on demand.
 
 ### Token accounting and selection
 
-- [ ] Add named tokenizer adapters for the models used in evaluation.
+- [ ] Add named tokenizer adapters for the models used in evaluation. The
+  connector now accepts a generic exact in-process adapter, but ships no
+  provider/model-specific tokenizer.
+- [x] Bind an in-process exact token-counter identity into connector bundles
+  and replay, label the fallback character counter as estimated, and reject an
+  estimated bundle relabeled as exact.
 - [ ] Include chat framing, tool schemas, and provenance pointers in budget
-  accounting.
+  accounting. Current compiler accounting covers its typed-memory envelope and
+  provenance pointers, not arbitrary host chat framing or tool schemas.
 - [ ] Test hard model context limits with strict overflow behavior.
 - [ ] Compare the current priority-per-token selector with constrained
   optimization and learned policies.
@@ -719,7 +769,8 @@ than most related technology” within the exact dated evaluation scope.
 - frozen comparison protocol;
 - reproducible external runner;
 - at least two working external adapters;
-- exact tokenizer accounting;
+- generic exact token-counter accounting landed; named evaluation-tokenizer
+  adapters remain pending;
 - versioned benchmark manifests.
 
 ### `0.3.0` — held-out and downstream evidence
@@ -731,7 +782,7 @@ than most related technology” within the exact dated evaluation scope.
 
 ### `0.4.0` — live integration beta
 
-- incremental compiler;
+- efficient incremental invalidation beyond the current full-prefix recompile;
 - at least two agent integrations;
 - operational limits and metrics;
 - machine-readable artifact schema compatibility and no-silent-migration

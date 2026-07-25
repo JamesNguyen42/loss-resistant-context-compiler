@@ -1424,9 +1424,12 @@ def verify_artifact_dict(
     token_counter_id: str | None = None,
     source_limits: SourceLimits | None = None,
     artifact_limits: ArtifactLimits | None = None,
+    untrusted_historical_roles: bool = False,
 ) -> dict[str, Any]:
     """Verify a serialized artifact without trusting its own report."""
 
+    if not isinstance(untrusted_historical_roles, bool):
+        raise TypeError("untrusted_historical_roles must be a boolean")
     resolved_artifact_limits = resolve_artifact_limits(artifact_limits)
     artifact_value_error: str | None = None
     try:
@@ -1613,7 +1616,7 @@ def verify_artifact_dict(
                 "item_id": None,
                 "message": (
                     "This active-only artifact intentionally omits ledger items and cannot "
-                    "receive a complete protected-coverage certificate."
+                    "support the statement 'all detected protected commitments retained'."
                 ),
             }
         )
@@ -1870,13 +1873,15 @@ def verify_artifact_dict(
     protected_candidates = RuleBasedExtractor(
         protected_only=True,
         max_items=replay_max_items,
+        untrusted_historical_roles=untrusted_historical_roles,
     ).extract(sources).items
     recovery_candidate_count: int | None = None
     if compilation_metrics_present and compilation_metrics_valid:
         recovery_candidate_count = len(
-            RuleBasedExtractor(max_items=replay_max_items).extract(
-                sources
-            ).items
+            RuleBasedExtractor(
+                max_items=replay_max_items,
+                untrusted_historical_roles=untrusted_historical_roles,
+            ).extract(sources).items
         )
     replayed_recovered = sum(
         "verifier-recovered" in item.tags for item in decoded_items
@@ -1891,6 +1896,7 @@ def verify_artifact_dict(
         compression_target_met=expected_target_met,
         initial_issues=replay_issues,
         work_budget=replay_work_budget,
+        untrusted_historical_roles=untrusted_historical_roles,
     )
     embedded_verification = artifact.get("verification")
     if not isinstance(embedded_verification, dict):

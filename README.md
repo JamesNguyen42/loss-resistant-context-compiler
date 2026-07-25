@@ -27,8 +27,8 @@ meaning can be compressed without loss.
 | Release | Alpha research implementation, package version `0.1.0` |
 | Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
-| Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 963 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts, optional LocalAI connector |
+| Regression suite | Unit and connector-contract coverage; CI runs Python 3.11, 3.12, and 3.13 |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -158,6 +158,10 @@ The repository currently includes:
   POSIX process group or Windows Job Object, terminates the owned descendant
   tree on timeout, and reconstructs successful output from bounded strict JSON;
 - a portable JSON artifact, compact prompt renderer, and eight JSON Schemas;
+- an optional standard-library LocalAI connector with six framework-neutral
+  operations, a strict versioned JSONL process boundary, immutable
+  `SourceEvent` mapping, self-hashed `ContextBundle` output, and deterministic
+  checkpoints;
 - a machine-readable artifact reader/writer registry with an explicit
   no-silent-migration policy;
 - a fail-closed JSON inspector plus a bounded terminal item view with escaped
@@ -167,7 +171,7 @@ The repository currently includes:
   chaining, optional externally retained head checks, exclusive locking,
   legacy migration, and bounded old-or-new atomic commits;
 - the `ctxc compile`, `verify`, `inspect`, `diff`, `schema`, `redact`,
-  `archive`, and `trust` commands;
+  `archive`, `trust`, and optional `connector --stdio` commands;
 - LRCBench, external-candidate import/export, history-weighted paired bootstrap
   gates, per-system decisions, and self-hashed JSON reports with producer/run
   metadata;
@@ -197,7 +201,7 @@ The repository currently includes:
 - optional fixed-detector content secret redaction with preserved offsets,
   recomputed source hashes, bounded scans, strict replay, and a self-hashed
   audit report that contains neither original content secrets nor their hashes;
-- cross-version CI, linting, wheel/schema checks, and 963 regression tests.
+- cross-version CI, linting, wheel/schema checks, and regression tests.
 
 ## In development
 
@@ -208,8 +212,9 @@ adding more claims to the README:
 - add held-out natural coding-agent histories with independent annotations;
 - measure end-to-end task completion on public long-horizon suites;
 - test the optional model extractor across providers and novel phrasing;
-- add exact provider tokenizers and framework adapters;
-- support efficient incremental compilation for live agent loops;
+- add named provider tokenizers and production framework-specific adapters;
+- optimize incremental connector compilation beyond its current
+  correctness-first full-prefix recompilation;
 - continue hardening generic-provider transport deadlines, metadata/PII
   handling, encryption guidance, signed publication/key handling, and
   observability;
@@ -298,6 +303,9 @@ implementation enforces these structural properties:
 - independent constraint commitments in labeled sections, bullets, sentences,
   conjunctions, and semicolon-separated clauses are atomized before temporal
   resolution, so correcting one does not retire its neighboring constraints;
+- the conservative grammar recognizes tested indirect preservation
+  requirements including “the database stays PostgreSQL” and “leave the
+  authentication flow alone” as constraints;
 - model-produced ordinary claims must equal a complete atomic source span;
   model paraphrases and truncated clauses are rejected;
 - exact items must equal every cited source literal;
@@ -311,6 +319,10 @@ implementation enforces these structural properties:
 - tool output cannot assert goals, constraints, corrections, decisions,
   unresolved state, or confirmed facts; a tool fact is accepted only when the
   host sets `metadata.trusted_for_state` to the JSON boolean `true`;
+- at the optional connector boundary, assistant, tool, and function events are
+  historical-only unless the host supplies authenticated authority metadata;
+  event metadata cannot self-promote them, and authenticated tool state remains
+  restricted to the existing confirmed-fact path;
 - explicit corrections retain the old item as superseded state;
 - explicit revocations retire the matched old commitment without inventing
   replacement state;
@@ -342,6 +354,13 @@ personal data, and unknown formats remain the caller's responsibility. See
 Python 3.11 or newer is required. The runtime uses only the standard library.
 The stable distribution name is `loss-resistant-context-compiler`; no package
 index release is currently claimed.
+
+The optional LocalAI connector is included in that standard-library core. It
+does not require or import `localai-contracts` or any sibling LocalAI project.
+If a host already has contract objects, the in-process adapter accepts them
+structurally through a mapping, dataclass, `model_dump()`, `to_dict()`, or
+`dict()`; the plain versioned JSON protocol is the portable process-boundary
+contract.
 
 ```console
 python -m pip install -e .
@@ -661,7 +680,8 @@ digest. It does not remove that external-anchor trust boundary.
 `--active-only` intentionally omits unselected ledger entries for compact
 transport. Its artifact is marked `ledger_complete: false`;
 independent `ctxc verify` rejects it with `incomplete_ledger` because omitted
-protected coverage cannot receive a full certificate.
+protected coverage cannot support the detector-scoped protected-retention
+claim.
 
 Important compile options:
 
@@ -697,6 +717,163 @@ With `--error-format json`, runtime failures have stable top-level fields:
 verification reports and compiled artifacts continue to carry their detailed
 issue/rejection data in normal command output. An unsafe or changed ancestor
 chain is reported as `io` / `unsafe_path_boundary`.
+
+## Optional LocalAI connector
+
+`LocalAIConnector` exposes six operations over the existing compiler:
+`capabilities`, `ingest_source_events`, `compile_memory`, `render_context`,
+`verify_memory`, and `inspect_memory`. It is framework-neutral and uses only
+the standard library plus this package. No sibling repository is imported, and
+`localai-contracts` is not required. Hosts may pass compatible Python objects
+in-process, but plain versioned JSON is the stable cross-process
+contract.
+
+Run the sequential JSON Lines service with:
+
+```console
+ctxc connector --stdio
+```
+
+Each nonblank input line must be exactly one
+`ctxc-connector-request-0.1` object with the four fields `schema`,
+`request_id`, `operation`, and `payload`. Each output line is exactly one
+`ctxc-connector-response-0.1` object with `schema`, `request_id`, `operation`,
+`ok`, `result`, and `error`; exactly one of `result` and `error` is non-null.
+Operation payloads also reject unknown fields. Duplicate JSON keys,
+NaN/infinity, excessive depth, and request lines above the configured byte
+limit fail closed. A protocol error produces an error response and the service
+continues with the next line.
+
+For example, these two physical input lines query capabilities and compile one
+event:
+
+```jsonl
+{"schema":"ctxc-connector-request-0.1","request_id":"cap-1","operation":"capabilities","payload":{}}
+{"schema":"ctxc-connector-request-0.1","request_id":"compile-1","operation":"compile_memory","payload":{"events":[{"schema":"localai-source-event-0.1","id":"event-0","sequence":0,"role":"user","content":"constraint: The database stays PostgreSQL."}]}}
+```
+
+The compile response returns a self-hashed
+`localai-context-bundle-0.1` plus a self-hashed
+`ctxc-incremental-checkpoint-0.1`. Send the bundle to `render_context`,
+`inspect_memory`, or `verify_memory`; supply the checkpoint or another
+independently trusted source set when verifying after a process restart.
+Sessions otherwise last only for the lifetime of the stdio process.
+`inspect_memory` is a source-independent integrity/summary view, not a
+substitute for `verify_memory` against trusted sources.
+
+The same flow is available directly in Python:
+
+```python
+from context_compiler import LocalAIConnector, SourceEvent
+
+connector = LocalAIConnector()
+ingested = connector.ingest_source_events(
+    [
+        SourceEvent(
+            id="event-0",
+            sequence=0,
+            role="user",
+            content="constraint: Leave the authentication flow alone.",
+        )
+    ]
+)
+bundle = connector.compile_memory(session_id=ingested["session_id"])
+context = connector.render_context(bundle)
+report = connector.verify_memory(bundle, checkpoint=ingested["checkpoint"])
+assert report["passed"]
+```
+
+`SourceEvent` mapping validates any supplied content and record hashes before
+adding connector-owned metadata, then creates a fresh immutable
+`SourceRecord`. Ids and sequences remain collision-checked; role, redaction,
+source provenance, and original-record-hash evidence are preserved rather than
+reinterpreted. Redaction and host-provenance descriptors are carried as
+metadata, not accepted as proof or allowed to bypass content hashes and exact
+compiler provenance. Assistant, tool, and function events are untrusted
+historical data by default. Only host-supplied
+`authority.authenticated: true` can enable the core assistant authority paths,
+and tool state additionally requires `authority.trusted_for_state: true`; even
+then it is limited to confirmed facts. A `trusted_for_state` key inside event
+metadata cannot authenticate itself. Regular `ContextCompiler` callers that do
+not use the connector keep their existing role behavior. The process
+supervising stdin is the stdio trust boundary: it must restrict who can submit
+`authority.authenticated: true`. Neither JSON, a bundle self-hash, nor a
+checkpoint self-hash authenticates that authority assertion.
+
+The same connector authority normalization applies when sources arrive through
+events, checkpoints, direct source records, or a configured archive; changing
+the entry path cannot promote unauthenticated history. For retry-safe ingestion,
+hosts should reuse an explicit event id and sequence. If both are omitted, the
+next default sequence advances and the retried content is a new source record.
+
+`ContextBundle.trusted_memory` contains:
+
+- active goals, constraints, user corrections, decisions, confirmed facts,
+  unresolved questions, exact errors, and exact references;
+- the exact source spans and source content/record hashes supporting those
+  categories;
+- every detected protected item omitted from selection or retained beyond the
+  requested budget as explicit
+  `omitted_or_overflowed_protected_items`.
+
+The bundle binds the source digest and count, optional source-archive chain
+head and its verification status, compiler policy and policy digest, tokenizer
+identity and accounting mode, rendered-memory digest, and compiled-artifact
+digest. Its own SHA-256 detects modification but is not a signature. An archive
+head is rollback evidence only when the host verifies or independently retains
+it.
+
+Without a counter adapter, connector accounting is explicitly
+`mode: "estimated"`, `exact: false`, with tokenizer identity
+`character-estimate-v1`. It cannot be relabeled as exact during verification.
+An embedding host can supply the exact model tokenizer in-process:
+
+```python
+from context_compiler import ExactTokenCounterAdapter, LocalAIConnector
+
+# `model_tokenizer` is the host's exact tokenizer instance.
+exact_counter = ExactTokenCounterAdapter(
+    identity="vendor/model-tokenizer@revision",
+    count_tokens=lambda text: len(model_tokenizer.encode(text)),
+)
+connector = LocalAIConnector(token_counter=exact_counter)
+```
+
+Exact replay requires the same adapter and identity. Artifact schema `1.0`
+retains its historical `*_tokens_estimate` field names even when those values
+came from the exact adapter; the bundle's `mode` and `exact` fields are the
+truthful accounting claim. The standalone `ctxc connector --stdio` command has
+no callback injection option and therefore reports estimated accounting. An
+embedded `serve_stdio(connector=...)` process can use an in-process adapter.
+Connector counts cover the compiler source text and rendered typed-memory
+context, not host-added chat framing, tool schemas, or later prompt material.
+Rendering, inspection, and replay of a bundle that claims exact accounting
+require the matching in-process adapter; the claim cannot be consumed as exact
+through an unconfigured stdio process.
+
+`IncrementalCompiler` appends immutable events, reuses the same sealed result
+for an unchanged source digest on ordinary no-deadline calls, and emits a
+checkpoint that binds the complete source prefix, source digest/count, session
+id, and archive-head state. Resume reconstructs that exact prefix and delegates
+to ordinary batch compilation, so the resulting ledger, selection,
+verification, and prompt keep batch semantics. This is correctness-first
+checkpointing, not yet an incremental performance engine: after any accepted
+change it recompiles and reparses the complete source prefix. Checkpoint
+self-hashes detect changes; they do not authenticate the checkpoint or attest
+that its archive head was verified.
+
+Stdio sessions are sequential and in-memory. When a `SourceArchive` is
+configured, one connector session owns that archive; do not multiplex the same
+connector/archive instance across sessions. The connector verifies and binds
+the retained head for that owner. On resume,
+`archive_head_verified` is re-established from the actual configured archive,
+never trusted merely because checkpoint JSON says it was verified.
+
+An issued connector certificate says exactly
+`all detected protected commitments retained`. It is scoped to commitments
+recognized by the current detectors. It does not claim semantic completeness,
+that every natural-language requirement was detected, or that a self-hashed
+bundle authenticates its producer.
 
 ## Python API
 
@@ -1040,9 +1217,8 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-24): 963 tests are collected (955 pass and 8
-platform/optional checks are skipped), and the recorded default
-32-history LRCBench certificate is `ISSUED` with scope
+Current local benchmark snapshot (2026-07-24): the recorded default 32-history
+LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`
 produced 100% compiler critical recall, exact recall, provenance validity,

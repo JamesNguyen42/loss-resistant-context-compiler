@@ -690,6 +690,22 @@ def _schema(args: argparse.Namespace) -> int:
     return 0
 
 
+def _connector(args: argparse.Namespace) -> int:
+    """Run the optional LocalAI connector over versioned JSON Lines."""
+
+    if not args.stdio:
+        raise ValueError("connector requires --stdio")
+    # Keep connector startup out of every ordinary command path.
+    from .connector import serve_stdio
+
+    return serve_stdio(
+        input_stream=sys.stdin,
+        output_stream=sys.stdout,
+        max_request_bytes=args.max_request_bytes,
+        max_json_depth=args.max_request_json_depth,
+    )
+
+
 def _paths_alias(first: str, second: str) -> bool:
     first_path = Path(first)
     second_path = Path(second)
@@ -1058,6 +1074,33 @@ def build_parser() -> argparse.ArgumentParser:
     schema_parser.add_argument("-o", "--output")
     _add_error_format_argument(schema_parser)
     schema_parser.set_defaults(handler=_schema)
+
+    connector_parser = subparsers.add_parser(
+        "connector",
+        help="serve the optional LocalAI connector protocol",
+    )
+    connector_transport = connector_parser.add_mutually_exclusive_group(
+        required=True,
+    )
+    connector_transport.add_argument(
+        "--stdio",
+        action="store_true",
+        help="read one versioned JSON request per line and write JSON responses",
+    )
+    connector_parser.add_argument(
+        "--max-request-bytes",
+        type=int,
+        default=8 * 1024 * 1024,
+        help="maximum UTF-8 bytes in one connector request line",
+    )
+    connector_parser.add_argument(
+        "--max-request-json-depth",
+        type=int,
+        default=128,
+        help="maximum decoded JSON container depth in one connector request",
+    )
+    _add_error_format_argument(connector_parser)
+    connector_parser.set_defaults(handler=_connector)
 
     redact_parser = subparsers.add_parser(
         "redact",

@@ -18,6 +18,7 @@ from .models import (
     ProvenanceSpan,
     SourceRecord,
     provenance_span_is_atomic,
+    source_is_untrusted_historical,
     stable_hash_parts,
 )
 
@@ -135,8 +136,11 @@ _REVOCATION = re.compile(
 _CONSTRAINT = re.compile(
     r"\b(?:must(?:\s+not)?|shall(?:\s+not)?|do not|don't|never|cannot|can't|required|"
     r"should\s+not|avoid\s+(?:changing|modifying|removing)|"
-    r"leave\s+.+?\s+unchanged|remain\s+(?:unchanged|stable)|"
+    r"leave\s+.+?\s+(?:unchanged|alone)|remain\s+(?:unchanged|stable)|"
     r"needs?\s+to\s+(?:stay|remain)\s+unchanged|stay\s+unchanged|"
+    r"(?:the\s+)?(?:database|db)(?:\s+(?:engine|backend))?\s+"
+    r"(?:stays|remains)\s+(?:PostgreSQL|Postgres|MySQL|MariaDB|SQLite|"
+    r"Oracle|SQL\s+Server|CockroachDB)|"
     r"under\s+no\s+circumstances\s+(?:change|alter|modify|remove)|"
     r"requirement|only\s+(?:use|change|modify|support|run)|without changing|"
     r"keep\s+.+?\s+(?:intact|compatible|unchanged)|"
@@ -321,12 +325,32 @@ def _constraint_clauses(text: str, absolute_start: int) -> list[tuple[str, int, 
     ]
 
 
-def _source_can_assert_fact(source: SourceRecord) -> bool:
+def _source_can_assert_fact(
+    source: SourceRecord,
+    *,
+    untrusted_historical_roles: bool = False,
+) -> bool:
+    if untrusted_historical_roles and source_is_untrusted_historical(source):
+        return False
     return source.role.casefold() in _FACT_ROLES or source.metadata.get("trusted_for_state") is True
 
 
-def _source_can_author_kind(source: SourceRecord, kind: MemoryKind) -> bool:
+def _source_can_author_kind(
+    source: SourceRecord,
+    kind: MemoryKind,
+    *,
+    untrusted_historical_roles: bool = False,
+) -> bool:
     role = source.role.casefold()
+    if untrusted_historical_roles and source_is_untrusted_historical(source) and kind in {
+        MemoryKind.GOAL,
+        MemoryKind.CONSTRAINT,
+        MemoryKind.USER_CORRECTION,
+        MemoryKind.UNRESOLVED,
+        MemoryKind.DECISION,
+        MemoryKind.CONFIRMED_FACT,
+    }:
+        return False
     if kind in _AUTHORITY_GATED_KINDS:
         return role in _AUTHORITATIVE_COMMITMENT_ROLES
     if kind == MemoryKind.UNRESOLVED:
@@ -334,7 +358,10 @@ def _source_can_author_kind(source: SourceRecord, kind: MemoryKind) -> bool:
     if kind == MemoryKind.DECISION:
         return role in _DECISION_ROLES
     if kind == MemoryKind.CONFIRMED_FACT:
-        return _source_can_assert_fact(source)
+        return _source_can_assert_fact(
+            source,
+            untrusted_historical_roles=untrusted_historical_roles,
+        )
     return True
 
 
@@ -573,6 +600,7 @@ class RuleBasedExtractor:
         *,
         protected_only: bool = False,
         max_items: int | None = None,
+        untrusted_historical_roles: bool = False,
     ) -> None:
         if max_items is not None and (
             isinstance(max_items, bool)
@@ -581,8 +609,11 @@ class RuleBasedExtractor:
             raise TypeError("max_items must be an integer or null")
         if max_items is not None and max_items <= 0:
             raise ValueError("max_items must be positive")
+        if not isinstance(untrusted_historical_roles, bool):
+            raise TypeError("untrusted_historical_roles must be a boolean")
         self.protected_only = protected_only
         self.max_items = max_items
+        self.untrusted_historical_roles = untrusted_historical_roles
 
     def extract(self, sources: list[SourceRecord]) -> ExtractionResult:
         items = _BoundedMemoryItems(
@@ -635,7 +666,11 @@ class RuleBasedExtractor:
                 if kind is not None:
                     active_section = (
                         kind
-                        if _source_can_author_kind(source, kind)
+                        if _source_can_author_kind(
+                            source,
+                            kind,
+                            untrusted_historical_roles=self.untrusted_historical_roles,
+                        )
                         else None
                     )
                     if active_section is None:
@@ -706,8 +741,22 @@ class RuleBasedExtractor:
             kind = self._classify(
                 stripped,
                 source.role,
-                trusted_for_state=_source_can_assert_fact(source),
+                trusted_for_state=_source_can_assert_fact(
+                    source,
+                    untrusted_historical_roles=self.untrusted_historical_roles,
+                ),
             )
+            if (
+                self.untrusted_historical_roles
+                and source_is_untrusted_historical(source)
+                and kind
+                in {
+                MemoryKind.UNRESOLVED,
+                MemoryKind.DECISION,
+                MemoryKind.CONFIRMED_FACT,
+                }
+            ):
+                kind = None
             classified_atoms = [(stripped, start, end, kind)]
             if kind == MemoryKind.CONSTRAINT:
                 classified_atoms = [
@@ -722,8 +771,22 @@ class RuleBasedExtractor:
                     clause_kind = self._classify(
                         clause_text,
                         source.role,
-                        trusted_for_state=_source_can_assert_fact(source),
+                        trusted_for_state=_source_can_assert_fact(
+                            source,
+                            untrusted_historical_roles=self.untrusted_historical_roles,
+                        ),
                     )
+                    if (
+                        self.untrusted_historical_roles
+                        and source_is_untrusted_historical(source)
+                        and clause_kind
+                        in {
+                            MemoryKind.UNRESOLVED,
+                            MemoryKind.DECISION,
+                            MemoryKind.CONFIRMED_FACT,
+                        }
+                    ):
+                        clause_kind = None
                     if clause_kind is not None:
                         clause_atoms.append((clause_text, clause_start, clause_end, clause_kind))
                 if kind == MemoryKind.USER_CORRECTION:
