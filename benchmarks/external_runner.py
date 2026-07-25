@@ -271,7 +271,7 @@ class DependencyLockEvidence:
         if (
             not isinstance(self.evidence_path, str)
             or not self.evidence_path
-            or not Path(self.evidence_path).is_absolute()
+            or not _is_portable_absolute_path(self.evidence_path)
         ):
             raise ValueError(
                 "dependency-lock evidence requires an absolute path"
@@ -313,7 +313,7 @@ class AdapterEntrypointEvidence:
         if (
             not isinstance(self.entrypoint_path, str)
             or not self.entrypoint_path
-            or not Path(self.entrypoint_path).is_absolute()
+            or not _is_portable_absolute_path(self.entrypoint_path)
         ):
             raise ValueError(
                 "adapter entrypoint evidence requires an absolute path"
@@ -408,7 +408,7 @@ class AdapterSourceEvidence:
         if (
             not isinstance(self.source_root, str)
             or not self.source_root
-            or not Path(self.source_root).is_absolute()
+            or not _is_portable_absolute_path(self.source_root)
         ):
             raise ValueError(
                 "adapter source evidence requires an absolute root"
@@ -491,7 +491,7 @@ class AdapterRuntimeEvidence:
         if (
             not isinstance(self.executable_path, str)
             or not self.executable_path
-            or not Path(self.executable_path).is_absolute()
+            or not _is_portable_absolute_path(self.executable_path)
         ):
             raise ValueError(
                 "adapter runtime evidence requires an absolute executable path"
@@ -787,7 +787,7 @@ class NetworkIsolationEvidence:
         if (
             not isinstance(self.evidence_path, str)
             or not self.evidence_path
-            or not Path(self.evidence_path).is_absolute()
+            or not _is_portable_absolute_path(self.evidence_path)
         ):
             raise ValueError(
                 "evidenced network isolation requires an absolute evidence path"
@@ -843,7 +843,7 @@ class InferenceServiceContract:
         if (
             not isinstance(self.executable_path, str)
             or not self.executable_path
-            or not Path(self.executable_path).is_absolute()
+            or not _is_portable_absolute_path(self.executable_path)
         ):
             raise ValueError(
                 "inference-service executable requires an absolute path"
@@ -1140,9 +1140,12 @@ def _dependency_lock_evidence_matches(
 ) -> bool:
     if not evidence.claim_evidence_complete:
         return True
+    evidence_path = _native_absolute_path(evidence.evidence_path)
+    if evidence_path is None:
+        return False
     try:
         observed = _bounded_file_evidence(
-            Path(evidence.evidence_path or ""),
+            evidence_path,
             max_bytes=_DEPENDENCY_LOCK_EVIDENCE_MAX_BYTES,
             label="dependency-lock evidence",
         )
@@ -1183,9 +1186,12 @@ def _adapter_entrypoint_evidence_matches(
 ) -> bool:
     if not evidence.claim_evidence_complete:
         return True
+    entrypoint_path = _native_absolute_path(evidence.entrypoint_path)
+    if entrypoint_path is None:
+        return False
     try:
         observed = _bounded_file_evidence(
-            Path(evidence.entrypoint_path or ""),
+            entrypoint_path,
             max_bytes=_ADAPTER_ENTRYPOINT_EVIDENCE_MAX_BYTES,
             label="adapter entrypoint evidence",
         )
@@ -1326,10 +1332,11 @@ def _adapter_source_evidence_matches(
 ) -> bool:
     if not evidence.claim_evidence_complete:
         return True
+    source_root = _native_absolute_path(evidence.source_root)
+    if source_root is None:
+        return False
     try:
-        observed = capture_adapter_source_evidence(
-            evidence.source_root
-        )
+        observed = capture_adapter_source_evidence(source_root)
     except (ExternalRunnerError, ValueError):
         return False
     return observed == evidence
@@ -1349,8 +1356,10 @@ def _adapter_source_covers_entrypoint(
         or not entrypoint.claim_evidence_complete
     ):
         return False
-    source_root = Path(source.source_root or "")
-    entrypoint_path = Path(entrypoint.entrypoint_path or "")
+    source_root = _native_absolute_path(source.source_root)
+    entrypoint_path = _native_absolute_path(entrypoint.entrypoint_path)
+    if source_root is None or entrypoint_path is None:
+        return False
     try:
         relative_path = entrypoint_path.relative_to(source_root).as_posix()
     except ValueError:
@@ -1392,9 +1401,12 @@ def _adapter_runtime_evidence_matches(
 ) -> bool:
     if not evidence.claim_evidence_complete:
         return True
+    executable_path = _native_absolute_path(evidence.executable_path)
+    if executable_path is None:
+        return False
     try:
         observed = _bounded_file_evidence(
-            Path(evidence.executable_path or ""),
+            executable_path,
             max_bytes=_ADAPTER_RUNTIME_EXECUTABLE_MAX_BYTES,
             label="adapter runtime executable",
         )
@@ -1414,11 +1426,11 @@ def _command_uses_adapter_runtime(
         return True
     if not command:
         return False
+    executable_path = _native_absolute_path(evidence.executable_path)
+    if executable_path is None:
+        return False
     try:
-        return (
-            Path(command[0]).expanduser().resolve()
-            == Path(evidence.executable_path or "")
-        )
+        return Path(command[0]).expanduser().resolve() == executable_path
     except OSError:
         return False
 
@@ -1464,9 +1476,12 @@ def _network_isolation_evidence_matches(
 ) -> bool:
     if evidence.mode == "unverified":
         return True
+    evidence_path = _native_absolute_path(evidence.evidence_path)
+    if evidence_path is None:
+        return False
     try:
         observed = _bounded_file_evidence(
-            Path(evidence.evidence_path or ""),
+            evidence_path,
             max_bytes=_NETWORK_ISOLATION_EVIDENCE_MAX_BYTES,
             label="network isolation evidence",
         )
@@ -1749,9 +1764,14 @@ class _InferenceServiceMonitor:
     def _executable_matches(self) -> bool:
         if not self.contract.enabled:
             return True
+        executable_path = _native_absolute_path(
+            self.contract.executable_path
+        )
+        if executable_path is None:
+            return False
         try:
             observed = _bounded_file_evidence(
-                Path(self.contract.executable_path or ""),
+                executable_path,
                 max_bytes=_INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES,
                 label="inference-service executable",
             )
@@ -1776,6 +1796,8 @@ class _InferenceServiceMonitor:
     def sample(self, *, check_executable: bool = False) -> str | None:
         if not self.contract.enabled:
             return None
+        if _native_absolute_path(self.contract.executable_path) is None:
+            return "inference_service_unavailable"
 
         try:
             snapshot = _inference_process_snapshot(
@@ -1830,6 +1852,120 @@ class _InferenceServiceMonitor:
 
 def _is_sha256(value: object) -> bool:
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+_WINDOWS_RESERVED_PATH_NAMES = frozenset(
+    {"con", "prn", "aux", "nul", "conin$", "conout$"}
+    | {f"com{number}" for number in range(1, 10)}
+    | {f"lpt{number}" for number in range(1, 10)}
+    | {f"com{number}" for number in ("\u00b9", "\u00b2", "\u00b3")}
+    | {f"lpt{number}" for number in ("\u00b9", "\u00b2", "\u00b3")}
+)
+_WINDOWS_INVALID_PATH_CHARACTERS = frozenset('<>:"|?*')
+
+
+def _windows_path_component_is_safe(component: str) -> bool:
+    if (
+        not component
+        or component in {".", ".."}
+        or component.endswith((" ", "."))
+        or any(
+            character in _WINDOWS_INVALID_PATH_CHARACTERS
+            or ord(character) < 32
+            or 127 <= ord(character) <= 159
+            for character in component
+        )
+    ):
+        return False
+    stem = component.split(".", 1)[0].casefold()
+    return stem not in _WINDOWS_RESERVED_PATH_NAMES
+
+
+def _absolute_path_flavor(value: object) -> str | None:
+    if (
+        not isinstance(value, str)
+        or not value
+        or any(
+            ord(character) < 32 or 127 <= ord(character) <= 159
+            for character in value
+        )
+    ):
+        return None
+
+    if value.startswith("/"):
+        if (
+            value.startswith("//")
+            or "\\" in value
+            or (value != "/" and value.endswith("/"))
+            or "//" in value[1:]
+        ):
+            return None
+        components = () if value == "/" else tuple(value[1:].split("/"))
+        if any(component in {"", ".", ".."} for component in components):
+            return None
+        path = PurePosixPath(value)
+        return "posix" if path.is_absolute() and path.as_posix() == value else None
+
+    if value.startswith("\\\\"):
+        if (
+            value.startswith(("\\\\?\\", "\\\\.\\"))
+            or "/" in value
+            or value.endswith("\\")
+            or "\\\\" in value[2:]
+        ):
+            return None
+        components = tuple(value[2:].split("\\"))
+        if len(components) < 2 or not all(
+            _windows_path_component_is_safe(component)
+            for component in components
+        ):
+            return None
+        return "windows" if PureWindowsPath(value).is_absolute() else None
+
+    drive_match = re.fullmatch(r"[A-Za-z]:([\\/])(.*)", value)
+    if drive_match is None:
+        return None
+    separator, remainder = drive_match.groups()
+    other_separator = "/" if separator == "\\" else "\\"
+    if (
+        other_separator in remainder
+        or remainder.startswith(separator)
+        or (remainder and remainder.endswith(separator))
+        or separator * 2 in remainder
+    ):
+        return None
+    components = () if not remainder else tuple(remainder.split(separator))
+    if not all(
+        _windows_path_component_is_safe(component)
+        for component in components
+    ):
+        return None
+    path = PureWindowsPath(value)
+    if not path.is_absolute():
+        return None
+    canonical = str(path)
+    if separator == "/":
+        canonical = canonical.replace("\\", "/")
+    return "windows" if canonical == value else None
+
+
+def _is_portable_absolute_path(value: object) -> bool:
+    return _absolute_path_flavor(value) is not None
+
+
+def _native_absolute_path(value: object) -> Path | None:
+    expected_flavor = "windows" if os.name == "nt" else "posix"
+    if (
+        _absolute_path_flavor(value) != expected_flavor
+        or (
+            expected_flavor == "windows"
+            and isinstance(value, str)
+            and value.startswith("\\\\")
+        )
+    ):
+        return None
+    path = Path(value)
+    return path if path.is_absolute() else None
 
 
 def _size(path: Path) -> int:
@@ -2406,7 +2542,9 @@ def _command_references_adapter_entrypoint(
 ) -> bool:
     if not evidence.claim_evidence_complete:
         return True
-    expected = Path(evidence.entrypoint_path or "")
+    expected = _native_absolute_path(evidence.entrypoint_path)
+    if expected is None:
+        return False
     for argument in command:
         candidate = Path(argument).expanduser()
         if not candidate.is_absolute():

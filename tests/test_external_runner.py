@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -12,8 +13,13 @@ import pytest
 
 import benchmarks.external_runner as external_runner_module
 from benchmarks.external_runner import (
+    AdapterEntrypointEvidence,
+    AdapterRuntimeEvidence,
+    DependencyLockEvidence,
     ExternalRunnerError,
+    InferenceServiceAccounting,
     InferenceServiceContract,
+    NetworkIsolationEvidence,
     RunnerIdentity,
     RunnerLimits,
     capture_adapter_entrypoint_evidence,
@@ -238,6 +244,216 @@ def test_inference_service_contract_captures_stable_process_identity() -> None:
     ):
         capture_inference_service_contract(os.getpid())
 
+
+def _path_evidence_builders(
+    path: str,
+    source_evidence: external_runner_module.AdapterSourceEvidence,
+) -> tuple[Callable[[], object], ...]:
+    digest = "a" * 64
+    return (
+        lambda: DependencyLockEvidence(
+            evidence_path=path,
+            evidence_sha256=digest,
+            evidence_bytes=1,
+        ),
+        lambda: AdapterEntrypointEvidence(
+            entrypoint_path=path,
+            entrypoint_sha256=digest,
+            entrypoint_bytes=1,
+        ),
+        lambda: replace(source_evidence, source_root=path),
+        lambda: AdapterRuntimeEvidence(
+            executable_path=path,
+            executable_sha256=digest,
+            executable_bytes=1,
+        ),
+        lambda: NetworkIsolationEvidence(
+            mode="host-firewall",
+            evidence_path=path,
+            evidence_sha256=digest,
+            evidence_bytes=1,
+        ),
+        lambda: InferenceServiceContract(
+            process_id=1,
+            process_start_token="start-token",
+            executable_path=path,
+            executable_sha256=digest,
+            executable_bytes=1,
+            memory_metric="working-set-bytes",
+            max_memory_mb=1,
+        ),
+        lambda: InferenceServiceAccounting(
+            process_id=1,
+            process_start_token="start-token",
+            executable_path=path,
+            executable_sha256=digest,
+            executable_bytes=1,
+            memory_metric="working-set-bytes",
+            max_memory_mb=1,
+            sample_count=2,
+            peak_memory_bytes=1,
+        ),
+    )
+
+
+def _adapter_source_evidence(
+    tmp_path: Path,
+) -> external_runner_module.AdapterSourceEvidence:
+    source_root = tmp_path / "adapter-source"
+    source_root.mkdir()
+    (source_root / "adapter.py").write_text("print('fixture')\n", encoding="utf-8")
+    return capture_adapter_source_evidence(source_root)
+
+
+@pytest.mark.parametrize(
+    ("path", "flavor"),
+    [
+        ("/var/lib/ctxc/evidence.bin", "posix"),
+        (r"C:\ctxc\evidence.bin", "windows"),
+        ("C:/ctxc/evidence.bin", "windows"),
+        (r"\\server\share\ctxc\evidence.bin", "windows"),
+    ],
+)
+def test_retained_evidence_accepts_canonical_cross_platform_absolute_paths(
+    tmp_path: Path,
+    path: str,
+    flavor: str,
+) -> None:
+    source_evidence = _adapter_source_evidence(tmp_path)
+
+    assert external_runner_module._absolute_path_flavor(path) == flavor
+    for builder in _path_evidence_builders(path, source_evidence):
+        assert builder() is not None
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "relative/evidence.bin",
+        r"..\evidence.bin",
+        r"C:drive-relative\evidence.bin",
+        r"\rooted-without-drive\evidence.bin",
+        "/tmp/../evidence.bin",
+        "/tmp/./evidence.bin",
+        "/tmp//evidence.bin",
+        "/tmp/evidence.bin/",
+        r"C:\tmp\..\evidence.bin",
+        r"C:\tmp\.\evidence.bin",
+        r"C:\tmp\\evidence.bin",
+        r"C:\tmp/evidence.bin",
+        "//server/share/evidence.bin",
+        "///tmp/evidence.bin",
+        r"\\?\C:\evidence.bin",
+        r"\\.\C:\evidence.bin",
+        r"C:\tmp\CON.txt",
+        r"C:\tmp\CONIN$.txt",
+        r"C:\tmp\CONOUT$.txt",
+        "C:\\tmp\\COM\u00b9.txt",
+        "C:\\tmp\\COM\u00b2.txt",
+        "C:\\tmp\\COM\u00b3.txt",
+        "C:\\tmp\\LPT\u00b9.txt",
+        "C:\\tmp\\LPT\u00b2.txt",
+        "C:\\tmp\\LPT\u00b3.txt",
+        "C:\\tmp\\trailing.",
+        "C:\\tmp\\trailing ",
+        "nul\x00evidence.bin",
+        "control\x1fevidence.bin",
+    ],
+)
+def test_retained_evidence_rejects_noncanonical_or_ambiguous_paths(
+    tmp_path: Path,
+    path: str,
+) -> None:
+    source_evidence = _adapter_source_evidence(tmp_path)
+
+    assert external_runner_module._absolute_path_flavor(path) is None
+    for builder in _path_evidence_builders(path, source_evidence):
+        with pytest.raises(ValueError, match="absolute"):
+            builder()
+
+
+@pytest.mark.parametrize(
+    "foreign_path",
+    [
+        None,
+        r"\\server\share\ctxc\foreign-evidence.bin",
+    ],
+    ids=("foreign-flavor", "unc"),
+)
+def test_foreign_retained_evidence_is_never_reopened_on_this_host(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    foreign_path: str | None,
+) -> None:
+    if foreign_path is None:
+        foreign_path = (
+            "/var/lib/ctxc/foreign-evidence.bin"
+            if os.name == "nt"
+            else r"C:\ctxc\foreign-evidence.bin"
+        )
+    source_evidence = _adapter_source_evidence(tmp_path)
+    (
+        dependency,
+        entrypoint,
+        source,
+        runtime,
+        network,
+        service,
+        _accounting,
+    ) = tuple(
+        builder()
+        for builder in _path_evidence_builders(
+            foreign_path,
+            source_evidence,
+        )
+    )
+
+    def unexpected_host_access(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("foreign retained path reached a host access boundary")
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "_bounded_file_evidence",
+        unexpected_host_access,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "capture_adapter_source_evidence",
+        unexpected_host_access,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_inference_process_snapshot",
+        unexpected_host_access,
+    )
+
+    assert not external_runner_module._dependency_lock_evidence_matches(
+        dependency
+    )
+    assert not external_runner_module._adapter_entrypoint_evidence_matches(
+        entrypoint
+    )
+    assert not external_runner_module._adapter_source_evidence_matches(source)
+    assert not external_runner_module._adapter_source_covers_entrypoint(
+        source,
+        entrypoint,
+    )
+    assert not external_runner_module._adapter_runtime_evidence_matches(runtime)
+    assert not external_runner_module._command_uses_adapter_runtime(
+        (sys.executable,),
+        runtime,
+    )
+    assert not external_runner_module._network_isolation_evidence_matches(
+        network
+    )
+    assert not external_runner_module._command_references_adapter_entrypoint(
+        (str(tmp_path / "adapter.py"),),
+        working_directory=tmp_path,
+        evidence=entrypoint,
+    )
+    monitor = external_runner_module._InferenceServiceMonitor(service)
+    assert not monitor._executable_matches()
+    assert monitor.sample(check_executable=True) == "inference_service_unavailable"
 
 def test_inference_service_memory_ceiling_fails_closed_during_run(
     tmp_path: Path,
