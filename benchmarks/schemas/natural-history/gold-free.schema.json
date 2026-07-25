@@ -1,0 +1,89 @@
+{
+  "$id": "https://example.invalid/loss-resistant-context-compiler/benchmarks/natural-history-gold-free-0.1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "corpus_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "export_scope": {
+      "const": "all-splits"
+    },
+    "gold_free_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "histories": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "history_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "repository_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "corpus.schema.json#/$defs/source"
+            },
+            "maxItems": 100000,
+            "minItems": 1,
+            "type": "array"
+          },
+          "split": {
+            "enum": [
+              "train",
+              "development",
+              "test"
+            ]
+          },
+          "task_group_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "task_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "history_id",
+          "repository_id",
+          "task_group_id",
+          "task_id",
+          "split",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "maxItems": 10000,
+      "minItems": 1,
+      "type": "array"
+    },
+    "schema": {
+      "const": "ctxc-natural-history-gold-free-0.1"
+    },
+    "split_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "corpus_sha256",
+    "split_sha256",
+    "export_scope",
+    "histories",
+    "gold_free_sha256"
+  ],
+  "title": "Natural-history gold-free export contract",
+  "type": "object"
+}

@@ -1,0 +1,26 @@
+{
+  "assignments": [
+    {
+      "history_id": "fixture-public-api",
+      "split": "train"
+    },
+    {
+      "history_id": "fixture-consented-cache",
+      "split": "development"
+    },
+    {
+      "history_id": "fixture-synthetic-release",
+      "split": "test"
+    }
+  ],
+  "corpus_sha256": "8cc18cb3aad82b634af12367a5e560ef45f35ce0aa0fcebdbf84cbdc9a8e033a",
+  "policy": {
+    "assignment_frozen_before_tuning": true,
+    "created_at_utc": "2026-07-24T20:30:00Z",
+    "name": "repository-and-task-group-disjoint-v1",
+    "seed_commitment_sha256": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "test_gold_sealed": true
+  },
+  "schema": "ctxc-natural-history-split-0.1",
+  "split_sha256": "7d39c5989a1a85607f3cb175ae9b7f56bc7d1271739d9bd127ca9376c5fd3c1c"
+}

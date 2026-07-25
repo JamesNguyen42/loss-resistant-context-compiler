@@ -1,0 +1,84 @@
+{
+  "$id": "https://example.invalid/loss-resistant-context-compiler/benchmarks/natural-history-split-0.1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "assignments": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "history_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "split": {
+            "enum": [
+              "train",
+              "development",
+              "test"
+            ]
+          }
+        },
+        "required": [
+          "history_id",
+          "split"
+        ],
+        "type": "object"
+      },
+      "maxItems": 10000,
+      "minItems": 1,
+      "type": "array"
+    },
+    "corpus_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "policy": {
+      "additionalProperties": false,
+      "properties": {
+        "assignment_frozen_before_tuning": {
+          "const": true
+        },
+        "created_at_utc": {
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+          "type": "string"
+        },
+        "name": {
+          "const": "repository-and-task-group-disjoint-v1"
+        },
+        "seed_commitment_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "test_gold_sealed": {
+          "const": true
+        }
+      },
+      "required": [
+        "name",
+        "assignment_frozen_before_tuning",
+        "test_gold_sealed",
+        "created_at_utc",
+        "seed_commitment_sha256"
+      ],
+      "type": "object"
+    },
+    "schema": {
+      "const": "ctxc-natural-history-split-0.1"
+    },
+    "split_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "corpus_sha256",
+    "policy",
+    "assignments",
+    "split_sha256"
+  ],
+  "title": "Natural-history split contract",
+  "type": "object"
+}

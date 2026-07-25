@@ -1,0 +1,114 @@
+{
+  "annotation_sha256": "3a62f6a2b0e1657706939dd04382da9b6f74501f0c22fab3304f881d876211f0",
+  "annotator": {
+    "attestation_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "blind_to_peer_labels": true,
+    "completed_at_utc": "2026-07-24T21:05:00Z",
+    "id": "fixture-annotator-b",
+    "independent": true
+  },
+  "corpus_sha256": "8cc18cb3aad82b634af12367a5e560ef45f35ce0aa0fcebdbf84cbdc9a8e033a",
+  "histories": [
+    {
+      "history_id": "fixture-public-api",
+      "labels": [
+        {
+          "exact": false,
+          "id": "b-public-constraint",
+          "kind": "constraint",
+          "protected": true,
+          "provenance": [
+            {
+              "end": 39,
+              "quote": "Keep the public API stable.",
+              "quote_sha256": "2584b20c7ac1936d1dcb18798b2f0c6dd62ec6d1af8985887dc32641326bf3a5",
+              "source_id": "fixture-public-api-s0",
+              "start": 12
+            }
+          ],
+          "status": "active",
+          "text": "Keep the public API stable."
+        },
+        {
+          "exact": true,
+          "id": "b-public-error",
+          "kind": "exact_error",
+          "protected": true,
+          "provenance": [
+            {
+              "end": 37,
+              "quote": "AssertionError: expected 200, got 503",
+              "quote_sha256": "16d38d3a9fc948cb0e96181357416e7c9a5a307ff56904544600e3fbc7f96cdd",
+              "source_id": "fixture-public-api-s1",
+              "start": 0
+            }
+          ],
+          "status": "active",
+          "text": "AssertionError: expected 200, got 503"
+        }
+      ]
+    },
+    {
+      "history_id": "fixture-consented-cache",
+      "labels": [
+        {
+          "exact": false,
+          "id": "b-cache-goal",
+          "kind": "goal",
+          "protected": true,
+          "provenance": [
+            {
+              "end": 35,
+              "quote": "Complete the cache migration.",
+              "quote_sha256": "5cdf0217ef04bc01eaa706e6dacbde42d083b0d7909f6c01432ecafdc5785460",
+              "source_id": "fixture-consented-cache-s0",
+              "start": 6
+            }
+          ],
+          "status": "active",
+          "text": "Complete the cache migration."
+        }
+      ]
+    },
+    {
+      "history_id": "fixture-synthetic-release",
+      "labels": [
+        {
+          "exact": false,
+          "id": "b-release-constraint",
+          "kind": "constraint",
+          "protected": true,
+          "provenance": [
+            {
+              "end": 48,
+              "quote": "Do not publish the release artifact.",
+              "quote_sha256": "c74dbd52f1a57e9a8ec1d0874fc5a4825197a2e8b2e56512cd3b0f5a0011f1d7",
+              "source_id": "fixture-synthetic-release-s0",
+              "start": 12
+            }
+          ],
+          "status": "active",
+          "text": "Do not publish the release artifact."
+        },
+        {
+          "exact": true,
+          "id": "b-release-reference",
+          "kind": "exact_reference",
+          "protected": true,
+          "provenance": [
+            {
+              "end": 38,
+              "quote": "tests/test_release.py::test_no_publish",
+              "quote_sha256": "af479734da30b824dc0a450c1f6808f0560b571518e643d07470edd795ac31b8",
+              "source_id": "fixture-synthetic-release-s1",
+              "start": 0
+            }
+          ],
+          "status": "active",
+          "text": "tests/test_release.py::test_no_publish"
+        }
+      ]
+    }
+  ],
+  "schema": "ctxc-natural-history-annotation-0.1"
+}
