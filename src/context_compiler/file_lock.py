@@ -90,6 +90,14 @@ def open_lock_file(path: str | Path) -> int:
                         continue
                     raise
                 opened_stat = os.fstat(descriptor)
+                if opened_stat.st_nlink == 0:
+                    close_lock_file(descriptor)
+                    descriptor = -1
+                    if attempt + 1 < 3:
+                        continue
+                    raise OSError(
+                        f"lock path changed while opening: {lock_path}"
+                    )
                 if (
                     not stat.S_ISREG(opened_stat.st_mode)
                     or _is_link_or_reparse(opened_stat)

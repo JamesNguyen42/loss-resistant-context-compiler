@@ -207,6 +207,73 @@ def test_lock_open_retries_a_replacement_before_returning_descriptor(
     assert [record.sequence for record in archive.load()] == [0, 1]
 
 
+def test_open_lock_file_returns_the_current_replacement_cross_platform(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "archive"
+    directory.mkdir()
+    lock_path = directory / ".append.lock"
+    lock_path.write_bytes(b"original")
+    real_open = file_lock_module.os.open
+    replacements = 0
+    target_opens = 0
+
+    def replace_across_open_boundary(
+        path: object,
+        flags: int,
+        *args: object,
+        **kwargs: object,
+    ) -> int:
+        nonlocal replacements, target_opens
+        candidate = Path(path)  # type: ignore[arg-type]
+        same_target = candidate == lock_path or (
+            kwargs.get("dir_fd") is not None
+            and candidate.name == lock_path.name
+        )
+        if same_target:
+            target_opens += 1
+        if same_target and replacements == 0 and os.name == "nt":
+            replacement = directory / ".replacement.lock"
+            replacement.write_bytes(b"replacement")
+            os.replace(replacement, lock_path)
+            replacements += 1
+        descriptor = real_open(  # type: ignore[arg-type]
+            path,
+            flags,
+            *args,
+            **kwargs,
+        )
+        if same_target and replacements == 0:
+            replacement = directory / ".replacement.lock"
+            replacement.write_bytes(b"replacement")
+            os.replace(replacement, lock_path)
+            replacements += 1
+        return descriptor
+
+    monkeypatch.setattr(
+        file_lock_module.os,
+        "open",
+        replace_across_open_boundary,
+    )
+
+    descriptor = file_lock_module.open_lock_file(lock_path)
+    try:
+        returned_stat = os.fstat(descriptor)
+        current_stat = lock_path.stat()
+        assert returned_stat.st_nlink == 1
+        assert (returned_stat.st_dev, returned_stat.st_ino) == (
+            current_stat.st_dev,
+            current_stat.st_ino,
+        )
+        assert os.read(descriptor, len(b"replacement")) == b"replacement"
+    finally:
+        file_lock_module.close_lock_file(descriptor)
+
+    assert replacements == 1
+    assert target_opens == 2
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX lock-file mode semantics")
 def test_new_lock_file_is_owner_only_on_posix(tmp_path: Path) -> None:
     archive = SourceArchive(tmp_path / "archive")
