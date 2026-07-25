@@ -777,9 +777,18 @@ Draft 2020-12 JSON Schemas document the public interchange shapes:
 - [source archive command report](../schemas/source-archive-report.schema.json);
 - [detached trust manifest](../schemas/trust-manifest.schema.json).
 
+Seventeen additional installed schemas materialize the connector wire boundary:
+request and response envelopes, connector `SourceEvent`, `ContextBundle`,
+incremental checkpoint, and payload/result contracts for each of the six
+operations. `conformance/run_connector_conformance.py` is dependency-free and
+validates the schema graph, six golden stateful transcripts, at least 50
+intentional negative vectors, and exact in-process/stdio semantics.
+
 The standard-library runtime performs its own validation and does not require a
 JSON Schema package. Integrations can use these files for generation,
-validation, and typed client tooling.
+validation, and typed client tooling. Schema acceptance is structural, not a
+semantic trust result: provenance spans, authority, artifact replay, protected
+coverage, checkpoint/source binding, and self-digests remain runtime gates.
 
 `CompiledMemory.to_prompt()` emits only selected items grouped by kind. It
 refuses when `verification.passed` is false. `CompilationPolicy(verify=False)`
@@ -910,6 +919,24 @@ corpus/candidate path pair for every attempted case. Each validated case also
 records its normalized candidate-envelope self-digest; complete-run replay
 reconstructs that envelope from the registered producer and corresponding raw
 merged case before accepting it.
+
+`benchmarks/compatibility/` is deliberately below that claim boundary. Its ACON
+and AMA-Agent records bind immutable upstream revisions and exact license bytes
+while recording that no comparative output was generated or inspected. The
+ACON diagnostic adapter reuses `benchmarks.external_runner`; its committed
+manifest is a verified failure with no candidate because dependency-lock,
+enforced network-isolation, inference-service, exact Python, source-checkout,
+and local-model prerequisites were absent. Failed preflight and runner evidence
+is never upgraded into a valid result.
+
+`benchmarks/natural_history.py` defines a separate strict evidence pipeline.
+Six schemas and seven self-hashed fixtures cover bounded corpus intake,
+license/consent/privacy state, exact source spans, two independent annotators,
+complete adjudication, repository/task-group-disjoint splits, gold-free export,
+and report accounting with no silently dropped histories. The committed data is
+a linked synthetic contract fixture only. A self-hash detects inconsistency but
+neither authenticates reviewers nor proves that a licensed natural cohort was
+collected, private fields were removed, or annotations are correct.
 
 Every runtime-error path calls one formatter. The default remains
 `ctxc: <message>` on stderr. `--error-format json` instead emits one compact

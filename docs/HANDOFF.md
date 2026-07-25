@@ -16,7 +16,9 @@ changing or interpreting the recorded comparison. Read the
 [external comparison protocol](../benchmarks/protocols/external-comparison-v1.md)
 and its [strict JSON manifest](../benchmarks/protocols/external-comparison-v1.json)
 before changing candidate selection, adapter identity, resources, datasets, or
-claim rules.
+claim rules. Read [natural-history evidence contracts](NATURAL_HISTORY_EVIDENCE.md)
+and [result-blind compatibility records](../benchmarks/compatibility/README.md)
+before collecting histories or rerunning an external diagnostic.
 
 ## Snapshot
 
@@ -27,7 +29,7 @@ claim rules.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 963 collected: 955 passing, 8 skipped |
+| Tests at this snapshot | 1,053 collected: 1,045 passing, 8 skipped |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -40,7 +42,9 @@ claim rules.
 | Common content-secret preprocessing | Opt-in, fixed-detector, offset-preserving, replayable |
 | Detached trust manifest | Complete artifact + exact source set + optional archive head; success requires a separately retained digest |
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
-| External systems evaluated | None |
+| External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
+| Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
+| Installed JSON Schemas | 25 (7 historical ids, 18 current-namespace ids) |
 | External 50%-better claim | Not established |
 | Downstream task completion evidence | None yet |
 | Confirmed fail-closed blockers | Four identified in-process paths closed |
@@ -297,12 +301,15 @@ counters are deterministic, apart from timestamps and measured duration.
 | `benchmarks/report_verifier.py` | Bounded strict saved-report verification and deterministic replay |
 | `benchmarks/external_protocol.py` | Strict self-hashed external-protocol validation and claim-readiness gate |
 | `benchmarks/external_runner.py` | Shell-free adapter process limits, validation, and self-hashed run manifests |
+| `benchmarks/natural_history.py` | Bounded corpus/annotation/adjudication/split/gold-free/report contract validation |
+| `benchmarks/compatibility/` | Result-blind pinned system screens and retained ACON blocker/failure evidence |
+| `conformance/` | Dependency-free connector schema/golden/negative validation and in-process/stdio equivalence |
 | `benchmarks/performance_gate.py` | Fixed-digest CI compile latency/growth/traced-memory regression gate |
 | `benchmarks/qwen_phrase_eval.py` | Sequential exact-Qwen prompt/output capture, model-only/recovery scoring, and offline replay |
 | `benchmarks/qwen_literal_ablation.py` | Model-free frozen-output offset ablation, literal replay, self-hashed report, and strict regeneration |
 | `benchmarks/qwen_paired_eval.py` | Clean-tree paired coordinate/literal capture, alternating order, comparison metrics, and offline replay |
 | `benchmarks/protocols/` | Human-readable and machine-verifiable external comparison protocol; v1 is a valid non-claim-bearing draft with explicit blockers |
-| `schemas/` | Source, coordinate/unique-literal model extraction, compiled artifact, redaction report, source-archive entry/report, and detached trust-manifest contracts |
+| `schemas/` | Eight historical/core artifact contracts plus 17 connector request/response/source/bundle/checkpoint/operation contracts |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
 | `CHANGELOG.md` | Versioned release notes and the unreleased change ledger |
 | `SUPPORT.md` | Runtime, platform, format, installation, and maintenance matrix |
@@ -476,6 +483,9 @@ and enforces a subprocess timeout. See [Local Qwen integration](LOCAL_QWEN.md).
 | Candidate producer schema | `lrcbench-candidate-producer-0.1` |
 | External runner manifest | `lrcbench-external-run-manifest-0.13` |
 | External comparison protocol | `lrcbench-external-protocol-0.9` |
+| Connector request/response | `ctxc-connector-request-0.1` / `ctxc-connector-response-0.1` |
+| Connector source/bundle/checkpoint | `localai-source-event-0.1` / `localai-context-bundle-0.1` / `ctxc-incremental-checkpoint-0.1` |
+| Natural-history evidence family | `lrc-natural-history-*-0.1` contracts; synthetic fixtures only |
 | Adapter process-environment evidence | `lrcbench-process-environment-0.1` |
 | Installed schema directory | `share/loss-resistant-context-compiler/schemas` |
 
@@ -542,17 +552,18 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 963 tests are collected: 955 pass and 8 platform/optional checks are skipped.
-- Ruff checks pass.
-- CI covers Python 3.11, 3.12, and 3.13.
-- Distribution metadata, `ctxc`, package version, and the renamed installed
-  schema path are regression-tested. CI builds a wheel and verifies that all
-  eight schemas are included. A local no-index Windows clean environment
-  installs the wheel, imports version `0.1.0`, runs `ctxc --help`, finds all
-  eight schemas under the renamed prefix, and completes an installed
-  compile/trust-create/trust-verify round trip; equivalent Ubuntu validation
-  is staged in CI.
-- CI runs the external-candidate interchange self-test.
+- 1,053 tests are collected: 1,045 pass and 8 platform/optional checks are
+  skipped on the current Windows validation host.
+- Ruff and `compileall` pass across `src`, `tests`, `benchmarks`, `scripts`, and
+  `conformance`.
+- Complete Ubuntu CI covers Python 3.11, 3.12, and 3.13; Windows and macOS run
+  Python 3.13 filesystem plus clean wheel/sdist release smoke.
+- Distribution metadata, `ctxc`, package version, and the installed schema path
+  are regression-tested. CI verifies all 25 wheel schemas, source-distribution
+  conformance/natural/compatibility assets, and separate clean installs with
+  `ctxc --help`, compile, trust-create, and trust-verify round trips.
+- CI runs connector golden/negative conformance, natural-history contract
+  validation, external-candidate interchange, and external protocol checks.
 - CI enforces `ci-compile-v1` through a self-hashed
   `ctxc-performance-gate-0.1` report: three-trial medians at 128/256 events,
   doubling growth, and a separate exclusive `tracemalloc` peak.
@@ -834,8 +845,9 @@ inapplicable because no external comparison set was run.
 
 ### What this evidence does not prove
 
-No named external system has been run through this repository. No public
-downstream long-horizon task suite has been evaluated. The generated templates
+No named external system has produced a scoreable candidate in this repository.
+The ACON preflight and bounded runner attempt failed before external execution.
+No public downstream long-horizon task suite has been evaluated. The generated templates
 overlap the deterministic extractor’s English vocabulary. The default token
 estimate is four characters per token rather than a provider tokenizer.
 
@@ -959,7 +971,8 @@ lower quantile before results are observed.
 ### Evaluation
 
 - The recorded histories are generated templates, not natural production
-  prevalence.
+  prevalence. The separate natural-history records are linked synthetic contract
+  fixtures, not collected trajectories or performance evidence.
 - The optional model extractor is not exercised in the recorded benchmark.
 - The exact local Qwen adapter has one public-example integration diagnostic
   and one replayable 64-case captured-output diagnostic. The model-only path
@@ -1036,17 +1049,19 @@ The known in-process safety paths, internal benchmark estimands, frozen model
 diagnostic, and narrow LM Studio stdout framing are complete. The highest-value
 next work is the external and natural-history evidence path:
 
-1. preserve the paired report and its four verification failures without
-   post-result tuning or rescoring;
+1. preserve every frozen report and the paired report's four verification
+   failures without post-result tuning or rescoring;
 2. resolve the nine explicit blockers in the machine-readable external
    protocol without looking at comparative results;
 3. complete result-blind inclusion decisions and freeze the initial comparison
-   set, dependency locks, adapter revisions, retained source roots and
-   entrypoints, runtime executable digests, and portable command contracts;
-4. freeze the implemented pre-existing inference-service executable, memory
-   metric, and ceiling (or replace monitoring with stronger containment);
-5. add the first reproducible, no-paid-service external adapter;
-6. define the natural-history privacy, licensing, and annotation protocol.
+   set, dependency locks, adapter revisions, source/runtime/command evidence,
+   and externally enforced network controls;
+4. provide an exact Python 3.11 ACON checkout and lock plus single-slot local
+   Qwen/inference-service evidence, then rerun the retained diagnostic without
+   hiding a failure;
+5. add clean adapters only for included systems and retain every failed run;
+6. collect licensed/consented natural histories under the implemented privacy,
+   independent-annotation, adjudication, grouped-split, and no-leakage contracts.
 
 The detailed ordered backlog is in [TODO.md](../TODO.md).
 
@@ -1059,8 +1074,11 @@ git status -sb
 git log -1 --format=fuller
 python -m pip install -e ".[dev]"
 python -m pytest -q
-python -m ruff check src tests benchmarks
-python -m compileall -q src benchmarks tests
+python -m ruff check src tests benchmarks scripts conformance
+python -m compileall -q src benchmarks tests scripts conformance
+python conformance/run_connector_conformance.py
+python -m benchmarks.natural_history
+python -m pytest -q tests/test_external_compatibility.py
 python -m benchmarks --self-test
 python -m benchmarks.external_protocol --verify benchmarks/protocols/external-comparison-v1.json
 python -m benchmarks --verify-report docs/results/lrcbench-local.json
@@ -1082,7 +1100,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert len(wheels) == 1, wheels
     assert wheels[0].name.startswith('loss_resistant_context_compiler-')
     names = zipfile.ZipFile(wheels[0]).namelist()
-    assert sum(name.endswith('.schema.json') for name in names) == 8
+    assert sum(name.endswith('.schema.json') for name in names) == 25
 "
 ```
 

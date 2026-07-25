@@ -31,9 +31,9 @@ jobs:
       - name: Run the complete test suite
         run: python -m pytest -q
       - name: Run static checks
-        run: python -m ruff check src tests benchmarks scripts
+        run: python -m ruff check src tests benchmarks scripts conformance
       - name: Compile all Python sources
-        run: python -m compileall -q src benchmarks tests scripts
+        run: python -m compileall -q src benchmarks tests scripts conformance
 
   platform-smoke:
     name: release and filesystem smoke (${{ matrix.os }}, Python 3.13)
@@ -87,7 +87,7 @@ jobs:
         run: |
           python -m pip wheel . --no-deps --wheel-dir dist
           python -c "import setuptools.build_meta as backend; backend.build_sdist('dist')"
-          python -c "import glob, os, pathlib, tarfile, zipfile; w=glob.glob('dist/*.whl'); s=glob.glob('dist/*.tar.gz'); assert len(w)==len(s)==1, (w,s); assert os.path.basename(w[0]).startswith('loss_resistant_context_compiler-'); expected={p.name for p in pathlib.Path('schemas').glob('*.schema.json')}; installed={pathlib.Path(n).name for n in zipfile.ZipFile(w[0]).namelist() if n.endswith('.schema.json')}; assert installed==expected, (installed,expected); sn=tarfile.open(s[0]).getnames(); required=('CHANGELOG.md','CONTRIBUTING.md','SECURITY.md','SUPPORT.md','docs/RELEASE_POLICY.md','docs/RELEASE_CHECKLIST.md','docs/SUPPLY_CHAIN.md','benchmarks/lrcbench.py','scripts/release_install_smoke.py'); assert all(any(n.endswith('/'+r) for n in sn) for r in required), sn"
+          python -c "import glob, os, pathlib, tarfile, zipfile; w=glob.glob('dist/*.whl'); s=glob.glob('dist/*.tar.gz'); assert len(w)==len(s)==1, (w,s); assert os.path.basename(w[0]).startswith('loss_resistant_context_compiler-'); expected={p.name for p in pathlib.Path('schemas').glob('*.schema.json')}; installed={pathlib.Path(n).name for n in zipfile.ZipFile(w[0]).namelist() if n.endswith('.schema.json')}; assert installed==expected, (installed,expected); sn=tarfile.open(s[0]).getnames(); required=('CHANGELOG.md','CONTRIBUTING.md','SECURITY.md','SUPPORT.md','docs/RELEASE_POLICY.md','docs/RELEASE_CHECKLIST.md','docs/SUPPLY_CHAIN.md','benchmarks/lrcbench.py','benchmarks/natural_history.py','benchmarks/compatibility/acon-diagnostic-failed-manifest.json','conformance/run_connector_conformance.py','conformance/fixtures/golden-success.jsonl','conformance/fixtures/golden-negative.jsonl','scripts/release_install_smoke.py'); assert all(any(n.endswith('/'+r) for n in sn) for r in required), sn; assert sum('/benchmarks/schemas/natural-history/' in n and n.endswith('.schema.json') for n in sn)==6, sn; assert sum('/benchmarks/data/natural_history/' in n and n.endswith('.json') for n in sn)==7, sn"
       - name: Install wheel and sdist in clean environments
         run: python scripts/release_install_smoke.py --dist-dir dist --schema-dir schemas
       - name: Validate external candidate interchange
@@ -96,6 +96,10 @@ jobs:
         run: >-
           python -m benchmarks.external_protocol
           --verify benchmarks/protocols/external-comparison-v1.json
+      - name: Validate connector schemas and transcripts
+        run: python conformance/run_connector_conformance.py
+      - name: Validate natural-history contract fixtures
+        run: python -m benchmarks.natural_history
       - name: Replay frozen diagnostic evidence offline
         run: |
           python -m benchmarks --verify-report docs/results/lrcbench-local.json

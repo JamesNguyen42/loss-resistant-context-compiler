@@ -297,9 +297,9 @@ same quantity:
 - [x] Select at least four serious screening candidates so “most” is not a
   comparison against one convenient baseline; inclusion decisions remain open.
 - [ ] Evaluate ACON, FoldAgent, AMA-Agent, and MemIR for inclusion using the
-  protocol; record a technical reason for every exclusion. The result-blind
-  initial screen now records repository/license evidence and open adapter or
-  artifact issues, but final decisions remain blocked.
+  protocol; record a technical reason for every exclusion. Result-blind records
+  now pin ACON and AMA-Agent revisions and license bytes without comparative
+  output; FoldAgent/MemIR review and all final decisions remain blocked.
 - [ ] Pin repository revisions, dependency locks, models, prompts, system
   settings, and licenses for every included system.
 - [ ] Freeze the primary metrics, failure policy, seeds, sample sizes, and
@@ -378,8 +378,13 @@ Acceptance:
   output, into retained per-system invalid decisions and bind their hashes and
   reasons into evidence. Manually supplied malformed diagnostic files still
   abort direct `--external-baseline` import.
+- [x] Add one pinned offline diagnostic adapter and route it through the existing
+  runner without paid services or comparative inspection. The ACON attempt is
+  retained as a failed, non-scoreable manifest because source checkout, exact
+  Python, dependency lock, network evidence, inference-service accounting, and
+  LM Studio were unavailable.
 - [ ] Add one adapter directory per included system with setup and reproduction
-  instructions.
+  instructions; no system has been included yet.
 - [ ] Run each adapter from a clean environment in CI or a documented benchmark
   runner.
 
@@ -391,7 +396,12 @@ Acceptance:
 
 ### P0-E3 Add held-out natural agent histories
 
-- [ ] Define a privacy and licensing policy for real trajectories.
+- [x] Materialize bounded versioned schemas and self-hashed contract fixtures
+  for corpus intake, license/consent/privacy review, exact-span annotations, two
+  independent annotators, complete adjudication, repository/task-group splits,
+  gold-free export, complete accounting, and reports. These synthetic fixtures
+  prove the contract only; they are not a collected natural cohort.
+- [ ] Approve and apply a privacy and licensing policy to real trajectories.
 - [ ] Collect public or explicitly consented coding-agent histories from
   multiple repositories, task types, and history lengths.
 - [ ] Redact or tokenize credentials and personal data before committing any
@@ -712,7 +722,10 @@ of sublinear compile cost.
 - [x] Eliminate ordinary stale-lock recovery by replacing create/delete lock
   ownership with a persistent OS advisory lock that releases on descriptor
   close or process death; document that marker existence does not mean held.
-- [ ] Test filesystem semantics on Windows, Linux, macOS, and network storage.
+- [x] Test local-filesystem lock/path/release-smoke semantics on Ubuntu, Windows,
+  and macOS in CI; complete-suite coverage remains Ubuntu-only.
+- [ ] Test advisory-lock, hard-link, rename, identity, and durability semantics on
+  representative network/distributed storage.
 - [x] Publish the exact artifact reader/writer support window through
   `ctxc-artifact-schema-compatibility-0.1`; document and test that unknown
   versions fail closed and that no automatic or silent migration exists.
@@ -725,14 +738,17 @@ of sublinear compile cost.
   `loss-resistant-context-compiler`; retain `context_compiler` and `ctxc`, and
   document that the old pre-beta `lossless-context-compiler` metadata is not a
   package alias or automatic upgrade relationship.
-- [ ] Publish signed source and wheel artifacts to a test package index.
 - [x] Add release notes, a changelog, semantic-versioning policy, and support
   matrix.
-- [ ] Verify installation from a clean Python environment on all supported
-  platforms. A no-index Windows wheel install, import, `ctxc --help`, and
-  eight-schema check pass; the Ubuntu clean-install CI step must pass after
-  publication of this change, and macOS remains outside the supported matrix.
-- [ ] Add supply-chain scanning and dependency review for optional adapters.
+- [x] Build and install wheel and sdist separately in clean environments on
+  Ubuntu plus provisional Windows/macOS Python 3.13 smoke hosts; verify metadata,
+  all 25 schemas, `ctxc --help`, compile, trust-create, and trust-verify.
+- [ ] Publish signed source and wheel artifacts to an explicitly approved test
+  package index and retain install evidence from that index.
+- [x] Add immutable GitHub Action pins, Python/Actions Dependabot, CODEOWNERS,
+  and high-severity pull-request dependency review.
+- [ ] Add resolved locks plus vulnerability and license scanning for each
+  optional external adapter.
 - [ ] Publish `0.2.0` only after the external runner and natural-history corpus
   format are stable.
 
@@ -767,7 +783,7 @@ of sublinear compile cost.
 - [x] per-system registered comparison decisions and strict-majority logic;
 - [x] exact local Qwen CLI adapter with one-slot enforcement;
 - frozen comparison protocol;
-- reproducible external runner;
+- [x] reproducible external runner;
 - at least two working external adapters;
 - generic exact token-counter accounting landed; named evaluation-tokenizer
   adapters remain pending;
@@ -812,10 +828,14 @@ The next chat should start here unless new evidence changes the priority:
 2. resolve the nine explicit blockers in the external-comparison manifest;
 3. complete result-blind inclusion decisions and freeze the initial
    related-system set;
-4. add the first reproducible no-paid-service external adapter;
-5. run the interchange self-test and adapter on a small diagnostic corpus;
-6. design the privacy/licensing and annotation protocol for natural histories;
-7. freeze a full natural corpus only after the diagnostic path is reliable;
-8. record all results without changing the claim boundary.
+4. supply the exact clean Python 3.11 checkout, dependency lock, network-policy
+   evidence, inference-service accounting, and LM Studio executable needed to
+   rerun the retained ACON diagnostic;
+5. add clean reproducible adapters only for systems admitted by the frozen
+   result-blind protocol;
+6. collect licensed/consented histories under the implemented natural-history
+   contracts, perform independent annotation/adjudication and privacy review;
+7. freeze a full natural corpus only after those reviews and split checks pass;
+8. record every failure and result without changing the claim boundary.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) before changing code or benchmark rules.

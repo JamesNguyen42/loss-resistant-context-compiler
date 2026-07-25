@@ -48,6 +48,15 @@ Before any public package release:
    attempts with the release record;
 6. require explicit approval before any test-index or production-index upload.
 
-This repository currently implements build, inventory, clean-install,
-dependency-review, and checksum groundwork only. It does not yet publish signed
-artifacts, use a production release environment, or claim SLSA conformance.
+This repository currently implements build, inventory, cross-platform clean-
+install, dependency-review, immutable-action, and checksum groundwork only. It
+does not yet publish signed artifacts, use a production release environment,
+or claim SLSA conformance.
+
+The retained ACON diagnostic demonstrates the fail-closed boundary rather than
+satisfying it: the source tree, immutable upstream revision, license bytes,
+runtime, value-redacted environment, command, model contract, and resource
+limits are bound, but dependency-lock, enforced network-isolation, and
+inference-service evidence are absent. Its manifest therefore remains a failed,
+non-scoreable run. Optional-adapter vulnerability/license scanning and exact
+resolved dependency locks remain release work.

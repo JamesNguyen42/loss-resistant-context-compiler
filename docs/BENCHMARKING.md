@@ -404,6 +404,17 @@ Run the built-in round-trip and negative checks before preparing an adapter:
 python -m benchmarks --self-test
 ```
 
+The result-blind records under `benchmarks/compatibility/` pin ACON and
+AMA-Agent upstream revisions and license bytes without generating or inspecting
+comparative output. One ACON diagnostic adapter was routed through this runner
+against a one-case gold-free corpus. It exited before external execution because
+its clean source checkout, exact Python 3.11 runtime, dependency lock, enforced
+network evidence, inference-service accounting, and LM Studio executable were
+absent. The self-hashed manifest retains `process_succeeded: false`,
+`candidate_valid: false`, and `ready_for_scoring: false`, and no candidate file
+exists. This is an executable blocker, not a benchmark result or inclusion
+decision.
+
 A report without external candidates is labeled `local-bundled-only`. A report
 with a frozen registered external set is labeled `external-inclusive`. Every
 registered system receives a win, tie, loss, or invalid decision. The
@@ -445,8 +456,8 @@ and documentation together.
 On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
 `421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
-The suite collected 963 tests: 955 passed and 8 platform/optional checks were
-skipped. The relevant observed metrics were:
+The current release-runway suite collected 1,053 tests: 1,045 passed and 8
+platform/optional checks were skipped on the Windows validation host. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -513,6 +524,26 @@ The strict-majority result must additionally show at least 50% task-failure
 reduction or 1.5x successful completions per total token or cost on matched
 downstream runs. It must also show zero observed protected and exact misses on
 the frozen claim cohorts and at least 5x real-token compression per cohort.
+
+## Natural-history evidence contracts
+
+`benchmarks.natural_history` independently validates six bounded Draft 2020-12
+schemas and seven linked self-hashed fixtures. The contracts require explicit
+origin, license, consent, and privacy-review states; exact text spans and hashes;
+two distinct annotators; complete adjudication; attempted/included/excluded
+accounting; repository/task-group-disjoint splits; a gold-free export with zero
+label fields; and report counts that cannot silently omit a history.
+
+```console
+python -m benchmarks.natural_history
+```
+
+The committed records intentionally use synthetic contract text. They prove
+that the evidence format and fail-closed validator operate; they do not prove
+that a licensed, consented, privacy-reviewed natural cohort exists, that human
+annotators agreed, or that the compiler succeeds on natural histories. A real
+cohort remains a separate collection, review, annotation, freeze, and evaluation
+step. See [Natural-history evidence contracts](NATURAL_HISTORY_EVIDENCE.md).
 
 ## Known benchmark limitations
 

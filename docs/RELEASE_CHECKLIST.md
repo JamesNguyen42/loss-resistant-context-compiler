@@ -32,6 +32,9 @@ a production PyPI upload, or a broader product/evidence claim.
 - [ ] Replay every committed frozen report without model or paid-service calls.
 - [ ] Verify the external protocol document and machine manifest. A draft or
   blocked protocol must remain non-claim-ready.
+- [ ] Verify result-blind compatibility records, immutable source/license pins,
+  and every retained external failure. Confirm no failed run produced or was
+  converted into a scoreable candidate.
 - [ ] Run LRCBench to a new temporary output path and retain the actual issued
   or failed certificate unchanged.
 - [ ] Run the fixed performance gate to a new temporary output path.
@@ -43,7 +46,8 @@ a production PyPI upload, or a broader product/evidence claim.
 
 - [ ] Build exactly one wheel and one source distribution from the candidate.
 - [ ] Inspect both archives for the expected package, CLI, documentation,
-  conformance assets, and complete JSON Schema inventory.
+  connector conformance assets, six natural-history schemas, seven contract
+  fixtures, and all 25 installed JSON Schemas.
 - [ ] Install the wheel and sdist into separate clean environments and run
   import, metadata, schema parsing, `ctxc --help`, compile, trust-create, and
   trust-verify smoke tests.

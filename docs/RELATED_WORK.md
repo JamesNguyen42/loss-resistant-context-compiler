@@ -5,8 +5,9 @@ This page positions the project against primary sources available on
 reported numbers are not head-to-head results.
 
 > **Evidence boundary:** the recorded certificate is `local-bundled-only`.
-> No named external system has been run in this repository, so no external
-> state-of-the-art or "50% better than most" claim is supported.
+> No named external system has produced a scoreable candidate in this
+> repository. Result-blind screens and a retained failed ACON diagnostic do not
+> support an external state-of-the-art or "50% better than most" claim.
 
 ## ACON
 
@@ -88,7 +89,7 @@ of design goals is not evidence of comparative performance.
 | FoldAgent | Agent-controlled branching and folding | Yes; reinforcement learning | Folded sub-trajectory outcomes | Deep research and software-engineering tasks |
 | AMA-Bench / AMA-Agent | Benchmark and causal/tool-augmented long-term memory | AMA-Agent uses structured retrieval | Objective and causal information | Real and scalable synthetic trajectories with QA |
 | MemIR | Typed long-term memory and source monitoring | Representation and retrieval architecture | Central: grounded atoms and factual authorization | LoCoMo and BEAM-100K |
-| This project | Loss-resistant active-context compilation | Optional exact-span model extractors; deterministic core | Exact source spans and independent checks | 963 tests, local synthetic LRCBench, replayable exact-Qwen diagnostics, a non-claim-bearing offset ablation, and a retained 128-call paired result |
+| This project | Loss-resistant active-context compilation | Optional exact-span model extractors; deterministic core | Exact source spans and independent checks | 1,053 tests, local synthetic LRCBench, replayable exact-Qwen diagnostics, a non-claim-bearing offset ablation, a retained 128-call paired result, and non-scoreable external preflights |
 
 ## What can be claimed today
 

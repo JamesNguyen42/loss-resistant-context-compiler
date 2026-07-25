@@ -17,9 +17,9 @@ with the distribution; the import package and CLI identity are also unchanged.
 The seven JSON Schemas that existed before the rename retain their historical
 `https://example.invalid/lossless-context-compiler/...` `$id` values because
 those URIs are stored-format identifiers, not distribution branding or live
-network endpoints. New schemas, beginning with the detached trust manifest,
-use the `loss-resistant-context-compiler` namespace. All schema files install
-under the current distribution path.
+network endpoints. The detached trust manifest and the seventeen connector
+wire-contract schemas use the `loss-resistant-context-compiler` namespace. All
+25 installed schema files live under the current distribution path.
 
 ## Semantic versions
 
@@ -37,8 +37,8 @@ stored evidence.
 The version in `pyproject.toml` and `context_compiler.__version__` must match.
 Distribution versions do not replace embedded format versions. Artifact,
 archive, redaction, inspection, diff, event, diagnostic, benchmark, corpus,
-candidate, protocol, and manifest schemas each evolve under their own explicit
-version field.
+candidate, protocol, connector, natural-history evidence, and manifest schemas
+each evolve under their own explicit version field.
 
 ## Stored-format compatibility
 
@@ -69,13 +69,16 @@ commit:
 2. lint and bytecode compilation;
 3. offline source-distribution and wheel builds;
 4. exact distribution name/version/entry-point metadata checks;
-5. clean-environment wheel installation and import;
-6. inclusion and parseability of all eight installed JSON Schemas;
-7. frozen benchmark, protocol, and model-diagnostic replay without new model
-   calls;
-8. the fixed performance gate;
-9. changelog, support matrix, threat model, and handoff reconciliation;
-10. retained SHA-256 checksums and external signatures for public artifacts.
+5. separate clean-environment wheel and source-distribution installation;
+6. inclusion and parseability of all 25 installed JSON Schemas plus the
+   source-distribution conformance and natural-history contract assets;
+7. connector golden/negative transcript conformance and in-process/stdio
+   semantic-equivalence checks;
+8. frozen benchmark, protocol, and model-diagnostic replay without new model
+   calls, with failed external runs retained as failures;
+9. the fixed performance gate;
+10. changelog, support matrix, threat model, and handoff reconciliation;
+11. retained SHA-256 checksums and external signatures for public artifacts.
 
 Passing these gates establishes packaging and internal-evidence consistency,
 not production readiness or superiority over external systems. The P0 evidence

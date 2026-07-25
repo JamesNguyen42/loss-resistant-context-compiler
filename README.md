@@ -28,7 +28,7 @@ meaning can be compressed without loss.
 | Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts, optional LocalAI connector |
-| Regression suite | Unit and connector-contract coverage; CI runs Python 3.11, 3.12, and 3.13 |
+| Regression suite | Complete Ubuntu suite on Python 3.11–3.13; Windows/macOS Python 3.13 release/filesystem smoke |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
@@ -37,7 +37,8 @@ meaning can be compressed without loss.
 | Post-hoc Qwen offset ablation | 0 calls; 63.16% literal-only precision, 60% recall, and 2 final verification failures; non-claim-bearing |
 | Held-out paired Qwen result | 128 sequential calls; literal mode raised model-only recall from 17.5% to 92.5%, but reduced precision from 100% to 74% and caused 4 final verification failures |
 | External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
-| Named external comparisons | Not run |
+| Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
+| Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
 | Production readiness | Not production-ready |
@@ -157,11 +158,14 @@ The repository currently includes:
 - an opt-in whole-compile deadline that runs materialized inputs in an isolated
   POSIX process group or Windows Job Object, terminates the owned descendant
   tree on timeout, and reconstructs successful output from bounded strict JSON;
-- a portable JSON artifact, compact prompt renderer, and eight JSON Schemas;
+- a portable JSON artifact, compact prompt renderer, and 25 installed JSON Schemas;
 - an optional standard-library LocalAI connector with six framework-neutral
   operations, a strict versioned JSONL process boundary, immutable
   `SourceEvent` mapping, self-hashed `ContextBundle` output, and deterministic
   checkpoints;
+- seventeen packaged connector schemas, six-operation golden JSONL, 65
+  intentional negative vectors, and a standalone conformance runner that proves
+  in-process and stdio semantic equivalence;
 - a machine-readable artifact reader/writer registry with an explicit
   no-silent-migration policy;
 - a fail-closed JSON inspector plus a bounded terminal item view with escaped
@@ -178,10 +182,16 @@ The repository currently includes:
 - gold-free corpus self-digests plus a bounded, shell-free external runner with
   sequential per-case processes, cross-platform process-tree memory limits,
   and valid or failed manifests that feed per-system certificate decisions;
+- result-blind ACON and AMA-Agent compatibility records plus a pinned ACON
+  diagnostic adapter whose first bounded run is retained as a failed,
+  non-scoreable manifest;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
 - a fixed-digest, versioned CI compile-performance gate with latency-growth and
   traced-Python-memory ceilings;
+- six strict natural-history evidence schemas and seven self-hashed fixtures for
+  corpus, independent annotations, adjudication, grouped splits, gold-free
+  export, and reports; these fixtures do not constitute a natural cohort;
 - a frozen, self-hashed 64-case novel-English precision/recall diagnostic with
   exact deterministic replay;
 - a sequential captured-output harness for the exact local Qwen Q4 model that
@@ -208,8 +218,11 @@ The repository currently includes:
 The next phase is mainly evidence, generalization, and integration rather than
 adding more claims to the README:
 
-- run matched external systems through the existing candidate interchange;
-- add held-out natural coding-agent histories with independent annotations;
+- resolve the retained external adapter blockers, freeze the comparison set, and
+  run matched systems through the existing candidate interchange;
+- collect and independently annotate held-out natural coding-agent histories
+  under the implemented consent, license, privacy, adjudication, split, and
+  no-label-leakage contracts;
 - measure end-to-end task completion on public long-horizon suites;
 - test the optional model extractor across providers and novel phrasing;
 - add named provider tokenizers and production framework-specific adapters;
@@ -243,8 +256,8 @@ LRCBench also now uses one history-weighted memory estimand for point estimates
 and paired bootstrap bounds, records per-system decisions, and applies a strict
 majority rule to a frozen external comparison set. Any external scoring now
 requires a verified self-hashed protocol whose system set, adapter revisions,
-and synthetic dataset digest match the run. External systems and
-natural-history task outcomes still have not been run, so the
+and synthetic dataset digest match the run. No external candidate has been
+scored and no collected natural-history task outcome exists, so the
 external-superiority claim remains unestablished.
 
 ## Intended use
@@ -761,6 +774,14 @@ Sessions otherwise last only for the lifetime of the stdio process.
 `inspect_memory` is a source-independent integrity/summary view, not a
 substitute for `verify_memory` against trusted sources.
 
+The 17 connector schemas under `schemas/` cover request/response, the connector
+`SourceEvent`, `ContextBundle`, checkpoint, and payload/result pairs for all six
+operations. Run `python conformance/run_connector_conformance.py` to validate
+the schema graph, six golden state transitions, 65 negative vectors, and exact
+in-process/stdio equivalence. JSON Schema validation is structural; the runtime
+remains authoritative for provenance, artifact replay, authority, and digest
+semantics.
+
 The same flow is available directly in Python:
 
 ```python
@@ -1074,11 +1095,11 @@ Run the complete regression and static checks:
 
 ```console
 python -m pytest -q
-python -m ruff check src tests benchmarks
-python -m compileall -q src benchmarks tests
+python -m ruff check src tests benchmarks scripts conformance
+python -m compileall -q src benchmarks tests scripts conformance
 ```
 
-Build the wheel and verify the eight packaged schemas:
+Build the wheel and verify the 25 packaged schemas:
 
 ```console
 python -c "
@@ -1093,7 +1114,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert len(wheels) == 1, wheels
     assert wheels[0].name.startswith('loss_resistant_context_compiler-')
     names = zipfile.ZipFile(wheels[0]).namelist()
-    assert sum(name.endswith('.schema.json') for name in names) == 8
+    assert sum(name.endswith('.schema.json') for name in names) == 25
 "
 ```
 
@@ -1111,6 +1132,9 @@ python -m benchmarks --self-test
 python -m benchmarks --histories 24 --export-corpus lrcbench-corpus.json
 python -m benchmarks --verify-report lrcbench-24.json
 python -m benchmarks.external_protocol --verify benchmarks/protocols/external-comparison-v1.json
+python conformance/run_connector_conformance.py
+python -m benchmarks.natural_history
+python -m pytest -q tests/test_external_compatibility.py
 python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
 python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json
 ```
@@ -1206,6 +1230,15 @@ boundary, then emits the current self-hashed candidate envelope with the
 registered adapter/model identity. Direct candidate imports require the current
 producer-bearing schema.
 
+The committed compatibility records pin ACON and AMA-Agent source revisions and
+license bytes without generating or inspecting comparative output. The ACON
+diagnostic was routed once through the existing runner against a one-case
+gold-free corpus. It exited before external execution because the exact source
+checkout, Python 3.11 environment, dependency lock, enforced network evidence,
+inference-service accounting, and LM Studio executable were absent. The
+self-hashed manifest retains that failure with no candidate and is not benchmark
+evidence.
+
 LRCBench requires exact gold-atom offsets for credited provenance. A candidate
 cannot cite a broad enclosing source span to obtain recall credit for a smaller
 literal inside it.
@@ -1288,10 +1321,14 @@ the commands above for the current revision and environment.
 - [Changelog and release notes](CHANGELOG.md)
 - [Runtime, platform, format, and installation support](SUPPORT.md)
 - [Release and semantic-versioning policy](docs/RELEASE_POLICY.md)
+- [Release candidate checklist](docs/RELEASE_CHECKLIST.md)
+- [Supply-chain groundwork](docs/SUPPLY_CHAIN.md)
 - [Next-chat handoff and current project state](docs/HANDOFF.md)
 - [Architecture and invariants](docs/ARCHITECTURE.md)
 - [Extending extraction with domain packs](docs/EXTENDING_EXTRACTION.md)
 - [Benchmark design and the exact 50% bar](docs/BENCHMARKING.md)
+- [Natural-history evidence contracts](docs/NATURAL_HISTORY_EVIDENCE.md)
+- [Result-blind external compatibility records](benchmarks/compatibility/README.md)
 - [Novel English phrase diagnostic](docs/PHRASE_EVALUATION.md)
 - [Exact local Qwen phrase-evaluation protocol](docs/QWEN_PHRASE_EVALUATION.md)
 - [Post-hoc Qwen literal-offset ablation evidence](docs/results/qwen-literal-offset-ablation-v1.json)
@@ -1314,7 +1351,10 @@ the commands above for the current revision and environment.
   [redaction report](schemas/redaction-report.schema.json),
   [source archive entry](schemas/source-archive-entry.schema.json),
   [source archive command report](schemas/source-archive-report.schema.json),
-  and [detached trust manifest](schemas/trust-manifest.schema.json)
+  and [detached trust manifest](schemas/trust-manifest.schema.json);
+- [Connector request schema](schemas/connector-request.schema.json),
+  [golden transcripts](conformance/fixtures/golden-success.jsonl), and
+  [standalone conformance runner](conformance/run_connector_conformance.py)
 
 ## License
 

@@ -36,8 +36,13 @@ def test_ci_covers_supported_python_and_platform_release_smokes() -> None:
 
     assert 'python-version: ["3.11", "3.12", "3.13"]' in workflow
     assert "os: [windows-latest, macos-latest]" in workflow
-    assert "python -m compileall -q src benchmarks tests scripts" in workflow
+    assert (
+        "python -m compileall -q src benchmarks tests scripts conformance"
+        in workflow
+    )
     assert "scripts/release_install_smoke.py" in workflow
+    assert "python conformance/run_connector_conformance.py" in workflow
+    assert "python -m benchmarks.natural_history" in workflow
     assert "tests/test_archive_locking.py" in workflow
     assert "permissions:\n  contents: read" in workflow
 

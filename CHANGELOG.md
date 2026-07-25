@@ -18,6 +18,8 @@ versioning and release rules in
 - Reworked benchmark certificates around history-weighted estimands,
   per-system decisions, strict-majority gates, retained evidence, and offline
   replay.
+- Made archive-lock acquisition retry a post-open descriptor that was replaced
+  or unlinked, preserving bounded single-link ownership across platforms.
 
 ### Added
 
@@ -36,6 +38,17 @@ versioning and release rules in
 - A bounded sequential external-adapter runner and frozen local Qwen diagnostic
   replay paths.
 - A fixed-digest performance regression gate and offline wheel/schema checks.
+- Seventeen packaged connector JSON Schemas, six-operation golden JSONL,
+  65 intentional negative vectors, and a standalone dependency-free
+  conformance runner proving in-process/stdio semantic equivalence.
+- Six strict natural-history evidence schemas with bounded self-hashed corpus,
+  annotation, adjudication, repository/task-group split, gold-free export, and
+  report contract fixtures. These fixtures are not a collected natural cohort.
+- Result-blind pinned ACON and AMA-Agent compatibility records plus one bounded
+  ACON diagnostic adapter attempt retained as a failed, non-scoreable manifest.
+- A cross-platform release runway with Windows/macOS smoke installs,
+  `SECURITY.md`, `CONTRIBUTING.md`, release checklist, immutable GitHub Action
+  pins, dependency review, Dependabot, and supply-chain guidance.
 
 ### Security
 
@@ -45,6 +58,9 @@ versioning and release rules in
 - Prevented detached manifests from reporting trust without an external
   digest anchor, and refused incomplete ledgers, replay failures, malformed
   manifests, archive races, and output aliases.
+- Bounded conformance evidence reads, rejected duplicate/non-finite JSON, and
+  retained content-relevant file identity checks while tolerating only
+  descriptor-local change-time differences on Windows cloud filesystems.
 
 ## 0.1.0 - 2026-07-23
 

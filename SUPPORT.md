@@ -20,12 +20,12 @@ alias. Imports and the `ctxc` command are unchanged by the metadata rename.
 
 | Environment | Status | Evidence |
 | --- | --- | --- |
-| CPython 3.11 | Supported | Complete Ubuntu CI suite |
+| CPython 3.11 | Supported | Complete Ubuntu CI suite, frozen replay, LRCBench, and performance gate |
 | CPython 3.12 | Supported | Complete Ubuntu CI suite and current Windows local validation |
-| CPython 3.13 | Supported | Complete Ubuntu CI suite |
-| Ubuntu local filesystem | Supported | CI tests, wheel build, benchmark replay, performance gate |
-| Windows 11 local NTFS/OneDrive workspace | Provisional | Complete local suite, offline evidence replay, source/wheel builds, clean no-index wheel install; not a CI matrix target |
-| macOS | Unverified | No current CI or retained filesystem-semantics report |
+| CPython 3.13 | Supported | Complete Ubuntu CI suite; Windows and macOS release/filesystem smoke |
+| Ubuntu local filesystem | Supported | Complete CI tests, release builds and clean installs, benchmark replay, LRCBench, and performance gate |
+| Windows 11 local NTFS/OneDrive workspace | Provisional | Hosted Python 3.13 filesystem and clean wheel/sdist smoke plus complete local Python 3.12 validation |
+| macOS local filesystem | Provisional | Hosted Python 3.13 filesystem and clean wheel/sdist smoke; not a complete test-suite target |
 | Network/distributed filesystems | Unverified | Advisory locks, hard links, directory identity, rename, and durability semantics vary |
 | PyPy or other Python implementations | Unverified | No current test matrix |
 
@@ -45,22 +45,34 @@ diagnostic; deterministic compilation does not require a model.
 | Artifact diff | `ctxc-artifact-diff-0.1` |
 | Detached trust manifests | `ctxc-trust-manifest-0.1`; verification reports use `ctxc-trust-verification-0.1` |
 | CLI diagnostics/events | `ctxc-diagnostic-0.1` / `ctxc-event-0.1` |
+| Connector wire contracts | Seventeen Draft 2020-12 schemas for request/response, source event, bundle, checkpoint, and six payload/result pairs; runtime semantic verification remains authoritative |
 | LRCBench reports | Current `lrcbench-0.2` plus the explicit retained local-only `0.1` replay path |
+| Natural-history evidence | Six strict source-distribution schemas and seven self-hashed contract fixtures; no collected natural cohort exists |
+| External compatibility evidence | Result-blind ACON and AMA-Agent screening records plus one retained failed ACON diagnostic; no scoreable candidate exists |
 
 No format is silently migrated. See
 [docs/SCHEMA_COMPATIBILITY.md](docs/SCHEMA_COMPATIBILITY.md) and
 [docs/RELEASE_POLICY.md](docs/RELEASE_POLICY.md).
 The seven schemas that predate the distribution rename retain their historical
-`lossless-context-compiler` `$id` URI values for compatibility. The new trust
-manifest schema uses the current `loss-resistant-context-compiler` namespace;
-all eight files install under the current distribution's schema directory.
+`lossless-context-compiler` `$id` URI values for compatibility. Eighteen newer
+schemas use the current `loss-resistant-context-compiler` namespace. All 25
+files install under the current distribution's schema directory. The separate
+natural-history schemas and connector transcript fixtures are source-
+distribution conformance assets rather than installed runtime schemas.
 
 ## Installation support
 
-Source-tree editable installs and locally built wheels are tested. No package
-index release is currently claimed. Before a public release, the repository
-must add signed source/wheel artifacts, test-index installation evidence, and
-clean installation results for each supported platform.
+Source-tree editable installs and locally built wheels are tested. CI builds
+one wheel and one source distribution, inspects their inventories, installs
+each in a separate clean environment, and runs metadata, schema, CLI, compile,
+and detached-trust round trips on Ubuntu, Windows, and macOS. Windows and macOS
+remain provisional because their hosted jobs are targeted smoke coverage, not
+the complete suite.
+
+No package index release is currently claimed. Before a public release, the
+repository must add signed or otherwise externally attestable source/wheel
+artifacts and explicit test-index approval. Production PyPI publication is not
+authorized by the current checks.
 
 If an old editable install still has `lossless-context-compiler` metadata,
 remove that distribution and reinstall from the current source or wheel. Do
