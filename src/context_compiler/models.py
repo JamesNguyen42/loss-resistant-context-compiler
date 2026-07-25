@@ -829,8 +829,8 @@ class CompilationPolicy:
     include_discarded: bool = True
     verify: bool = True
     recover_missed_protected: bool = True
-    fail_on_primary_extractor_error: bool = False
     chars_per_token: float = 4.0
+    fail_on_primary_extractor_error: bool = False
 
     def __post_init__(self) -> None:
         for name in (

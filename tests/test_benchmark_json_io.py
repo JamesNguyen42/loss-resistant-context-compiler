@@ -62,6 +62,7 @@ def test_strict_json_file_records_exact_bytes_and_accepts_utf8_bom(tmp_path) -> 
         ("[[[0]]]", limits(max_depth=2), "exceeds JSON depth"),
         ('{"value":"too long"}', limits(max_line_chars=8), "characters on one line"),
         ('{"value":1}', limits(max_bytes=4), "exceeds 4 bytes"),
+        ('{"value":' + "9" * 641 + "}", limits(), "exceeds 640 JSON integer digits"),
     ],
 )
 def test_strict_json_file_rejects_ambiguous_or_oversized_input(

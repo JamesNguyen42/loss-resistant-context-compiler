@@ -18,8 +18,13 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 SCHEMAS = ROOT / "schemas"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(SRC))
 
+from conformance.schema_validation import (  # noqa: E402
+    audit_schema_documents,
+    validate_instance,
+)
 from context_compiler import (  # noqa: E402
     LocalAIConnector,
     decode_connector_request,
@@ -28,6 +33,8 @@ from context_compiler import (  # noqa: E402
 
 MAX_CONFORMANCE_BYTES = 32 * 1024 * 1024
 MAX_CONFORMANCE_LINE_CHARS = 8 * 1024 * 1024
+MAX_CONFORMANCE_JSON_DEPTH = 128
+MAX_CONFORMANCE_JSON_INTEGER_DIGITS = 640
 
 CONNECTOR_SCHEMAS = {
     "connector-request.schema.json",
@@ -66,6 +73,16 @@ def _finite_float(value: str) -> float:
     return decoded
 
 
+def _bounded_int(value: str) -> int:
+    digits = value[1:] if value.startswith("-") else value
+    if len(digits) > MAX_CONFORMANCE_JSON_INTEGER_DIGITS:
+        raise ValueError(
+            "conformance JSON integer exceeds the supported length of "
+            f"{MAX_CONFORMANCE_JSON_INTEGER_DIGITS} digits"
+        )
+    return int(value)
+
+
 def _read_bounded_text(path: Path, *, label: str) -> str:
     try:
         candidate = path.lstat()
@@ -89,8 +106,7 @@ def _read_bounded_text(path: Path, *, label: str) -> str:
     try:
         opened = os.fstat(descriptor)
         if (
-            (candidate.st_dev, candidate.st_ino)
-            != (opened.st_dev, opened.st_ino)
+            (candidate.st_dev, candidate.st_ino) != (opened.st_dev, opened.st_ino)
             or not stat.S_ISREG(opened.st_mode)
             or opened.st_nlink != 1
         ):
@@ -106,9 +122,7 @@ def _read_bounded_text(path: Path, *, label: str) -> str:
                 break
             total += len(chunk)
             if total > MAX_CONFORMANCE_BYTES:
-                raise ValueError(
-                    f"{label} exceeds {MAX_CONFORMANCE_BYTES} bytes"
-                )
+                raise ValueError(f"{label} exceeds {MAX_CONFORMANCE_BYTES} bytes")
             chunks.append(chunk)
         final = os.fstat(descriptor)
     finally:
@@ -152,20 +166,68 @@ def _read_bounded_text(path: Path, *, label: str) -> str:
     except UnicodeDecodeError as exc:
         raise ValueError(f"{label} must be UTF-8") from exc
     if any(len(line) > MAX_CONFORMANCE_LINE_CHARS for line in decoded.splitlines()):
-        raise ValueError(
-            f"{label} exceeds {MAX_CONFORMANCE_LINE_CHARS} characters on one line"
-        )
+        raise ValueError(f"{label} exceeds {MAX_CONFORMANCE_LINE_CHARS} characters on one line")
     return decoded
 
 
+def _prevalidate_json_nesting(raw: str, *, label: str) -> None:
+    depth = 0
+    in_string = False
+    escaped = False
+    for character in raw:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+        elif character in "[{":
+            depth += 1
+            if depth > MAX_CONFORMANCE_JSON_DEPTH:
+                raise ValueError(f"{label} exceeds {MAX_CONFORMANCE_JSON_DEPTH} JSON levels")
+        elif character in "]}":
+            depth = max(0, depth - 1)
+
+
+def _validate_json_depth(value: Any, *, label: str) -> None:
+    stack = [(value, 1)]
+    while stack:
+        current, depth = stack.pop()
+        if depth > MAX_CONFORMANCE_JSON_DEPTH:
+            raise ValueError(f"{label} exceeds {MAX_CONFORMANCE_JSON_DEPTH} JSON levels")
+        if isinstance(current, dict):
+            stack.extend((entry, depth + 1) for entry in current.values())
+        elif isinstance(current, list):
+            stack.extend((entry, depth + 1) for entry in current)
+
+
+def _strict_json_loads(raw: str, *, label: str) -> Any:
+    _prevalidate_json_nesting(raw, label=label)
+    try:
+        value = json.loads(
+            raw,
+            object_pairs_hook=_strict_object,
+            parse_float=_finite_float,
+            parse_int=_bounded_int,
+            parse_constant=lambda constant: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON constant {constant}")
+            ),
+        )
+    except RecursionError as exc:
+        raise ValueError(f"{label} exceeds supported JSON depth") from exc
+    _validate_json_depth(value, label=label)
+    return value
+
+
 def _load_json(path: Path) -> Any:
-    return json.loads(
-        _read_bounded_text(path, label=f"schema {path.name}"),
-        object_pairs_hook=_strict_object,
-        parse_float=_finite_float,
-        parse_constant=lambda value: (_ for _ in ()).throw(
-            ValueError(f"non-finite JSON constant {value}")
-        ),
+    label = f"schema {path.name}"
+    return _strict_json_loads(
+        _read_bounded_text(path, label=label),
+        label=label,
     )
 
 
@@ -175,13 +237,9 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     for line_number, raw in enumerate(raw_document.splitlines(), 1):
         if not raw.strip():
             continue
-        value = json.loads(
+        value = _strict_json_loads(
             raw,
-            object_pairs_hook=_strict_object,
-            parse_float=_finite_float,
-            parse_constant=lambda constant: (_ for _ in ()).throw(
-                ValueError(f"non-finite JSON constant {constant}")
-            ),
+            label=f"fixture {path.name}:{line_number}",
         )
         if not isinstance(value, dict):
             raise TypeError(f"{path}:{line_number} must be an object")
@@ -202,11 +260,12 @@ def _follow_fragment(document: Any, fragment: str, *, label: str) -> None:
         current = current[key]
 
 
-def _validate_schema_graph() -> None:
+def _validate_schema_graph() -> dict[str, dict[str, Any]]:
     missing = CONNECTOR_SCHEMAS - {path.name for path in SCHEMAS.glob("*.json")}
     if missing:
         raise ValueError(f"missing connector schemas: {sorted(missing)}")
     documents = {path.name: _load_json(path) for path in SCHEMAS.glob("*.json")}
+    audit_schema_documents(frozenset(CONNECTOR_SCHEMAS), documents=documents)
     for filename in sorted(CONNECTOR_SCHEMAS):
         document = documents[filename]
         if document.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
@@ -231,6 +290,7 @@ def _validate_schema_graph() -> None:
                 stack.extend(value.values())
             elif isinstance(value, list):
                 stack.extend(value)
+    return documents
 
 
 def _lookup(responses: dict[str, dict[str, Any]], reference: str) -> Any:
@@ -301,7 +361,10 @@ class StdioClient:
         response = self.process.stdout.readline()
         if not response:
             raise RuntimeError("connector stdio process ended without a response")
-        return json.loads(response, object_pairs_hook=_strict_object)
+        value = _strict_json_loads(response, label="connector stdio response")
+        if not isinstance(value, dict):
+            raise TypeError("connector stdio response must be an object")
+        return value
 
     def close(self) -> None:
         assert self.process.stdin is not None
@@ -329,18 +392,28 @@ def _assert_expectations(response: dict[str, Any], expectations: dict[str, Any])
             raise AssertionError(f"{path}: expected {expected!r}, got {current!r}")
 
 
-def _embedded_stdio(raw: str) -> dict[str, Any]:
+def _embedded_stdio(
+    raw: str,
+    *,
+    connector: LocalAIConnector,
+) -> dict[str, Any]:
     output = io.StringIO()
     serve_stdio(
-        connector=LocalAIConnector(),
+        connector=connector,
         input_stream=io.StringIO(raw + "\n"),
         output_stream=output,
     )
-    return json.loads(output.getvalue(), object_pairs_hook=_strict_object)
+    value = _strict_json_loads(
+        output.getvalue(),
+        label="embedded connector stdio response",
+    )
+    if not isinstance(value, dict):
+        raise TypeError("embedded connector stdio response must be an object")
+    return value
 
 
 def run() -> dict[str, int]:
-    _validate_schema_graph()
+    documents = _validate_schema_graph()
     steps = _load_jsonl(FIXTURES / "golden-success.jsonl")
     vectors = _load_jsonl(FIXTURES / "golden-negative.jsonl")
     if len(vectors) < 50:
@@ -354,10 +427,30 @@ def run() -> dict[str, int]:
         for step in steps:
             request_direct = _resolve(step["request"], direct_responses)
             request_stdio = _resolve(step["request"], stdio_responses)
+            validate_instance(
+                request_direct,
+                "connector-request.schema.json",
+                documents=documents,
+            )
+            validate_instance(
+                request_stdio,
+                "connector-request.schema.json",
+                documents=documents,
+            )
             direct = direct_connector.handle_request(
                 decode_connector_request(json.dumps(request_direct, separators=(",", ":")))
             )
             wire = stdio.exchange(json.dumps(request_stdio, separators=(",", ":")))
+            validate_instance(
+                direct,
+                "connector-response.schema.json",
+                documents=documents,
+            )
+            validate_instance(
+                wire,
+                "connector-response.schema.json",
+                documents=documents,
+            )
             if _normalize(direct) != _normalize(wire):
                 raise AssertionError(f"{step['id']} in-process/stdio semantic mismatch")
             _assert_expectations(direct, step["expect"])
@@ -367,8 +460,18 @@ def run() -> dict[str, int]:
 
         for vector in vectors:
             raw = vector["raw"]
-            embedded = _embedded_stdio(raw)
+            embedded = _embedded_stdio(raw, connector=direct_connector)
             wire = stdio.exchange(raw)
+            validate_instance(
+                embedded,
+                "connector-response.schema.json",
+                documents=documents,
+            )
+            validate_instance(
+                wire,
+                "connector-response.schema.json",
+                documents=documents,
+            )
             if embedded != wire:
                 raise AssertionError(f"{vector['id']} embedded/process stdio mismatch")
             _assert_expectations(wire, vector["expect"])

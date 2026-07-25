@@ -64,6 +64,7 @@ _ARTIFACT_FIELDS = frozenset(
     }
 )
 _PATH_OPEN_ATTEMPTS = 3
+_MAX_JSON_INTEGER_DIGITS = 640
 _ITEM_FIELDS = frozenset(
     {
         "id",
@@ -862,6 +863,24 @@ def _finite_json_float(value: str) -> float:
     return decoded
 
 
+def _bounded_json_int(
+    value: str,
+    *,
+    label: str,
+    limit_error: type[ValueError],
+) -> int:
+    digits = value[1:] if value.startswith("-") else value
+    if len(digits) > _MAX_JSON_INTEGER_DIGITS:
+        raise limit_error(
+            f"{label} exceeds the supported JSON integer length of "
+            f"{_MAX_JSON_INTEGER_DIGITS} digits"
+        )
+    try:
+        return int(value)
+    except ValueError:
+        raise ValueError(f"{label} contains an invalid JSON integer") from None
+
+
 def _reject_json_constant(value: str) -> None:
     raise ValueError(f"non-standard JSON constant is forbidden: {value}")
 
@@ -910,11 +929,20 @@ def _decode_strict_json(
         label=label,
         limit_error=limit_error,
     )
+
+    def parse_int(value: str) -> int:
+        return _bounded_json_int(
+            value,
+            label=label,
+            limit_error=limit_error,
+        )
+
     try:
         return json.loads(
             raw,
             object_pairs_hook=_strict_json_object,
             parse_float=_finite_json_float,
+            parse_int=parse_int,
             parse_constant=_reject_json_constant,
         )
     except RecursionError as exc:

@@ -303,6 +303,20 @@ def test_strict_loader_rejects_duplicate_keys_empty_and_oversized_input(
         load_trust_manifest_path(manifest_path)
 
 
+def test_trust_manifest_json_integer_length_is_bounded_and_sanitized() -> None:
+    payload = '{"source_count":' + "9" * 641 + "}"
+
+    with pytest.raises(
+        TrustManifestError,
+        match=(
+            "trust manifest JSON exceeds the supported JSON integer length "
+            "of 640 digits"
+        ),
+    ) as caught:
+        load_trust_manifest(io.StringIO(payload))
+    assert "sys.set_int_max_str_digits" not in str(caught.value)
+
+
 def test_archive_chain_head_is_part_of_the_manifest_binding(
     tmp_path: Path,
 ) -> None:

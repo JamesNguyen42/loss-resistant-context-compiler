@@ -42,6 +42,7 @@ from .models import (
     MemoryItem,
     MemoryKind,
     MemoryStatus,
+    ProvenanceSpan,
     SourceRecord,
     render_typed_memory,
     source_digest,
@@ -66,6 +67,7 @@ CONNECTOR_OPERATIONS = (
 )
 
 _SHA256 = re.compile(r"[a-f0-9]{64}")
+_MAX_JSON_INTEGER_DIGITS = 640
 _UNTRUSTED_HISTORY_ROLES = frozenset({"assistant", "tool", "function"})
 _EVENT_FIELDS = frozenset(
     {
@@ -93,6 +95,18 @@ _RESERVED_EVENT_METADATA = frozenset(
         "localai_original_record_sha256",
     }
 )
+_CANONICAL_SOURCE_RECORD_FIELDS = frozenset(
+    {
+        "id",
+        "sequence",
+        "role",
+        "content",
+        "timestamp",
+        "metadata",
+        "content_sha256",
+        "record_sha256",
+    }
+)
 _POLICY_FIELDS = frozenset(field.name for field in fields(CompilationPolicy))
 _TRUSTED_MEMORY_FIELDS = frozenset(
     {
@@ -109,6 +123,23 @@ _TRUSTED_MEMORY_FIELDS = frozenset(
         "omitted_or_overflowed_protected_items",
     }
 )
+_TRUSTED_MEMORY_CATEGORY_KINDS = {
+    "active_goals": MemoryKind.GOAL,
+    "constraints": MemoryKind.CONSTRAINT,
+    "user_corrections": MemoryKind.USER_CORRECTION,
+    "decisions": MemoryKind.DECISION,
+    "confirmed_facts": MemoryKind.CONFIRMED_FACT,
+    "unresolved_questions": MemoryKind.UNRESOLVED,
+    "exact_errors": MemoryKind.EXACT_ERROR,
+    "exact_references": MemoryKind.EXACT_REFERENCE,
+}
+_TRUSTED_MEMORY_ITEM_LIMIT = 200_000
+_TRUSTED_MEMORY_SPAN_LIMIT = 1_000_000
+_TRUSTED_MEMORY_SOURCE_HASH_LIMIT = 100_000
+_SOURCE_HASH_FIELDS = frozenset(
+    {"source_id", "sequence", "content_sha256", "record_sha256"}
+)
+_OMITTED_PROTECTED_FIELDS = frozenset({"reason", "item", "overflow_tokens"})
 _BINDING_FIELDS = frozenset(
     {
         "session_id",
@@ -219,6 +250,24 @@ def _mapping_from_object(value: Any, *, label: str) -> dict[str, Any]:
     raise TypeError(
         f"{label} must be a mapping, dataclass, or object with model_dump()/to_dict()"
     )
+
+
+def _canonical_source_record_from_mapping(
+    value: Any,
+    *,
+    default_sequence: int,
+    label: str,
+) -> SourceRecord:
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{label} must be a JSON object")
+    raw = dict(value)
+    _exact_fields(
+        raw,
+        allowed=_CANONICAL_SOURCE_RECORD_FIELDS,
+        required=_CANONICAL_SOURCE_RECORD_FIELDS,
+        label=label,
+    )
+    return SourceRecord.from_dict(raw, default_sequence=default_sequence)
 
 
 def _policy_to_dict(policy: CompilationPolicy) -> dict[str, Any]:
@@ -365,6 +414,137 @@ class SourceEvent:
             "content_sha256": self.content_sha256,
             "record_sha256": self.record_sha256,
         }
+
+
+def _invalid_trusted_memory_entry(
+    exc: Exception,
+    *,
+    label: str,
+) -> Exception:
+    message = f"{label} is invalid: {exc}"
+    if isinstance(exc, TypeError):
+        return TypeError(message)
+    return ValueError(message)
+
+
+def _validated_memory_item(value: Any, *, label: str) -> MemoryItem:
+    try:
+        return MemoryItem.from_dict(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise _invalid_trusted_memory_entry(exc, label=label) from exc
+
+
+def _validated_provenance_span(value: Any, *, label: str) -> ProvenanceSpan:
+    try:
+        return ProvenanceSpan.from_dict(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise _invalid_trusted_memory_entry(exc, label=label) from exc
+
+
+def _bounded_array(
+    value: Any,
+    *,
+    label: str,
+    maximum: int,
+) -> list[Any]:
+    if not isinstance(value, list):
+        raise TypeError(f"{label} must be an array")
+    if len(value) > maximum:
+        raise ValueError(f"{label} exceeds {maximum} entries")
+    return value
+
+
+def _validate_trusted_memory_shape(trusted_memory: dict[str, Any]) -> None:
+    _exact_fields(
+        trusted_memory,
+        allowed=_TRUSTED_MEMORY_FIELDS,
+        required=_TRUSTED_MEMORY_FIELDS,
+        label="ContextBundle trusted_memory",
+    )
+    for name in _TRUSTED_MEMORY_CATEGORY_KINDS:
+        entries = _bounded_array(
+            trusted_memory[name],
+            label=f"ContextBundle trusted_memory.{name}",
+            maximum=_TRUSTED_MEMORY_ITEM_LIMIT,
+        )
+        for index, entry in enumerate(entries):
+            _validated_memory_item(
+                entry,
+                label=f"ContextBundle trusted_memory.{name}[{index}]",
+            )
+
+    spans = _bounded_array(
+        trusted_memory["source_spans"],
+        label="ContextBundle trusted_memory.source_spans",
+        maximum=_TRUSTED_MEMORY_SPAN_LIMIT,
+    )
+    for index, span in enumerate(spans):
+        _validated_provenance_span(
+            span,
+            label=f"ContextBundle trusted_memory.source_spans[{index}]",
+        )
+
+    source_hashes = _bounded_array(
+        trusted_memory["source_hashes"],
+        label="ContextBundle trusted_memory.source_hashes",
+        maximum=_TRUSTED_MEMORY_SOURCE_HASH_LIMIT,
+    )
+    for index, source_hash in enumerate(source_hashes):
+        label = f"ContextBundle trusted_memory.source_hashes[{index}]"
+        if not isinstance(source_hash, dict):
+            raise TypeError(f"{label} must be an object")
+        _exact_fields(
+            source_hash,
+            allowed=_SOURCE_HASH_FIELDS,
+            required=_SOURCE_HASH_FIELDS,
+            label=label,
+        )
+        source_id = source_hash["source_id"]
+        if not isinstance(source_id, str) or not source_id:
+            raise TypeError(f"{label}.source_id must be a non-empty string")
+        if len(source_id) > 1_024:
+            raise ValueError(f"{label}.source_id exceeds 1024 characters")
+        sequence = source_hash["sequence"]
+        if isinstance(sequence, bool) or not isinstance(sequence, int):
+            raise TypeError(f"{label}.sequence must be an integer")
+        if sequence < 0:
+            raise ValueError(f"{label}.sequence cannot be negative")
+        for digest_name in ("content_sha256", "record_sha256"):
+            if _validate_sha256(
+                source_hash[digest_name],
+                label=f"{label}.{digest_name}",
+            ) is None:
+                raise TypeError(f"{label}.{digest_name} cannot be null")
+
+    omitted = _bounded_array(
+        trusted_memory["omitted_or_overflowed_protected_items"],
+        label=(
+            "ContextBundle trusted_memory."
+            "omitted_or_overflowed_protected_items"
+        ),
+        maximum=_TRUSTED_MEMORY_ITEM_LIMIT,
+    )
+    for index, entry in enumerate(omitted):
+        label = (
+            "ContextBundle trusted_memory."
+            f"omitted_or_overflowed_protected_items[{index}]"
+        )
+        if not isinstance(entry, dict):
+            raise TypeError(f"{label} must be an object")
+        _exact_fields(
+            entry,
+            allowed=_OMITTED_PROTECTED_FIELDS,
+            required=_OMITTED_PROTECTED_FIELDS,
+            label=label,
+        )
+        if entry["reason"] not in {"omitted", "protected_budget_overflow"}:
+            raise ValueError(f"{label}.reason is invalid")
+        _validated_memory_item(entry["item"], label=f"{label}.item")
+        overflow = entry["overflow_tokens"]
+        if isinstance(overflow, bool) or not isinstance(overflow, int):
+            raise TypeError(f"{label}.overflow_tokens must be an integer")
+        if overflow < 0:
+            raise ValueError(f"{label}.overflow_tokens cannot be negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -517,8 +697,13 @@ def source_event_to_record(
         if not isinstance(trusted_for_state, bool):
             raise TypeError("SourceEvent authority.trusted_for_state must be a boolean")
         issuer = authority.get("issuer")
-        if issuer is not None and (not isinstance(issuer, str) or not issuer.strip()):
-            raise TypeError("SourceEvent authority.issuer must be a non-empty string or null")
+        if issuer is not None:
+            if not isinstance(issuer, str):
+                raise TypeError(
+                    "SourceEvent authority.issuer must be a string or null"
+                )
+            if not issuer or issuer != issuer.strip():
+                raise ValueError("SourceEvent authority.issuer has invalid whitespace")
         metadata["localai_authority"] = copy.deepcopy(authority)
 
     for field_name, metadata_name in (
@@ -831,7 +1016,11 @@ class IncrementalCompiler:
         if not isinstance(records, list):
             raise TypeError("checkpoint source_records must be an array")
         decoded = [
-            SourceRecord.from_dict(record, default_sequence=index)
+            _canonical_source_record_from_mapping(
+                record,
+                default_sequence=index,
+                label=f"checkpoint source_records[{index}]",
+            )
             for index, record in enumerate(records)
         ]
         session = cls(
@@ -877,15 +1066,8 @@ class ContextBundle:
         ):
             if not isinstance(getattr(self, name), dict):
                 raise TypeError(f"ContextBundle {name} must be an object")
-        _exact_fields(
-            self.trusted_memory,
-            allowed=_TRUSTED_MEMORY_FIELDS,
-            required=_TRUSTED_MEMORY_FIELDS,
-            label="ContextBundle trusted_memory",
-        )
-        for name in _TRUSTED_MEMORY_FIELDS:
-            if not isinstance(self.trusted_memory[name], list):
-                raise TypeError(f"ContextBundle trusted_memory.{name} must be an array")
+        _validate_trusted_memory_shape(self.trusted_memory)
+
         _exact_fields(
             self.bindings,
             allowed=_BINDING_FIELDS,
@@ -915,6 +1097,10 @@ class ContextBundle:
             or not self.bindings["session_id"]
         ):
             raise TypeError("ContextBundle bindings.session_id must be a non-empty string")
+        if len(self.bindings["session_id"]) > 256:
+            raise ValueError(
+                "ContextBundle bindings.session_id exceeds 256 characters"
+            )
         if _validate_sha256(
             self.bindings["source_digest"],
             label="ContextBundle bindings.source_digest",
@@ -979,6 +1165,11 @@ class ContextBundle:
             raise TypeError(
                 "ContextBundle bindings.tokenizer_identity must be a non-empty string"
             )
+        if len(self.bindings["tokenizer_identity"]) > 256:
+            raise ValueError(
+                "ContextBundle bindings.tokenizer_identity exceeds 256 characters"
+            )
+
         if not isinstance(self.certificate["issued"], bool):
             raise TypeError("ContextBundle certificate.issued must be a boolean")
         expected_claim = (
@@ -1024,6 +1215,12 @@ class ContextBundle:
                 "ContextBundle token_accounting.tokenizer_identity "
                 "must be a non-empty string"
             )
+        if len(self.token_accounting["tokenizer_identity"]) > 256:
+            raise ValueError(
+                "ContextBundle token_accounting.tokenizer_identity "
+                "exceeds 256 characters"
+            )
+
         validate_artifact_envelope(self.artifact)
         actual = _sha256_json(self._unsigned_dict())
         if self.bundle_sha256 and self.bundle_sha256 != actual:
@@ -1533,6 +1730,11 @@ class LocalAIConnector:
         archive_chain_head_sha256: str | None = None,
         timeout_seconds: float | None = None,
     ) -> ContextBundle:
+        effective_policy = _policy_from_value(policy, fallback=self.policy)
+        if not effective_policy.verify:
+            raise ValueError(
+                "connector compile policy must require verification"
+            )
         requested_head = _validate_sha256(
             archive_chain_head_sha256,
             label="archive_chain_head_sha256",
@@ -1572,7 +1774,6 @@ class LocalAIConnector:
             ):
                 raise ValueError("archive chain head disagrees with the session")
             session.archive_chain_head_sha256 = requested_head
-        effective_policy = _policy_from_value(policy, fallback=self.policy)
         compiler = self._compiler(effective_policy)
         memory = compiler.compile(
             list(session.sources),
@@ -1665,6 +1866,72 @@ class LocalAIConnector:
         self._sessions[session.session_id] = session
         return bundle
 
+    def _require_trusted_memory_artifact_alignment(
+        self,
+        bundle: ContextBundle,
+        decoded_items: list[MemoryItem],
+    ) -> None:
+        artifact = bundle.artifact
+        metadata = artifact.get("compiler_metadata")
+        metrics = metadata.get("metrics") if isinstance(metadata, dict) else None
+        protected_overflow = (
+            metrics.get("protected_budget_overflow", 0)
+            if isinstance(metrics, dict)
+            else 0
+        )
+        expected = _trusted_memory_section(
+            items=decoded_items,
+            selected_item_ids=artifact["selected_item_ids"],
+            sources=(),
+            protected_budget_overflow=protected_overflow,
+        )
+        artifact_bound_fields = (
+            *tuple(_TRUSTED_MEMORY_CATEGORY_KINDS),
+            "source_spans",
+            "omitted_or_overflowed_protected_items",
+        )
+        if any(
+            _sha256_json(bundle.trusted_memory[name])
+            != _sha256_json(expected[name])
+            for name in artifact_bound_fields
+        ):
+            raise ValueError(
+                "ContextBundle trusted_memory does not match its artifact"
+            )
+
+        source_hashes = bundle.trusted_memory["source_hashes"]
+        if len(source_hashes) != artifact["source_count"]:
+            raise ValueError(
+                "ContextBundle trusted_memory source hashes do not match "
+                "its artifact source count"
+            )
+        source_ids = [entry["source_id"] for entry in source_hashes]
+        source_sequences = [entry["sequence"] for entry in source_hashes]
+        if (
+            len(source_ids) != len(set(source_ids))
+            or len(source_sequences) != len(set(source_sequences))
+        ):
+            raise ValueError(
+                "ContextBundle trusted_memory source hashes must have unique "
+                "source ids and sequences"
+            )
+        referenced_source_ids = {
+            span.source_id
+            for item in decoded_items
+            for span in item.provenance
+        }
+        if not referenced_source_ids.issubset(source_ids):
+            raise ValueError(
+                "ContextBundle trusted_memory source hashes omit artifact provenance"
+            )
+        if (
+            bundle.bindings["source_digest"] != artifact["source_digest"]
+            or bundle.bindings["source_count"] != artifact["source_count"]
+        ):
+            raise ValueError(
+                "ContextBundle source binding does not match its artifact"
+            )
+
     def _require_supported_bundle_claims(self, bundle: ContextBundle) -> None:
         bindings = bundle.bindings
         metadata = bundle.artifact.get("compiler_metadata")
@@ -1695,6 +1962,7 @@ class LocalAIConnector:
         decoded_items = [
             MemoryItem.from_dict(item) for item in bundle.artifact["items"]
         ]
+        self._require_trusted_memory_artifact_alignment(bundle, decoded_items)
         rendered = render_typed_memory(
             decoded_items,
             bundle.artifact["selected_item_ids"],
@@ -1703,7 +1971,6 @@ class LocalAIConnector:
             raise ValueError(
                 "ContextBundle rendered memory digest binding is invalid"
             )
-
 
         exact = bindings["token_accounting_exact"]
         mode = bindings["token_accounting"]
@@ -1829,7 +2096,11 @@ class LocalAIConnector:
                     decoded.append(value)
                 elif isinstance(value, Mapping):
                     decoded.append(
-                        SourceRecord.from_dict(dict(value), default_sequence=index)
+                        _canonical_source_record_from_mapping(
+                            value,
+                            default_sequence=index,
+                            label=f"source_records[{index}]",
+                        )
                     )
                 else:
                     raise TypeError(
@@ -2450,6 +2721,19 @@ def _finite_json_float(value: str) -> float:
     return decoded
 
 
+def _bounded_json_int(value: str) -> int:
+    digits = value[1:] if value.startswith("-") else value
+    if len(digits) > _MAX_JSON_INTEGER_DIGITS:
+        raise ValueError(
+            "connector request exceeds the supported JSON integer length of "
+            f"{_MAX_JSON_INTEGER_DIGITS} digits"
+        )
+    try:
+        return int(value)
+    except ValueError:
+        raise ValueError("connector request contains an invalid JSON integer") from None
+
+
 def _reject_json_constant(value: str) -> None:
     raise ValueError(f"non-standard JSON constant is forbidden: {value}")
 
@@ -2598,6 +2882,7 @@ def decode_connector_request(
             raw,
             object_pairs_hook=_strict_json_object,
             parse_float=_finite_json_float,
+            parse_int=_bounded_json_int,
             parse_constant=_reject_json_constant,
         )
     except RecursionError as exc:

@@ -30,9 +30,10 @@ class StrictJsonLimits:
     max_bytes: int
     max_line_chars: int
     max_depth: int
+    max_integer_digits: int = 640
 
     def __post_init__(self) -> None:
-        for name in ("max_bytes", "max_line_chars", "max_depth"):
+        for name in ("max_bytes", "max_line_chars", "max_depth", "max_integer_digits"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int):
                 raise TypeError(f"{name} must be an integer")
@@ -89,6 +90,20 @@ def _finite_json_float(value: str) -> float:
     if not math.isfinite(decoded):
         raise StrictJsonError("JSON numbers must be finite")
     return decoded
+
+
+def _bounded_json_int(
+    value: str,
+    *,
+    limits: StrictJsonLimits,
+    label: str,
+) -> int:
+    digits = value[1:] if value.startswith("-") else value
+    if len(digits) > limits.max_integer_digits:
+        raise StrictJsonError(
+            f"{label} exceeds {limits.max_integer_digits} JSON integer digits"
+        )
+    return int(value)
 
 
 def _reject_json_constant(value: str) -> None:
@@ -337,11 +352,18 @@ def load_strict_json_file(
     if not raw.strip():
         raise StrictJsonError(f"{label} cannot be empty: {input_path}")
     _validate_json_text(raw, limits=limits, label=label)
+
+    def parse_int(value: str) -> int:
+        return _bounded_json_int(
+            value, limits=limits, label=label
+        )
+
     try:
         value = json.loads(
             raw,
             object_pairs_hook=_strict_json_object,
             parse_float=_finite_json_float,
+            parse_int=parse_int,
             parse_constant=_reject_json_constant,
         )
     except StrictJsonError:

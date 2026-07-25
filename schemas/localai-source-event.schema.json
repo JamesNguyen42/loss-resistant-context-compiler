@@ -17,7 +17,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 128,
-      "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+      "pattern": "^\\S(?:[\\s\\S]*\\S)?(?![\\s\\S])"
     },
     "content": {"type": "string"},
     "timestamp": {"type": ["string", "null"], "maxLength": 256},
@@ -50,7 +50,7 @@
             "trusted_for_state": {"type": "boolean"},
             "issuer": {
               "anyOf": [
-                {"type": "string", "pattern": "^\\S(?:[\\s\\S]*\\S)?$"},
+                {"type": "string", "pattern": "^\\S(?:[\\s\\S]*\\S)?(?![\\s\\S])"},
                 {"type": "null"}
               ]
             }
@@ -65,13 +65,13 @@
     "content_sha256": {
       "anyOf": [
         {"const": ""},
-        {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        {"type": "string", "pattern": "^[a-f0-9]{64}$", "minLength": 64, "maxLength": 64}
       ]
     },
     "record_sha256": {
       "anyOf": [
         {"const": ""},
-        {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        {"type": "string", "pattern": "^[a-f0-9]{64}$", "minLength": 64, "maxLength": 64}
       ]
     }
   },

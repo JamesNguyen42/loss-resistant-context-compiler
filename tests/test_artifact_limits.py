@@ -128,6 +128,19 @@ def test_artifact_json_rejects_duplicate_keys_and_nonfinite_numbers(
         load_artifact(io.StringIO(payload))
 
 
+def test_artifact_json_integer_length_is_bounded_explicitly() -> None:
+    payload = '{"value":' + "9" * 641 + "}"
+
+    with pytest.raises(
+        ArtifactLimitError,
+        match=(
+            "compiled artifact JSON exceeds the supported JSON integer length "
+            "of 640 digits"
+        ),
+    ):
+        load_artifact(io.StringIO(payload))
+
+
 def test_artifact_line_and_depth_limits_precede_json_decoding() -> None:
     with pytest.raises(ArtifactLimitError, match="line 2"):
         load_artifact(

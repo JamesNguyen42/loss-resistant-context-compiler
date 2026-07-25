@@ -6,7 +6,6 @@ import os
 import secrets
 import stat
 import tempfile
-from contextlib import suppress
 from pathlib import Path
 
 from .path_safety import (
@@ -185,11 +184,24 @@ def atomic_write_text(
                 os.close(descriptor)
             if temporary_present:
                 if use_directory_fd:
-                    with suppress(FileNotFoundError):
-                        os.unlink(
+                    try:
+                        final_temporary_stat = os.stat(
                             temporary_name,
                             dir_fd=parent_descriptor,
+                            follow_symlinks=False,
                         )
+                    except FileNotFoundError:
+                        pass
+                    else:
+                        final_identity = (
+                            final_temporary_stat.st_dev,
+                            final_temporary_stat.st_ino,
+                        )
+                        if final_identity == temporary_identity:
+                            os.unlink(
+                                temporary_name,
+                                dir_fd=parent_descriptor,
+                            )
                 else:
                     try:
                         final_temporary_stat = temporary_path.lstat()

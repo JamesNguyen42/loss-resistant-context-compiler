@@ -17,7 +17,7 @@
   ],
   "properties": {
     "schema": {"const": "ctxc-connector-inspection-0.1"},
-    "bundle_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "bundle_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$", "minLength": 64, "maxLength": 64},
     "artifact": {
       "type": "object",
       "required": [
@@ -38,9 +38,9 @@
       "properties": {
         "schema": {"const": "ctxc-artifact-inspection-0.1"},
         "schema_version": {"const": "1.0"},
-        "artifact_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "artifact_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$", "minLength": 64, "maxLength": 64},
         "compiled_at": {"type": "string"},
-        "source_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "source_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$", "minLength": 64, "maxLength": 64},
         "source_count": {"type": "integer", "minimum": 0},
         "ledger_complete": {"type": "boolean"},
         "integrity": {

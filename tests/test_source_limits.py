@@ -174,6 +174,20 @@ def test_source_json_rejects_ambiguous_or_nonfinite_values(
         load_sources(io.StringIO(payload), json_lines=False)
 
 
+def test_source_json_integer_length_is_bounded_explicitly() -> None:
+    payload = (
+        '{"role":"user","content":"goal: bounded","sequence":'
+        + "9" * 641
+        + "}"
+    )
+
+    with pytest.raises(
+        SourceLimitError,
+        match="source JSON exceeds the supported JSON integer length of 640 digits",
+    ):
+        load_sources(io.StringIO(payload), json_lines=False)
+
+
 def test_source_json_nesting_failure_is_normalized_to_input_error() -> None:
     payload = (
         '{"role":"user","content":"goal: bounded","metadata":'
@@ -299,6 +313,23 @@ def test_verifier_reports_effective_limits_and_rejects_forged_limit_shape() -> N
     forged = verify_artifact_dict(artifact, [record], source_limits=limits)
     assert forged["passed"] is False
     assert "invalid_source_limits" in {issue["code"] for issue in forged["issues"]}
+
+
+def test_archive_json_integer_length_is_bounded_before_entry_validation(
+    tmp_path: Path,
+) -> None:
+    archive = SourceArchive(tmp_path / "oversized-integer-archive")
+    archive.directory.mkdir(parents=True)
+    archive.events_path.write_text(
+        '{"sequence":' + "9" * 641 + "}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        SourceLimitError,
+        match="archive JSON exceeds the supported JSON integer length of 640 digits",
+    ):
+        archive.load()
 
 
 def test_archive_size_limit_refuses_append_without_partial_write(tmp_path: Path) -> None:

@@ -63,3 +63,4 @@
 {"id":"render-01-missing","raw":"{\"schema\":\"ctxc-connector-request-0.1\",\"request_id\":\"x\",\"operation\":\"render_context\",\"payload\":{}}","expect":{"ok":false,"error.code":"invalid_value"}}
 {"id":"verify-01-missing","raw":"{\"schema\":\"ctxc-connector-request-0.1\",\"request_id\":\"x\",\"operation\":\"verify_memory\",\"payload\":{}}","expect":{"ok":false,"error.code":"invalid_value"}}
 {"id":"inspect-01-missing","raw":"{\"schema\":\"ctxc-connector-request-0.1\",\"request_id\":\"x\",\"operation\":\"inspect_memory\",\"payload\":{}}","expect":{"ok":false,"error.code":"invalid_value"}}
+{"id":"compile-04-verification-disabled","raw":"{\"schema\":\"ctxc-connector-request-0.1\",\"request_id\":\"x\",\"operation\":\"compile_memory\",\"payload\":{\"session_id\":\"negative-policy-session\",\"events\":[{\"role\":\"user\",\"content\":\"goal: This must not be ingested.\"}],\"policy\":{\"verify\":false}}}","expect":{"ok":false,"error.code":"invalid_value"}}

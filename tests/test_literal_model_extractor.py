@@ -380,6 +380,10 @@ def test_strict_json_and_candidate_limits_are_inherited() -> None:
     invalid_json = LiteralModelExtractor(
         lambda _prompt: '{"items":[' + duplicate + "]}",
     ).extract([record])
+    oversized_integer = "9" * 641
+    oversized_json = LiteralModelExtractor(
+        lambda _prompt: '{"items":[],"untrusted":' + oversized_integer + "}",
+    ).extract([record])
     too_many = LiteralModelExtractor(
         lambda _prompt: {
             "items": [
@@ -392,6 +396,8 @@ def test_strict_json_and_candidate_limits_are_inherited() -> None:
 
     assert invalid_json.items == []
     assert invalid_json.rejected[0]["reason"] == "invalid_json"
+    assert oversized_json.items == []
+    assert oversized_json.rejected[0]["reason"] == "invalid_json"
     assert too_many.items == []
     assert too_many.rejected == [{"reason": "too_many_candidates"}]
 

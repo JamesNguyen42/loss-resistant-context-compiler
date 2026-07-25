@@ -1015,6 +1015,7 @@ _LITERAL_MODEL_CANDIDATE_KEYS = frozenset(
 _LITERAL_MODEL_CANDIDATE_REQUIRED_KEYS = frozenset(
     {"kind", "text", "source_ids"}
 )
+_MAX_MODEL_JSON_INTEGER_DIGITS = 640
 
 
 def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -1031,6 +1032,16 @@ def _finite_json_float(value: str) -> float:
     if not math.isfinite(decoded):
         raise ValueError("JSON number must be finite")
     return decoded
+
+
+def _bounded_json_int(value: str) -> int:
+    digits = value[1:] if value.startswith("-") else value
+    if len(digits) > _MAX_MODEL_JSON_INTEGER_DIGITS:
+        raise ValueError(
+            "model response exceeds the supported JSON integer length of "
+            f"{_MAX_MODEL_JSON_INTEGER_DIGITS} digits"
+        )
+    return int(value)
 
 
 def _reject_json_constant(value: str) -> None:
@@ -1153,6 +1164,7 @@ class ModelExtractor:
                     raw,
                     object_pairs_hook=_strict_json_object,
                     parse_float=_finite_json_float,
+                    parse_int=_bounded_json_int,
                     parse_constant=_reject_json_constant,
                 )
                 if isinstance(raw, str)

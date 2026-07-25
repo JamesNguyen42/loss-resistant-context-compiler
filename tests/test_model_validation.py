@@ -228,6 +228,16 @@ class ModelResponseValidationTests(unittest.TestCase):
                 self.assertEqual(result.rejected[0]["reason"], "invalid_json")
                 self.assertEqual(result.metadata["failure_reason"], "invalid_json")
 
+    def test_oversized_json_integer_fails_before_envelope_validation(self) -> None:
+        oversized = "9" * 641
+        raw = '{"items":[],"untrusted":' + oversized + "}"
+        result = ModelExtractor(lambda _: raw).extract([self.source])
+
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.rejected[0]["reason"], "invalid_json")
+        self.assertEqual(result.metadata["failure_reason"], "invalid_json")
+        self.assertNotIn(oversized[:64], result.rejected[0]["detail"])
+
     def test_valid_optional_fields_are_preserved(self) -> None:
         candidate = self.candidate()
         candidate.update(

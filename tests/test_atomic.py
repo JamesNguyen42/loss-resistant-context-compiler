@@ -102,6 +102,44 @@ def test_exclusive_atomic_install_cleans_temp_after_link_failure(
     assert list(tmp_path.glob(".ctxc-*.tmp")) == []
 
 
+@pytest.mark.skipif(
+    not atomic_module.supports_atomic_directory_fds(),
+    reason="descriptor-relative atomic cleanup unavailable",
+)
+def test_failed_cleanup_preserves_a_replaced_temporary_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "output.json"
+    orphaned = tmp_path / "original-orphan.tmp"
+    replacement_path: Path | None = None
+
+    def replace_temporary_then_fail(
+        temporary: object,
+        _target: object,
+        **_kwargs: object,
+    ) -> None:
+        nonlocal replacement_path
+        replacement_path = tmp_path / os.fspath(temporary)
+        os.replace(replacement_path, orphaned)
+        replacement_path.write_text("replacement", encoding="utf-8")
+        raise OSError("injected post-replacement link failure")
+
+    monkeypatch.setattr(
+        atomic_module.os,
+        "link",
+        replace_temporary_then_fail,
+    )
+
+    with pytest.raises(OSError, match="post-replacement link failure"):
+        atomic_write_text(output, "uncommitted", overwrite=False)
+
+    assert not output.exists()
+    assert orphaned.read_text(encoding="utf-8") == "uncommitted"
+    assert replacement_path is not None
+    assert replacement_path.read_text(encoding="utf-8") == "replacement"
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX directory fsync semantics")
 def test_exclusive_post_link_fsync_failure_leaves_complete_file(
     tmp_path: Path,

@@ -25,7 +25,7 @@
   },
   "additionalProperties": false,
   "$defs": {
-    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$", "minLength": 64, "maxLength": 64},
     "memoryItems": {
       "type": "array",
       "maxItems": 200000,

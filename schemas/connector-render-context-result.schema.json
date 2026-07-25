@@ -8,7 +8,7 @@
     "context": {"type": "string"},
     "rendered_memory_sha256": {
       "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
+      "pattern": "^[a-f0-9]{64}$", "minLength": 64, "maxLength": 64
     },
     "token_accounting": {
       "$ref": "context-bundle.schema.json#/$defs/tokenAccounting"
