@@ -8,6 +8,7 @@ include TODO.md
 include pyproject.toml
 
 recursive-include benchmarks *.json *.md *.py
+recursive-include conformance *.jsonl *.py
 recursive-include docs *.json *.md
 recursive-include examples *.jsonl
 recursive-include schemas *.json

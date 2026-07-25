@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loss-resistant-context-compiler/localai-source-event.schema.json",
+  "title": "LocalAI connector SourceEvent",
+  "type": "object",
+  "required": ["role", "content"],
+  "properties": {
+    "schema": {"const": "localai-source-event-0.1"},
+    "id": {
+      "anyOf": [
+        {"type": "string", "minLength": 1, "maxLength": 1024},
+        {"type": "null"}
+      ]
+    },
+    "sequence": {"type": ["integer", "null"], "minimum": 0},
+    "role": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+    },
+    "content": {"type": "string"},
+    "timestamp": {"type": ["string", "null"], "maxLength": 256},
+    "metadata": {
+      "anyOf": [
+        {
+          "type": "object",
+          "propertyNames": {
+            "not": {
+              "enum": [
+                "ctxc_authenticated_authority",
+                "localai_authority",
+                "localai_redaction",
+                "localai_source_provenance",
+                "localai_original_record_sha256"
+              ]
+            }
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "authority": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["authenticated"],
+          "properties": {
+            "authenticated": {"type": "boolean"},
+            "trusted_for_state": {"type": "boolean"},
+            "issuer": {
+              "anyOf": [
+                {"type": "string", "pattern": "^\\S(?:[\\s\\S]*\\S)?$"},
+                {"type": "null"}
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {"type": "null"}
+      ]
+    },
+    "redaction": {"type": ["object", "null"]},
+    "provenance": {"type": ["object", "null"]},
+    "content_sha256": {
+      "anyOf": [
+        {"const": ""},
+        {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      ]
+    },
+    "record_sha256": {
+      "anyOf": [
+        {"const": ""},
+        {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      ]
+    }
+  },
+  "additionalProperties": false
+}

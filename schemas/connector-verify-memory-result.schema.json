@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loss-resistant-context-compiler/connector-verify-memory-result.schema.json",
+  "title": "Connector verify_memory result",
+  "type": "object",
+  "required": [
+    "passed",
+    "source_digest_valid",
+    "artifact_digest_valid",
+    "compression_valid",
+    "compilation_metrics_present",
+    "compilation_metrics_valid",
+    "ledger_complete",
+    "items",
+    "protected_candidates",
+    "protected_retained",
+    "protected_recall",
+    "provenance_valid",
+    "provenance_total",
+    "provenance_validity",
+    "verification_source_limits",
+    "verification_artifact_limits",
+    "bundle_digest_valid",
+    "bindings_valid",
+    "issues",
+    "certificate"
+  ],
+  "properties": {
+    "passed": {"type": "boolean"},
+    "source_digest_valid": {"type": "boolean"},
+    "artifact_digest_valid": {"type": "boolean"},
+    "compression_valid": {"type": "boolean"},
+    "compilation_metrics_present": {"type": "boolean"},
+    "compilation_metrics_valid": {"type": "boolean"},
+    "ledger_complete": {"type": "boolean"},
+    "items": {"type": "integer", "minimum": 0},
+    "protected_candidates": {"type": "integer", "minimum": 0},
+    "protected_retained": {"type": "integer", "minimum": 0},
+    "protected_recall": {"type": "number", "minimum": 0, "maximum": 1},
+    "provenance_valid": {"type": "integer", "minimum": 0},
+    "provenance_total": {"type": "integer", "minimum": 0},
+    "provenance_validity": {"type": "number", "minimum": 0, "maximum": 1},
+    "verification_source_limits": {"$ref": "#/$defs/sourceLimits"},
+    "verification_artifact_limits": {"$ref": "#/$defs/artifactLimits"},
+    "bundle_digest_valid": {"const": true},
+    "bindings_valid": {"type": "boolean"},
+    "issues": {
+      "type": "array",
+      "maxItems": 100000,
+      "items": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"type": "string", "minLength": 1},
+          "severity": {"enum": ["error", "warning", "info"]},
+          "message": {"type": "string"},
+          "item_id": {"type": ["string", "null"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "certificate": {"$ref": "context-bundle.schema.json#/$defs/certificate"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sourceLimits": {
+      "type": "object",
+      "required": [
+        "max_input_bytes",
+        "max_records",
+        "max_line_chars",
+        "max_record_bytes",
+        "max_total_record_bytes",
+        "max_json_depth"
+      ],
+      "properties": {
+        "max_input_bytes": {"type": "integer", "minimum": 1},
+        "max_records": {"type": "integer", "minimum": 1},
+        "max_line_chars": {"type": "integer", "minimum": 1},
+        "max_record_bytes": {"type": "integer", "minimum": 1},
+        "max_total_record_bytes": {"type": "integer", "minimum": 1},
+        "max_json_depth": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "artifactLimits": {
+      "type": "object",
+      "required": [
+        "max_input_bytes",
+        "max_line_chars",
+        "max_canonical_bytes",
+        "max_json_depth",
+        "max_items",
+        "max_selected_items",
+        "max_provenance_spans",
+        "max_verification_issues"
+      ],
+      "properties": {
+        "max_input_bytes": {"type": "integer", "minimum": 1},
+        "max_line_chars": {"type": "integer", "minimum": 1},
+        "max_canonical_bytes": {"type": "integer", "minimum": 1},
+        "max_json_depth": {"type": "integer", "minimum": 1},
+        "max_items": {"type": "integer", "minimum": 1},
+        "max_selected_items": {"type": "integer", "minimum": 1},
+        "max_provenance_spans": {"type": "integer", "minimum": 1},
+        "max_verification_issues": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    }
+  }
+}

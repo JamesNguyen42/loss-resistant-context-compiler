@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loss-resistant-context-compiler/connector-inspect-memory-result.schema.json",
+  "title": "Connector inspect_memory result",
+  "type": "object",
+  "required": [
+    "schema",
+    "bundle_sha256",
+    "artifact",
+    "trusted_memory_counts",
+    "source_spans",
+    "source_hashes",
+    "omitted_or_overflowed_protected_items",
+    "bindings",
+    "certificate",
+    "token_accounting"
+  ],
+  "properties": {
+    "schema": {"const": "ctxc-connector-inspection-0.1"},
+    "bundle_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "artifact": {
+      "type": "object",
+      "required": [
+        "schema",
+        "schema_version",
+        "artifact_sha256",
+        "compiled_at",
+        "source_digest",
+        "source_count",
+        "ledger_complete",
+        "integrity",
+        "total_items",
+        "selected_items",
+        "verification",
+        "compression",
+        "metrics"
+      ],
+      "properties": {
+        "schema": {"const": "ctxc-artifact-inspection-0.1"},
+        "schema_version": {"const": "1.0"},
+        "artifact_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "compiled_at": {"type": "string"},
+        "source_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "source_count": {"type": "integer", "minimum": 0},
+        "ledger_complete": {"type": "boolean"},
+        "integrity": {
+          "type": "object",
+          "required": ["schema_supported", "shape_valid", "self_hash_valid"],
+          "properties": {
+            "schema_supported": {"const": true},
+            "shape_valid": {"const": true},
+            "self_hash_valid": {"const": true}
+          },
+          "additionalProperties": false
+        },
+        "total_items": {"type": "integer", "minimum": 0},
+        "selected_items": {"type": "integer", "minimum": 0},
+        "verification": {
+          "$ref": "compiled-memory.schema.json#/$defs/verification"
+        },
+        "compression": {
+          "$ref": "compiled-memory.schema.json#/$defs/compression"
+        },
+        "metrics": {
+          "anyOf": [
+            {"$ref": "compiled-memory.schema.json#/$defs/compilationMetrics"},
+            {"type": "object", "maxProperties": 0}
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "trusted_memory_counts": {
+      "type": "object",
+      "required": [
+        "active_goals",
+        "constraints",
+        "user_corrections",
+        "decisions",
+        "confirmed_facts",
+        "unresolved_questions",
+        "exact_errors",
+        "exact_references"
+      ],
+      "properties": {
+        "active_goals": {"type": "integer", "minimum": 0},
+        "constraints": {"type": "integer", "minimum": 0},
+        "user_corrections": {"type": "integer", "minimum": 0},
+        "decisions": {"type": "integer", "minimum": 0},
+        "confirmed_facts": {"type": "integer", "minimum": 0},
+        "unresolved_questions": {"type": "integer", "minimum": 0},
+        "exact_errors": {"type": "integer", "minimum": 0},
+        "exact_references": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "source_spans": {"type": "integer", "minimum": 0},
+    "source_hashes": {"type": "integer", "minimum": 0},
+    "omitted_or_overflowed_protected_items": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "bindings": {"$ref": "context-bundle.schema.json#/$defs/bindings"},
+    "certificate": {"$ref": "context-bundle.schema.json#/$defs/certificate"},
+    "token_accounting": {
+      "$ref": "context-bundle.schema.json#/$defs/tokenAccounting"
+    }
+  },
+  "additionalProperties": false
+}

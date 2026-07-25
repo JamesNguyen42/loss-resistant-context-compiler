@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loss-resistant-context-compiler/connector-ingest-source-events-result.schema.json",
+  "title": "Connector ingest_source_events result",
+  "type": "object",
+  "required": [
+    "session_id",
+    "accepted_events",
+    "source_count",
+    "source_digest",
+    "source_records",
+    "archive_chain_head_sha256",
+    "archive_head_verified",
+    "checkpoint"
+  ],
+  "properties": {
+    "session_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "accepted_events": {"type": "integer", "minimum": 0},
+    "source_count": {"type": "integer", "minimum": 0},
+    "source_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "source_records": {
+      "type": "array",
+      "maxItems": 100000,
+      "items": {
+        "$ref": "incremental-checkpoint.schema.json#/$defs/canonicalSourceRecord"
+      }
+    },
+    "archive_chain_head_sha256": {
+      "anyOf": [
+        {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        {"type": "null"}
+      ]
+    },
+    "archive_head_verified": {"type": "boolean"},
+    "checkpoint": {"$ref": "incremental-checkpoint.schema.json"}
+  },
+  "additionalProperties": false
+}

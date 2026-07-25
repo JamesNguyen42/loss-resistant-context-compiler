@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loss-resistant-context-compiler/connector-compile-memory-result.schema.json",
+  "title": "Connector compile_memory result",
+  "type": "object",
+  "required": ["bundle", "checkpoint"],
+  "properties": {
+    "bundle": {"$ref": "context-bundle.schema.json"},
+    "checkpoint": {"$ref": "incremental-checkpoint.schema.json"}
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loss-resistant-context-compiler/connector-render-context-payload.schema.json",
+  "title": "Connector render_context payload",
+  "type": "object",
+  "required": ["bundle"],
+  "properties": {
+    "bundle": {"$ref": "context-bundle.schema.json"}
+  },
+  "additionalProperties": false
+}

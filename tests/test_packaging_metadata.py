@@ -53,7 +53,7 @@ def test_schema_install_path_matches_the_distribution_and_all_schemas_parse() ->
         ]
     }
     schemas = sorted((ROOT / "schemas").glob("*.json"))
-    assert len(schemas) == 8
+    assert len(schemas) == 25
     schema_ids: dict[str, str] = {}
     for schema in schemas:
         decoded = json.loads(schema.read_text(encoding="utf-8"))
@@ -64,12 +64,27 @@ def test_schema_install_path_matches_the_distribution_and_all_schemas_parse() ->
     assert schema_ids["trust-manifest.schema.json"].startswith(
         "https://example.invalid/loss-resistant-context-compiler/"
     )
+    historical_schema_names = {
+        "compiled-memory.schema.json",
+        "model-extraction.schema.json",
+        "model-extraction-literal.schema.json",
+        "redaction-report.schema.json",
+        "source-archive-entry.schema.json",
+        "source-archive-report.schema.json",
+        "source-event.schema.json",
+    }
     assert all(
-        schema_id.startswith(
+        schema_ids[name].startswith(
             "https://example.invalid/lossless-context-compiler/"
         )
+        for name in historical_schema_names
+    )
+    assert all(
+        schema_id.startswith(
+            "https://example.invalid/loss-resistant-context-compiler/"
+        )
         for name, schema_id in schema_ids.items()
-        if name != "trust-manifest.schema.json"
+        if name not in historical_schema_names
     )
 
 
@@ -97,5 +112,6 @@ def test_release_documents_freeze_name_versioning_and_support_boundaries() -> No
         "include CHANGELOG.md",
         "include SUPPORT.md",
         "recursive-include benchmarks *.json *.md *.py",
+        "recursive-include conformance *.jsonl *.py",
         "recursive-include docs *.json *.md",
     } <= set(manifest.splitlines())
