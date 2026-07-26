@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import errno
+import io
 import json
+import os
+import signal
 import subprocess
 import sys
+import threading
 import time
+from contextlib import suppress
 from unittest.mock import patch
 
 import pytest
 
 import context_compiler.local_qwen as local_qwen
+import context_compiler.process_tree as process_tree
 from context_compiler import LmsQwenCompletion, LocalQwenError
 from context_compiler.local_qwen import QWEN_MODEL_KEY, QWEN_Q4_VARIANT
 
@@ -35,6 +42,15 @@ def model_payload(
 
 def completed(arguments: list[str], stdout: str) -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess(arguments, 0, stdout=stdout, stderr="")
+
+
+def install_bytesio_stdout_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(local_qwen, "_prepare_process_stdout", lambda _stdout: None)
+    monkeypatch.setattr(
+        local_qwen,
+        "_read_process_stdout_chunk",
+        lambda stdout, *, max_bytes: stdout.read(max_bytes),
+    )
 
 
 def test_cli_adapter_verifies_exact_qwen_q4_and_returns_clean_output(tmp_path) -> None:
@@ -425,6 +441,681 @@ def test_cli_adapter_bounds_cli_output_before_returning_it(tmp_path) -> None:
         pytest.raises(LocalQwenError, match="output exceeded"),
     ):
         adapter("extract this")
+
+
+def test_posix_wait_rejects_zero_remaining_time_before_observing_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Process:
+        args = ("lms", "chat")
+
+    def reject_late_observation(*_args: object, **_kwargs: object) -> bool:
+        raise AssertionError("an exit observed at or after the deadline is too late")
+
+    monkeypatch.setattr(local_qwen.time, "monotonic", lambda: 12.0)
+    monkeypatch.setattr(
+        local_qwen,
+        "posix_process_exited_without_reaping",
+        reject_late_observation,
+    )
+
+    with pytest.raises(subprocess.TimeoutExpired) as raised:
+        local_qwen._wait_posix_process_without_reaping(  # type: ignore[arg-type]
+            Process(),
+            deadline=12.0,
+            timeout=0.25,
+        )
+
+    assert raised.value.timeout == 0.25
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX nonblocking pipe regression")
+def test_posix_timeout_returns_while_an_unowned_writer_holds_stdout_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    read_fd, write_fd = os.pipe()
+    stdout = os.fdopen(read_fd, "rb", buffering=0)
+    events: list[str] = []
+    failures: list[BaseException] = []
+
+    class HeldOpenLeader:
+        pid = 4309
+        args = ("lms", "chat")
+        returncode: int | None = None
+
+        def __init__(self) -> None:
+            self.stdout = stdout
+
+        def poll(self) -> int | None:
+            raise AssertionError("POSIX cleanup must not poll or reap the leader")
+
+        def kill(self) -> None:
+            raise AssertionError("successful group cleanup must not need PID fallback")
+
+        def wait(self, *, timeout: float) -> int:
+            assert timeout == 1.0
+            events.append("wait")
+            self.returncode = -signal.SIGKILL
+            return self.returncode
+
+    process = HeldOpenLeader()
+
+    def popen(command: list[str], **kwargs: object) -> HeldOpenLeader:
+        assert command == ["lms", "chat"]
+        assert kwargs["start_new_session"] is True
+        return process
+
+    def terminate_group(
+        candidate: object,
+        *,
+        error_type: type[RuntimeError],
+    ) -> None:
+        assert candidate is process
+        assert error_type is LocalQwenError
+        assert process.returncode is None
+        events.append("group-cleanup")
+
+    monkeypatch.setattr(local_qwen.subprocess, "Popen", popen)
+    monkeypatch.setattr(
+        local_qwen,
+        "terminate_anchored_posix_process_group",
+        terminate_group,
+    )
+
+    def invoke() -> None:
+        try:
+            local_qwen._run_bounded_process(
+                ["lms", "chat"],
+                timeout=0.05,
+                creationflags=0,
+                max_output_chars=512,
+            )
+        except BaseException as exc:
+            failures.append(exc)
+
+    worker = threading.Thread(target=invoke, daemon=True)
+    worker.start()
+    worker.join(timeout=1.0)
+    was_stuck = worker.is_alive()
+    with suppress(OSError):
+        os.close(write_fd)
+    if was_stuck:
+        worker.join(timeout=1.0)
+        pytest.fail("held-open stdout writer defeated the subprocess deadline")
+
+    assert len(failures) == 1
+    assert isinstance(failures[0], subprocess.TimeoutExpired)
+    assert events == ["group-cleanup", "wait"]
+
+
+def test_windows_timeout_polls_stdout_on_the_calling_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    reader_threads: list[int] = []
+
+    class Stdout:
+        def close(self) -> None:
+            events.append("stdout-close")
+
+    class Process:
+        pid = 4308
+        args = ("lms", "chat")
+        stdout = Stdout()
+        returncode: int | None = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def kill(self) -> None:
+            events.append("direct-kill")
+            self.returncode = -getattr(signal, "SIGKILL", 9)
+
+        def wait(self, *, timeout: float) -> int:
+            raise AssertionError(f"terminated Windows process was not reaped: {timeout}")
+
+    process = Process()
+
+    class Job:
+        def assign(self, candidate: object) -> None:
+            assert candidate is process
+            events.append("assign")
+
+        def contains(self, candidate: object) -> bool:
+            assert candidate is process
+            events.append("contains")
+            return True
+
+        def terminate(self) -> None:
+            events.append("job-terminate")
+            process.returncode = -getattr(signal, "SIGKILL", 9)
+
+        def close(self) -> None:
+            events.append("job-close")
+
+    job = Job()
+
+    def read_no_data(_stdout: object, *, max_bytes: int) -> None:
+        assert max_bytes == 64 * 1024
+        reader_threads.append(threading.get_ident())
+        return None
+
+    monkeypatch.setattr(local_qwen.os, "name", "nt")
+    monkeypatch.setattr(
+        local_qwen.subprocess,
+        "CREATE_NEW_PROCESS_GROUP",
+        0x00000200,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        local_qwen.WindowsJob,
+        "create",
+        lambda *, error_type: job,
+    )
+    monkeypatch.setattr(
+        local_qwen.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: process,
+    )
+    monkeypatch.setattr(
+        local_qwen,
+        "resume_windows_process",
+        lambda candidate, *, error_type: events.append("resume"),
+    )
+    monkeypatch.setattr(
+        local_qwen,
+        "_read_process_stdout_chunk",
+        read_no_data,
+    )
+
+    calling_thread = threading.get_ident()
+    with pytest.raises(subprocess.TimeoutExpired):
+        local_qwen._run_bounded_process(
+            ["lms", "chat"],
+            timeout=0.03,
+            creationflags=0,
+            max_output_chars=512,
+        )
+
+    assert reader_threads
+    assert set(reader_threads) == {calling_thread}
+    assert events[:3] == ["assign", "contains", "resume"]
+    assert events.count("job-terminate") == 1
+    assert events[-2:] == ["stdout-close", "job-close"]
+    assert "direct-kill" not in events
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows PeekNamedPipe regression")
+def test_windows_pipe_reader_is_nonblocking_bounded_and_observes_eof() -> None:
+    read_fd, write_fd = os.pipe()
+    stdout = os.fdopen(read_fd, "rb", buffering=0)
+    try:
+        assert (
+            local_qwen._read_windows_pipe_chunk(stdout, max_bytes=3) is None
+        )
+        assert os.write(write_fd, b"abcdef") == 6
+        assert local_qwen._read_windows_pipe_chunk(stdout, max_bytes=3) == b"abc"
+        assert local_qwen._read_windows_pipe_chunk(stdout, max_bytes=8) == b"def"
+        os.close(write_fd)
+        write_fd = -1
+        deadline = time.monotonic() + 1.0
+        while True:
+            chunk = local_qwen._read_windows_pipe_chunk(stdout, max_bytes=8)
+            if chunk == b"":
+                break
+            assert chunk is None
+            if time.monotonic() >= deadline:
+                pytest.fail("PeekNamedPipe did not report closed stdout")
+            time.sleep(0.01)
+    finally:
+        stdout.close()
+        if write_fd >= 0:
+            os.close(write_fd)
+
+
+def test_posix_normal_completion_cleans_group_before_reaping_without_poll(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int]] = []
+    install_bytesio_stdout_reader(monkeypatch)
+
+    class ExitedLeader:
+        pid = 4312
+        args = ("lms", "chat")
+        returncode: int | None = None
+        stdout = io.BytesIO(b'{"items":[]}')
+
+        def poll(self) -> int | None:
+            raise AssertionError("POSIX leader must not be polled before cleanup")
+
+        def kill(self) -> None:
+            raise AssertionError("successful group cleanup must not need PID fallback")
+
+        def wait(self, *, timeout: float) -> int:
+            assert timeout == 1.0
+            assert self.returncode is None
+            events.append(("wait", self.pid))
+            self.returncode = 0
+            return 0
+
+    process = ExitedLeader()
+
+    def popen(command: list[str], **kwargs: object) -> ExitedLeader:
+        assert command == ["lms", "chat"]
+        assert kwargs["start_new_session"] is True
+        return process
+
+    def waitid(id_type: int, process_id: int, options: int) -> object:
+        assert process.returncode is None, "leader was reaped before WNOWAIT"
+        assert id_type == 1
+        assert options == 2 | 4 | 8
+        events.append(("waitid", process_id))
+        return object()
+
+    def killpg(process_group_id: int, requested_signal: int) -> None:
+        assert process.returncode is None, "numeric PGID used after leader reap"
+        events.append(("signal", requested_signal))
+
+    monkeypatch.setattr(local_qwen.os, "name", "posix")
+    monkeypatch.setattr(process_tree.sys, "platform", "linux")
+    monkeypatch.setattr(local_qwen.subprocess, "Popen", popen)
+    monkeypatch.setattr(process_tree.os, "P_PID", 1, raising=False)
+    monkeypatch.setattr(process_tree.os, "WEXITED", 2, raising=False)
+    monkeypatch.setattr(process_tree.os, "WNOHANG", 4, raising=False)
+    monkeypatch.setattr(process_tree.os, "WNOWAIT", 8, raising=False)
+    monkeypatch.setattr(process_tree.os, "waitid", waitid, raising=False)
+    monkeypatch.setattr(process_tree.os, "killpg", killpg, raising=False)
+
+    completed_process = local_qwen._run_bounded_process(
+        ["lms", "chat"],
+        timeout=5.0,
+        creationflags=0,
+        max_output_chars=512,
+    )
+
+    assert completed_process.returncode == 0
+    assert completed_process.stdout == '{"items":[]}'
+    assert events == [
+        ("waitid", process.pid),
+        ("waitid", process.pid),
+        ("signal", getattr(signal, "SIGKILL", 9)),
+        ("wait", process.pid),
+    ]
+
+
+def test_anchored_posix_cleanup_rejects_an_already_reaped_leader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ReapedLeader:
+        pid = 4313
+        returncode = 0
+
+    def reject_signal(_process_group_id: int, _requested_signal: int) -> None:
+        raise AssertionError("an already-reaped numeric PGID must not be signaled")
+
+    monkeypatch.setattr(process_tree.os, "killpg", reject_signal, raising=False)
+
+    with pytest.raises(LocalQwenError, match="reaped before process-group cleanup"):
+        process_tree.terminate_anchored_posix_process_group(  # type: ignore[arg-type]
+            ReapedLeader(),
+            error_type=LocalQwenError,
+        )
+
+
+@pytest.mark.parametrize("proof_rejects", [False, True])
+def test_darwin_initial_sigterm_eperm_reobserves_and_proves_exited_leader(
+    monkeypatch: pytest.MonkeyPatch,
+    proof_rejects: bool,
+) -> None:
+    events: list[tuple[str, int]] = []
+    observations = iter((None, object()))
+
+    class RacingLeader:
+        pid = 4318
+        returncode = None
+
+    def waitid(id_type: int, process_id: int, options: int) -> object | None:
+        assert id_type == 1
+        assert process_id == RacingLeader.pid
+        assert options == 2 | 4 | 8
+        events.append(("waitid", process_id))
+        return next(observations)
+
+    def deny_initial_signal(
+        process_group_id: int,
+        requested_signal: int,
+    ) -> None:
+        assert process_group_id == RacingLeader.pid
+        assert requested_signal == signal.SIGTERM
+        events.append(("signal", requested_signal))
+        raise PermissionError(errno.EPERM, "Darwin zombie-only group")
+
+    def prove_group(
+        process_group_id: int,
+        *,
+        expected_leader_pid: int,
+        error_type: type[RuntimeError],
+    ) -> None:
+        assert process_group_id == expected_leader_pid == RacingLeader.pid
+        events.append(("proof", process_group_id))
+        if proof_rejects:
+            raise error_type("Darwin proof rejected a live survivor")
+
+    monkeypatch.setattr(process_tree.sys, "platform", "darwin")
+    monkeypatch.setattr(process_tree.os, "P_PID", 1, raising=False)
+    monkeypatch.setattr(process_tree.os, "WEXITED", 2, raising=False)
+    monkeypatch.setattr(process_tree.os, "WNOHANG", 4, raising=False)
+    monkeypatch.setattr(process_tree.os, "WNOWAIT", 8, raising=False)
+    monkeypatch.setattr(process_tree.os, "waitid", waitid, raising=False)
+    monkeypatch.setattr(process_tree.os, "killpg", deny_initial_signal, raising=False)
+    monkeypatch.setattr(
+        process_tree,
+        "prove_darwin_process_group_all_zombies",
+        prove_group,
+    )
+
+    if proof_rejects:
+        with pytest.raises(LocalQwenError, match="live survivor"):
+            process_tree.terminate_anchored_posix_process_group(  # type: ignore[arg-type]
+                RacingLeader(),
+                error_type=LocalQwenError,
+            )
+    else:
+        process_tree.terminate_anchored_posix_process_group(  # type: ignore[arg-type]
+            RacingLeader(),
+            error_type=LocalQwenError,
+        )
+
+    assert events == [
+        ("waitid", RacingLeader.pid),
+        ("signal", signal.SIGTERM),
+        ("waitid", RacingLeader.pid),
+        ("proof", RacingLeader.pid),
+    ]
+
+
+@pytest.mark.parametrize("final_signal_denied", [False, True])
+def test_darwin_final_sigkill_requires_proof_and_rejects_a_live_survivor(
+    monkeypatch: pytest.MonkeyPatch,
+    final_signal_denied: bool,
+) -> None:
+    events: list[tuple[str, int]] = []
+
+    class ExitedLeader:
+        pid = 4314
+        returncode = None
+
+    def waitid(_id_type: int, process_id: int, _options: int) -> object:
+        events.append(("waitid", process_id))
+        return object()
+
+    def signal_group(process_group_id: int, requested_signal: int) -> None:
+        assert process_group_id == 4314
+        events.append(("signal", requested_signal))
+        if requested_signal == 0 or (
+            requested_signal == getattr(signal, "SIGKILL", 9)
+            and final_signal_denied
+        ):
+            raise PermissionError(errno.EPERM, "Darwin mixed-identity group")
+
+    def reject_live_member(
+        process_group_id: int,
+        *,
+        expected_leader_pid: int,
+        error_type: type[RuntimeError],
+    ) -> None:
+        assert process_group_id == expected_leader_pid == 4314
+        events.append(("proof", process_group_id))
+        raise error_type("anchored Darwin process group still contains live PID 4315")
+
+    monkeypatch.setattr(process_tree.sys, "platform", "darwin")
+    monkeypatch.setattr(process_tree.os, "P_PID", 1, raising=False)
+    monkeypatch.setattr(process_tree.os, "WEXITED", 2, raising=False)
+    monkeypatch.setattr(process_tree.os, "WNOHANG", 4, raising=False)
+    monkeypatch.setattr(process_tree.os, "WNOWAIT", 8, raising=False)
+    monkeypatch.setattr(process_tree.os, "waitid", waitid, raising=False)
+    monkeypatch.setattr(process_tree.os, "killpg", signal_group, raising=False)
+    monkeypatch.setattr(
+        process_tree,
+        "prove_darwin_process_group_all_zombies",
+        reject_live_member,
+    )
+
+    with pytest.raises(LocalQwenError, match="live PID 4315"):
+        process_tree.terminate_anchored_posix_process_group(  # type: ignore[arg-type]
+            ExitedLeader(),
+            error_type=LocalQwenError,
+        )
+
+    assert events == [
+        ("waitid", 4314),
+        ("signal", getattr(signal, "SIGKILL", 9)),
+        ("signal", 0),
+        ("proof", 4314),
+    ]
+
+
+def test_read_and_group_cleanup_failure_preserves_cleanup_failure_precedence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+
+    class Stdout:
+        def close(self) -> None:
+            events.append("stdout-close")
+
+    class UnreapedLeader:
+        pid = 4315
+        args = ("lms", "chat")
+        returncode: int | None = None
+        stdout = Stdout()
+
+        def poll(self) -> int | None:
+            raise AssertionError("POSIX cleanup must not poll or reap the leader")
+
+        def kill(self) -> None:
+            events.append("direct-kill")
+
+        def wait(self, *, timeout: float) -> int:
+            assert timeout == 1.0
+            events.append("direct-wait")
+            self.returncode = -getattr(signal, "SIGKILL", 9)
+            return self.returncode
+
+    process = UnreapedLeader()
+
+    def fail_read(_stdout: object, *, max_bytes: int) -> bytes:
+        assert max_bytes == 64 * 1024
+        events.append("read")
+        raise OSError("private pipe detail")
+
+    def reject_group_cleanup(
+        candidate: object,
+        *,
+        error_type: type[RuntimeError],
+    ) -> None:
+        assert candidate is process
+        assert error_type is LocalQwenError
+        events.append("group-cleanup")
+        raise LocalQwenError("group proof rejected")
+
+    monkeypatch.setattr(local_qwen.os, "name", "posix")
+    monkeypatch.setattr(
+        local_qwen.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: process,
+    )
+    monkeypatch.setattr(local_qwen, "_prepare_process_stdout", lambda _stdout: None)
+    monkeypatch.setattr(local_qwen, "_read_process_stdout_chunk", fail_read)
+    monkeypatch.setattr(
+        local_qwen,
+        "terminate_anchored_posix_process_group",
+        reject_group_cleanup,
+    )
+
+    with pytest.raises(
+        LocalQwenError,
+        match="process tree could not be terminated",
+    ) as raised:
+        local_qwen._run_bounded_process(
+            ["lms", "chat"],
+            timeout=5.0,
+            creationflags=0,
+            max_output_chars=512,
+        )
+
+    assert "private pipe detail" not in str(raised.value)
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert events == [
+        "read",
+        "group-cleanup",
+        "direct-kill",
+        "stdout-close",
+        "direct-wait",
+    ]
+
+
+def test_posix_cleanup_failure_uses_direct_child_fallback_without_pgid_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    cleanup_error = LocalQwenError("group proof rejected")
+    install_bytesio_stdout_reader(monkeypatch)
+
+    class UnreapedLeader:
+        pid = 4316
+        args = ("lms", "chat")
+        returncode: int | None = None
+        stdout = io.BytesIO(b'{"items":[]}')
+
+        def poll(self) -> int | None:
+            raise AssertionError("POSIX cleanup must not poll or reap the leader")
+
+        def kill(self) -> None:
+            assert self.returncode is None
+            events.append("direct-kill")
+
+        def wait(self, *, timeout: float) -> int:
+            assert timeout == 1.0
+            events.append("direct-wait")
+            self.returncode = -9
+            return -9
+
+    process = UnreapedLeader()
+
+    def reject_group_cleanup(
+        candidate: object,
+        *,
+        error_type: type[RuntimeError],
+    ) -> None:
+        assert candidate is process
+        assert error_type is LocalQwenError
+        events.append("group-cleanup")
+        raise cleanup_error
+
+    monkeypatch.setattr(local_qwen.os, "name", "posix")
+    monkeypatch.setattr(
+        local_qwen.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: process,
+    )
+    monkeypatch.setattr(
+        local_qwen,
+        "_wait_posix_process_without_reaping",
+        lambda *_args, **_kwargs: events.append("wnowait"),
+    )
+    monkeypatch.setattr(
+        local_qwen,
+        "terminate_anchored_posix_process_group",
+        reject_group_cleanup,
+    )
+
+    with pytest.raises(
+        LocalQwenError,
+        match="process tree could not be terminated",
+    ) as raised:
+        local_qwen._run_bounded_process(
+            ["lms", "chat"],
+            timeout=5.0,
+            creationflags=0,
+            max_output_chars=512,
+        )
+
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert events == [
+        "wnowait",
+        "group-cleanup",
+        "direct-kill",
+        "direct-wait",
+    ]
+
+
+def test_unobservable_posix_leader_uses_only_direct_child_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    install_bytesio_stdout_reader(monkeypatch)
+
+    class UnobservableLeader:
+        pid = 4317
+        args = ("lms", "chat")
+        returncode: int | None = None
+        stdout = io.BytesIO(b'{"items":[]}')
+
+        def poll(self) -> int | None:
+            raise AssertionError("POSIX cleanup must not poll or reap the leader")
+
+        def kill(self) -> None:
+            events.append("direct-kill")
+
+        def wait(self, *, timeout: float) -> int:
+            assert timeout == 1.0
+            events.append("direct-wait")
+            self.returncode = -9
+            return -9
+
+    process = UnobservableLeader()
+
+    def reject_unsafe_group_retry(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("unobservable leader must never be used as a numeric PGID")
+
+    def reject_wait(*_args: object, **_kwargs: object) -> None:
+        events.append("wnowait-rejected")
+        raise LocalQwenError("leader was already reaped")
+
+    monkeypatch.setattr(local_qwen.os, "name", "posix")
+    monkeypatch.setattr(
+        local_qwen.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: process,
+    )
+    monkeypatch.setattr(
+        local_qwen,
+        "_wait_posix_process_without_reaping",
+        reject_wait,
+    )
+    monkeypatch.setattr(
+        local_qwen,
+        "terminate_anchored_posix_process_group",
+        reject_unsafe_group_retry,
+    )
+
+    with pytest.raises(
+        LocalQwenError,
+        match="process tree could not be terminated",
+    ) as raised:
+        local_qwen._run_bounded_process(
+            ["lms", "chat"],
+            timeout=5.0,
+            creationflags=0,
+            max_output_chars=512,
+        )
+
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert events == ["wnowait-rejected", "direct-kill", "direct-wait"]
 
 
 def test_cli_adapter_streams_and_stops_oversized_process_output() -> None:

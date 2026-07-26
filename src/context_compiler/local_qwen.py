@@ -19,8 +19,9 @@ from typing import Any
 from .process_tree import (
     WINDOWS_CREATE_SUSPENDED,
     WindowsJob,
+    posix_process_exited_without_reaping,
     resume_windows_process,
-    terminate_posix_process_group,
+    terminate_anchored_posix_process_group,
     terminate_process_tree,
 )
 
@@ -36,6 +37,10 @@ _MAX_LOADING_STATUS_SUFFIX_CHARS = 32
 _MAX_JSON_DEPTH = 64
 _MAX_JSON_INTEGER_CHARS = 64
 _KNOWN_MOJIBAKE_SPINNER = "\u00e2\u00a0\u00b9"
+_PIPE_READ_CHUNK_BYTES = 64 * 1024
+_PIPE_POLL_SECONDS = 0.01
+_WINDOWS_PIPE_EOF_ERRORS = frozenset({109, 232, 233})
+_WINDOWS_PEEK_NAMED_PIPE: Any | None = None
 
 
 class LocalQwenError(RuntimeError):
@@ -100,6 +105,108 @@ def _strict_json_decoder() -> json.JSONDecoder:
     )
 
 
+def _load_windows_peek_named_pipe() -> Any:
+    """Load the Windows pipe-inspection entry point once."""
+
+    global _WINDOWS_PEEK_NAMED_PIPE
+    if _WINDOWS_PEEK_NAMED_PIPE is not None:
+        return _WINDOWS_PEEK_NAMED_PIPE
+
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    peek_named_pipe = kernel32.PeekNamedPipe
+    peek_named_pipe.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+        ctypes.POINTER(wintypes.DWORD),
+        ctypes.POINTER(wintypes.DWORD),
+    )
+    peek_named_pipe.restype = wintypes.BOOL
+    _WINDOWS_PEEK_NAMED_PIPE = peek_named_pipe
+    return peek_named_pipe
+
+
+def _read_windows_pipe_chunk(
+    stdout: Any,
+    *,
+    max_bytes: int,
+) -> bytes | None:
+    """Return available Windows pipe bytes, EOF, or ``None`` without blocking."""
+
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    peek_named_pipe = _load_windows_peek_named_pipe()
+    available = wintypes.DWORD()
+    handle = msvcrt.get_osfhandle(stdout.fileno())
+    ctypes.set_last_error(0)
+    if not peek_named_pipe(
+        wintypes.HANDLE(handle),
+        None,
+        0,
+        None,
+        ctypes.byref(available),
+        None,
+    ):
+        error = ctypes.get_last_error()
+        if error in _WINDOWS_PIPE_EOF_ERRORS:
+            return b""
+        raise OSError(error, "could not inspect LM Studio CLI stdout pipe")
+    if available.value == 0:
+        return None
+    try:
+        return os.read(stdout.fileno(), min(max_bytes, int(available.value)))
+    except (BlockingIOError, InterruptedError):
+        return None
+
+
+def _prepare_process_stdout(stdout: Any) -> None:
+    """Configure POSIX stdout for same-thread nonblocking polling."""
+
+    if os.name != "nt":
+        os.set_blocking(stdout.fileno(), False)
+
+
+def _read_process_stdout_chunk(
+    stdout: Any,
+    *,
+    max_bytes: int,
+) -> bytes | None:
+    """Return one bounded chunk, EOF, or no-data without blocking."""
+
+    if os.name == "nt":
+        return _read_windows_pipe_chunk(stdout, max_bytes=max_bytes)
+    try:
+        return os.read(stdout.fileno(), max_bytes)
+    except (BlockingIOError, InterruptedError):
+        return None
+
+
+def _wait_posix_process_without_reaping(
+    process: subprocess.Popen[bytes],
+    *,
+    deadline: float,
+    timeout: float,
+) -> None:
+    """Wait until an absolute deadline while retaining the leader anchor."""
+
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(process.args, timeout)
+        if posix_process_exited_without_reaping(
+            process,
+            error_type=LocalQwenError,
+        ):
+            return
+        time.sleep(min(_PIPE_POLL_SECONDS, remaining))
+
+
 def _run_bounded_process(
     command: list[str],
     *,
@@ -142,8 +249,11 @@ def _run_bounded_process(
                 with suppress(RuntimeError):
                     windows_job.terminate()
             elif os.name != "nt":
-                with suppress(OSError):
-                    terminate_posix_process_group(process.pid)
+                with suppress(OSError, RuntimeError, subprocess.SubprocessError):
+                    terminate_anchored_posix_process_group(
+                        process,
+                        error_type=LocalQwenError,
+                    )
             with suppress(OSError):
                 process.kill()
             with suppress(OSError, subprocess.TimeoutExpired):
@@ -158,8 +268,11 @@ def _run_bounded_process(
                 windows_job.terminate()
             windows_job.close()
         elif os.name != "nt":
-            with suppress(OSError):
-                terminate_posix_process_group(process.pid)
+            with suppress(OSError, RuntimeError, subprocess.SubprocessError):
+                terminate_anchored_posix_process_group(
+                    process,
+                    error_type=LocalQwenError,
+                )
         with suppress(OSError):
             process.kill()
         with suppress(OSError, subprocess.TimeoutExpired):
@@ -167,18 +280,15 @@ def _run_bounded_process(
         raise OSError("LM Studio CLI stdout pipe was not created")
 
     stdout = process.stdout
-    timed_out = threading.Event()
-    finished = threading.Event()
-    termination_lock = threading.Lock()
+    timed_out = False
     termination_started = False
     termination_failed = False
 
     def terminate_owned_tree() -> None:
         nonlocal termination_started, termination_failed
-        with termination_lock:
-            if termination_started:
-                return
-            termination_started = True
+        if termination_started:
+            return
+        termination_started = True
         try:
             if os.name == "nt":
                 if windows_job is not None:
@@ -188,24 +298,16 @@ def _run_bounded_process(
                 else:  # pragma: no cover - Windows always creates a Job Object
                     terminate_process_tree(process)
             else:
-                terminate_posix_process_group(process.pid)
+                terminate_anchored_posix_process_group(
+                    process,
+                    error_type=LocalQwenError,
+                )
         except (OSError, RuntimeError, subprocess.SubprocessError):
             termination_failed = True
             with suppress(OSError):
                 process.kill()
 
-    def expire() -> None:
-        if finished.is_set():
-            return
-        timed_out.set()
-        terminate_owned_tree()
-        with suppress(OSError, ValueError):
-            stdout.close()
-
     deadline = started + timeout
-    timer = threading.Timer(max(0.0, deadline - time.monotonic()), expire)
-    timer.daemon = True
-    timer.start()
     decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
     chunks: list[str] = []
     retained_chars = 0
@@ -214,15 +316,23 @@ def _run_bounded_process(
     read_failed = False
     returncode: int | None = None
     cleanup_failed = False
+    pending_read_error: Exception | None = None
     try:
+        _prepare_process_stdout(stdout)
         while True:
-            try:
-                chunk = stdout.read(64 * 1024)
-            except (OSError, ValueError):
-                if timed_out.is_set():
-                    break
-                raise
-            if not chunk:
+            remaining_time = deadline - time.monotonic()
+            if remaining_time <= 0:
+                timed_out = True
+                terminate_owned_tree()
+                break
+            chunk = _read_process_stdout_chunk(
+                stdout,
+                max_bytes=_PIPE_READ_CHUNK_BYTES,
+            )
+            if chunk is None:
+                time.sleep(min(_PIPE_POLL_SECONDS, remaining_time))
+                continue
+            if chunk == b"":
                 break
             decoded = decoder.decode(chunk)
             remaining = max_output_chars - retained_chars
@@ -232,7 +342,7 @@ def _run_bounded_process(
                 break
             chunks.append(decoded)
             retained_chars += len(decoded)
-        if not exceeded and not timed_out.is_set():
+        if not exceeded and not timed_out:
             decoded = decoder.decode(b"", final=True)
             if len(decoded) > max_output_chars - retained_chars:
                 exceeded = True
@@ -243,6 +353,10 @@ def _run_bounded_process(
         decode_failed = True
         read_failed = True
         terminate_owned_tree()
+    except Exception as exc:
+        read_failed = True
+        pending_read_error = exc
+        terminate_owned_tree()
     except BaseException:
         read_failed = True
         terminate_owned_tree()
@@ -250,16 +364,57 @@ def _run_bounded_process(
     finally:
         with suppress(OSError, ValueError):
             stdout.close()
-        finished.set()
-        timer.cancel()
-        timer.join()
-        if process.poll() is None and not (read_failed or exceeded or timed_out.is_set()):
-            try:
-                returncode = process.wait(timeout=max(0.0, deadline - time.monotonic()))
-            except subprocess.TimeoutExpired:
-                timed_out.set()
+        if os.name == "nt":
+            if process.poll() is None and not (
+                read_failed or exceeded or timed_out
+            ):
+                remaining_time = deadline - time.monotonic()
+                if remaining_time <= 0:
+                    timed_out = True
+                    terminate_owned_tree()
+                else:
+                    try:
+                        returncode = process.wait(timeout=remaining_time)
+                    except subprocess.TimeoutExpired:
+                        timed_out = True
+                        terminate_owned_tree()
+            if process.poll() is None:
                 terminate_owned_tree()
-        if process.poll() is None:
+                try:
+                    returncode = process.wait(timeout=1.0)
+                except (OSError, subprocess.TimeoutExpired):
+                    with suppress(OSError):
+                        process.kill()
+                    try:
+                        returncode = process.wait(timeout=1.0)
+                    except (OSError, subprocess.TimeoutExpired):
+                        cleanup_failed = True
+            else:
+                returncode = process.returncode
+            terminate_owned_tree()
+            if process.poll() is None:
+                cleanup_failed = True
+        else:
+            if not (read_failed or exceeded or timed_out):
+                try:
+                    _wait_posix_process_without_reaping(
+                        process,
+                        deadline=deadline,
+                        timeout=timeout,
+                    )
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+                    terminate_owned_tree()
+                except LocalQwenError:
+                    # An unobservable leader cannot safely anchor any numeric
+                    # PGID signal. Fall back only to the still-owned child PID
+                    # and make the entire run fail closed.
+                    termination_started = True
+                    termination_failed = True
+                    with suppress(OSError):
+                        process.kill()
+            # Even a normally exited leader remains waitable here and anchors
+            # its numeric process-group ID until all group cleanup is complete.
             terminate_owned_tree()
             try:
                 returncode = process.wait(timeout=1.0)
@@ -270,18 +425,15 @@ def _run_bounded_process(
                     returncode = process.wait(timeout=1.0)
                 except (OSError, subprocess.TimeoutExpired):
                     cleanup_failed = True
-        else:
-            returncode = process.returncode
-        terminate_owned_tree()
-        if process.poll() is None:
-            cleanup_failed = True
         if termination_failed:
             cleanup_failed = True
         if windows_job is not None:
             windows_job.close()
     if cleanup_failed:
         raise LocalQwenError("LM Studio CLI process tree could not be terminated")
-    if timed_out.is_set():
+    if pending_read_error is not None:
+        raise pending_read_error
+    if timed_out:
         raise subprocess.TimeoutExpired(command, timeout)
     if exceeded:
         raise LocalQwenError("LM Studio CLI output exceeded the configured limit")

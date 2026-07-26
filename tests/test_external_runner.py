@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import ctypes
+import errno
 import hashlib
 import json
 import os
+import signal
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -243,6 +247,141 @@ def test_inference_service_contract_captures_stable_process_identity() -> None:
         match="requires a positive memory ceiling",
     ):
         capture_inference_service_contract(os.getpid())
+
+
+def test_darwin_inference_snapshot_binds_identity_path_and_rss(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "darwin-service"
+    executable.write_bytes(b"fixture executable")
+    calls: list[int] = []
+
+    class FakeLibproc:
+        def proc_pidinfo(
+            self,
+            process_id: int,
+            flavor: int,
+            _argument: int,
+            pointer: object,
+            byte_count: int,
+        ) -> int:
+            calls.append(flavor)
+            information = pointer._obj  # type: ignore[attr-defined]
+            if flavor == external_runner_module._DARWIN_PROC_PIDTBSDINFO:
+                information.pbi_pid = process_id
+                information.pbi_start_tvsec = 1_700_000_000
+                information.pbi_start_tvusec = 123_456
+            elif flavor == external_runner_module._DARWIN_PROC_PIDTASKINFO:
+                information.pti_resident_size = 64 * 1024 * 1024
+            else:
+                raise AssertionError(f"unexpected proc_pidinfo flavor: {flavor}")
+            return byte_count
+
+        def proc_pidpath(
+            self,
+            _process_id: int,
+            buffer: object,
+            _byte_count: int,
+        ) -> int:
+            encoded = os.fsencode(executable.resolve())
+            buffer.value = encoded  # type: ignore[attr-defined]
+            return len(encoded)
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "_darwin_inference_process_api",
+        lambda: FakeLibproc(),
+    )
+
+    snapshot = external_runner_module._darwin_inference_process_snapshot(42)
+
+    assert ctypes.sizeof(external_runner_module._DarwinProcBsdInfo) == 136
+    assert ctypes.sizeof(external_runner_module._DarwinProcTaskInfo) == 96
+    assert snapshot == external_runner_module._InferenceProcessSnapshot(
+        process_id=42,
+        process_start_token="darwin-proc-start:1700000000:123456",
+        executable_path=str(executable.resolve()),
+        memory_metric="resident-set-bytes",
+        memory_bytes=64 * 1024 * 1024,
+    )
+    assert calls == [
+        external_runner_module._DARWIN_PROC_PIDTBSDINFO,
+        external_runner_module._DARWIN_PROC_PIDTASKINFO,
+        external_runner_module._DARWIN_PROC_PIDTBSDINFO,
+    ]
+
+
+def test_darwin_inference_snapshot_rejects_identity_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "darwin-service"
+    executable.write_bytes(b"fixture executable")
+    identity_samples = iter((1_700_000_000, 1_700_000_001))
+
+    class RestartedLibproc:
+        def proc_pidinfo(
+            self,
+            process_id: int,
+            flavor: int,
+            _argument: int,
+            pointer: object,
+            byte_count: int,
+        ) -> int:
+            information = pointer._obj  # type: ignore[attr-defined]
+            if flavor == external_runner_module._DARWIN_PROC_PIDTBSDINFO:
+                information.pbi_pid = process_id
+                information.pbi_start_tvsec = next(identity_samples)
+                information.pbi_start_tvusec = 0
+            else:
+                information.pti_resident_size = 1
+            return byte_count
+
+        def proc_pidpath(
+            self,
+            _process_id: int,
+            buffer: object,
+            _byte_count: int,
+        ) -> int:
+            encoded = os.fsencode(executable.resolve())
+            buffer.value = encoded  # type: ignore[attr-defined]
+            return len(encoded) + 1
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "_darwin_inference_process_api",
+        lambda: RestartedLibproc(),
+    )
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="identity changed during sampling",
+    ):
+        external_runner_module._darwin_inference_process_snapshot(42)
+
+
+def test_darwin_inference_snapshot_dispatches_without_weak_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = external_runner_module._InferenceProcessSnapshot(
+        process_id=42,
+        process_start_token="darwin-proc-start:1:2",
+        executable_path="/usr/bin/service",
+        memory_metric="resident-set-bytes",
+        memory_bytes=1,
+    )
+    monkeypatch.setattr(external_runner_module.os, "name", "posix")
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "_darwin_inference_process_snapshot",
+        lambda process_id: expected
+        if process_id == 42
+        else (_ for _ in ()).throw(AssertionError("unexpected process id")),
+    )
+
+    assert external_runner_module._inference_process_snapshot(42) == expected
 
 
 def _path_evidence_builders(
@@ -1405,9 +1544,10 @@ def test_per_case_runner_executes_without_a_shell_and_validates_candidate(
     corpus_path = tmp_path / "corpus.json"
     _config, document = write_corpus(corpus_path)
     candidate_path = tmp_path / "candidate.json"
+    command = valid_adapter_command(tmp_path)
 
     manifest = run_external_cases(
-        valid_adapter_command(tmp_path),
+        command,
         system="fixture-adapter",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
@@ -1425,6 +1565,10 @@ def test_per_case_runner_executes_without_a_shell_and_validates_candidate(
     assert manifest.ready_for_scoring
     assert manifest.claim_metadata_complete
     assert manifest.isolation_mode == "per_case"
+    assert manifest.command == tuple(command)
+    assert external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL not in (
+        json.dumps(manifest.command_contract)
+    )
     assert manifest.case_count == 1
     assert len(manifest.case_runs) == 1
     assert manifest.exit_code == 0
@@ -2564,6 +2708,1309 @@ def test_runner_timeout_is_a_retained_nonwin_and_releases_process(tmp_path) -> N
     assert not manifest.candidate_valid
     assert not manifest.ready_for_scoring
     assert manifest.termination_reason == "timeout"
+
+
+def test_darwin_memory_limit_uses_exec_launcher_without_preexec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(external_runner_module.os, "name", "posix")
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    limits = RunnerLimits(
+        max_stdout_bytes=101,
+        max_stderr_bytes=202,
+        max_candidate_bytes=303,
+        max_memory_mb=256,
+    )
+    command = [
+        "/usr/bin/runtime",
+        "268435456",
+        "--",
+        external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
+    ]
+    original_command = list(command)
+
+    launch_command, preexec_fn = external_runner_module._adapter_process_launch(
+        command,
+        limits,
+    )
+
+    assert preexec_fn is None
+    assert launch_command[:6] == [
+        sys.executable,
+        "-I",
+        "-S",
+        "-c",
+        external_runner_module._DARWIN_LIMIT_LAUNCHER,
+        external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
+    ]
+    assert launch_command[6:9] == [
+        str(256 * 1024 * 1024),
+        "303",
+        "--",
+    ]
+    assert launch_command[9:] == original_command
+    assert command == original_command
+    assert (
+        f'"{external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL}"'
+        in external_runner_module._DARWIN_LIMIT_LAUNCHER
+    )
+    assert external_runner_module._posix_limit_setup(limits) is None
+
+
+def test_posix_group_eperm_liveness_probe_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int] = []
+
+    def killpg(_process_group_id: int, requested_signal: int) -> None:
+        calls.append(requested_signal)
+        if requested_signal == 0:
+            raise PermissionError(
+                errno.EPERM,
+                "injected macOS liveness denial",
+            )
+
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "killpg",
+        killpg,
+        raising=False,
+    )
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="could not verify the adapter process group after SIGTERM",
+    ):
+        external_runner_module._terminate_posix_process_group(42)
+
+    assert calls == [
+        signal.SIGTERM,
+        0,
+    ]
+
+
+def test_darwin_group_eperm_after_term_requires_proof_without_reaping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int | str]] = []
+
+    class ExitedProcess:
+        pid = 42
+        returncode: int | None = None
+
+        def wait(self, *, timeout: int) -> int:
+            raise AssertionError(
+                "group helper must not reap before zombie proof"
+            )
+
+    process = ExitedProcess()
+    waitid_results: list[object | None] = [None, object()]
+
+    def killpg(_process_group_id: int, requested_signal: int) -> None:
+        events.append(("killpg", requested_signal))
+        if requested_signal == 0:
+            raise PermissionError(
+                errno.EPERM,
+                "injected zombie-leader denial",
+            )
+
+    def waitid(id_type: int, pid: int, options: int) -> object:
+        assert id_type == 1
+        assert pid == process.pid
+        assert options == 0x0100000D
+        events.append(("waitid", pid))
+        return waitid_results.pop(0)
+
+    def prove(
+        process_group_id: int,
+        *,
+        expected_leader_pid: int,
+        error_type: type[RuntimeError],
+    ) -> None:
+        assert process_group_id == expected_leader_pid == process.pid
+        assert error_type is ExternalRunnerError
+        events.append(("proof", "all-zombie"))
+
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "killpg",
+        killpg,
+        raising=False,
+    )
+    monkeypatch.setattr(external_runner_module.os, "P_PID", 1, raising=False)
+    monkeypatch.setattr(external_runner_module.os, "WEXITED", 0x00000004, raising=False)
+    monkeypatch.setattr(external_runner_module.os, "WNOHANG", 0x00000001, raising=False)
+    monkeypatch.setattr(external_runner_module.os, "WNOWAIT", 0x01000008, raising=False)
+    monkeypatch.setattr(external_runner_module.os, "waitid", waitid, raising=False)
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "prove_darwin_process_group_all_zombies",
+        prove,
+    )
+
+    external_runner_module._terminate_posix_process_group(
+        process.pid,
+        process=process,  # type: ignore[arg-type]
+    )
+
+    assert events == [
+        ("waitid", process.pid),
+        ("killpg", signal.SIGTERM),
+        ("waitid", process.pid),
+        ("killpg", 0),
+        ("proof", "all-zombie"),
+    ]
+
+
+def test_darwin_exited_leader_kill_eperm_requires_proof_without_reaping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int | str]] = []
+
+    class ExitedProcess:
+        pid = 42
+        returncode: int | None = None
+
+        def wait(self, *, timeout: int) -> int:
+            raise AssertionError(
+                "group helper must not reap before zombie proof"
+            )
+
+    process = ExitedProcess()
+
+    def killpg(_process_group_id: int, requested_signal: int) -> None:
+        events.append(("killpg", requested_signal))
+        raise PermissionError(
+            errno.EPERM,
+            "injected Darwin zombie-only group",
+        )
+
+    def exited_without_reaping(_process: object) -> bool:
+        events.append(("waitid", process.pid))
+        return True
+
+    def prove(
+        process_group_id: int,
+        *,
+        expected_leader_pid: int,
+        error_type: type[RuntimeError],
+    ) -> None:
+        assert process_group_id == expected_leader_pid == process.pid
+        assert error_type is ExternalRunnerError
+        events.append(("proof", "all-zombie"))
+
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "killpg",
+        killpg,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        exited_without_reaping,
+    )
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "prove_darwin_process_group_all_zombies",
+        prove,
+    )
+
+    external_runner_module._terminate_posix_process_group(
+        process.pid,
+        process=process,  # type: ignore[arg-type]
+    )
+
+    assert events == [
+        ("waitid", process.pid),
+        ("killpg", external_runner_module._POSIX_SIGKILL),
+        ("killpg", 0),
+        ("proof", "all-zombie"),
+    ]
+
+
+def test_darwin_successful_sigkill_rejects_live_unsignalable_survivor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int | str]] = []
+
+    class ExitedProcess:
+        pid = 43
+        returncode = None
+
+        def wait(self, *, timeout: int) -> int:
+            raise AssertionError("failed proof must not reap the leader")
+
+    def killpg(_process_group_id: int, requested_signal: int) -> None:
+        events.append(("killpg", requested_signal))
+        if requested_signal == 0:
+            raise PermissionError(
+                errno.EPERM,
+                "injected unsignalable survivor",
+            )
+
+    def reject_live_member(
+        process_group_id: int,
+        *,
+        expected_leader_pid: int,
+        error_type: type[RuntimeError],
+    ) -> None:
+        assert process_group_id == expected_leader_pid == 43
+        events.append(("proof", "live-survivor"))
+        raise error_type(
+            "anchored Darwin process group still contains live PID 44"
+        )
+
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "killpg",
+        killpg,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        lambda _process: True,
+    )
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "prove_darwin_process_group_all_zombies",
+        reject_live_member,
+    )
+
+    with pytest.raises(ExternalRunnerError, match="live PID 44"):
+        external_runner_module._terminate_posix_process_group(
+            43,
+            process=ExitedProcess(),  # type: ignore[arg-type]
+        )
+
+    assert events == [
+        ("killpg", external_runner_module._POSIX_SIGKILL),
+        ("killpg", 0),
+        ("proof", "live-survivor"),
+    ]
+
+
+def test_posix_group_initial_term_eperm_fails_without_reap_or_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int]] = []
+
+    class ExitedProcess:
+        pid = 42
+        returncode = None
+
+    process = ExitedProcess()
+
+    def killpg(_process_group_id: int, requested_signal: int) -> None:
+        events.append(("killpg", requested_signal))
+        raise PermissionError(
+            errno.EPERM,
+            "injected ambiguous TERM denial",
+        )
+
+    def exited_without_reaping(_process: object) -> bool:
+        events.append(("waitid", process.pid))
+        return False
+
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "killpg",
+        killpg,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        exited_without_reaping,
+    )
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="could not terminate the adapter process group",
+    ):
+        external_runner_module._terminate_posix_process_group(
+            process.pid,
+            process=process,  # type: ignore[arg-type]
+        )
+
+    assert events == [
+        ("waitid", process.pid),
+        ("killpg", signal.SIGTERM),
+    ]
+
+
+def test_darwin_initial_term_eperm_accepts_stable_all_zombie_race(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int | str]] = []
+    observations = iter((False, True))
+
+    class ExitedProcess:
+        pid = 42
+        returncode = None
+
+    process = ExitedProcess()
+
+    def killpg(_process_group_id: int, requested_signal: int) -> None:
+        events.append(("killpg", requested_signal))
+        raise PermissionError(
+            errno.EPERM,
+            "injected post-exit Darwin TERM denial",
+        )
+
+    def exited_without_reaping(_process: object) -> bool:
+        events.append(("waitid", process.pid))
+        return next(observations)
+
+    def prove(
+        process_group_id: int,
+        *,
+        expected_leader_pid: int,
+        error_type: type[RuntimeError],
+    ) -> None:
+        assert process_group_id == expected_leader_pid == process.pid
+        assert error_type is ExternalRunnerError
+        events.append(("proof", "all-zombie"))
+
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "killpg",
+        killpg,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        exited_without_reaping,
+    )
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "prove_darwin_process_group_all_zombies",
+        prove,
+    )
+
+    external_runner_module._terminate_posix_process_group(
+        process.pid,
+        process=process,  # type: ignore[arg-type]
+    )
+
+    assert events == [
+        ("waitid", process.pid),
+        ("killpg", signal.SIGTERM),
+        ("waitid", process.pid),
+        ("proof", "all-zombie"),
+    ]
+
+
+def test_darwin_initial_term_eperm_rejects_live_member_after_leader_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int | str]] = []
+    observations = iter((False, True))
+
+    class ExitedProcess:
+        pid = 42
+        returncode = None
+
+    process = ExitedProcess()
+
+    def killpg(_process_group_id: int, requested_signal: int) -> None:
+        events.append(("killpg", requested_signal))
+        raise PermissionError(
+            errno.EPERM,
+            "injected post-exit Darwin TERM denial",
+        )
+
+    def exited_without_reaping(_process: object) -> bool:
+        events.append(("waitid", process.pid))
+        return next(observations)
+
+    def reject_live_member(
+        process_group_id: int,
+        *,
+        expected_leader_pid: int,
+        error_type: type[RuntimeError],
+    ) -> None:
+        assert process_group_id == expected_leader_pid == process.pid
+        events.append(("proof", "live-member"))
+        raise error_type(
+            "anchored Darwin process group still contains live PID 43"
+        )
+
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "killpg",
+        killpg,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        exited_without_reaping,
+    )
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "prove_darwin_process_group_all_zombies",
+        reject_live_member,
+    )
+
+    with pytest.raises(ExternalRunnerError, match="live PID 43"):
+        external_runner_module._terminate_posix_process_group(
+            process.pid,
+            process=process,  # type: ignore[arg-type]
+        )
+
+    assert events == [
+        ("waitid", process.pid),
+        ("killpg", signal.SIGTERM),
+        ("waitid", process.pid),
+        ("proof", "live-member"),
+    ]
+
+
+def test_posix_failed_group_cleanup_retains_original_error_during_direct_cleanup() -> None:
+    class UnstoppableProcess:
+        def kill(self) -> None:
+            raise PermissionError("injected direct-child signal denial")
+
+        def wait(self, *, timeout: int) -> int:
+            raise subprocess.TimeoutExpired("adapter", timeout)
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="original process-group cleanup failure",
+    ):
+        try:
+            raise ExternalRunnerError(
+                "original process-group cleanup failure"
+            )
+        finally:
+            external_runner_module._best_effort_stop_and_reap_direct_process(
+                UnstoppableProcess(),  # type: ignore[arg-type]
+            )
+
+
+def test_posix_group_exited_leader_is_sigkilled_before_caller_reaps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int]] = []
+
+    class ExitedProcess:
+        pid = 42
+        returncode = None
+
+        def wait(self, *, timeout: int) -> int:
+            events.append(("wait", timeout))
+            return 0
+
+    def killpg(_process_group_id: int, requested_signal: int) -> None:
+        events.append(("killpg", requested_signal))
+
+    def exited_without_reaping(_process: object) -> bool:
+        events.append(("waitid", 42))
+        return True
+
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "killpg",
+        killpg,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        exited_without_reaping,
+    )
+    monkeypatch.setattr(external_runner_module.sys, "platform", "linux")
+
+    external_runner_module._terminate_posix_process_group(
+        42,
+        process=ExitedProcess(),  # type: ignore[arg-type]
+    )
+
+    assert events == [
+        ("waitid", 42),
+        ("killpg", external_runner_module._POSIX_SIGKILL),
+    ]
+
+
+def test_posix_normal_success_observes_cleans_then_reaps_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int]] = []
+
+    class ExitedProcess:
+        pid = 42
+        returncode: int | None = None
+
+        def poll(self) -> int:
+            raise AssertionError("POSIX normal completion must not poll/reap")
+
+        def wait(self, *, timeout: int) -> int:
+            events.append(("wait", timeout))
+            self.returncode = 0
+            return 0
+
+        def kill(self) -> None:
+            raise AssertionError("successful cleanup must not kill after reap")
+
+    process = ExitedProcess()
+
+    def exited_without_reaping(_process: object) -> bool:
+        events.append(("waitid", process.pid))
+        return True
+
+    def killpg(_process_group_id: int, requested_signal: int) -> None:
+        assert process.returncode is None
+        events.append(("killpg", requested_signal))
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        exited_without_reaping,
+    )
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "killpg",
+        killpg,
+        raising=False,
+    )
+    monkeypatch.setattr(external_runner_module.sys, "platform", "linux")
+
+    exit_code = external_runner_module._cleanup_and_reap_posix_process(
+        process,  # type: ignore[arg-type]
+    )
+
+    assert exit_code == 0
+    assert events == [
+        ("waitid", process.pid),
+        ("killpg", external_runner_module._POSIX_SIGKILL),
+        ("wait", 1),
+    ]
+
+
+def test_posix_group_reaped_leader_never_signals_reusable_pgid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ReapedProcess:
+        pid = 42
+        returncode = 0
+
+    def killpg(_process_group_id: int, _requested_signal: int) -> None:
+        raise AssertionError("a reaped leader's PGID must never be signaled")
+
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "killpg",
+        killpg,
+        raising=False,
+    )
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="adapter process was reaped before process-group cleanup",
+    ):
+        external_runner_module._terminate_posix_process_group(
+            42,
+            process=ReapedProcess(),  # type: ignore[arg-type]
+        )
+
+
+def test_posix_group_eperm_sigkill_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ExitedProcess:
+        pid = 42
+        returncode = None
+
+    def killpg(_process_group_id: int, requested_signal: int) -> None:
+        if requested_signal == external_runner_module._POSIX_SIGKILL:
+            raise PermissionError(
+                errno.EPERM,
+                "injected macOS signal denial",
+            )
+
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "killpg",
+        killpg,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        lambda _process: True,
+    )
+    monkeypatch.setattr(external_runner_module.sys, "platform", "linux")
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="could not kill the adapter process group",
+    ):
+        external_runner_module._terminate_posix_process_group(
+            42,
+            process=ExitedProcess(),  # type: ignore[arg-type]
+        )
+
+
+def _install_post_start_group_cleanup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    message: str,
+) -> tuple[list[tuple[str, ...]], list[str]]:
+    launches: list[tuple[str, ...]] = []
+    direct_cleanup: list[str] = []
+
+    class StartedProcess:
+        pid = 4_242
+
+        def __init__(
+            self,
+            command: list[str],
+            *,
+            stdout: object,
+            stderr: object,
+            **_kwargs: object,
+        ) -> None:
+            self.args = tuple(command)
+            self.returncode: int | None = None
+            launches.append(self.args)
+            stdout.write(b"retained stdout")  # type: ignore[attr-defined]
+            stderr.write(b"retained stderr")  # type: ignore[attr-defined]
+
+        def poll(self) -> int:
+            raise AssertionError("POSIX monitoring must not reap with poll")
+
+        def kill(self) -> None:
+            direct_cleanup.append("kill")
+            self.returncode = -9
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            direct_cleanup.append("wait")
+            if self.returncode is None:
+                self.returncode = 0
+            return self.returncode
+
+    def reject_group_cleanup(_process: object) -> int:
+        raise ExternalRunnerError(message)
+
+    monkeypatch.setattr(
+        external_runner_module.subprocess,
+        "Popen",
+        StartedProcess,
+    )
+    monkeypatch.setattr(
+        external_runner_module.platform,
+        "platform",
+        lambda: "retained-failure-test-platform",
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_uses_windows_process_control",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        lambda _process: True,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_cleanup_and_reap_posix_process",
+        reject_group_cleanup,
+    )
+    return launches, direct_cleanup
+
+
+def test_whole_corpus_retains_post_start_process_group_cleanup_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    _config, document = write_corpus(corpus_path)
+    candidate_path = tmp_path / "candidate.json"
+    failure = "anchored Darwin process group still contains live PID 4243"
+    launches, direct_cleanup = _install_post_start_group_cleanup_failure(
+        monkeypatch,
+        message=failure,
+    )
+
+    manifest = run_external_command(
+        valid_adapter_command(tmp_path),
+        system="cleanup-failure-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5),
+    )
+
+    assert len(launches) == 1
+    assert direct_cleanup == ["kill", "wait"]
+    assert manifest.termination_reason == "process_group_cleanup_failed"
+    assert manifest.validation_error == failure
+    assert manifest.exit_code == -9
+    assert not manifest.process_succeeded
+    assert not manifest.candidate_valid
+    assert not manifest.ready_for_scoring
+    assert manifest.stdout_bytes == len(b"retained stdout")
+    assert manifest.stdout_sha256 == hashlib.sha256(
+        b"retained stdout"
+    ).hexdigest()
+    assert manifest.stderr_bytes == len(b"retained stderr")
+    assert manifest.stderr_sha256 == hashlib.sha256(
+        b"retained stderr"
+    ).hexdigest()
+    assert not candidate_path.exists()
+
+    manifest_path = tmp_path / "retained-whole-manifest.json"
+    manifest_path.write_text(manifest.to_json(), encoding="utf-8")
+    reference = load_external_run_manifest(
+        manifest_path,
+        expected_dataset_sha256=document["dataset_sha256"],
+    )
+    assert reference.failure_reason == "process_group_cleanup_failed"
+
+
+def test_per_case_retains_cleanup_failure_and_does_not_launch_next_case(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    _config, document = write_corpus(corpus_path, histories=2)
+    candidate_path = tmp_path / "candidate.json"
+    failure = "anchored Darwin process group still contains live PID 4243"
+    launches, direct_cleanup = _install_post_start_group_cleanup_failure(
+        monkeypatch,
+        message=failure,
+    )
+
+    manifest = run_external_cases(
+        valid_adapter_command(tmp_path),
+        system="cleanup-failure-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5),
+    )
+
+    assert len(launches) == 1
+    assert direct_cleanup == ["kill", "wait"]
+    assert manifest.case_count == 2
+    assert len(manifest.case_runs) == 1
+    case_run = manifest.case_runs[0]
+    assert case_run.case_id == "history-000"
+    assert case_run.termination_reason == "process_group_cleanup_failed"
+    assert case_run.validation_error == failure
+    assert not case_run.process_succeeded
+    assert not case_run.candidate_valid
+    assert manifest.termination_reason == (
+        "case_failure:history-000:process_group_cleanup_failed"
+    )
+    assert manifest.validation_error == failure
+    assert not manifest.process_succeeded
+    assert not manifest.candidate_valid
+    assert not manifest.ready_for_scoring
+    assert not candidate_path.exists()
+
+    manifest_path = tmp_path / "retained-per-case-manifest.json"
+    manifest_path.write_text(manifest.to_json(), encoding="utf-8")
+    reference = load_external_run_manifest(
+        manifest_path,
+        expected_dataset_sha256=document["dataset_sha256"],
+    )
+    assert reference.failure_reason == (
+        "case_failure:history-000:process_group_cleanup_failed"
+    )
+
+
+def _install_concrete_post_start_posix_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    group_signal_error: OSError | None = None,
+    wait_timeouts: int = 0,
+) -> tuple[list[tuple[str, ...]], list[tuple[str, int]]]:
+    launches: list[tuple[str, ...]] = []
+    events: list[tuple[str, int]] = []
+
+    class StartedProcess:
+        pid = 4_242
+
+        def __init__(
+            self,
+            command: list[str],
+            *,
+            stdout: object,
+            stderr: object,
+            **_kwargs: object,
+        ) -> None:
+            self.args = tuple(command)
+            self.returncode: int | None = None
+            self.wait_calls = 0
+            launches.append(self.args)
+            stdout.write(b"retained stdout")  # type: ignore[attr-defined]
+            stderr.write(b"retained stderr")  # type: ignore[attr-defined]
+
+        def poll(self) -> int:
+            raise AssertionError("POSIX monitoring must not reap with poll")
+
+        def kill(self) -> None:
+            events.append(("kill", self.pid))
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            self.wait_calls += 1
+            events.append(("wait", self.wait_calls))
+            if self.wait_calls <= wait_timeouts:
+                raise subprocess.TimeoutExpired(
+                    "sensitive-adapter-command",
+                    timeout,
+                )
+            self.returncode = -9
+            return self.returncode
+
+    def killpg(_process_group_id: int, requested_signal: int) -> None:
+        events.append(("killpg", requested_signal))
+        if group_signal_error is not None:
+            raise group_signal_error
+
+    monkeypatch.setattr(
+        external_runner_module.subprocess,
+        "Popen",
+        StartedProcess,
+    )
+    monkeypatch.setattr(
+        external_runner_module.platform,
+        "platform",
+        lambda: "retained-concrete-failure-test-platform",
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_uses_windows_process_control",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        lambda _process: True,
+    )
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "killpg",
+        killpg,
+        raising=False,
+    )
+    monkeypatch.setattr(external_runner_module.sys, "platform", "linux")
+    return launches, events
+
+
+def test_whole_corpus_retains_raw_posix_group_signal_oserror(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    _config, document = write_corpus(corpus_path)
+    candidate_path = tmp_path / "candidate.json"
+    launches, events = _install_concrete_post_start_posix_failure(
+        monkeypatch,
+        group_signal_error=OSError(
+            errno.EIO,
+            "sensitive injected operating-system detail",
+        ),
+    )
+
+    manifest = run_external_command(
+        valid_adapter_command(tmp_path),
+        system="raw-cleanup-oserror-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5),
+    )
+
+    assert len(launches) == 1
+    assert events == [
+        ("killpg", external_runner_module._POSIX_SIGKILL),
+        ("kill", 4_242),
+        ("wait", 1),
+    ]
+    assert manifest.termination_reason == "process_group_cleanup_failed"
+    assert (
+        manifest.validation_error
+        == "could not kill the adapter process group"
+    )
+    assert "sensitive injected" not in manifest.to_json()
+    assert manifest.exit_code == -9
+    assert not manifest.process_succeeded
+    assert not manifest.candidate_valid
+    assert not manifest.ready_for_scoring
+    assert manifest.stdout_bytes == len(b"retained stdout")
+    assert manifest.stdout_sha256 == hashlib.sha256(
+        b"retained stdout"
+    ).hexdigest()
+    assert manifest.stderr_bytes == len(b"retained stderr")
+    assert manifest.stderr_sha256 == hashlib.sha256(
+        b"retained stderr"
+    ).hexdigest()
+    assert not candidate_path.exists()
+
+    manifest_path = tmp_path / "raw-cleanup-oserror-manifest.json"
+    manifest_path.write_text(manifest.to_json(), encoding="utf-8")
+    reference = load_external_run_manifest(
+        manifest_path,
+        expected_dataset_sha256=document["dataset_sha256"],
+    )
+    assert reference.failure_reason == "process_group_cleanup_failed"
+
+
+def test_per_case_retains_second_posix_reap_timeout_without_next_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    _config, document = write_corpus(corpus_path, histories=2)
+    candidate_path = tmp_path / "candidate.json"
+    launches, events = _install_concrete_post_start_posix_failure(
+        monkeypatch,
+        wait_timeouts=2,
+    )
+
+    manifest = run_external_cases(
+        valid_adapter_command(tmp_path),
+        system="second-reap-timeout-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5),
+    )
+
+    assert len(launches) == 1
+    assert events == [
+        ("killpg", external_runner_module._POSIX_SIGKILL),
+        ("wait", 1),
+        ("kill", 4_242),
+        ("wait", 2),
+        ("kill", 4_242),
+        ("wait", 3),
+    ]
+    assert manifest.case_count == 2
+    assert len(manifest.case_runs) == 1
+    case_run = manifest.case_runs[0]
+    assert case_run.case_id == "history-000"
+    assert case_run.termination_reason == "process_group_cleanup_failed"
+    assert case_run.validation_error == (
+        "could not reap the adapter process after process-group cleanup"
+    )
+    assert not case_run.process_succeeded
+    assert not case_run.candidate_valid
+    assert case_run.stdout_bytes == len(b"retained stdout")
+    assert case_run.stdout_sha256 == hashlib.sha256(
+        b"retained stdout"
+    ).hexdigest()
+    assert case_run.stderr_bytes == len(b"retained stderr")
+    assert case_run.stderr_sha256 == hashlib.sha256(
+        b"retained stderr"
+    ).hexdigest()
+    assert manifest.termination_reason == (
+        "case_failure:history-000:process_group_cleanup_failed"
+    )
+    assert manifest.validation_error == case_run.validation_error
+    assert not manifest.process_succeeded
+    assert not manifest.candidate_valid
+    assert not manifest.ready_for_scoring
+    assert manifest.stdout_bytes == len(b"retained stdout")
+    assert manifest.stderr_bytes == len(b"retained stderr")
+    assert not candidate_path.exists()
+
+    manifest_path = tmp_path / "second-reap-timeout-manifest.json"
+    manifest_path.write_text(manifest.to_json(), encoding="utf-8")
+    reference = load_external_run_manifest(
+        manifest_path,
+        expected_dataset_sha256=document["dataset_sha256"],
+    )
+    assert reference.failure_reason == (
+        "case_failure:history-000:process_group_cleanup_failed"
+    )
+
+
+def test_stream_snapshot_fixes_one_bounded_descriptor_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requested_reads: list[int] = []
+    fstat_descriptors: list[int] = []
+
+    class GrowingReader:
+        def fileno(self) -> int:
+            return 4_242
+
+        def seek(self, offset: int) -> int:
+            assert offset == 0
+            return 0
+
+        def read(self, requested_bytes: int) -> bytes:
+            requested_reads.append(requested_bytes)
+            return b"x" * requested_bytes
+
+    class LargeStat:
+        st_size = 10_000_000
+
+    def fstat(descriptor: int) -> LargeStat:
+        fstat_descriptors.append(descriptor)
+        return LargeStat()
+
+    monkeypatch.setattr(external_runner_module.os, "fstat", fstat)
+
+    observed_bytes, byte_count, digest = (
+        external_runner_module._bounded_stream_snapshot(
+            GrowingReader(),  # type: ignore[arg-type]
+            max_bytes=7,
+            label="stdout",
+        )
+    )
+
+    assert fstat_descriptors == [4_242]
+    assert requested_reads == [8]
+    assert observed_bytes == 10_000_000
+    assert byte_count == 8
+    assert digest == hashlib.sha256(b"x" * 8).hexdigest()
+
+
+def test_stream_snapshot_retains_observed_size_after_short_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reads = iter((b"x", b""))
+
+    class TruncatedReader:
+        def fileno(self) -> int:
+            return 4_242
+
+        def seek(self, offset: int) -> int:
+            assert offset == 0
+            return 0
+
+        def read(self, _requested_bytes: int) -> bytes:
+            return next(reads)
+
+    class InitiallyLargeStat:
+        st_size = 10_000_000
+
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "fstat",
+        lambda _descriptor: InitiallyLargeStat(),
+    )
+
+    observed_bytes, byte_count, digest = (
+        external_runner_module._bounded_stream_snapshot(
+            TruncatedReader(),  # type: ignore[arg-type]
+            max_bytes=7,
+            label="stdout",
+        )
+    )
+
+    assert observed_bytes == 10_000_000
+    assert byte_count == 1
+    assert digest == hashlib.sha256(b"x").hexdigest()
+
+
+def test_observed_stream_limit_survives_a_short_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    write_corpus(corpus_path)
+    candidate_path = tmp_path / "candidate.json"
+    empty_digest = hashlib.sha256(b"").hexdigest()
+    short_digest = hashlib.sha256(b"x").hexdigest()
+
+    def short_snapshot(
+        _stream: object,
+        *,
+        max_bytes: int,
+        label: str,
+    ) -> tuple[int, int, str]:
+        if label == "stdout":
+            return max_bytes + 1, 1, short_digest
+        return 0, 0, empty_digest
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "_bounded_stream_snapshot",
+        short_snapshot,
+    )
+
+    manifest = run_external_command(
+        valid_adapter_command(tmp_path),
+        system="short-stream-snapshot-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5, max_stdout_bytes=7),
+    )
+
+    assert manifest.termination_reason == "stdout_limit"
+    assert manifest.stdout_bytes == 1
+    assert manifest.stdout_sha256 == short_digest
+    assert not manifest.process_succeeded
+    assert not manifest.candidate_valid
+    assert not manifest.ready_for_scoring
+
+
+def test_runner_never_stats_stream_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    write_corpus(corpus_path)
+    candidate_path = tmp_path / "candidate.json"
+    original_size = external_runner_module._size
+
+    def reject_stream_path(path: Path) -> int:
+        if path.name in {"stdout.bin", "stderr.bin"}:
+            raise AssertionError("stream limits must inspect retained handles")
+        return original_size(path)
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "_size",
+        reject_stream_path,
+    )
+
+    manifest = run_external_command(
+        valid_adapter_command(tmp_path),
+        system="stream-handle-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5),
+    )
+
+    assert manifest.ready_for_scoring
+    assert manifest.stdout_bytes == 0
+    assert manifest.stderr_bytes == 0
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="Windows does not permit replacing these open output paths",
+)
+def test_stream_evidence_uses_retained_descriptors_after_path_replacement(
+    tmp_path: Path,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    write_corpus(corpus_path)
+    candidate_path = tmp_path / "candidate.json"
+    original_stdout = b"original stdout descriptor bytes"
+    original_stderr = b"original stderr descriptor bytes"
+    fabricated_stdout = b"fabricated stdout path bytes"
+    fabricated_stderr = b"fabricated stderr path bytes"
+    adapter_directory = tmp_path / "replacing-adapter-source"
+    adapter_directory.mkdir()
+    entrypoint = adapter_directory / "replace-stream-paths.py"
+    entrypoint.write_text(
+        "\n".join(
+            (
+                "import json",
+                "import os",
+                "import sys",
+                "from pathlib import Path",
+                "corpus = json.load(open(sys.argv[1], encoding='utf-8'))",
+                "candidate = Path(sys.argv[2])",
+                "run_directory = next(",
+                "    candidate.parent.glob('.lrcbench-run-*')",
+                ")",
+                "stdout_path = run_directory / 'stdout.bin'",
+                "stderr_path = run_directory / 'stderr.bin'",
+                f"os.write(1, {original_stdout!r})",
+                f"os.write(2, {original_stderr!r})",
+                "os.fsync(1)",
+                "os.fsync(2)",
+                "stdout_path.unlink()",
+                "stderr_path.unlink()",
+                f"stdout_path.write_bytes({fabricated_stdout!r})",
+                f"stderr_path.write_bytes({fabricated_stderr!r})",
+                "payload = {",
+                "    'schema': 'lrcbench-candidate-output-0.1',",
+                "    'dataset_sha256': corpus['dataset_sha256'],",
+                "    'system': sys.argv[3],",
+                "    'cases': [",
+                "        {",
+                "            'case_id': case['case_id'],",
+                "            'rendered_text': '',",
+                "            'claims': [],",
+                "        }",
+                "        for case in corpus['cases']",
+                "    ],",
+                "}",
+                "json.dump(payload, candidate.open('w', encoding='utf-8'))",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    manifest = run_external_command(
+        [
+            sys.executable,
+            str(entrypoint),
+            "{corpus}",
+            "{candidate}",
+            "{system}",
+        ],
+        system="stream-descriptor-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5),
+    )
+
+    assert manifest.ready_for_scoring
+    assert manifest.stdout_bytes == len(original_stdout)
+    assert manifest.stdout_sha256 == hashlib.sha256(
+        original_stdout
+    ).hexdigest()
+    assert manifest.stderr_bytes == len(original_stderr)
+    assert manifest.stderr_sha256 == hashlib.sha256(
+        original_stderr
+    ).hexdigest()
+    assert manifest.stdout_sha256 != hashlib.sha256(
+        fabricated_stdout
+    ).hexdigest()
+    assert manifest.stderr_sha256 != hashlib.sha256(
+        fabricated_stderr
+    ).hexdigest()
+
+
+def test_popen_start_failure_remains_an_external_runner_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    write_corpus(corpus_path)
+
+    def reject_start(*_args: object, **_kwargs: object) -> object:
+        raise OSError("injected pre-start failure")
+
+    monkeypatch.setattr(
+        external_runner_module.subprocess,
+        "Popen",
+        reject_start,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_uses_windows_process_control",
+        lambda: False,
+    )
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="could not start adapter process: OSError",
+    ):
+        run_external_command(
+            valid_adapter_command(tmp_path),
+            system="start-failure-fixture",
+            corpus_path=corpus_path,
+            candidate_path=tmp_path / "candidate.json",
+            limits=RunnerLimits(timeout_seconds=5),
+        )
 
 
 def test_runner_removes_descendants_after_successful_adapter_exit(tmp_path) -> None:

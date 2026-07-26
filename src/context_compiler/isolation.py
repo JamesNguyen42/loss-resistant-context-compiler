@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import math
 import os
 import pickle
+import signal
 import subprocess
 import sys
 import tempfile
 import time
 from collections.abc import Iterable
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -35,14 +38,17 @@ from .models import (
 from .process_tree import (
     WINDOWS_CREATE_SUSPENDED,
     WindowsJob,
+    prove_darwin_process_group_all_zombies,
     resume_windows_process,
-    terminate_posix_process_group,
     terminate_process_tree,
 )
 
 _ISOLATED_COMPILE_SCHEMA = "ctxc-isolated-compile-0.1"
 _MAX_JOB_BYTES = 256 * 1024 * 1024
 _MAX_RESPONSE_BYTES = 256 * 1024 * 1024
+_POSIX_SIGKILL = getattr(signal, "SIGKILL", 9)
+_POSIX_SIGTERM = getattr(signal, "SIGTERM", 15)
+_PROCESS_GROUP_GRACE_SECONDS = 0.5
 _RESPONSE_LIMITS = ArtifactLimits(
     max_input_bytes=_MAX_RESPONSE_BYTES,
     max_line_chars=_MAX_RESPONSE_BYTES,
@@ -57,6 +63,290 @@ _RESPONSE_LIMITS = ArtifactLimits(
 
 class CompilationIsolationError(RuntimeError):
     """A process-isolated compilation could not return a valid result."""
+
+
+def _resolved_temporary_root() -> Path:
+    """Return the physical default temp root used by guarded worker outputs."""
+
+    try:
+        temporary_root = Path(tempfile.gettempdir()).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise CompilationIsolationError(
+            "could not resolve the isolated compilation temporary root"
+        ) from exc
+    if not temporary_root.is_dir():
+        raise CompilationIsolationError(
+            "isolated compilation temporary root must be a directory"
+        )
+    return temporary_root
+
+
+def _force_compile_process_group(
+    process: subprocess.Popen[Any],
+) -> None:
+    """Escalate one still-owned POSIX group without hiding permission failures."""
+
+    try:
+        os.killpg(process.pid, _POSIX_SIGKILL)
+    except ProcessLookupError:
+        return
+    except PermissionError as exc:
+        if exc.errno != errno.EPERM:
+            raise CompilationIsolationError(
+                "could not force-terminate the isolated compilation process group"
+            ) from exc
+        if sys.platform != "darwin":
+            raise CompilationIsolationError(
+                "could not force-terminate the isolated compilation process group"
+            ) from exc
+    except OSError as exc:
+        raise CompilationIsolationError(
+            "could not force-terminate the isolated compilation process group"
+        ) from exc
+    if sys.platform != "darwin":
+        return
+
+    deadline = time.monotonic() + _PROCESS_GROUP_GRACE_SECONDS
+    while True:
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            return
+        except PermissionError as exc:
+            if exc.errno != errno.EPERM:
+                raise CompilationIsolationError(
+                    "could not verify force-termination of the isolated "
+                    "compilation process group"
+                ) from exc
+            break
+        except OSError as exc:
+            raise CompilationIsolationError(
+                "could not verify force-termination of the isolated "
+                "compilation process group"
+            ) from exc
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(0.01, remaining))
+    prove_darwin_process_group_all_zombies(
+        process.pid,
+        expected_leader_pid=process.pid,
+        error_type=CompilationIsolationError,
+    )
+
+
+def _posix_worker_exited_without_reaping(
+    process: subprocess.Popen[Any],
+) -> bool:
+    """Observe one worker exit while preserving its PID/PGID anchor."""
+
+    options = os.WEXITED | os.WNOHANG | os.WNOWAIT
+    try:
+        result = os.waitid(os.P_PID, process.pid, options)
+    except InterruptedError:
+        return False
+    except (ChildProcessError, OSError) as exc:
+        raise CompilationIsolationError(
+            "could not observe the isolated compilation worker without reaping"
+        ) from exc
+    return result is not None
+
+
+def _wait_posix_worker_without_reaping(
+    process: subprocess.Popen[Any],
+    *,
+    timeout: float,
+) -> None:
+    """Observe worker exit while its PID continues to anchor the owned group."""
+
+    deadline = time.monotonic() + timeout
+    while True:
+        if time.monotonic() >= deadline:
+            raise subprocess.TimeoutExpired(process.args, timeout)
+        leader_exited = _posix_worker_exited_without_reaping(process)
+        observed_at = time.monotonic()
+        if observed_at >= deadline:
+            raise subprocess.TimeoutExpired(process.args, timeout)
+        if leader_exited:
+            return
+        remaining = deadline - observed_at
+        time.sleep(min(0.01, remaining))
+
+
+def _terminate_compile_process_tree(
+    process: subprocess.Popen[Any],
+    windows_job: WindowsJob | None,
+) -> None:
+    """Terminate the owned worker tree with a Darwin-aware POSIX recovery."""
+
+    if os.name == "nt":
+        terminate_process_tree(process, windows_job)
+        return
+    _terminate_compile_posix_process_tree(process, leader_exited=False)
+
+
+def _terminate_compile_posix_process_tree(
+    process: subprocess.Popen[Any],
+    *,
+    leader_exited: bool,
+) -> None:
+    """Terminate one anchored compile group before its leader is reaped."""
+
+    if leader_exited:
+        _force_compile_process_group(process)
+        return
+
+    try:
+        os.killpg(process.pid, _POSIX_SIGTERM)
+    except ProcessLookupError:
+        return
+    except PermissionError as exc:
+        if exc.errno != errno.EPERM:
+            raise CompilationIsolationError(
+                "could not terminate the isolated compilation process group"
+            ) from exc
+        if (
+            sys.platform == "darwin"
+            and _posix_worker_exited_without_reaping(process)
+        ):
+            prove_darwin_process_group_all_zombies(
+                process.pid,
+                expected_leader_pid=process.pid,
+                error_type=CompilationIsolationError,
+            )
+            return
+        raise CompilationIsolationError(
+            "could not terminate the isolated compilation process group"
+        ) from exc
+    except OSError as exc:
+        raise CompilationIsolationError(
+            "could not terminate the isolated compilation process group"
+        ) from exc
+
+    deadline = time.monotonic() + _PROCESS_GROUP_GRACE_SECONDS
+    while True:
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            return
+        except PermissionError as exc:
+            if exc.errno != errno.EPERM:
+                raise CompilationIsolationError(
+                    "could not verify termination of the isolated "
+                    "compilation process group"
+                ) from exc
+            if sys.platform != "darwin":
+                raise CompilationIsolationError(
+                    "could not verify termination of the isolated compilation process group"
+                ) from exc
+            prove_darwin_process_group_all_zombies(
+                process.pid,
+                expected_leader_pid=process.pid,
+                error_type=CompilationIsolationError,
+            )
+            return
+        except OSError as exc:
+            raise CompilationIsolationError(
+                "could not verify termination of the isolated compilation "
+                "process group"
+            ) from exc
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(0.01, remaining))
+    _force_compile_process_group(process)
+
+
+def _reap_compile_process(process: subprocess.Popen[Any]) -> None:
+    """Reap one worker after its platform tree boundary has been closed."""
+
+    try:
+        process.wait(timeout=1)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    except OSError as exc:
+        raise CompilationIsolationError(
+            "could not reap the isolated compilation worker"
+        ) from exc
+
+    kill_error: OSError | None = None
+    try:
+        process.kill()
+    except OSError as exc:
+        kill_error = exc
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired as exc:
+        if kill_error is not None:
+            raise CompilationIsolationError(
+                "could not kill the isolated compilation worker after "
+                "process-group cleanup"
+            ) from kill_error
+        raise CompilationIsolationError(
+            "isolated compilation worker did not exit after direct kill"
+        ) from exc
+    except OSError as exc:
+        if kill_error is not None:
+            raise CompilationIsolationError(
+                "could not kill the isolated compilation worker after "
+                "process-group cleanup"
+            ) from kill_error
+        raise CompilationIsolationError(
+            "could not reap the isolated compilation worker after direct kill"
+        ) from exc
+    if kill_error is not None:
+        raise CompilationIsolationError(
+            "could not kill the isolated compilation worker after "
+            "process-group cleanup"
+        ) from kill_error
+
+
+def _finalize_posix_compile_process(
+    process: subprocess.Popen[Any],
+    *,
+    leader_exited: bool,
+) -> None:
+    """Close the anchored POSIX group, then and only then reap its leader."""
+
+    if process.returncode is not None:
+        raise CompilationIsolationError(
+            "isolated compilation worker was reaped before process-group cleanup"
+        )
+    _terminate_compile_posix_process_tree(
+        process,
+        leader_exited=leader_exited,
+    )
+    _reap_compile_process(process)
+
+
+def _kill_and_reap_direct_compile_process(
+    process: subprocess.Popen[Any],
+) -> None:
+    """Best-effort cleanup using only the still-owned child PID."""
+
+    with suppress(OSError, subprocess.SubprocessError):
+        if process.returncode is None:
+            process.kill()
+    with suppress(OSError, subprocess.SubprocessError):
+        process.wait(timeout=1)
+
+
+def _finalize_posix_compile_process_fail_closed(
+    process: subprocess.Popen[Any],
+    *,
+    leader_exited: bool,
+) -> None:
+    """Preserve group-cleanup errors after direct-child fallback cleanup."""
+
+    try:
+        _finalize_posix_compile_process(
+            process,
+            leader_exited=leader_exited,
+        )
+    except Exception:
+        _kill_and_reap_direct_compile_process(process)
+        raise
 
 
 def _validate_timeout_seconds(value: float) -> float:
@@ -317,7 +607,10 @@ def compile_isolated(
     materialized_sources = list(sources)
     started = time.monotonic()
 
-    with tempfile.TemporaryDirectory(prefix="ctxc-compile-") as directory:
+    with tempfile.TemporaryDirectory(
+        prefix="ctxc-compile-",
+        dir=_resolved_temporary_root(),
+    ) as directory:
         temporary_directory = Path(directory)
         job_path = temporary_directory / "job.pickle"
         response_path = temporary_directory / "response.json"
@@ -361,6 +654,8 @@ def compile_isolated(
             )
         process: subprocess.Popen[bytes] | None = None
         timed_out = False
+        posix_leader_exited = False
+        posix_group_finalization_started = False
         try:
             try:
                 process = subprocess.Popen(
@@ -389,50 +684,56 @@ def compile_isolated(
                         error_type=CompilationIsolationError,
                     )
                 except Exception:
-                    terminate_process_tree(process, windows_job)
-                    process.wait(timeout=1)
+                    _terminate_compile_process_tree(process, windows_job)
+                    _reap_compile_process(process)
                     raise
             try:
                 remaining = _remaining_seconds(started, timeout)
             except TimeoutError:
                 timed_out = True
-                terminate_process_tree(process, windows_job)
-                try:
-                    process.wait(timeout=1)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=1)
             else:
                 try:
-                    process.wait(timeout=remaining)
+                    if os.name == "nt":
+                        process.wait(timeout=remaining)
+                    else:
+                        _wait_posix_worker_without_reaping(
+                            process,
+                            timeout=remaining,
+                        )
+                        posix_leader_exited = True
                 except subprocess.TimeoutExpired:
                     timed_out = True
-                    terminate_process_tree(process, windows_job)
-                    try:
-                        process.wait(timeout=1)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait(timeout=1)
+            if os.name == "nt":
+                if timed_out:
+                    _terminate_compile_process_tree(process, windows_job)
+                    _reap_compile_process(process)
+            else:
+                posix_group_finalization_started = True
+                _finalize_posix_compile_process_fail_closed(
+                    process,
+                    leader_exited=posix_leader_exited,
+                )
         finally:
-            if process is not None and process.poll() is None:
-                terminate_process_tree(process, windows_job)
-                try:
-                    process.wait(timeout=1)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=1)
-            if windows_job is not None:
-                try:
-                    windows_job.terminate()
-                finally:
-                    windows_job.close()
-            elif process is not None:
-                terminate_posix_process_group(process.pid)
+            if os.name == "nt":
+                if process is not None and process.poll() is None:
+                    _terminate_compile_process_tree(process, windows_job)
+                    _reap_compile_process(process)
+                if windows_job is not None:
+                    try:
+                        windows_job.terminate()
+                    finally:
+                        windows_job.close()
+            elif process is not None and not posix_group_finalization_started:
+                posix_group_finalization_started = True
+                _finalize_posix_compile_process_fail_closed(
+                    process,
+                    leader_exited=posix_leader_exited,
+                )
 
         if timed_out:
             raise TimeoutError(
                 f"compilation exceeded its {timeout:g}-second deadline; "
-                "the isolated process tree was terminated"
+                "owned process-boundary cleanup completed before worker reap"
             )
         if process is None:
             raise CompilationIsolationError(

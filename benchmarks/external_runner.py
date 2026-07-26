@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import hashlib
 import json
 import os
@@ -21,12 +23,15 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any
+from typing import Any, BinaryIO
 
 from context_compiler.atomic import atomic_write_text
 from context_compiler.local_qwen import (
     QWEN_Q4_CONTEXT_LENGTH,
     QWEN_Q4_VARIANT,
+)
+from context_compiler.process_tree import (
+    prove_darwin_process_group_all_zombies,
 )
 
 from .json_io import (
@@ -112,6 +117,11 @@ _INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES = 2_000_000_000
 _INFERENCE_SERVICE_MEMORY_METRICS = frozenset(
     {"resident-set-bytes", "working-set-bytes"}
 )
+_POSIX_SIGKILL = getattr(signal, "SIGKILL", 9)
+_DARWIN_PROC_PIDTBSDINFO = 3
+_DARWIN_PROC_PIDTASKINFO = 4
+_DARWIN_PROC_PIDPATHINFO_MAXSIZE = 4_096
+_PROCESS_GROUP_GRACE_SECONDS = 0.5
 _WINDOWS_CREATE_SUSPENDED = 0x00000004
 _WINDOWS_JOB_OBJECT_LIMIT_PROCESS_MEMORY = 0x00000100
 _WINDOWS_JOB_OBJECT_LIMIT_JOB_MEMORY = 0x00000200
@@ -129,6 +139,84 @@ _MANIFEST_JSON_LIMITS = StrictJsonLimits(
     max_line_chars=1_000_000,
     max_depth=64,
 )
+_DARWIN_LIMIT_LAUNCHER_PROTOCOL = "ctxc-darwin-limit-v1"
+_DARWIN_LIMIT_LAUNCHER = """\
+import os
+import resource
+import sys
+
+
+def bound(resource_name, requested):
+    soft, hard = resource.getrlimit(resource_name)
+    finite = [requested]
+    if soft != resource.RLIM_INFINITY:
+        finite.append(soft)
+    if hard != resource.RLIM_INFINITY:
+        finite.append(hard)
+    effective = min(finite)
+    resource.setrlimit(resource_name, (effective, effective))
+
+
+if (
+    len(sys.argv) < 6
+    or sys.argv[1] != "ctxc-darwin-limit-v1"
+    or sys.argv[4] != "--"
+):
+    raise SystemExit("invalid Darwin limit-launcher contract")
+bound(resource.RLIMIT_AS, int(sys.argv[2]))
+bound(resource.RLIMIT_FSIZE, int(sys.argv[3]))
+os.execvpe(sys.argv[5], sys.argv[5:], os.environ)
+"""
+
+
+class _DarwinProcBsdInfo(ctypes.Structure):
+    _fields_ = [
+        ("pbi_flags", ctypes.c_uint32),
+        ("pbi_status", ctypes.c_uint32),
+        ("pbi_xstatus", ctypes.c_uint32),
+        ("pbi_pid", ctypes.c_uint32),
+        ("pbi_ppid", ctypes.c_uint32),
+        ("pbi_uid", ctypes.c_uint32),
+        ("pbi_gid", ctypes.c_uint32),
+        ("pbi_ruid", ctypes.c_uint32),
+        ("pbi_rgid", ctypes.c_uint32),
+        ("pbi_svuid", ctypes.c_uint32),
+        ("pbi_svgid", ctypes.c_uint32),
+        ("rfu_1", ctypes.c_uint32),
+        ("pbi_comm", ctypes.c_char * 16),
+        ("pbi_name", ctypes.c_char * 32),
+        ("pbi_nfiles", ctypes.c_uint32),
+        ("pbi_pgid", ctypes.c_uint32),
+        ("pbi_pjobc", ctypes.c_uint32),
+        ("e_tdev", ctypes.c_uint32),
+        ("e_tpgid", ctypes.c_uint32),
+        ("pbi_nice", ctypes.c_int32),
+        ("pbi_start_tvsec", ctypes.c_uint64),
+        ("pbi_start_tvusec", ctypes.c_uint64),
+    ]
+
+
+class _DarwinProcTaskInfo(ctypes.Structure):
+    _fields_ = [
+        ("pti_virtual_size", ctypes.c_uint64),
+        ("pti_resident_size", ctypes.c_uint64),
+        ("pti_total_user", ctypes.c_uint64),
+        ("pti_total_system", ctypes.c_uint64),
+        ("pti_threads_user", ctypes.c_uint64),
+        ("pti_threads_system", ctypes.c_uint64),
+        ("pti_policy", ctypes.c_int32),
+        ("pti_faults", ctypes.c_int32),
+        ("pti_pageins", ctypes.c_int32),
+        ("pti_cow_faults", ctypes.c_int32),
+        ("pti_messages_sent", ctypes.c_int32),
+        ("pti_messages_received", ctypes.c_int32),
+        ("pti_syscalls_mach", ctypes.c_int32),
+        ("pti_syscalls_unix", ctypes.c_int32),
+        ("pti_csw", ctypes.c_int32),
+        ("pti_threadnum", ctypes.c_int32),
+        ("pti_numrunning", ctypes.c_int32),
+        ("pti_priority", ctypes.c_int32),
+    ]
 
 
 class ExternalRunnerError(RuntimeError):
@@ -1063,12 +1151,55 @@ def _case_stream_sha256(
     return _canonical_sha256(records)
 
 
-def _file_sha256(path: Path) -> str:
+def _stream_size(stream: BinaryIO, *, label: str) -> int:
+    try:
+        byte_count = int(os.fstat(stream.fileno()).st_size)
+    except (OSError, ValueError) as exc:
+        raise ExternalRunnerError(
+            f"could not inspect the retained {label} descriptor"
+        ) from exc
+    if byte_count < 0:
+        raise ExternalRunnerError(
+            f"retained {label} descriptor has a negative byte count"
+        )
+    return byte_count
+
+
+def _bounded_stream_snapshot(
+    stream: BinaryIO,
+    *,
+    max_bytes: int,
+    label: str,
+) -> tuple[int, int, str]:
+    """Hash one finite descriptor prefix fixed by a single size observation."""
+
+    observed_bytes = _stream_size(stream, label=label)
+    target_bytes = min(observed_bytes, max_bytes + 1)
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while block := stream.read(1024 * 1024):
+    captured_bytes = 0
+    try:
+        stream.seek(0)
+        while captured_bytes < target_bytes:
+            requested_bytes = min(
+                1024 * 1024,
+                target_bytes - captured_bytes,
+            )
+            block = stream.read(requested_bytes)
+            if not block:
+                break
+            if not isinstance(block, bytes) or len(block) > requested_bytes:
+                raise ExternalRunnerError(
+                    f"retained {label} descriptor returned invalid bytes"
+                )
             digest.update(block)
-    return digest.hexdigest()
+            captured_bytes += len(block)
+    except ExternalRunnerError:
+        raise
+    except (OSError, ValueError) as exc:
+        raise ExternalRunnerError(
+            f"could not read the retained {label} descriptor"
+        ) from exc
+    return observed_bytes, captured_bytes, digest.hexdigest()
 
 
 def _bounded_file_evidence(
@@ -1632,6 +1763,133 @@ def _windows_inference_process_snapshot(
     )
 
 
+@lru_cache(maxsize=1)
+def _darwin_inference_process_api():
+    try:
+        libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+    except OSError as exc:
+        raise ExternalRunnerError(
+            "could not load macOS inference-service process accounting"
+        ) from exc
+    libproc.proc_pidpath.argtypes = [
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+    ]
+    libproc.proc_pidpath.restype = ctypes.c_int
+    libproc.proc_pidinfo.argtypes = [
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_uint64,
+        ctypes.c_void_p,
+        ctypes.c_int,
+    ]
+    libproc.proc_pidinfo.restype = ctypes.c_int
+    return libproc
+
+
+def _darwin_process_bsd_info(
+    process_id: int,
+) -> _DarwinProcBsdInfo:
+    information = _DarwinProcBsdInfo()
+    expected_bytes = ctypes.sizeof(information)
+    observed_bytes = _darwin_inference_process_api().proc_pidinfo(
+        process_id,
+        _DARWIN_PROC_PIDTBSDINFO,
+        0,
+        ctypes.byref(information),
+        expected_bytes,
+    )
+    if (
+        observed_bytes != expected_bytes
+        or information.pbi_pid != process_id
+        or information.pbi_start_tvsec <= 0
+        or information.pbi_start_tvusec >= 1_000_000
+    ):
+        raise ExternalRunnerError(
+            f"could not inspect inference-service process {process_id} "
+            "identity on macOS"
+        )
+    return information
+
+
+def _darwin_process_start_token(
+    information: _DarwinProcBsdInfo,
+) -> str:
+    return (
+        "darwin-proc-start:"
+        f"{information.pbi_start_tvsec}:"
+        f"{information.pbi_start_tvusec}"
+    )
+
+
+def _darwin_inference_process_snapshot(
+    process_id: int,
+) -> _InferenceProcessSnapshot:
+    libproc = _darwin_inference_process_api()
+    first_identity = _darwin_process_bsd_info(process_id)
+    first_start_token = _darwin_process_start_token(first_identity)
+
+    path_buffer = ctypes.create_string_buffer(
+        _DARWIN_PROC_PIDPATHINFO_MAXSIZE
+    )
+    path_bytes = libproc.proc_pidpath(
+        process_id,
+        path_buffer,
+        len(path_buffer),
+    )
+    if path_bytes <= 0 or path_bytes >= len(path_buffer):
+        raise ExternalRunnerError(
+            f"could not resolve inference-service process {process_id} "
+            "executable on macOS"
+    )
+    raw_executable = path_buffer.value
+    if (
+        not raw_executable
+        or path_bytes not in {len(raw_executable), len(raw_executable) + 1}
+    ):
+        raise ExternalRunnerError(
+            "inference-service executable path is malformed on macOS"
+        )
+    try:
+        executable = Path(os.fsdecode(raw_executable)).resolve()
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ExternalRunnerError(
+            "could not canonicalize inference-service executable on macOS"
+        ) from exc
+
+    task_information = _DarwinProcTaskInfo()
+    expected_task_bytes = ctypes.sizeof(task_information)
+    observed_task_bytes = libproc.proc_pidinfo(
+        process_id,
+        _DARWIN_PROC_PIDTASKINFO,
+        0,
+        ctypes.byref(task_information),
+        expected_task_bytes,
+    )
+    if (
+        observed_task_bytes != expected_task_bytes
+        or task_information.pti_resident_size <= 0
+    ):
+        raise ExternalRunnerError(
+            f"could not inspect inference-service process {process_id} "
+            "memory on macOS"
+        )
+
+    second_identity = _darwin_process_bsd_info(process_id)
+    if _darwin_process_start_token(second_identity) != first_start_token:
+        raise ExternalRunnerError(
+            "inference-service process identity changed during sampling"
+        )
+    return _InferenceProcessSnapshot(
+        process_id=process_id,
+        process_start_token=first_start_token,
+        executable_path=str(executable),
+        memory_metric="resident-set-bytes",
+        memory_bytes=int(task_information.pti_resident_size),
+    )
+
+
 def _linux_process_start_token(stat_path: Path) -> str:
     try:
         stat_text = stat_path.read_text(encoding="utf-8")
@@ -1696,9 +1954,11 @@ def _inference_process_snapshot(process_id: int) -> _InferenceProcessSnapshot:
         return _windows_inference_process_snapshot(process_id)
     if sys.platform.startswith("linux"):
         return _linux_inference_process_snapshot(process_id)
+    if sys.platform == "darwin":
+        return _darwin_inference_process_snapshot(process_id)
     raise ExternalRunnerError(
-        "inference-service process accounting is supported only on Windows "
-        "and Linux"
+        "inference-service process accounting is supported only on Windows, "
+        "Linux, and macOS"
     )
 
 
@@ -2557,51 +2817,270 @@ def _command_references_adapter_entrypoint(
     return False
 
 
-def _terminate_posix_process_group(process_group_id: int) -> None:
-    try:
-        os.killpg(process_group_id, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    deadline = time.monotonic() + 0.5
-    while time.monotonic() < deadline:
+def _verify_darwin_process_group_after_sigkill(
+    process_group_id: int,
+    *,
+    process: subprocess.Popen[bytes] | None,
+) -> None:
+    if process is None:
+        raise ExternalRunnerError(
+            "could not prove Darwin process-group cleanup without its leader"
+        )
+    deadline = time.monotonic() + _PROCESS_GROUP_GRACE_SECONDS
+    while True:
         try:
             os.killpg(process_group_id, 0)
         except ProcessLookupError:
             return
+        except PermissionError as exc:
+            if exc.errno != errno.EPERM:
+                raise ExternalRunnerError(
+                    "could not verify the adapter process group after SIGKILL"
+                ) from exc
+            break
+        except OSError as exc:
+            raise ExternalRunnerError(
+                "could not verify the adapter process group after SIGKILL"
+            ) from exc
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(0.01, remaining))
+    prove_darwin_process_group_all_zombies(
+        process_group_id,
+        expected_leader_pid=process.pid,
+        error_type=ExternalRunnerError,
+    )
+
+
+def _terminate_posix_process_group(
+    process_group_id: int,
+    *,
+    process: subprocess.Popen[bytes] | None = None,
+) -> None:
+    if process is not None and process.returncode is not None:
+        raise ExternalRunnerError(
+            "adapter process was reaped before process-group cleanup"
+        )
+    direct_process_exited = (
+        process is not None
+        and _posix_process_exited_without_reaping(process)
+    )
+    if direct_process_exited:
+        try:
+            os.killpg(process_group_id, _POSIX_SIGKILL)
+        except ProcessLookupError:
+            return
+        except PermissionError as exc:
+            if exc.errno != errno.EPERM or sys.platform != "darwin":
+                raise ExternalRunnerError(
+                    "could not kill the adapter process group"
+                ) from exc
+        except OSError as exc:
+            raise ExternalRunnerError(
+                "could not kill the adapter process group"
+            ) from exc
+        if sys.platform == "darwin":
+            _verify_darwin_process_group_after_sigkill(
+                process_group_id,
+                process=process,
+            )
+        return
+    try:
+        os.killpg(process_group_id, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except PermissionError as exc:
+        # A Darwin leader may exit after the WNOWAIT observation but before
+        # SIGTERM. Re-observe the still-owned leader and accept EPERM only when
+        # a stable inspection proves that every anchored member is a zombie.
+        if (
+            exc.errno == errno.EPERM
+            and sys.platform == "darwin"
+            and process is not None
+            and _posix_process_exited_without_reaping(process)
+        ):
+            prove_darwin_process_group_all_zombies(
+                process_group_id,
+                expected_leader_pid=process.pid,
+                error_type=ExternalRunnerError,
+            )
+            return
+        # Otherwise EPERM cannot distinguish a zombie-only group from a live
+        # process with another effective identity. Reaping and retrying the
+        # numeric PGID would also permit group-ID reuse, so fail closed.
+        raise ExternalRunnerError(
+            "could not terminate the adapter process group"
+        ) from exc
+    except OSError as exc:
+        raise ExternalRunnerError(
+            "could not terminate the adapter process group"
+        ) from exc
+    deadline = time.monotonic() + _PROCESS_GROUP_GRACE_SECONDS
+    while time.monotonic() < deadline:
+        direct_process_exited = (
+            process is not None
+            and _posix_process_exited_without_reaping(process)
+        )
+        try:
+            os.killpg(process_group_id, 0)
+        except ProcessLookupError:
+            return
+        except PermissionError as exc:
+            if (
+                exc.errno == errno.EPERM
+                and sys.platform == "darwin"
+                and process is not None
+                and direct_process_exited
+            ):
+                prove_darwin_process_group_all_zombies(
+                    process_group_id,
+                    expected_leader_pid=process.pid,
+                    error_type=ExternalRunnerError,
+                )
+                return
+            raise ExternalRunnerError(
+                "could not verify the adapter process group after SIGTERM"
+            ) from exc
+        except OSError as exc:
+            raise ExternalRunnerError(
+                "could not verify the adapter process group after SIGTERM"
+            ) from exc
+        if direct_process_exited:
+            # The leader remains waitable (WNOWAIT), anchoring the PGID while
+            # SIGKILL removes any descendant that ignored SIGTERM. The caller
+            # may reap the leader only after this final group signal.
+            break
         time.sleep(0.01)
-    with suppress(ProcessLookupError):
-        os.killpg(process_group_id, signal.SIGKILL)
+    try:
+        os.killpg(process_group_id, _POSIX_SIGKILL)
+    except ProcessLookupError:
+        return
+    except PermissionError as exc:
+        if exc.errno != errno.EPERM or sys.platform != "darwin":
+            raise ExternalRunnerError(
+                "could not kill the adapter process group"
+            ) from exc
+    except OSError as exc:
+        raise ExternalRunnerError(
+            "could not kill the adapter process group"
+        ) from exc
+    if sys.platform == "darwin":
+        _verify_darwin_process_group_after_sigkill(
+            process_group_id,
+            process=process,
+        )
+
+
+def _posix_process_exited_without_reaping(
+    process: subprocess.Popen[bytes],
+) -> bool:
+    if process.returncode is not None:
+        raise ExternalRunnerError(
+            "adapter process was reaped before process-group cleanup"
+        )
+    try:
+        result = os.waitid(
+            os.P_PID,
+            process.pid,
+            os.WEXITED | os.WNOHANG | os.WNOWAIT,
+        )
+    except ChildProcessError as exc:
+        raise ExternalRunnerError(
+            "adapter process was reaped before process-group cleanup"
+        ) from exc
+    except OSError as exc:
+        raise ExternalRunnerError(
+            "could not observe adapter exit without reaping"
+        ) from exc
+    return result is not None
 
 
 def _terminate_process_tree(
     process: subprocess.Popen[bytes],
     windows_job: _WindowsJob | None = None,
 ) -> None:
+    if os.name != "nt":
+        _terminate_posix_process_group(
+            process.pid,
+            process=process,
+        )
+        return
     if process.poll() is not None:
         return
-    if os.name == "nt":
-        if windows_job is not None:
-            try:
-                windows_job.terminate()
-            except ExternalRunnerError:
-                process.kill()
-            return
-        completed = subprocess.run(
-            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-            check=False,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW,  # type: ignore[attr-defined]
-        )
-        if completed.returncode != 0 and process.poll() is None:
+    if windows_job is not None:
+        try:
+            windows_job.terminate()
+        except ExternalRunnerError:
             process.kill()
-    else:
-        _terminate_posix_process_group(process.pid)
+        return
+    completed = subprocess.run(
+        ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=subprocess.CREATE_NO_WINDOW,  # type: ignore[attr-defined]
+    )
+    if completed.returncode != 0 and process.poll() is None:
+        process.kill()
+
+
+def _cleanup_and_reap_posix_process(
+    process: subprocess.Popen[bytes],
+) -> int:
+    try:
+        _terminate_posix_process_group(
+            process.pid,
+            process=process,
+        )
+    except ExternalRunnerError:
+        raise
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ExternalRunnerError(
+            "could not clean the adapter process group"
+        ) from exc
+    try:
+        return process.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        # The group cleanup has already delivered its final signal while the
+        # unreaped leader anchored the PGID. Only the still-owned direct child
+        # may be touched after that point.
+        try:
+            process.kill()
+        except OSError as exc:
+            raise ExternalRunnerError(
+                "could not stop the adapter process after "
+                "process-group cleanup"
+            ) from exc
+        try:
+            return process.wait(timeout=1)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise ExternalRunnerError(
+                "could not reap the adapter process after "
+                "process-group cleanup"
+            ) from exc
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ExternalRunnerError(
+            "could not reap the adapter process after process-group cleanup"
+        ) from exc
+
+
+def _best_effort_stop_and_reap_direct_process(
+    process: subprocess.Popen[bytes],
+) -> None:
+    with suppress(OSError):
+        process.kill()
+    with suppress(OSError, subprocess.SubprocessError):
+        process.wait(timeout=1)
 
 
 def _posix_limit_setup(limits: RunnerLimits):
-    if os.name == "nt" or limits.max_memory_mb is None:
+    if (
+        os.name == "nt"
+        or sys.platform == "darwin"
+        or limits.max_memory_mb is None
+    ):
         return None
 
     def apply_limits() -> None:
@@ -2617,6 +3096,39 @@ def _posix_limit_setup(limits: RunnerLimits):
         resource.setrlimit(resource.RLIMIT_FSIZE, (file_bytes, file_bytes))
 
     return apply_limits
+
+
+def _adapter_process_launch(
+    command: Sequence[str],
+    limits: RunnerLimits,
+) -> tuple[list[str], Any]:
+    if sys.platform != "darwin" or limits.max_memory_mb is None:
+        return list(command), _posix_limit_setup(limits)
+    memory_bytes = limits.max_memory_mb * 1024 * 1024
+    file_bytes = max(
+        limits.max_stdout_bytes,
+        limits.max_stderr_bytes,
+        limits.max_candidate_bytes,
+    )
+    return (
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            _DARWIN_LIMIT_LAUNCHER,
+            _DARWIN_LIMIT_LAUNCHER_PROTOCOL,
+            str(memory_bytes),
+            str(file_bytes),
+            "--",
+            *command,
+        ],
+        None,
+    )
+
+
+def _uses_windows_process_control() -> bool:
+    return os.name == "nt"
 
 
 def _load_corpus(path: Path):
@@ -3613,16 +4125,24 @@ def run_external_command(
     started = time.monotonic()
     exit_code: int | None = None
     termination_reason: str | None = None
+    validation_error: str | None = None
+    windows_process_control = _uses_windows_process_control()
     creation_flags = (
         subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
         | subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
-        if os.name == "nt"
+        if windows_process_control
         else 0
     )
-    windows_job = _WindowsJob.create(limits.max_memory_mb) if os.name == "nt" else None
+    windows_job = (
+        _WindowsJob.create(limits.max_memory_mb)
+        if windows_process_control
+        else None
+    )
     if windows_job is not None:
         creation_flags |= _WINDOWS_CREATE_SUSPENDED
     process: subprocess.Popen[bytes] | None = None
+    posix_group_cleanup_attempted = False
+    posix_group_cleanup_failed = False
     try:
         with _runner_temporary_directory(
             prefix=".lrcbench-run-",
@@ -3630,11 +4150,20 @@ def run_external_command(
         ) as temporary_directory:
             stdout_path = temporary_directory / "stdout.bin"
             stderr_path = temporary_directory / "stderr.bin"
-            try:
-                with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
+            launch_command, preexec_fn = _adapter_process_launch(
+                resolved_command,
+                limits,
+            )
+            with (
+                stdout_path.open("xb") as stdout,
+                stdout_path.open("rb") as stdout_reader,
+                stderr_path.open("xb") as stderr,
+                stderr_path.open("rb") as stderr_reader,
+            ):
+                try:
                     try:
                         process = subprocess.Popen(
-                            resolved_command,
+                            launch_command,
                             cwd=cwd,
                             env=process_environment,
                             stdin=subprocess.DEVNULL,
@@ -3642,9 +4171,9 @@ def run_external_command(
                             stderr=stderr,
                             shell=False,
                             close_fds=True,
-                            start_new_session=os.name != "nt",
+                            start_new_session=not windows_process_control,
                             creationflags=creation_flags,
-                            preexec_fn=_posix_limit_setup(limits),
+                            preexec_fn=preexec_fn,
                         )
                     except (OSError, subprocess.SubprocessError) as exc:
                         raise ExternalRunnerError(
@@ -3664,28 +4193,76 @@ def run_external_command(
                             process.wait(timeout=1)
                             raise
 
-                    while process.poll() is None:
+                    while True:
+                        if windows_process_control:
+                            process_exited = process.poll() is not None
+                        else:
+                            try:
+                                process_exited = (
+                                    _posix_process_exited_without_reaping(
+                                        process
+                                    )
+                                )
+                            except ExternalRunnerError as exc:
+                                termination_reason = (
+                                    "process_group_cleanup_failed"
+                                )
+                                validation_error = str(exc)
+                                posix_group_cleanup_attempted = True
+                                posix_group_cleanup_failed = True
+                                _best_effort_stop_and_reap_direct_process(
+                                    process
+                                )
+                                exit_code = process.returncode
+                                break
+                        if process_exited:
+                            break
                         elapsed = time.monotonic() - started
                         service_failure = inference_monitor.sample()
                         if service_failure is not None:
                             termination_reason = service_failure
                         elif elapsed > limits.timeout_seconds:
                             termination_reason = "timeout"
-                        elif _size(stdout_path) > limits.max_stdout_bytes:
+                        elif (
+                            _stream_size(stdout, label="stdout")
+                            > limits.max_stdout_bytes
+                        ):
                             termination_reason = "stdout_limit"
-                        elif _size(stderr_path) > limits.max_stderr_bytes:
+                        elif (
+                            _stream_size(stderr, label="stderr")
+                            > limits.max_stderr_bytes
+                        ):
                             termination_reason = "stderr_limit"
                         elif _size(candidate) > limits.max_candidate_bytes:
                             termination_reason = "candidate_limit"
                         if termination_reason is not None:
-                            _terminate_process_tree(process, windows_job)
+                            if windows_process_control:
+                                _terminate_process_tree(process, windows_job)
                             break
                         time.sleep(float(limits.poll_interval_seconds))
-                    try:
-                        exit_code = process.wait(timeout=1)
-                    except subprocess.TimeoutExpired:
-                        _terminate_process_tree(process, windows_job)
-                        exit_code = process.wait(timeout=1)
+                    if not windows_process_control:
+                        if not posix_group_cleanup_failed:
+                            posix_group_cleanup_attempted = True
+                            try:
+                                exit_code = (
+                                    _cleanup_and_reap_posix_process(process)
+                                )
+                            except ExternalRunnerError as exc:
+                                termination_reason = (
+                                    "process_group_cleanup_failed"
+                                )
+                                validation_error = str(exc)
+                                posix_group_cleanup_failed = True
+                                _best_effort_stop_and_reap_direct_process(
+                                    process
+                                )
+                                exit_code = process.returncode
+                    else:
+                        try:
+                            exit_code = process.wait(timeout=1)
+                        except subprocess.TimeoutExpired:
+                            _terminate_process_tree(process, windows_job)
+                            exit_code = process.wait(timeout=1)
                     service_failure = inference_monitor.sample(
                         check_executable=check_executable_after
                     )
@@ -3696,27 +4273,63 @@ def run_external_command(
                         termination_reason = service_failure
                     stdout.flush()
                     stderr.flush()
-            finally:
-                if process is not None and process.poll() is None:
-                    _terminate_process_tree(process, windows_job)
-                    try:
-                        process.wait(timeout=1)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait(timeout=1)
-                if windows_job is not None:
-                    try:
-                        windows_job.terminate()
-                    finally:
-                        windows_job.close()
-                        windows_job = None
-                elif process is not None:
-                    _terminate_posix_process_group(process.pid)
+                finally:
+                    if process is not None:
+                        if windows_process_control:
+                            if process.poll() is None:
+                                _terminate_process_tree(process, windows_job)
+                                try:
+                                    process.wait(timeout=1)
+                                except subprocess.TimeoutExpired:
+                                    process.kill()
+                                    process.wait(timeout=1)
+                        elif process.returncode is None:
+                            if posix_group_cleanup_failed:
+                                _best_effort_stop_and_reap_direct_process(
+                                    process
+                                )
+                            elif not posix_group_cleanup_attempted:
+                                posix_group_cleanup_attempted = True
+                                _cleanup_and_reap_posix_process(process)
+                            else:
+                                # A prior fail-closed group cleanup raised
+                                # before reaping. Best-effort cleanup of the
+                                # direct child neither establishes descendant
+                                # cleanup nor masks the original error; never
+                                # reuse its numeric PGID.
+                                _best_effort_stop_and_reap_direct_process(
+                                    process
+                                )
+                        elif not posix_group_cleanup_attempted:
+                            raise ExternalRunnerError(
+                                "adapter process was reaped before "
+                                "process-group cleanup"
+                            )
+                    if windows_job is not None:
+                        try:
+                            windows_job.terminate()
+                        finally:
+                            windows_job.close()
+                            windows_job = None
 
-            stdout_bytes = _size(stdout_path)
-            stderr_bytes = _size(stderr_path)
-            stdout_sha256 = _file_sha256(stdout_path)
-            stderr_sha256 = _file_sha256(stderr_path)
+                (
+                    stdout_observed_bytes,
+                    stdout_bytes,
+                    stdout_sha256,
+                ) = _bounded_stream_snapshot(
+                    stdout_reader,
+                    max_bytes=limits.max_stdout_bytes,
+                    label="stdout",
+                )
+                (
+                    stderr_observed_bytes,
+                    stderr_bytes,
+                    stderr_sha256,
+                ) = _bounded_stream_snapshot(
+                    stderr_reader,
+                    max_bytes=limits.max_stderr_bytes,
+                    label="stderr",
+                )
     finally:
         if windows_job is not None:
             windows_job.close()
@@ -3761,9 +4374,15 @@ def run_external_command(
         and not _network_isolation_evidence_matches(network_isolation)
     ):
         termination_reason = "network_isolation_evidence_modified"
-    if termination_reason is None and stdout_bytes > limits.max_stdout_bytes:
+    if (
+        termination_reason is None
+        and stdout_observed_bytes > limits.max_stdout_bytes
+    ):
         termination_reason = "stdout_limit"
-    if termination_reason is None and stderr_bytes > limits.max_stderr_bytes:
+    if (
+        termination_reason is None
+        and stderr_observed_bytes > limits.max_stderr_bytes
+    ):
         termination_reason = "stderr_limit"
     if (
         termination_reason is None
@@ -3787,7 +4406,6 @@ def run_external_command(
             termination_reason = termination_reason or "candidate_limit"
     process_succeeded = exit_code == 0 and termination_reason is None
     candidate_valid = False
-    validation_error: str | None = None
     if process_succeeded:
         if not candidate.is_file():
             validation_error = "adapter did not create the candidate output"
@@ -4209,6 +4827,16 @@ def run_external_cases(
             if case_candidate_payload is not None:
                 candidate_cases.append(case_candidate_payload["cases"][0])
 
+        if (
+            case_manifest.termination_reason
+            == "process_group_cleanup_failed"
+        ):
+            termination_reason = (
+                f"case_failure:{case.id}:"
+                "process_group_cleanup_failed"
+            )
+            validation_error = case_manifest.validation_error
+            break
         if adapter_integrity_failure is not None:
             termination_reason = (
                 f"case_failure:{case.id}:{adapter_integrity_failure}"

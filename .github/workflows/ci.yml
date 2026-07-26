@@ -69,6 +69,7 @@ jobs:
           tests/test_compile_deadline.py
           tests/test_deterministic_sdist.py
           tests/test_external_runner.py
+          tests/test_local_qwen.py
           tests/test_parent_directory_safety.py
           tests/test_release_install_smoke.py
       - name: Build wheel and source distribution
