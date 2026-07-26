@@ -39,12 +39,14 @@ The default implementation is synchronous and provider-neutral. Passing
 `timeout_seconds` to `compile()` serializes a materialized list/tuple job into
 a dedicated subprocess, places that worker in a new POSIX process group or
 Windows Job Object, and applies one deadline to the complete pipeline. Timeout
-terminates the owned descendant tree. Success crosses back as bounded strict
-JSON, whose exact artifact shape and self-digest are checked before a sealed
-snapshot is reconstructed. This boundary prevents worker-side source mutation
-from changing caller objects; it is not a filesystem, network, or hostile-code
-sandbox. The project has no runtime dependencies outside the Python 3.11+
-standard library.
+signals the owned POSIX group or terminates the Windows Job. Success crosses
+back as bounded strict JSON, whose exact artifact shape and self-digest are
+checked before a sealed snapshot is reconstructed. This boundary prevents
+worker-side source mutation from changing caller objects; it is not a
+filesystem, network, or hostile-code sandbox. A POSIX child that leaves the
+group is outside the termination boundary, and Linux group-signal success does
+not prove that every member accepted the signal. The project has no runtime
+dependencies outside the Python 3.11+ standard library.
 
 ## Optional LocalAI connector boundary
 
@@ -607,11 +609,12 @@ additive. Its exception becomes a verification warning without subtracting
 built-in obligations. A primary extractor exception or wholly unusable result
 produces deterministic fallback memory and an explicit warning by default;
 `CompilationPolicy(fail_on_primary_extractor_error=True)` instead aborts.
-The optional outer compile deadline can kill the complete owned process tree,
-but custom completion callables should still enforce a shorter transport
-deadline so their timeout becomes an ordinary provider failure and allows
-deterministic fallback. The included `LmsQwenCompletion` adapter provides that
-subprocess timeout and is restricted to the exact local
+The optional outer compile deadline can terminate the owned Windows Job or
+signal the owned POSIX process group, but custom completion callables should
+still enforce a shorter transport deadline so their timeout becomes an
+ordinary provider failure and allows deterministic fallback. The included
+`LmsQwenCompletion` adapter provides that subprocess timeout and is restricted
+to the exact local
 `qwen/qwen3.6-35b-a3b@q4_k_m` build with one inference slot and no HTTP model
 API.
 
@@ -912,10 +915,15 @@ every per-case invocation. Claim execution uses the source root as the working
 directory. It passes a bounded platform-startup environment rather than the
 full host environment, retains names but only hashes values, rejects
 credential-like names from claim metadata, and freezes the resulting
-environment digest per system. It also binds a pre-existing service's PID
+environment digest per system. On macOS, the resource-limit supervisor starts
+with Python's isolated and no-site flags (`-I -S`), applies inherited
+per-process limits, and execs the exact retained adapter command before user or
+system site startup code can run. It also binds a pre-existing service's PID
 creation identity and
-executable digest and records sampled Windows working set or Linux RSS plus its
-ceiling. External scoring additionally compares all of those fields, the
+executable digest and records sampled Windows working set or Linux/macOS RSS
+plus its ceiling. macOS uses `libproc` and rechecks the creation identity
+around each executable/RSS observation. External scoring additionally compares
+all of those fields, the
 lock/entrypoint/source-tree/runtime/process-environment/command/network-evidence
 digests, service metric/executable digest/ceiling, and retained runner limits,
 including the enforcement polling cadence, with the frozen protocol.

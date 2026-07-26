@@ -322,6 +322,11 @@ applies per-case time/output limits, validates each candidate independently,
 and merges only complete valid coverage. The self-hashed manifest binds the
 exact invocation and outcome for every case.
 `whole-corpus` mode is retained for diagnostics but is not claim-bearing.
+Stream byte/hash evidence is read from runner-retained descriptors rather than
+reopened paths. At or below the cap it covers the full observed stream; above
+the cap it records a `cap + 1` prefix witness while the one-time descriptor-size
+observation still forces the corresponding limit failure. Growth after that
+observation is not chased.
 
 The original corpus is retained as manifest evidence. On import, the loader
 reopens its absolute path, verifies its canonical self-digest and exact file
@@ -361,17 +366,38 @@ imports and bytecode writes and set a deterministic hash seed and UTF-8 I/O.
 Do not treat hashing as secret storage: low-entropy values may be guessable, so
 credentials should never be passed to an offline claim run.
 
-`--max-memory-mb` bounds the adapter process tree with `RLIMIT_AS` on POSIX and
-a Job Object assigned before process resume on Windows. The service PID and
-service-memory options separately capture the pre-existing inference process's
-creation identity and executable digest, then sample Windows working set or
-Linux RSS at the runner's polling cadence. The adapter run fails if the service
-disappears, restarts, changes executable, or exceeds the ceiling; the runner
-does not terminate or contain that service, and polling can miss between-sample
-spikes. It also cannot prove that the adapter used the designated PID or
-automatically include separate helper processes. Configured service accounting
-is supported on Windows and Linux and fails preflight elsewhere. The wrapper is
-not a filesystem sandbox and does not establish its own network sandbox, so
+`--max-memory-mb` applies an inherited per-process `RLIMIT_AS` ceiling on POSIX.
+It is not an aggregate POSIX process-tree ceiling: each descendant inherits the
+same individual limit. Windows instead uses a Job Object assigned before
+process resume with both per-process and aggregate job limits. On macOS, a
+supervisory Python process starts with isolated and no-site flags (`-I -S`),
+applies the inherited address-space and file-size limits, and then replaces
+itself with the exact adapter command. This prevents user or system site
+startup code from running before the limits, avoids unsafe `preexec_fn`
+execution, and does not change the retained adapter command contract. The
+POSIX monitor observes leader exit without reaping (`waitid(..., WNOWAIT)`),
+signals the process group while that leader still anchors its numeric group ID,
+and only then reaps it. After the final macOS group signal, a bounded stable
+`libproc` member snapshot must prove that every remaining member is a zombie;
+this is also the only condition under which `EPERM` is accepted. A live,
+inaccessible, raced, or uninspectable member fails the run closed. A POSIX
+process that deliberately leaves the owned group remains outside this cleanup
+boundary, so unreviewed adapters still require external isolation. Once
+process start succeeded, a cleanup/proof failure is retained as
+`process_group_cleanup_failed` with its controlled validation error and stream
+evidence. Per-case mode records that case and launches no later case; preflight
+and process-start failures remain runner errors.
+The service PID and service-memory options separately
+capture the pre-existing inference process's creation identity and executable
+digest, then sample Windows working set or Linux/macOS RSS at the runner's
+polling cadence. macOS uses `libproc` and rechecks the PID creation time around
+each executable/RSS sample. The adapter run fails if the service disappears,
+restarts, changes executable, or exceeds the ceiling; the runner does not
+terminate or contain that service, and polling can miss between-sample spikes.
+It also cannot prove that the adapter used the designated PID or automatically
+include separate helper processes. Configured service accounting is supported
+on Windows, Linux, and macOS and fails preflight elsewhere. The wrapper is not
+a filesystem sandbox and does not establish its own network sandbox, so
 unreviewed adapter code still belongs in a separately isolated environment.
 Claim controls require a bounded retained host firewall,
 container, or network-namespace policy artifact. The runner hashes it before
@@ -380,7 +406,8 @@ independently prove that the host enforced the named policy.
 
 The manifest also binds adapter revision, environment id, model identity,
 context length, tokenizer, inference concurrency, retries, and model-service
-cost. Missing per-case isolation, no enforced process-tree memory limit,
+cost. Missing per-case isolation, no enforced platform-appropriate adapter
+memory limit,
 unrecorded identity, a model other than the exact local Qwen Q4 build,
 concurrency other than one, or nonzero model service cost is a
 certificate-invalid non-win even when the candidate interchange itself is

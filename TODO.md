@@ -79,8 +79,9 @@ raw evidence when completing benchmark work.
   only from a unique exact source literal, caps aggregate search work, and
   leaves the original coordinate-bearing contract unchanged.
 - [x] Add a shell-free bounded external-adapter runner with sequential per-case
-  processes, POSIX/Windows process-tree memory limits, full candidate
-  validation, and self-hashed run manifests.
+  processes, inherited POSIX per-process memory limits, Windows per-process
+  and aggregate Job limits, full candidate validation, and self-hashed run
+  manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
 - [x] Maintain unit and connector-contract coverage, including standalone
   operation without sibling dependencies; CI covers Python 3.11, 3.12, and
@@ -186,8 +187,10 @@ ContextCompiler(
 - [x] Run the non-overridable deterministic safety pass before or independently
   of the provider call.
 - [x] Bound response characters, decoded JSON size, and candidate count.
-- [x] Add a hard subprocess timeout and cancellation-by-process-termination to
-  the exact local Qwen CLI adapter.
+- [x] Add a hard subprocess timeout and an owned POSIX process-group or Windows
+  Job cancellation boundary to the exact local Qwen CLI adapter. Keep the POSIX
+  leader waitable until group signaling finishes, then reap it without retrying
+  a reusable numeric process-group ID.
 - [x] On timeout, malformed output, or outage, return verified deterministic
   memory plus an explicit degradation issue when policy permits.
 - [x] Provide a strict policy that fails without rendering when provider
@@ -326,15 +329,18 @@ Acceptance:
 ### P0-E2 Build reproducible external-system adapters
 
 - [x] Add a shell-free whole-adapter subprocess runner with time, stdout,
-  stderr, and candidate limits, overwrite refusal, process-tree termination,
-  candidate validation, and a self-hashed manifest.
-- [x] Add sequential per-case isolation and cross-platform adapter process-tree
-  memory enforcement. POSIX uses `RLIMIT_AS`; Windows creates the process
+  stderr, and candidate limits, overwrite refusal, owned POSIX process-group
+  or Windows Job termination, candidate validation, and a self-hashed
+  manifest. POSIX children that deliberately leave the group remain outside
+  this boundary.
+- [x] Add sequential per-case isolation and cross-platform adapter memory
+  enforcement. POSIX applies an inherited `RLIMIT_AS` ceiling independently to
+  each process; it is not an aggregate tree bound. Windows creates the process
   suspended, assigns and verifies a Job Object with per-process and aggregate
   memory limits, then resumes it.
 - [x] Account separately for a pre-existing inference service outside the
   adapter process tree. The runner binds PID creation identity and executable
-  digest, samples Windows working set or Linux RSS at the fixed polling
+  digest, samples Windows working set or Linux/macOS RSS at the fixed polling
   cadence, records peak/sample evidence, and fails the adapter on restart,
   disappearance, executable change, or ceiling breach. This is monitoring,
   not containment, and the draft protocol still must freeze the executable,
@@ -675,9 +681,9 @@ of sublinear compile cost.
   verification issues across CLI and direct replay.
 - [x] Add an opt-in portable whole-compile deadline for materialized,
   serializable jobs. Run the pipeline in an isolated POSIX process group or
-  Windows Job Object, terminate the owned descendant tree on timeout, copy
-  caller inputs across the boundary, and accept successful results only
-  through bounded strict JSON plus sealed-snapshot reconstruction.
+  Windows Job Object, signal the owned POSIX group or terminate the Windows Job
+  on timeout, copy caller inputs across the boundary, and accept successful
+  results only through bounded strict JSON plus sealed-snapshot reconstruction.
 - [x] Add opt-in versioned JSON runtime diagnostics that distinguish resource,
   I/O, invalid JSON/type/value, integrity, timeout, and policy failures while
   retaining the default human-readable CLI contract.

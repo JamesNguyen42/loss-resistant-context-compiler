@@ -156,8 +156,9 @@ The repository currently includes:
   verification, compression, and compilation telemetry without changing
   default stderr;
 - an opt-in whole-compile deadline that runs materialized inputs in an isolated
-  POSIX process group or Windows Job Object, terminates the owned descendant
-  tree on timeout, and reconstructs successful output from bounded strict JSON;
+  POSIX process group or Windows Job Object, signals the owned POSIX group or
+  terminates the Windows Job on timeout, and reconstructs successful output
+  from bounded strict JSON;
 - a portable JSON artifact, compact prompt renderer, and 25 installed JSON Schemas;
 - an optional standard-library LocalAI connector with six framework-neutral
   operations, a strict versioned JSONL process boundary, immutable
@@ -180,8 +181,9 @@ The repository currently includes:
   gates, per-system decisions, and self-hashed JSON reports with producer/run
   metadata;
 - gold-free corpus self-digests plus a bounded, shell-free external runner with
-  sequential per-case processes, cross-platform process-tree memory limits,
-  and valid or failed manifests that feed per-system certificate decisions;
+  sequential per-case processes, inherited POSIX per-process memory limits,
+  Windows per-process/aggregate Job limits, and valid or failed manifests that
+  feed per-system certificate decisions;
 - result-blind ACON and AMA-Agent compatibility records plus a pinned ACON
   diagnostic adapter whose first bounded run is retained as a failed,
   non-scoreable manifest;
@@ -469,7 +471,8 @@ syntax is an input error. The package never silently migrates artifacts.
 See [Schema compatibility](docs/SCHEMA_COMPATIBILITY.md) for the preservation
 and trusted-source-replay requirements imposed on any future migration.
 
-To place the complete compile pipeline inside a killable process-tree boundary:
+To place the complete compile pipeline inside an isolated, cancellable worker
+boundary:
 
 ```console
 ctxc compile examples/auth_timeout.jsonl -o compiled-memory.json \
@@ -969,13 +972,14 @@ memory = compiler.compile(sources, timeout_seconds=60)
 Deadline mode requires `sources` to be a materialized list or tuple and the
 compiler configuration to be serializable. It copies that job into the worker,
 so extractor mutation cannot change the caller's source objects. On timeout it
-terminates the worker and owned descendants; on success it accepts only a
-bounded strict-JSON artifact, validates its shape and self-digest, and rebuilds
-a sealed snapshot. This is a cancellation and state-isolation boundary, not a
-filesystem, network, or hostile-code sandbox. Compiler configuration crosses
-the local boundary with pickle and must therefore already be trusted. An
-extractor that deliberately escapes its POSIX process group is outside the
-guarantee.
+signals the worker's owned POSIX process group or terminates its Windows Job; on
+success it accepts only a bounded strict-JSON artifact, validates its shape and
+self-digest, and rebuilds a sealed snapshot. This is a cancellation and
+state-isolation boundary, not a filesystem, network, or hostile-code sandbox.
+Compiler configuration crosses the local boundary with pickle and must
+therefore already be trusted. An extractor that deliberately escapes its POSIX
+process group is outside the guarantee, and Linux group-signal success does not
+prove that every member accepted the signal.
 
 For exact provider token accounting, give the compiler a stable counter name
 and give independent artifact verification the same callback and name:
@@ -1023,9 +1027,10 @@ Set `CompilationPolicy(fail_on_primary_extractor_error=True)` when provider
 failure must abort instead. `ModelExtractor` bounds response size and candidate
 count, rejects duplicate JSON keys and non-standard or overflowed non-finite
 numbers, and validates exact object fields. An outer compile deadline can
-terminate the whole owned process tree, but custom completion adapters should
-still enforce a shorter transport-level deadline so provider failure can
-return deterministic fallback memory instead of aborting the complete run.
+terminate the owned Windows Job or members that remain in the owned POSIX
+process group, but custom completion adapters should still enforce a shorter
+transport-level deadline so provider failure can return deterministic fallback
+memory instead of aborting the complete run.
 The callable and any data it sends remain the integrator’s security and privacy
 responsibility.
 
@@ -1082,7 +1087,9 @@ compiler = ContextCompiler(
 
 The adapter disables catalog fetching and does not use an HTTP model API.
 It accepts only one JSON object after an optional bounded exact-model loading
-prefix and rejects ambiguous or trailing stdout. LM Studio passes the prompt as
+prefix and rejects ambiguous or trailing stdout. Its POSIX leader remains
+waitable while the owned process group is signaled, and is reaped only after
+that cleanup attempt; Windows uses a Job Object. LM Studio passes the prompt as
 a process argument, so run content redaction before using it and separately
 minimize metadata. See
 [Local Qwen integration](docs/LOCAL_QWEN.md).
@@ -1099,8 +1106,8 @@ Run the complete regression and static checks:
 
 ```console
 python -m pytest -q
-python -m ruff check src tests benchmarks scripts conformance
-python -m compileall -q src benchmarks tests scripts conformance
+python -m ruff check src tests benchmarks scripts conformance _ctxc_build_backend.py
+python -m compileall -q src benchmarks tests scripts conformance _ctxc_build_backend.py
 ```
 
 Build the wheel and verify the 25 packaged schemas:
@@ -1187,10 +1194,20 @@ is an invalid non-win. The protocol's registered set is authoritative, and
 repeatable `--expected-external-system` assertions, when supplied, must match
 that complete set. Missing or failed systems remain non-wins. See
 [Benchmarking](docs/BENCHMARKING.md) for the strict schema and claim scope.
-`python -m benchmarks.external_runner` supplies a shell-free, timeout-, output-,
-and process-tree-memory-bounded adapter wrapper. Its default mode executes every
-case sequentially in a fresh process, records a hashed per-case audit trail,
-and merges only fully validated outputs. Manifest replay reconstructs every
+`python -m benchmarks.external_runner` supplies a shell-free adapter wrapper
+with timeout/output limits, inherited per-process address-space limits on
+POSIX, and per-process plus aggregate Job limits on Windows. POSIX descendants
+each inherit the individual limit; it is not one aggregate process-tree
+ceiling. On macOS, an isolated no-site (`-I -S`) exec launcher applies the
+limits before the exact adapter command can load user or system site startup
+code. Stream byte counts and hashes come from runner-retained descriptors, not
+reopened paths. At or below a stream cap they cover the full observed stream;
+above it they retain a `cap + 1` prefix witness while the descriptor-size
+observation still forces a failed limit outcome. The snapshot does not chase
+later growth. The default mode executes every case sequentially in a fresh
+process, records a hashed per-case audit trail, and merges only fully validated
+outputs.
+Manifest replay reconstructs every
 one-case corpus from the retained parent, verifies its exact canonical and file
 digests, and requires executed cases to be the ordered parent-corpus prefix
 with runner-owned temporary paths. For a complete run, it also rebuilds each
@@ -1216,19 +1233,20 @@ limits—including the 20 ms enforcement polling cadence—to match the frozen
 protocol. Claim controls also require a bounded retained host/container
 network-isolation artifact whose digest matches the protocol. A pre-existing
 local inference service is accounted separately: the runner captures its PID
-creation identity and executable digest, samples Windows working set or Linux
-RSS at the same 20 ms cadence, records sample count and peak bytes, and
-invalidates the adapter run if the service disappears, restarts, changes
-executable, or crosses its ceiling. Scoring requires the memory metric,
-executable digest, and service ceiling to match the frozen protocol.
+creation identity and executable digest, samples Windows working set or
+Linux/macOS RSS at the same 20 ms cadence, records sample count and peak bytes,
+and invalidates the adapter run if the service disappears, restarts, changes
+executable, or crosses its ceiling. macOS uses `libproc` and rechecks creation
+identity around each executable/RSS observation. Scoring requires the memory
+metric, executable digest, and service ceiling to match the frozen protocol.
 The wrapper does not itself create a filesystem or network sandbox, does not
 contain or terminate the inference service, and can miss a memory spike between
 samples. The source inventory does not bind imports outside its root or prove
 which files were loaded. The runtime digest covers argument zero, not every
 shared library or interpreter support file. The runner also cannot prove that
 the adapter used the designated PID or automatically include separate helper
-processes. Service sampling is supported on Windows and Linux; a configured
-service contract fails preflight elsewhere.
+processes. Service sampling is supported on Windows, Linux, and macOS; a
+configured service contract fails preflight elsewhere.
 It accepts the legacy producerless adapter payload only at that bounded runner
 boundary, then emits the current self-hashed candidate envelope with the
 registered adapter/model identity. Direct candidate imports require the current

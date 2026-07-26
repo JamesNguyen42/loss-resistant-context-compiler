@@ -267,6 +267,11 @@ and repeats sequentially before merging the complete output. The manifest
 records every exact invocation and its hashes, limits, process status, platform,
 and validation outcome. `--timeout-seconds` applies to each case; stdout and
 stderr limits apply both per case and to the aggregate.
+Stream byte/hash evidence is read from runner-retained descriptors rather than
+reopened paths. At or below the cap it covers the full observed stream; above
+the cap it records a `cap + 1` prefix witness while the one-time descriptor-size
+observation still forces the corresponding limit failure. Growth after that
+observation is not chased.
 
 Keep the original corpus beside the manifest. Manifest loading reopens that
 absolute path, revalidates both the corpus self-digest and exact file digest,
@@ -305,27 +310,39 @@ incomplete, and external scoring matches the environment digest frozen for
 that system. Value hashes can still be guessed when values have low entropy, so
 this mechanism is reproducibility evidence, not secret storage.
 
-`--max-memory-mb` uses `RLIMIT_AS` on POSIX and a race-free Windows Job Object
-boundary created before adapter code is resumed. It limits the adapter process
-tree. The separate service options capture an already-running inference
-service's PID creation token and executable digest, then sample Windows working
-set or Linux RSS before, during, and after each case. A restart, disappearance,
-executable change, or ceiling breach invalidates the adapter without
-terminating the service. Sampling is not containment and can miss a spike
-between polls; it does not prove the adapter used that PID or automatically
-include separate helper processes. Configured service accounting is supported
-on Windows and Linux and fails preflight on other platforms. The wrapper does
-not establish a filesystem or network sandbox, so execute only reviewed adapter
-code in an appropriately isolated environment. Claim-bearing runs must provide the retained host firewall,
+`--max-memory-mb` applies an inherited per-process `RLIMIT_AS` ceiling on POSIX;
+it is not an aggregate tree limit. Windows uses a Job Object, assigned before
+adapter code resumes, with per-process and aggregate limits. On macOS an
+isolated no-site (`-I -S`) exec launcher applies the address-space and file-size
+limits before the exact adapter command loads site startup code. POSIX cleanup
+keeps the leader waitable while the group ID is in use. After the final macOS
+group signal, a bounded stable `libproc` snapshot must prove every remaining
+member is a zombie; this is also the only condition under which `EPERM` is
+accepted. A process that deliberately leaves the POSIX group is outside this
+boundary.
+
+The separate service options capture an already-running inference service's
+PID creation token and executable digest, then sample Windows working set or
+Linux/macOS RSS before, during, and after each case. macOS rechecks process
+creation identity around each `libproc` path/RSS observation. A restart,
+disappearance, executable change, or ceiling breach invalidates the adapter
+without terminating the service. Sampling is not containment and can miss a
+spike between polls; it does not prove the adapter used that PID or
+automatically include separate helper processes. Configured service accounting
+is supported on Windows, Linux, and macOS and fails preflight elsewhere. The
+wrapper does not establish a filesystem or network sandbox, so execute only
+reviewed adapter code in an appropriately isolated environment. Claim-bearing
+runs must provide the retained host firewall,
 container, or network-namespace policy file; the runner hashes it before
 execution, detects changes, and manifest reload rehashes it. That artifact is
 auditable evidence, not proof that the host enforced the named policy.
 
 Revision, environment, model, context, tokenizer, inference concurrency,
 retries, and service cost are also recorded. Claim-bearing manifests require
-per-case isolation, an enforced process-tree memory limit, complete identity
-fields, the exact Qwen Q4 model, one inference slot, and zero model-service
-cost. Current `lrcbench-external-run-manifest-0.13` claim metadata requires an
+per-case isolation, an enforced platform-appropriate adapter memory limit,
+complete identity fields, the exact Qwen Q4 model, one inference slot, and zero
+model-service cost. Current `lrcbench-external-run-manifest-0.13` claim metadata
+requires an
 immutable adapter revision, `environment_id` equal to
 `sha256:<dependency-lock-sha256>`, the exact retained lock bytes, context length
 8192, the evaluator tokenizer, zero retries, the exact

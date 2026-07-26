@@ -29,7 +29,7 @@ before collecting histories or rerunning an external diagnostic.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 1,340 collected: 1,328 passing, 12 skipped; 105 subtests passing |
+| Tests at this snapshot | 1,414 collected: 1,399 passing, 15 skipped; 105 subtests passing |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -267,10 +267,13 @@ source construction validates initial hashes
 
 The compiler is synchronous and provider-neutral by default. Passing
 `timeout_seconds` runs a materialized, serializable job inside a dedicated
-POSIX process group or Windows Job Object, terminates its owned descendant tree
-on timeout, and returns only a bounded strict-JSON artifact reconstructed as a
-sealed snapshot. It is deterministic when all supplied extractors and token
-counters are deterministic, apart from timestamps and measured duration.
+POSIX process group or Windows Job Object, signals the owned POSIX group or
+terminates the Windows Job on timeout, and returns only a bounded strict-JSON
+artifact reconstructed as a sealed snapshot. A POSIX child that deliberately
+leaves the group is outside that boundary, and Linux group-signal success does
+not prove that every member accepted the signal. It is deterministic when all
+supplied extractors and token counters are deterministic, apart from timestamps
+and measured duration.
 
 ## Code map
 
@@ -392,11 +395,16 @@ Primary exported objects:
 - `SourceRecord`;
 - `ProvenanceSpan`;
 - `MemoryItem`;
+- `MemoryKind` and `MemoryStatus`;
 - `CompilationPolicy`;
+- `CompilationMetrics` and `COMPILATION_METRICS_SCHEMA`;
 - `CompilationLimits`;
 - `CompilationLimitError`;
+- `CompilationIsolationError`;
 - `ContextCompiler`;
 - `CompiledMemory`;
+- `MAX_SOURCE_ID_CHARS`, `MAX_SOURCE_ROLE_CHARS`, and
+  `MAX_SOURCE_TIMESTAMP_CHARS`;
 - `Extractor`;
 - `ExtractionResult`;
 - `DomainLabelExtractor`;
@@ -414,6 +422,14 @@ Primary exported objects:
 - `ArtifactLimits`;
 - `ArtifactLimitError`;
 - `PathBoundaryError`;
+- `SourceEvent`, `ContextBundle`, `IncrementalCompiler`,
+  `ExactTokenCounterAdapter`, and `LocalAIConnector`;
+- `source_event_to_record`, `decode_connector_request`, and `serve_stdio`;
+- `CONNECTOR_PROTOCOL_VERSION`, `CONNECTOR_OPERATIONS`,
+  `CONNECTOR_REQUEST_SCHEMA`, `CONNECTOR_RESPONSE_SCHEMA`,
+  `CONNECTOR_INSPECTION_SCHEMA`, `SOURCE_EVENT_SCHEMA`,
+  `CONTEXT_BUNDLE_SCHEMA`, `INCREMENTAL_CHECKPOINT_SCHEMA`, and
+  `RETENTION_CERTIFICATE_WORDING`;
 - `RedactionPolicy`;
 - `RedactionFinding`;
 - `RedactionResult`;
@@ -453,7 +469,10 @@ fails such artifacts as unverifiable.
 `LmsQwenCompletion` is restricted to
 `qwen/qwen3.6-35b-a3b@q4_k_m`, verifies Q4 quantization and one loaded
 inference slot, uses the API-free LM Studio CLI with catalog fetching disabled,
-and enforces a subprocess timeout. See [Local Qwen integration](LOCAL_QWEN.md).
+and enforces a subprocess timeout. On POSIX it retains the waitable leader until
+owned process-group signaling finishes, then reaps it without retrying a
+reusable numeric group ID; Windows uses a Job Object. See
+[Local Qwen integration](LOCAL_QWEN.md).
 
 ## Naming and version map
 
@@ -552,13 +571,13 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 1,340 tests are collected: 1,328 pass and 12 platform/optional checks are
+- 1,414 tests are collected: 1,399 pass and 15 platform/optional checks are
   skipped on the current Windows validation host; 105 subtests also pass.
-- Ruff and `compileall` pass across `src`, `tests`, `benchmarks`, `scripts`, and
-  `conformance`.
+- Ruff and `compileall` pass across `src`, `tests`, `benchmarks`, `scripts`,
+  `conformance`, and `_ctxc_build_backend.py`.
 - Complete Ubuntu CI covers Python 3.11, 3.12, and 3.13; Windows and macOS run
-  Python 3.13 filesystem, external-runner/process-deadline regressions, and
-  clean wheel/sdist release smoke.
+  Python 3.13 filesystem, external-runner/process-deadline/exact-Qwen transport
+  regressions, and clean wheel/sdist release smoke.
 - Distribution metadata, `ctxc`, package version, and the installed schema path
   are regression-tested. CI verifies all 25 wheel schemas, source-distribution
   conformance/natural/compatibility assets, and separate clean installs with
@@ -770,10 +789,12 @@ audited. Any selected superseded item independently fails verification as
 - The external runner has deterministic fixture coverage for sequential
   per-case execution, retained case failure, Windows Job Object memory
   enforcement, valid output, timeout, output overflow, invalid candidates,
-  corpus mutation, digest validation, overwrite refusal, and retried Windows
-  cleanup for post-termination sharing violations.
+  corpus mutation, digest validation, overwrite refusal, runner-retained
+  descriptor evidence despite stream-path replacement, bounded `cap + 1`
+  overflow witnesses, and retried Windows cleanup for post-termination sharing
+  violations.
 - Claim-bearing runner manifests require per-case isolation, an enforced
-  adapter process-tree memory limit, an immutable adapter revision, retained
+  platform-appropriate adapter memory limit, an immutable adapter revision, retained
   dependency-lock bytes defining the environment identity, a retained
   command-referenced adapter entrypoint covered by a bounded immutable source
   tree, a bounded name-audited process environment, the exact local Qwen Q4
@@ -1012,13 +1033,23 @@ lower quantile before results are observed.
 - The bounded runner is not a filesystem sandbox and does not establish network
   isolation. It now binds and revalidates an externally created host firewall,
   container, or network-namespace policy artifact, but that retained file does
-  not prove the host enforced it. POSIX `RLIMIT_AS` and Windows Job Objects
-  bound the adapter process tree, but not a pre-existing inference service. The
-  runner now identifies that service by PID creation token plus executable
-  digest and samples Windows working set or Linux RSS; it cannot contain the
-  service, prove the adapter used that PID, include separate helper processes,
-  or observe a spike that begins and ends between 20 ms polls. The draft
-  protocol still needs to freeze the service binary, metric, and ceiling.
+  not prove the host enforced it. POSIX `RLIMIT_AS` applies the same inherited
+  per-process ceiling to the adapter and each descendant, not one aggregate
+  process-tree limit; Windows Job Objects enforce per-process and aggregate job
+  ceilings. Neither contains a pre-existing inference service. The runner now
+  identifies that service by PID creation token plus executable digest and
+  samples Windows working set or Linux/macOS RSS. macOS applies its inherited
+  `RLIMIT_AS`/`RLIMIT_FSIZE` limits in an isolated no-site (`-I -S`) exec
+  wrapper before user or system site startup code can run, instead of using
+  `preexec_fn`. Its unreaped leader anchors process-group cleanup; Darwin
+  permission-denied cleanup is accepted only after stable bounded `libproc`
+  snapshots prove all members are zombies. Cleanup/proof failure after process
+  start is retained as a failed manifest, and per-case execution stops before
+  the next case. `libproc` service sampling separately rechecks process creation
+  identity; the runner still cannot contain the service, prove the adapter used
+  that PID, include separate helper processes, or observe a spike that begins
+  and ends between 20 ms polls. The draft protocol still needs to freeze the
+  service binary, metric, and ceiling.
 
 ## Safe host-side compaction transaction
 
@@ -1081,8 +1112,8 @@ git status -sb
 git log -1 --format=fuller
 python -m pip install -e ".[dev]"
 python -m pytest -q
-python -m ruff check src tests benchmarks scripts conformance
-python -m compileall -q src benchmarks tests scripts conformance
+python -m ruff check src tests benchmarks scripts conformance _ctxc_build_backend.py
+python -m compileall -q src benchmarks tests scripts conformance _ctxc_build_backend.py
 python conformance/run_connector_conformance.py
 python -m benchmarks.natural_history
 python -m pytest -q tests/test_external_compatibility.py

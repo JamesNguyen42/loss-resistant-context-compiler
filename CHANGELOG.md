@@ -23,6 +23,16 @@ versioning and release rules in
 - Added an opt-in deterministic PEP 517 sdist boundary driven by
   `SOURCE_DATE_EPOCH`, with bounded archive validation and a separate strict
   repeated-build comparator.
+- Kept compile, exact-Qwen CLI, and external-runner POSIX leaders waitable until
+  owned process-group signaling completes, and required either group
+  disappearance or bounded stable all-zombie proof after final macOS
+  `SIGKILL` before the leader is reaped.
+- Added an isolated no-site macOS resource-limit launcher, stable `libproc`
+  inference-service identity/RSS accounting, and retained non-scoreable
+  manifests for post-start external process-group cleanup failures.
+- Bound external stdout/stderr evidence to runner-retained descriptors and a
+  finite `cap + 1` prefix witness, preventing path substitution and unbounded
+  hashing when a failed cleanup leaves a writer alive.
 
 ### Added
 
@@ -87,6 +97,9 @@ versioning and release rules in
 - Bounded conformance evidence reads, rejected duplicate/non-finite JSON, and
   retained content-relevant file identity checks while tolerating only
   descriptor-local change-time differences on Windows cloud filesystems.
+- Prevented post-reap POSIX group-ID reuse during compile and external-run
+  cleanup. macOS signal permission ambiguity now fails closed unless stable
+  process evidence proves that every remaining group member is a zombie.
 
 ## 0.1.0 - 2026-07-23
 

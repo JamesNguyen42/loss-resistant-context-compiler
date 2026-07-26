@@ -64,11 +64,11 @@ to verify it, hashes cannot recover the original truth.
 | Benchmark evidence resource exhaustion or parser ambiguity | Reports, corpora, candidates, and manifests share ancestor-guarded bounded regular-file hashing, pre/open/final file snapshots, and strict UTF-8 JSON decoding with duplicate-key, non-finite, byte, line, and depth rejection | Direct already-decoded Python objects are caller allocations; configured file limits do not cap total verifier RSS |
 | Connector contract ambiguity or schema-only trust | Seventeen bounded Draft 2020-12 schemas, strict runtime decoding, six golden stateful transcripts, 66 negative vectors, and in-process/stdio semantic-equivalence checks constrain the wire shape | JSON Schema acceptance is structural. It does not prove source authority, provenance truth, replay validity, checkpoint freshness, protected completeness, or digest authenticity; runtime verification remains authoritative |
 | Artifact resource exhaustion | Strict bounded loaders cap raw/canonical bytes, physical lines, JSON depth, item/selection collections, provenance spans, and embedded issues before inspect or replay | Direct Python objects may already be allocated; limits do not make a self-hashed artifact trustworthy |
-| Compile/provider resource exhaustion | Built-in extraction checks an incremental item ceiling; every extractor result is bounded by item/rejection/canonical/auxiliary size, all passes share candidate/resolved/provenance ceilings, and recovery, resolution, conflict search, selection, and independent verification consume one shared item-work budget. Model responses/candidate counts and unique-literal cited-source search are separately bounded; optional whole-compile isolation owns a POSIX process group or Windows Job Object and terminates its descendant tree at the deadline | A custom extractor executes before its returned result can be bounded. Item/search work are deterministic proxies, not wall-clock or RSS caps, and do not cover every regex, token, allocation, or custom-counter cost. A deliberately daemonized POSIX child can escape its process group; deadline job configuration uses local pickle and therefore requires trusted serializable objects |
+| Compile/provider resource exhaustion | Built-in extraction checks an incremental item ceiling; every extractor result is bounded by item/rejection/canonical/auxiliary size, all passes share candidate/resolved/provenance ceilings, and recovery, resolution, conflict search, selection, and independent verification consume one shared item-work budget. Model responses/candidate counts and unique-literal cited-source search are separately bounded; optional whole-compile isolation and the exact-Qwen CLI transport own a POSIX process group or Windows Job Object, retain the POSIX leader until group signaling finishes, and terminate the Windows Job at the deadline | A custom extractor executes before its returned result can be bounded. Item/search work are deterministic proxies, not wall-clock or RSS caps, and do not cover every regex, token, allocation, or custom-counter cost. A deliberately daemonized POSIX child can escape its process group. Linux group-signal success does not prove that every member accepted the signal; after final macOS group signaling, cleanup requires either group disappearance or stable all-zombie evidence. Deadline job configuration uses local pickle and therefore requires trusted serializable objects |
 | Common content-secret disclosure | Optional preprocessing uses nine fixed lexical detectors, length/line-boundary-preserving masks, recomputed record hashes, explicit limits, deterministic replay, and a strict self-hashed coordinate report that omits original content-secret text and hashes | Detection is heuristic; false positives and false negatives remain. Original input enters process memory first. Metadata, ids, timestamps, PII, unknown formats, report coordinates, storage, logs, and previous artifacts are outside the redaction scope |
 | Secret disclosure after redaction | Compiling the redacted source set prevents recognized content secrets from entering its items, prompt, or artifact; replay binds the exact redacted records | Source metadata and identity fields remain in record hashes and may themselves be sensitive; external providers, process arguments, archives, diffs, benchmark evidence, or host logs can still expose anything not redacted before those boundaries |
 | Natural-history consent, license, privacy, annotation, or split failure | Versioned bounded contracts require explicit origin/license/consent/privacy states, exact spans, two independent annotators, complete adjudication, full attempted/included/excluded accounting, repository/task-group-disjoint splits, and label-free exports | The committed records are synthetic contract fixtures. Self-hashes do not authenticate consent or reviewers, detect every private field, prove annotation quality, or establish that a natural cohort exists; real data requires independent review before commit or evaluation |
-| External benchmark adapter escape | The standard runner avoids a shell, isolates cases, limits time/output/process-tree memory on POSIX and Windows, terminates descendants, validates candidates, hashes a manifest, binds retained dependency-lock, command-referenced adapter-entrypoint, bounded link-free source tree, resolved runtime executable, portable per-case command contract, and external network-policy artifacts, and separately samples a stable pre-existing service identity and memory | It does not establish a filesystem or network sandbox or prove the retained policy was enforced; reviewed code and an isolated host/container remain necessary. The source tree does not bind imports outside its root or prove which files were loaded. The runtime digest does not bind shared libraries or interpreter support files. Service sampling does not contain or terminate that process and can miss between-poll spikes |
+| External benchmark adapter escape | The standard runner avoids a shell, isolates cases, limits time/output, applies inherited per-process memory limits on POSIX and per-process/aggregate Job limits on Windows, signals its owned POSIX process group or terminates the Windows Job, validates candidates, hashes a manifest, binds retained dependency-lock, command-referenced adapter-entrypoint, bounded link-free source tree, resolved runtime executable, portable per-case command contract, and external network-policy artifacts, and separately samples a stable pre-existing service identity and memory | It does not establish a filesystem or network sandbox or prove the retained policy was enforced; reviewed code and an isolated host/container remain necessary. A POSIX descendant can leave the owned group. Linux group-signal success does not prove that every member accepted the signal; macOS fails cleanup on a live, inaccessible, raced, or uninspectable remaining member. POSIX descendants each receive the individual address-space limit, not one aggregate tree ceiling. The source tree does not bind imports outside its root or prove which files were loaded. The runtime digest does not bind shared libraries or interpreter support files. Service sampling does not contain or terminate that process and can miss between-poll spikes |
 | External comparison protocol drift or cherry-picking | A strict self-hashed manifest binds the dated document, screened candidates, registered set, immutable revisions, exact model/resources, frozen datasets/statistics, runner policy, and explicit blockers; external scoring requires a frozen manifest plus exact dataset and adapter matches. Per-case replay reconstructs the ordered one-case corpus inputs from the retained parent | The current artifact is still a draft. Self-hashes are not timestamps, signatures, or proof of result-blind decisions; an independently anchored freeze and reproduction remain necessary |
 
 ## Authority model
@@ -314,19 +314,37 @@ from its digest, and neither a digest nor an allowlist proves what an adapter
 read through files or another process.
 
 The default external runner gives every case a fresh sequential process and
-records its exact command and outcome. It retains each valid one-case
+records its exact adapter command and outcome. It retains each valid one-case
 candidate's semantic self-digest and, on complete-run reload, reconstructs
 that envelope from the matching raw merged case and registered producer. POSIX
-`RLIMIT_AS` and Windows Job Objects bound the adapter process tree; Windows
-processes are assigned while suspended and verified in the job before adapter
-code resumes. These controls limit cross-case contamination and resource
+`RLIMIT_AS` applies one inherited address-space ceiling to each adapter process
+and descendant; it is not an aggregate tree bound. Windows processes are
+assigned while suspended to a Job Object with per-process and aggregate memory
+limits and are verified in the job before adapter code resumes. macOS applies
+`RLIMIT_AS` and `RLIMIT_FSIZE` in a supervisory Python process started with
+isolated and no-site flags (`-I -S`). It immediately replaces itself with the
+exact adapter command before user or system site startup code can run, avoiding
+`preexec_fn` failures while preserving inherited limits and process-group
+ownership. The supervisory interpreter and inline launcher argv are
+runner-owned implementation details and are not separately retained or hashed.
+POSIX exit observation retains the waitable leader as the group-ID
+identity anchor until owned process-group cleanup completes. Darwin accepts
+permission denial only after stable bounded process-group snapshots prove all
+anchored members are zombies; otherwise the started run is retained as
+non-scoreable and per-case mode launches no later case. Preflight and
+process-start failures remain blocking runner errors. These controls limit
+cross-case contamination and resource
 exhaustion, but they are not a filesystem sandbox and do not establish network
 isolation.
 The stdout, stderr, and candidate-file byte caps are polling-enforced at an
 approximately 20 ms cadence. A process can therefore transiently overshoot a
-cap on disk before detection and termination. These checks are not filesystem
-quotas, do not prevent writes elsewhere, and do not turn the runner into a
-filesystem sandbox.
+cap on disk before detection and termination. Stream evidence is read from
+runner-retained descriptors rather than attacker-replaceable paths. At or below
+the cap its byte count and hash cover the full one-time observed stream; above
+the cap they cover a `cap + 1` prefix witness while the descriptor-size
+observation still forces failure. The snapshot does not chase later growth.
+These checks are not filesystem quotas, do not prevent writes elsewhere, and
+do not turn the runner into a filesystem sandbox.
 Claim-bearing manifests must retain a bounded host firewall, container, or
 network-namespace
 policy artifact; the runner hashes it before and after execution and reload
@@ -334,13 +352,14 @@ checks the same file. A self-consistent file still does not prove that the host
 enforced the policy. These controls also do not contain a model server that was
 already running outside the adapter process tree. The runner instead captures
 that process's PID creation token and executable digest and samples Windows
-working set or Linux RSS at the fixed polling cadence, failing the adapter if
-identity changes, sampling becomes unavailable, or the ceiling is exceeded.
-This measured peak is a sampled upper observation, not proof that no shorter
-memory spike occurred, that the adapter used the designated PID, or that
-separate helper processes were included. Claim protocols must freeze the
-service executable digest, metric, and ceiling or establish stronger external
-containment.
+working set or Linux/macOS RSS at the fixed polling cadence, failing the
+adapter if identity changes, sampling becomes unavailable, or the ceiling is
+exceeded. macOS `libproc` sampling rechecks PID creation time around the
+executable and RSS observations. This measured peak is a sampled upper
+observation, not proof that no shorter memory spike occurred, that the adapter
+used the designated PID, or that separate helper processes were included.
+Claim protocols must freeze the service executable digest, metric, and ceiling
+or establish stronger external containment.
 
 The exact-Qwen phrase evaluator stores cleaned raw model outputs so strict
 candidate validation and deterministic recovery can be replayed without model

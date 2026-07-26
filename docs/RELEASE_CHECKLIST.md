@@ -19,7 +19,7 @@ a production PyPI upload, or a broader product/evidence claim.
 
 - [ ] Run the complete test suite on CPython 3.11, 3.12, and 3.13.
 - [ ] Run Ruff and `compileall` across `src`, `tests`, `benchmarks`, `scripts`,
-  and `conformance`.
+  `conformance`, and `_ctxc_build_backend.py`.
 - [ ] Run the cross-platform lock/path/package smoke coverage on Ubuntu,
   Windows, and macOS; record skips and filesystem limitations explicitly.
 - [ ] Run every new conformance and natural-history negative vector; verify

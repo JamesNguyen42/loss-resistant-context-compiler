@@ -69,16 +69,22 @@ only up to 64 bounded lines beginning with
 `Loading qwen/qwen3.6-35b-a3b`, followed immediately by one JSON object. It
 removes no other prefix and rejects malformed JSON, a non-object top level,
 ambiguous status text, a second object, or any non-whitespace trailing data.
-Raw stdout is decoded incrementally as strict UTF-8. The owned process tree is
-isolated in a POSIX process group or Windows Job Object and terminated on a
-timeout, output overflow, decoding failure, or after the CLI leader exits, so
-descendants cannot retain the stdout pipe or continue work. Stderr is discarded
-rather than retained. Chat JSON rejects duplicate keys, non-finite numbers,
-integers longer than 64 digits, and nesting deeper than 64 levels. Framing and
-execution errors do not retain captured content, prompt-bearing commands, or OS
-details in their exception chains. This narrow rule recovers availability for
-the observed CLI behavior without turning arbitrary prose stripping into a
-trust boundary.
+Raw stdout is decoded incrementally as strict UTF-8. The CLI is placed in an
+owned POSIX process group or Windows Job Object. On POSIX, leader exit
+is observed without reaping; the owned group is signaled on timeout, output
+overflow, decoding failure, or normal leader exit, and only then is the leader
+reaped. After a final macOS `SIGKILL`, a bounded stable `libproc` snapshot must
+show only zombie members unless the group is already gone. Linux group-signal
+success does not prove that every member accepted the signal, and a process that
+deliberately leaves the group is outside this boundary. Windows terminates the
+owned Job. These controls bound and attempt to stop ordinary same-group
+descendants; they do not establish that stronger Linux or escaped-process
+guarantee. Stderr is discarded rather than retained. Chat JSON rejects
+duplicate keys, non-finite numbers, integers longer than 64 digits, and nesting
+deeper than 64 levels. Framing and execution errors do not retain captured
+content, prompt-bearing commands, or OS details in their exception chains.
+This narrow rule recovers availability for the observed CLI behavior without
+turning arbitrary prose stripping into a trust boundary.
 
 The default compiler policy is loss-resistant degradation: a timeout, process
 failure, invalid model envelope, oversized response, or wholly unusable
@@ -89,10 +95,10 @@ must abort on provider failure. Independent built-in recovery and protected-item
 certification remain active in either mode.
 
 An optional outer `ContextCompiler.compile(..., timeout_seconds=N)` deadline
-can isolate and terminate the complete compile process tree. Keep the Qwen
-adapter's transport timeout shorter than that outer deadline; otherwise the
-outer timeout aborts the run before deterministic provider-failure fallback can
-be returned.
+can place the complete compile inside a separate cancellable worker boundary.
+Keep the Qwen adapter's transport timeout shorter than that outer deadline;
+otherwise the outer timeout aborts the run before deterministic
+provider-failure fallback can be returned.
 
 ## Privacy boundary
 

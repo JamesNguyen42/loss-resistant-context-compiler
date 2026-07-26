@@ -44,8 +44,8 @@ complete [release checklist](docs/RELEASE_CHECKLIST.md). At minimum:
 
 ```console
 python -m pytest -q
-python -m ruff check src tests benchmarks scripts conformance
-python -m compileall -q src benchmarks tests scripts conformance
+python -m ruff check src tests benchmarks scripts conformance _ctxc_build_backend.py
+python -m compileall -q src benchmarks tests scripts conformance _ctxc_build_backend.py
 ```
 
 Generate exploratory reports only at temporary paths. Do not overwrite files in
