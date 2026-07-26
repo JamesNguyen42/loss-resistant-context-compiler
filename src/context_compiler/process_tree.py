@@ -108,12 +108,23 @@ def _darwin_process_group_pids(
             ctypes.sizeof(pid_buffer),
         )
     )
-    if count <= 0:
+    if count < 0:
         error = ctypes.get_errno()
         raise error_type(
             "could not enumerate the anchored Darwin process group "
             f"(error {error})"
         )
+    if count == 0:
+        error = ctypes.get_errno()
+        if error != 0:
+            raise error_type(
+                "could not enumerate the anchored Darwin process group "
+                f"(error {error})"
+            )
+        # A successful empty enumeration is not independently sufficient to
+        # prove that the anchored group vanished. Inspect the expected
+        # unreaped leader with PROC_PIDTBSDINFO's include-zombies flag below.
+        return ()
     if count >= _DARWIN_PROCESS_GROUP_PID_CAPACITY:
         raise error_type(
             "anchored Darwin process-group enumeration was truncated"
@@ -187,17 +198,20 @@ def _darwin_process_group_snapshot(
     *,
     error_type: type[RuntimeError],
 ) -> tuple[tuple[int, int, int], ...]:
-    """Capture one bounded, fully inspected all-zombie group snapshot."""
+    """Capture one bounded, fully inspected all-zombie group snapshot.
+
+    Inspect the known WNOWAIT leader directly with include-zombies semantics,
+    even if the group enumeration is empty, while also inspecting every PID
+    that the bounded enumeration returns. The caller requires two identical
+    snapshots.
+    """
 
     members = _darwin_process_group_pids(
         libproc,
         process_group_id,
         error_type=error_type,
     )
-    if expected_leader_pid not in members:
-        raise error_type(
-            "anchored Darwin process group no longer contains its WNOWAIT leader"
-        )
+    process_ids = tuple(sorted({expected_leader_pid, *members}))
     return tuple(
         _darwin_process_identity(
             libproc,
@@ -205,7 +219,7 @@ def _darwin_process_group_snapshot(
             process_group_id,
             error_type=error_type,
         )
-        for process_id in members
+        for process_id in process_ids
     )
 
 
@@ -219,7 +233,7 @@ def prove_darwin_process_group_all_zombies(
 
     This exceptional-path proof is intentionally conservative. Any API error,
     inaccessible or live member, truncated enumeration, PID reuse, membership
-    race, or missing WNOWAIT leader rejects the proof.
+    race, or unreadable WNOWAIT leader rejects the proof.
     """
 
     for label, value in (

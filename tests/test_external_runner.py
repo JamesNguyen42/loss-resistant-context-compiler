@@ -64,6 +64,13 @@ from tests.protocol_fixtures import (
 )
 
 FIXTURE_ADAPTER_REVISION = "a" * 40
+# CPython on Darwin maps more than 256 MiB before adapter code runs. Keep the
+# functional subprocess tests hard-bounded without confusing runtime startup
+# address space with adapter behavior. The launcher contract test below still
+# verifies exact propagation of a deliberately small 256 MiB ceiling.
+_FUNCTIONAL_ADAPTER_MEMORY_MB = (
+    32_768 if sys.platform == "darwin" else 256
+)
 
 
 def corpus_producer(
@@ -756,7 +763,10 @@ def test_network_isolation_evidence_is_required_and_revalidated(tmp_path) -> Non
         system="network-fixture",
         corpus_path=corpus_path,
         candidate_path=diagnostic_candidate,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
     )
     assert diagnostic.ready_for_scoring
@@ -770,7 +780,10 @@ def test_network_isolation_evidence_is_required_and_revalidated(tmp_path) -> Non
         system="network-fixture",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
@@ -810,7 +823,10 @@ def test_network_isolation_evidence_is_required_and_revalidated(tmp_path) -> Non
         system="network-fixture",
         corpus_path=corpus_path,
         candidate_path=mutating_candidate,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         network_isolation=execution_evidence,
@@ -846,7 +862,10 @@ def test_dependency_lock_evidence_binds_environment_and_revalidates(
         system="lock-fixture",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
         dependency_lock=dependency_lock,
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
@@ -877,7 +896,10 @@ def test_dependency_lock_evidence_binds_environment_and_revalidates(
         system="lock-fixture",
         corpus_path=corpus_path,
         candidate_path=mismatch_candidate,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=replace(
             claim_identity(),
             environment_id="sha256:" + "f" * 64,
@@ -907,7 +929,10 @@ def test_dependency_lock_evidence_binds_environment_and_revalidates(
         system="lock-fixture",
         corpus_path=corpus_path,
         candidate_path=mutating_candidate,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
         dependency_lock=execution_lock,
         network_isolation=retained_network_isolation(tmp_path),
@@ -1132,7 +1157,7 @@ def test_command_contract_is_portable_and_binds_each_case_and_runtime(
                 candidate_path=directory / "candidate.json",
                 limits=RunnerLimits(
                     timeout_seconds=5,
-                    max_memory_mb=256,
+                    max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
                 ),
                 identity=claim_identity(),
                 dependency_lock=retained_dependency_lock(directory),
@@ -1199,7 +1224,10 @@ def test_command_contract_is_portable_and_binds_each_case_and_runtime(
         system="embedded-fixture",
         corpus_path=embedded_corpus,
         candidate_path=embedded_directory / "candidate.json",
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(embedded_directory),
         adapter_entrypoint=capture_adapter_entrypoint_evidence(
@@ -1528,7 +1556,10 @@ def test_per_case_candidate_mutation_before_aggregation_is_rejected(
             system="strict-fixture",
             corpus_path=corpus_path,
             candidate_path=candidate_path,
-            limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+            limits=RunnerLimits(
+                timeout_seconds=5,
+                max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+            ),
             identity=claim_identity(),
             dependency_lock=retained_dependency_lock(tmp_path),
             adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
@@ -1551,7 +1582,10 @@ def test_per_case_runner_executes_without_a_shell_and_validates_candidate(
         system="fixture-adapter",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
@@ -1565,7 +1599,11 @@ def test_per_case_runner_executes_without_a_shell_and_validates_candidate(
     assert manifest.ready_for_scoring
     assert manifest.claim_metadata_complete
     assert manifest.isolation_mode == "per_case"
-    assert manifest.command == tuple(command)
+    assert manifest.command == (
+        str(Path(command[0]).resolve()),
+        *command[1:],
+    )
+    assert manifest.command[0] == manifest.adapter_runtime.executable_path
     assert external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL not in (
         json.dumps(manifest.command_contract)
     )
@@ -1623,7 +1661,7 @@ def test_cli_defaults_to_claim_eligible_per_case_mode(
             "--timeout-seconds",
             "5",
             "--max-memory-mb",
-            "256",
+            str(_FUNCTIONAL_ADAPTER_MEMORY_MB),
             "--dependency-lock-evidence",
             dependency_lock.evidence_path,
             "--adapter-entrypoint-evidence",
@@ -1709,7 +1747,10 @@ def test_per_case_runner_uses_one_validated_corpus_case_per_process(tmp_path) ->
         system="isolated-fixture",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=capture_adapter_entrypoint_evidence(
@@ -1774,7 +1815,10 @@ def test_per_case_runner_retains_failure_and_continues_later_cases(tmp_path) -> 
         system="failure-fixture",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
     )
 
     assert len(manifest.case_runs) == 2
@@ -1798,7 +1842,10 @@ def test_whole_corpus_mode_is_diagnostic_even_with_complete_identity(tmp_path) -
         system="whole-fixture",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
@@ -1832,7 +1879,10 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         system="fixture-adapter",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=300, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=300,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
@@ -1864,6 +1914,9 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
     adapter_command_sha256s = {
         "fixture-adapter": manifest.command_sha256,
     }
+    inference_service_executable_sha256 = (
+        manifest.inference_service.executable_sha256
+    )
     protocol_path = write_frozen_external_protocol(
         tmp_path,
         systems,
@@ -1881,6 +1934,10 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
+        max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        inference_service_executable_sha256=(
+            inference_service_executable_sha256
+        ),
     )
 
     reference = load_external_run_manifest(
@@ -1964,6 +2021,10 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
+        max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        inference_service_executable_sha256=(
+            inference_service_executable_sha256
+        ),
     )
     with pytest.raises(
         ExternalBaselineError,
@@ -1997,6 +2058,10 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
+        max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        inference_service_executable_sha256=(
+            inference_service_executable_sha256
+        ),
     )
     with pytest.raises(
         ExternalBaselineError,
@@ -2030,6 +2095,10 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
+        max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        inference_service_executable_sha256=(
+            inference_service_executable_sha256
+        ),
     )
     with pytest.raises(
         ExternalBaselineError,
@@ -2061,6 +2130,10 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
+        max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        inference_service_executable_sha256=(
+            inference_service_executable_sha256
+        ),
     )
     with pytest.raises(
         ExternalBaselineError,
@@ -2097,6 +2170,10 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             },
             adapter_command_sha256s=adapter_command_sha256s,
             synthetic_dataset_sha256=document["dataset_sha256"],
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+            inference_service_executable_sha256=(
+                inference_service_executable_sha256
+            ),
         )
     )
     with pytest.raises(
@@ -2133,6 +2210,10 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
             "fixture-adapter": "f" * 64,
         },
         synthetic_dataset_sha256=document["dataset_sha256"],
+        max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        inference_service_executable_sha256=(
+            inference_service_executable_sha256
+        ),
     )
     with pytest.raises(
         ExternalBaselineError,
@@ -2165,6 +2246,9 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
         max_memory_mb=512,
+        inference_service_executable_sha256=(
+            inference_service_executable_sha256
+        ),
     )
     with pytest.raises(
         ExternalBaselineError,
@@ -2196,7 +2280,11 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
+        max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
         network_isolation_evidence_sha256="f" * 64,
+        inference_service_executable_sha256=(
+            inference_service_executable_sha256
+        ),
     )
     with pytest.raises(
         ExternalBaselineError,
@@ -2228,6 +2316,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         adapter_environment_sha256s=adapter_environment_sha256s,
         adapter_command_sha256s=adapter_command_sha256s,
         synthetic_dataset_sha256=document["dataset_sha256"],
+        max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
         inference_service_executable_sha256="f" * 64,
     )
     with pytest.raises(
@@ -2254,7 +2343,10 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         system="fixture-adapter",
         corpus_path=corpus_path,
         candidate_path=mismatched_lock_candidate,
-        limits=RunnerLimits(timeout_seconds=300, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=300,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
         dependency_lock=different_lock,
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
@@ -2286,7 +2378,7 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         candidate_path=mismatched_poll_candidate,
         limits=RunnerLimits(
             timeout_seconds=300,
-            max_memory_mb=256,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
             poll_interval_seconds=0.01,
         ),
         identity=claim_identity(),
@@ -2318,7 +2410,10 @@ def test_ready_manifest_reloads_candidate_and_binds_benchmark_evidence(
         system="fixture-adapter",
         corpus_path=corpus_path,
         candidate_path=mismatched_model_candidate,
-        limits=RunnerLimits(timeout_seconds=300, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=300,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=replace(claim_identity(), model_context_length=4096),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
@@ -2388,7 +2483,10 @@ def test_ready_manifest_wraps_candidate_disappearance_during_validation(
         system="fixture-adapter",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
@@ -2432,7 +2530,10 @@ def test_ready_manifest_rejects_rehashed_candidate_producer_mismatch(
         system="fixture-adapter",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
@@ -2484,7 +2585,10 @@ def test_ready_candidate_with_unrecorded_identity_cannot_cross_frozen_protocol(
         system="fixture-adapter",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
     )
     manifest_path.write_text(manifest.to_json(), encoding="utf-8")
     systems = (
@@ -2503,6 +2607,7 @@ def test_ready_candidate_with_unrecorded_identity_cannot_cross_frozen_protocol(
             "fixture-adapter": FIXTURE_ENVIRONMENT_ID,
         },
         synthetic_dataset_sha256=document["dataset_sha256"],
+        max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
     )
 
     with pytest.raises(
@@ -2551,7 +2656,10 @@ def test_rehashed_inconsistent_case_audit_record_is_rejected(tmp_path) -> None:
         system="fixture-adapter",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=retained_adapter_entrypoint(tmp_path),
@@ -3016,6 +3124,7 @@ def test_posix_group_initial_term_eperm_fails_without_reap_or_retry(
         events.append(("waitid", process.pid))
         return False
 
+    monkeypatch.setattr(external_runner_module.sys, "platform", "linux")
     monkeypatch.setattr(
         external_runner_module.os,
         "killpg",
@@ -4095,7 +4204,10 @@ def test_windows_job_memory_limit_allows_bounded_adapter(tmp_path) -> None:
         system="bounded-fixture",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=5, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=256,
+        ),
     )
 
     assert manifest.memory_limit_enforced
@@ -4145,7 +4257,10 @@ def test_failed_exact_contract_manifest_becomes_a_registered_invalid_nonwin(
         system="timeout-fixture",
         corpus_path=corpus_path,
         candidate_path=candidate_path,
-        limits=RunnerLimits(timeout_seconds=300, max_memory_mb=256),
+        limits=RunnerLimits(
+            timeout_seconds=300,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
         identity=claim_identity(),
         dependency_lock=retained_dependency_lock(tmp_path),
         adapter_entrypoint=capture_adapter_entrypoint_evidence(
@@ -4193,6 +4308,10 @@ def test_failed_exact_contract_manifest_becomes_a_registered_invalid_nonwin(
             "timeout-fixture": manifest.command_sha256,
         },
         synthetic_dataset_sha256=document["dataset_sha256"],
+        max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        inference_service_executable_sha256=(
+            manifest.inference_service.executable_sha256
+        ),
     )
 
     report = run_benchmark(
