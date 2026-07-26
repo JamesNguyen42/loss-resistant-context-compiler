@@ -29,7 +29,7 @@ before collecting histories or rerunning an external diagnostic.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 1,053 collected: 1,045 passing, 8 skipped |
+| Tests at this snapshot | 1,340 collected: 1,328 passing, 12 skipped; 105 subtests passing |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -552,18 +552,25 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 1,053 tests are collected: 1,045 pass and 8 platform/optional checks are
-  skipped on the current Windows validation host.
+- 1,340 tests are collected: 1,328 pass and 12 platform/optional checks are
+  skipped on the current Windows validation host; 105 subtests also pass.
 - Ruff and `compileall` pass across `src`, `tests`, `benchmarks`, `scripts`, and
   `conformance`.
 - Complete Ubuntu CI covers Python 3.11, 3.12, and 3.13; Windows and macOS run
-  Python 3.13 filesystem plus clean wheel/sdist release smoke.
+  Python 3.13 filesystem, external-runner/process-deadline regressions, and
+  clean wheel/sdist release smoke.
 - Distribution metadata, `ctxc`, package version, and the installed schema path
   are regression-tested. CI verifies all 25 wheel schemas, source-distribution
   conformance/natural/compatibility assets, and separate clean installs with
   `ctxc --help`, compile, trust-create, and trust-verify round trips.
 - CI runs connector golden/negative conformance, natural-history contract
   validation, external-candidate interchange, and external protocol checks.
+- CI builds wheel and deterministic sdist outputs from two clean checkouts with
+  a fixed timestamp/hash seed and explicit pip/Setuptools/wheel versions,
+  retains the Python/tool inventory, then requires the separate exact comparator
+  to accept both archives byte-for-byte. This is same-job-toolchain
+  repeatability, not offline, hash-pinned-input, cross-toolchain, or independent
+  reproduction evidence.
 - CI enforces `ci-compile-v1` through a self-hashed
   `ctxc-performance-gate-0.1` report: three-trial medians at 128/256 events,
   doubling growth, and a separate exclusive `tracemalloc` peak.

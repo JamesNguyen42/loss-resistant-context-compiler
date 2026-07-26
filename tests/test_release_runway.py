@@ -36,11 +36,15 @@ def test_ci_covers_supported_python_and_platform_release_smokes() -> None:
 
     assert 'python-version: ["3.11", "3.12", "3.13"]' in workflow
     assert "os: [windows-latest, macos-latest]" in workflow
-    assert (
-        "python -m compileall -q src benchmarks tests scripts conformance"
-        in workflow
-    )
+    assert "python -m compileall -q" in workflow
+    assert "conformance _ctxc_build_backend.py" in workflow
+    assert "python -m ruff check" in workflow
     assert "scripts/release_install_smoke.py" in workflow
+    assert "python -m _ctxc_build_backend --sdist-dir" in workflow
+    assert 'SOURCE_DATE_EPOCH: "1700000000"' in workflow
+    assert "exact repeated release builds" in workflow
+    assert "python -m scripts.release_reproducibility" in workflow
+    assert "release-reproducibility.json" in workflow
     assert "python -m scripts.release_artifact_manifest create" in workflow
     assert "python -m scripts.release_artifact_manifest verify" in workflow
     assert "dist/SHA256SUMS" in workflow
@@ -48,7 +52,17 @@ def test_ci_covers_supported_python_and_platform_release_smokes() -> None:
     assert "python conformance/run_connector_conformance.py" in workflow
     assert "python -m benchmarks.natural_history" in workflow
     assert "tests/test_archive_locking.py" in workflow
+    assert "tests/test_compile_deadline.py" in workflow
+    assert "tests/test_deterministic_sdist.py" in workflow
+    assert "tests/test_external_runner.py" in workflow
     assert "tests/test_release_install_smoke.py" in workflow
+    assert '"pip==25.0.1"' in workflow
+    assert '"setuptools==83.0.0"' in workflow
+    assert '"wheel==0.47.0"' in workflow
+    assert "--no-build-isolation" in workflow
+    assert "release-python.txt" in workflow
+    assert "release-build-toolchain.txt" in workflow
+    assert "if-no-files-found: error" in workflow
     assert "permissions:\n  contents: read" in workflow
 
 
@@ -103,9 +117,11 @@ def test_release_and_security_documents_preserve_claim_boundaries() -> None:
     assert "python -m scripts.release_artifact_manifest create" in checklist
     assert "hash-pinned offline wheelhouse" in checklist
     assert "does not yet publish signed artifacts" in " ".join(supply_chain.split())
-    assert "source distribution is not yet byte-for-byte reproducible" in " ".join(
+    assert "two clean checkouts" in supply_chain
+    assert "same-job-toolchain repeated-build defect" in " ".join(
         supply_chain.split()
     )
+    assert "hash-pinned inputs" in supply_chain
     assert "hash-pinned build wheelhouse" in supply_chain
 
 
@@ -115,6 +131,7 @@ def test_source_distribution_manifest_includes_release_runway_assets() -> None:
     assert {
         "include CONTRIBUTING.md",
         "include SECURITY.md",
+        "include _ctxc_build_backend.py",
         "recursive-include scripts *.py",
     } <= manifest
 

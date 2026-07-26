@@ -41,6 +41,10 @@ def test_distribution_identity_matches_the_public_release_contract() -> None:
         "setuptools>=77",
         "wheel>=0.41",
     ]
+    assert configuration["build-system"]["build-backend"] == (
+        "_ctxc_build_backend"
+    )
+    assert configuration["build-system"]["backend-path"] == ["."]
 
 
 def test_schema_install_path_matches_the_distribution_and_all_schemas_parse() -> None:

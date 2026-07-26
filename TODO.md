@@ -753,10 +753,15 @@ of sublinear compile cost.
   detection, no-overwrite outputs, a self-hashed manifest completion marker,
   and CI retention. This is substitution-detection groundwork, not provenance
   or signing.
-- [ ] Make repeated clean candidate builds byte-for-byte reproducible. The
-  fixed timestamp/hash-seed diagnostic reproduced the wheel, but sdist tar
-  member mtimes and the whole-archive hash differed; keep this gate red until
-  timestamp normalization is fixed and independently rechecked.
+- [x] Make repeated clean candidate builds byte-for-byte reproducible within
+  one same-job, explicitly versioned toolchain. The project PEP 517 wrapper now
+  validates the raw Setuptools sdist, normalizes its gzip/tar/PAX identity from
+  an explicit `SOURCE_DATE_EPOCH`, preserves exact member content and
+  structure, and leaves the separate byte comparator strict. CI compares wheel
+  and sdist outputs from two clean checkouts with pip 25.0.1, Setuptools 83.0.0,
+  and wheel 0.47.0, and retains the resolved Python/tool inventory. This does
+  not establish cross-toolchain, cross-platform, offline, hash-pinned-input, or
+  independently reproduced builds.
 - [ ] Replace the sdist smoke's online lower-bounded `setuptools`/`wheel`
   bootstrap with a reviewed hash-pinned offline build wheelhouse and retain the
   offline install evidence.

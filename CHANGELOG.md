@@ -20,6 +20,9 @@ versioning and release rules in
   replay.
 - Made archive-lock acquisition retry a post-open descriptor that was replaced
   or unlinked, preserving bounded single-link ownership across platforms.
+- Added an opt-in deterministic PEP 517 sdist boundary driven by
+  `SOURCE_DATE_EPOCH`, with bounded archive validation and a separate strict
+  repeated-build comparator.
 
 ### Added
 

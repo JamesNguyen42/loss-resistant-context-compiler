@@ -96,23 +96,48 @@ tar/ZIP metadata, or container-encoding difference; the report remains failed
 and is not converted into a pass. The verifier deliberately does not normalize
 or rewrite either candidate artifact.
 
-The repeated-build gate is currently red. With fixed `SOURCE_DATE_EPOCH` and
-`PYTHONHASHSEED=0`, the diagnostic wheel hashes matched byte for byte and the
-sdist member contents matched, but Setuptools 83.0.0 did not apply
-`SOURCE_DATE_EPOCH` to sdist tar member mtimes. The source distribution is not
-yet byte-for-byte reproducible; no release should represent it as reproducible
-until the backend or a separately reviewed deterministic builder fixes that
-metadata and the two-build verifier passes independently.
+Setuptools 83.0.0 does not apply `SOURCE_DATE_EPOCH` to sdist tar members or the
+gzip header. The project therefore uses `_ctxc_build_backend`, a thin PEP 517
+wrapper that delegates every other hook to `setuptools.build_meta`. When and
+only when a valid `SOURCE_DATE_EPOCH` is supplied, it validates the backend
+archive under explicit member and byte limits, rejects links, special files,
+duplicate, nonportable, or unsafe names, unexpected PAX fields, multiple gzip
+members, trailing data, and input replacement, then rewrites uid/gid,
+user/group names, gzip time, and member mtimes deterministically. Physical
+tar/PAX and gzip expansion limits are enforced before the standard tar parser
+receives the validated anonymous stream. It re-inventories the candidate and
+aborts the deterministic sdist build if member order, type, mode, size,
+content, or installed bytes changed. A failed candidate pathname is retained
+rather than risking deletion of a concurrently substituted file. Without the
+epoch the hook preserves normal Setuptools behavior.
 
-The report establishes output equality only. It does not discover or attest
-the source revision, build frontend/backend versions, dependency hashes,
-platform image, or build environment; those inputs must be retained and
-independently checked before any reproducible-build claim.
+CI fixes `SOURCE_DATE_EPOCH` and `PYTHONHASHSEED`, builds wheel and sdist from
+two clean checkouts in one job with pip 25.0.1, Setuptools 83.0.0, and wheel
+0.47.0, records Python and the installed tool inventory, and requires the
+separate exact comparator to report both archives byte-identical. That closes
+the same-revision, same-job-toolchain repeated-build defect. It does not prove
+equality across Python, Setuptools, operating-system, or compression-library
+versions, and it does not establish offline or hash-pinned inputs or independent
+reproduction.
 
-This is checksum and substitution-detection groundwork, not a signature,
-authorship proof, reproducible-build proof, SBOM, vulnerability scan, or
-provenance attestation. This repository does not yet publish signed artifacts,
-use a production release environment, or claim SLSA conformance.
+The report establishes output equality only. The adjacent CI evidence records
+the selected Python and installed tool versions, but does not attest dependency
+hashes, the hosted platform image, or the complete build environment. Those
+inputs must be retained and independently checked before any broader
+reproducible-build claim.
+
+Portable stdlib checks cannot atomically prevent a hostile same-user process
+from replacing a pathname after the final verification syscall. The wrapper
+narrows and detects tested replacement windows, binds the installed inode,
+inventory, digest, and canonical metadata, and fails closed on a detected
+substitution. The release workspace must still be write-restricted from build
+through upload.
+
+This is checksum, substitution-detection, and bounded same-toolchain
+repeatability groundwork, not a signature, authorship proof, universal
+reproducible-build proof, SBOM, vulnerability scan, or provenance attestation.
+This repository does not yet publish signed artifacts, use a production release
+environment, or claim SLSA conformance.
 
 The retained ACON diagnostic demonstrates the fail-closed boundary rather than
 satisfying it: the source tree, immutable upstream revision, license bytes,

@@ -81,13 +81,19 @@ a production PyPI upload, or a broader product/evidence claim.
   Keep the distribution workspace write-restricted between verification and
   upload, and compare upload-side digests where the index exposes them.
 - [ ] Rebuild twice in clean environments with fixed timestamp and hash-seed
-  inputs. Run `python -m scripts.release_reproducibility --first-dist
+  inputs. Build the sdist through `_ctxc_build_backend` with an explicit
+  `SOURCE_DATE_EPOCH`; a direct `setuptools.build_meta.build_sdist` call bypasses
+  the normalization boundary. The repository command is
+  `python -m _ctxc_build_backend --sdist-dir dist --source-date-epoch
+  1700000000`. Run
+  `python -m scripts.release_reproducibility --first-dist
   <first-dist> --second-dist <second-dist> --json-out
   <new-reproducibility-report.json>` and retain the report even when the command
   exits 1. Require status `passed` and byte-identical wheel and sdist results.
-  This gate is red: the current wheel repeated exactly, but Setuptools 83.0.0
-  left sdist tar member mtimes build-time-dependent, so the whole-archive bytes
-  differed despite matching member content.
+  CI exercises this from two clean checkouts in one job with explicit
+  pip/Setuptools/wheel versions and retains the Python/tool inventory. Do not
+  infer cross-platform, cross-toolchain, offline, hash-pinned-input, or
+  independent reproducibility from that result.
 - [ ] Public artifacts additionally require the external
   signatures/attestations specified by the release policy; their absence
   remains a red gate. The checksum manifest is not an SBOM or signature.
