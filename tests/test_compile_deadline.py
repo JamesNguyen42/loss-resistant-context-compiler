@@ -338,6 +338,30 @@ def test_darwin_all_zombie_proof_accepts_real_unreaped_group_leader() -> None:
             process.wait(timeout=5)
 
 
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="real Darwin running-group termination regression",
+)
+def test_darwin_anchored_cleanup_accepts_real_running_group_leader() -> None:
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        process_tree.terminate_anchored_posix_process_group(process)
+        assert process.returncode is None
+        assert process.wait(timeout=5) in {
+            -signal.SIGTERM,
+            -getattr(signal, "SIGKILL", 9),
+        }
+    finally:
+        if process.returncode is None:
+            process.kill()
+            process.wait(timeout=5)
+
+
 def test_darwin_all_zombie_proof_rejects_a_live_changed_euid_member(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
