@@ -146,15 +146,19 @@ import resource
 import sys
 
 
-def bound(resource_name, requested):
-    soft, hard = resource.getrlimit(resource_name)
-    finite = [requested]
-    if soft != resource.RLIM_INFINITY:
-        finite.append(soft)
-    if hard != resource.RLIM_INFINITY:
-        finite.append(hard)
-    effective = min(finite)
-    resource.setrlimit(resource_name, (effective, effective))
+def bound(resource_name, resource_label, requested):
+    _soft, hard = resource.getrlimit(resource_name)
+    if hard != resource.RLIM_INFINITY and hard < requested:
+        raise SystemExit(
+            f"inherited hard {resource_label} limit {hard} "
+            f"is below requested {requested}"
+        )
+    try:
+        resource.setrlimit(resource_name, (requested, requested))
+    except (OSError, OverflowError, ValueError) as exc:
+        raise SystemExit(
+            f"could not apply exact {resource_label} limit: {type(exc).__name__}"
+        ) from exc
 
 
 if (
@@ -163,8 +167,8 @@ if (
     or sys.argv[4] != "--"
 ):
     raise SystemExit("invalid Darwin limit-launcher contract")
-bound(resource.RLIMIT_AS, int(sys.argv[2]))
-bound(resource.RLIMIT_FSIZE, int(sys.argv[3]))
+bound(resource.RLIMIT_AS, "RLIMIT_AS", int(sys.argv[2]))
+bound(resource.RLIMIT_FSIZE, "RLIMIT_FSIZE", int(sys.argv[3]))
 os.execvpe(sys.argv[5], sys.argv[5:], os.environ)
 """
 

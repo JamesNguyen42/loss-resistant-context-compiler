@@ -46,6 +46,7 @@ class _FakeDarwinLibproc:
         forced_list_count: int | None = None,
         list_errno: int = 0,
         start_identities: dict[int, tuple[tuple[int, int], ...]] | None = None,
+        info_failures: dict[int, tuple[tuple[int, int], ...]] | None = None,
     ) -> None:
         self.process_group_id = process_group_id
         self.snapshots = snapshots
@@ -57,6 +58,7 @@ class _FakeDarwinLibproc:
         self.forced_list_count = forced_list_count
         self.list_errno = list_errno
         self.start_identities = start_identities or {}
+        self.info_failures = info_failures or {}
         self.list_calls = 0
         self.info_calls: list[int] = []
 
@@ -94,6 +96,12 @@ class _FakeDarwinLibproc:
         assert buffer_size == process_tree._DARWIN_PROC_BSD_INFO_SIZE
         process_call_index = self.info_calls.count(process_id)
         self.info_calls.append(process_id)
+        failures = self.info_failures.get(process_id, ())
+        if process_call_index < len(failures):
+            returned_size, error = failures[process_call_index]
+            ctypes.set_errno(error)
+            return returned_size
+        ctypes.set_errno(0)
         process_info = process_info_pointer._obj
         process_info.pbi_pid = self.reported_pids.get(process_id, process_id)
         process_info.pbi_pgid = self.reported_pgids.get(
@@ -397,6 +405,260 @@ def test_darwin_all_zombie_proof_rejects_raced_membership(
             leader_pid,
             expected_leader_pid=leader_pid,
         )
+
+
+def test_darwin_all_zombie_proof_retries_a_vanished_descendant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4443
+    vanished_pid = 4444
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [
+            (leader_pid, vanished_pid),
+            (leader_pid,),
+            (leader_pid,),
+        ],
+        info_failures={vanished_pid: ((0, errno.ESRCH),)},
+    )
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+
+    process_tree.prove_darwin_process_group_all_zombies(
+        leader_pid,
+        expected_leader_pid=leader_pid,
+    )
+
+    assert fake_libproc.list_calls == 3
+    assert fake_libproc.info_calls == [
+        leader_pid,
+        vanished_pid,
+        leader_pid,
+        leader_pid,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("returned_size", "error"),
+    [
+        (0, 0),
+        (0, errno.EIO),
+        (process_tree._DARWIN_PROC_BSD_INFO_SIZE - 1, errno.ESRCH),
+    ],
+)
+def test_darwin_all_zombie_proof_rejects_non_retryable_member_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    returned_size: int,
+    error: int,
+) -> None:
+    leader_pid = 4445
+    member_pid = 4446
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [(leader_pid, member_pid)],
+        info_failures={member_pid: ((returned_size, error),)},
+    )
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+
+    with pytest.raises(
+        process_tree.ProcessTreeError,
+        match=rf"PID {member_pid}.*error {error}",
+    ):
+        process_tree.prove_darwin_process_group_all_zombies(
+            leader_pid,
+            expected_leader_pid=leader_pid,
+        )
+
+    assert fake_libproc.list_calls == 1
+    assert fake_libproc.info_calls == [leader_pid, member_pid]
+
+
+def test_darwin_all_zombie_proof_never_retries_a_vanished_leader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4447
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [(leader_pid,)],
+        info_failures={leader_pid: ((0, errno.ESRCH),)},
+    )
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+
+    with pytest.raises(
+        process_tree.ProcessTreeError,
+        match=rf"PID {leader_pid}.*error {errno.ESRCH}",
+    ):
+        process_tree.prove_darwin_process_group_all_zombies(
+            leader_pid,
+            expected_leader_pid=leader_pid,
+        )
+
+    assert fake_libproc.list_calls == 1
+    assert fake_libproc.info_calls == [leader_pid]
+
+
+def test_darwin_all_zombie_proof_checks_later_members_after_one_vanishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4448
+    vanished_pid = 4449
+    live_pid = 4450
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [(leader_pid, vanished_pid, live_pid)],
+        statuses={live_pid: 2},
+        info_failures={vanished_pid: ((0, errno.ESRCH),)},
+    )
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+
+    with pytest.raises(
+        process_tree.ProcessTreeError,
+        match=rf"still contains live PID {live_pid}",
+    ):
+        process_tree.prove_darwin_process_group_all_zombies(
+            leader_pid,
+            expected_leader_pid=leader_pid,
+        )
+
+    assert fake_libproc.list_calls == 1
+    assert fake_libproc.info_calls == [leader_pid, vanished_pid, live_pid]
+
+
+def test_darwin_all_zombie_proof_rejects_a_vanished_pid_reappearing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4451
+    vanished_pid = 4452
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [
+            (leader_pid, vanished_pid),
+            (leader_pid, vanished_pid),
+        ],
+        info_failures={vanished_pid: ((0, errno.ESRCH),)},
+    )
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+
+    with pytest.raises(
+        process_tree.ProcessTreeError,
+        match="vanished Darwin process-group member reappeared",
+    ):
+        process_tree.prove_darwin_process_group_all_zombies(
+            leader_pid,
+            expected_leader_pid=leader_pid,
+        )
+
+    assert fake_libproc.list_calls == 2
+    assert fake_libproc.info_calls == [
+        leader_pid,
+        vanished_pid,
+        leader_pid,
+        vanished_pid,
+    ]
+
+
+def test_darwin_all_zombie_proof_rejects_replacement_during_shrink(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4453
+    vanished_pid = 4454
+    replacement_pid = 4455
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [
+            (leader_pid, vanished_pid),
+            (leader_pid, replacement_pid),
+        ],
+        info_failures={vanished_pid: ((0, errno.ESRCH),)},
+    )
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+
+    with pytest.raises(
+        process_tree.ProcessTreeError,
+        match="membership changed during inspection",
+    ):
+        process_tree.prove_darwin_process_group_all_zombies(
+            leader_pid,
+            expected_leader_pid=leader_pid,
+        )
+
+    assert fake_libproc.list_calls == 2
+
+
+def test_darwin_all_zombie_proof_rejects_survivor_pid_reuse_after_shrink(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4456
+    vanished_pid = 4457
+    survivor_pid = 4458
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [
+            (leader_pid, vanished_pid, survivor_pid),
+            (leader_pid, survivor_pid),
+        ],
+        info_failures={vanished_pid: ((0, errno.ESRCH),)},
+        start_identities={
+            survivor_pid: (
+                (1_004_458, 4_458),
+                (1_004_459, 4_458),
+            ),
+        },
+    )
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+
+    with pytest.raises(
+        process_tree.ProcessTreeError,
+        match="identity changed during inspection",
+    ):
+        process_tree.prove_darwin_process_group_all_zombies(
+            leader_pid,
+            expected_leader_pid=leader_pid,
+        )
+
+    assert fake_libproc.list_calls == 2
+    assert fake_libproc.info_calls == [
+        leader_pid,
+        vanished_pid,
+        survivor_pid,
+        leader_pid,
+        survivor_pid,
+    ]
+
+
+def test_darwin_all_zombie_proof_bounds_monotonic_shrink_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4460
+    descendant_pids = tuple(
+        range(
+            leader_pid + 1,
+            leader_pid
+            + process_tree._DARWIN_PROCESS_GROUP_STABILITY_ATTEMPTS
+            + 1,
+        )
+    )
+    snapshots = [
+        (leader_pid, *descendant_pids[index:])
+        for index in range(
+            process_tree._DARWIN_PROCESS_GROUP_STABILITY_ATTEMPTS
+        )
+    ]
+    fake_libproc = _FakeDarwinLibproc(leader_pid, snapshots)
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+
+    with pytest.raises(
+        process_tree.ProcessTreeError,
+        match="did not stabilize within the bounded inspection attempts",
+    ):
+        process_tree.prove_darwin_process_group_all_zombies(
+            leader_pid,
+            expected_leader_pid=leader_pid,
+        )
+
+    assert (
+        fake_libproc.list_calls
+        == process_tree._DARWIN_PROCESS_GROUP_STABILITY_ATTEMPTS
+    )
 
 
 @pytest.mark.parametrize(

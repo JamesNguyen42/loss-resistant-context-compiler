@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -2863,6 +2864,224 @@ def test_darwin_memory_limit_uses_exec_launcher_without_preexec(
         in external_runner_module._DARWIN_LIMIT_LAUNCHER
     )
     assert external_runner_module._posix_limit_setup(limits) is None
+
+
+def test_darwin_limit_launcher_raises_soft_limits_to_exact_ceilings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    memory_bytes = 32_768 * 1024 * 1024
+    file_bytes = 303
+    fake_resource = ModuleType("resource")
+    fake_resource.RLIMIT_AS = 1  # type: ignore[attr-defined]
+    fake_resource.RLIMIT_FSIZE = 2  # type: ignore[attr-defined]
+    fake_resource.RLIM_INFINITY = -1  # type: ignore[attr-defined]
+    limits = {
+        fake_resource.RLIMIT_AS: (256 * 1024 * 1024, -1),
+        fake_resource.RLIMIT_FSIZE: (101, 1_024),
+    }
+    applied: list[tuple[int, tuple[int, int]]] = []
+    executed: list[tuple[str, list[str], dict[str, str]]] = []
+
+    def getrlimit(resource_name: int) -> tuple[int, int]:
+        return limits[resource_name]
+
+    def setrlimit(
+        resource_name: int,
+        requested: tuple[int, int],
+    ) -> None:
+        applied.append((resource_name, requested))
+
+    def execvpe(
+        executable: str,
+        argv: list[str],
+        environment: dict[str, str],
+    ) -> None:
+        executed.append((executable, argv, environment))
+
+    fake_resource.getrlimit = getrlimit  # type: ignore[attr-defined]
+    fake_resource.setrlimit = setrlimit  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "resource", fake_resource)
+    monkeypatch.setattr(external_runner_module.os, "execvpe", execvpe)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "darwin-limit-launcher",
+            external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
+            str(memory_bytes),
+            str(file_bytes),
+            "--",
+            "/usr/bin/runtime",
+            "adapter.py",
+        ],
+    )
+
+    exec(external_runner_module._DARWIN_LIMIT_LAUNCHER, {})
+
+    assert applied == [
+        (fake_resource.RLIMIT_AS, (memory_bytes, memory_bytes)),
+        (fake_resource.RLIMIT_FSIZE, (file_bytes, file_bytes)),
+    ]
+    assert executed == [
+        (
+            "/usr/bin/runtime",
+            ["/usr/bin/runtime", "adapter.py"],
+            external_runner_module.os.environ,
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("memory_hard", "file_hard", "resource_label", "hard", "requested"),
+    [
+        (
+            32_768 * 1024 * 1024 - 1,
+            -1,
+            "RLIMIT_AS",
+            32_768 * 1024 * 1024 - 1,
+            32_768 * 1024 * 1024,
+        ),
+        (-1, 302, "RLIMIT_FSIZE", 302, 303),
+    ],
+)
+def test_darwin_limit_launcher_rejects_unrecorded_hard_limit_clamping(
+    monkeypatch: pytest.MonkeyPatch,
+    memory_hard: int,
+    file_hard: int,
+    resource_label: str,
+    hard: int,
+    requested: int,
+) -> None:
+    memory_bytes = 32_768 * 1024 * 1024
+    file_bytes = 303
+    fake_resource = ModuleType("resource")
+    fake_resource.RLIMIT_AS = 1  # type: ignore[attr-defined]
+    fake_resource.RLIMIT_FSIZE = 2  # type: ignore[attr-defined]
+    fake_resource.RLIM_INFINITY = -1  # type: ignore[attr-defined]
+    limits = {
+        fake_resource.RLIMIT_AS: (1, memory_hard),
+        fake_resource.RLIMIT_FSIZE: (1, file_hard),
+    }
+    executed: list[str] = []
+
+    def getrlimit(resource_name: int) -> tuple[int, int]:
+        return limits[resource_name]
+
+    def setrlimit(
+        _resource_name: int,
+        _requested: tuple[int, int],
+    ) -> None:
+        return None
+
+    def execvpe(
+        executable: str,
+        _argv: list[str],
+        _environment: dict[str, str],
+    ) -> None:
+        executed.append(executable)
+
+    fake_resource.getrlimit = getrlimit  # type: ignore[attr-defined]
+    fake_resource.setrlimit = setrlimit  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "resource", fake_resource)
+    monkeypatch.setattr(external_runner_module.os, "execvpe", execvpe)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "darwin-limit-launcher",
+            external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
+            str(memory_bytes),
+            str(file_bytes),
+            "--",
+            "/usr/bin/runtime",
+        ],
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match=(
+            rf"inherited hard {resource_label} limit {hard} "
+            rf"is below requested {requested}"
+        ),
+    ):
+        exec(external_runner_module._DARWIN_LIMIT_LAUNCHER, {})
+
+    assert not executed
+
+
+@pytest.mark.parametrize(
+    ("failing_resource", "resource_label"),
+    [
+        (1, "RLIMIT_AS"),
+        (2, "RLIMIT_FSIZE"),
+    ],
+)
+@pytest.mark.parametrize(
+    "exception_type",
+    [OSError, OverflowError, ValueError],
+)
+def test_darwin_limit_launcher_rejects_limit_application_failure_before_exec(
+    monkeypatch: pytest.MonkeyPatch,
+    failing_resource: int,
+    resource_label: str,
+    exception_type: type[Exception],
+) -> None:
+    memory_bytes = 32_768 * 1024 * 1024
+    file_bytes = 303
+    fake_resource = ModuleType("resource")
+    fake_resource.RLIMIT_AS = 1  # type: ignore[attr-defined]
+    fake_resource.RLIMIT_FSIZE = 2  # type: ignore[attr-defined]
+    fake_resource.RLIM_INFINITY = -1  # type: ignore[attr-defined]
+    limits = {
+        fake_resource.RLIMIT_AS: (1, -1),
+        fake_resource.RLIMIT_FSIZE: (1, -1),
+    }
+    executed: list[str] = []
+
+    def getrlimit(resource_name: int) -> tuple[int, int]:
+        return limits[resource_name]
+
+    def setrlimit(
+        resource_name: int,
+        _requested: tuple[int, int],
+    ) -> None:
+        if resource_name == failing_resource:
+            raise exception_type("injected limit-application failure")
+
+    def execvpe(
+        executable: str,
+        _argv: list[str],
+        _environment: dict[str, str],
+    ) -> None:
+        executed.append(executable)
+
+    fake_resource.getrlimit = getrlimit  # type: ignore[attr-defined]
+    fake_resource.setrlimit = setrlimit  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "resource", fake_resource)
+    monkeypatch.setattr(external_runner_module.os, "execvpe", execvpe)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "darwin-limit-launcher",
+            external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
+            str(memory_bytes),
+            str(file_bytes),
+            "--",
+            "/usr/bin/runtime",
+        ],
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match=(
+            rf"could not apply exact {resource_label} limit: "
+            rf"{exception_type.__name__}"
+        ),
+    ):
+        exec(external_runner_module._DARWIN_LIMIT_LAUNCHER, {})
+
+    assert not executed
 
 
 def test_posix_group_eperm_liveness_probe_fails_closed(

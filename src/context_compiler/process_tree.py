@@ -19,6 +19,7 @@ _DARWIN_PROC_PIDTBSDINFO = 3
 _DARWIN_PROC_PIDTBSDINFO_INCLUDE_ZOMBIES = 1
 _DARWIN_PROC_BSD_INFO_SIZE = 136
 _DARWIN_PROCESS_STATUS_ZOMBIE = 5
+_DARWIN_PROCESS_GROUP_STABILITY_ATTEMPTS = 8
 _PROCESS_GROUP_GRACE_SECONDS = 0.5
 _POSIX_SIGKILL = getattr(signal, "SIGKILL", 9)
 _WINDOWS_JOB_OBJECT_LIMIT_PROCESS_MEMORY = 0x00000100
@@ -147,7 +148,8 @@ def _darwin_process_identity(
     process_group_id: int,
     *,
     error_type: type[RuntimeError],
-) -> tuple[int, int, int]:
+    allow_vanished: bool = False,
+) -> tuple[int, int, int] | None:
     """Read and validate one exact BSD process record."""
 
     actual_struct_size = ctypes.sizeof(_DarwinProcBsdInfo)
@@ -168,6 +170,8 @@ def _darwin_process_identity(
     )
     if returned_size != actual_struct_size:
         error = ctypes.get_errno()
+        if allow_vanished and returned_size == 0 and error == errno.ESRCH:
+            return None
         raise error_type(
             "could not read an exact Darwin BSD process-info record for "
             f"PID {process_id} (returned {returned_size} bytes, error {error})"
@@ -197,13 +201,18 @@ def _darwin_process_group_snapshot(
     expected_leader_pid: int,
     *,
     error_type: type[RuntimeError],
-) -> tuple[tuple[int, int, int], ...]:
+) -> tuple[
+    tuple[int, ...],
+    tuple[tuple[int, int, int], ...],
+    tuple[int, ...],
+]:
     """Capture one bounded, fully inspected all-zombie group snapshot.
 
     Inspect the known WNOWAIT leader directly with include-zombies semantics,
     even if the group enumeration is empty, while also inspecting every PID
-    that the bounded enumeration returns. The caller requires two identical
-    snapshots.
+    that the bounded enumeration returns. A non-leader that returns exactly
+    ESRCH is recorded as vanished so the caller can require a strict,
+    monotonic membership shrink before retrying.
     """
 
     members = _darwin_process_group_pids(
@@ -212,14 +221,35 @@ def _darwin_process_group_snapshot(
         error_type=error_type,
     )
     process_ids = tuple(sorted({expected_leader_pid, *members}))
-    return tuple(
-        _darwin_process_identity(
+    leader_identity = _darwin_process_identity(
+        libproc,
+        expected_leader_pid,
+        process_group_id,
+        error_type=error_type,
+    )
+    if leader_identity is None:  # pragma: no cover - leader is never optional
+        raise error_type("could not inspect the anchored Darwin group leader")
+
+    identities = [leader_identity]
+    vanished: list[int] = []
+    for process_id in process_ids:
+        if process_id == expected_leader_pid:
+            continue
+        identity = _darwin_process_identity(
             libproc,
             process_id,
             process_group_id,
             error_type=error_type,
+            allow_vanished=True,
         )
-        for process_id in process_ids
+        if identity is None:
+            vanished.append(process_id)
+        else:
+            identities.append(identity)
+    return (
+        process_ids,
+        tuple(sorted(identities)),
+        tuple(vanished),
     )
 
 
@@ -231,9 +261,12 @@ def prove_darwin_process_group_all_zombies(
 ) -> None:
     """Prove that one anchored Darwin group has only stable zombie members.
 
-    This exceptional-path proof is intentionally conservative. Any API error,
-    inaccessible or live member, truncated enumeration, PID reuse, membership
-    race, or unreadable WNOWAIT leader rejects the proof.
+    This exceptional-path proof is intentionally conservative. A non-leader
+    may disappear only through an exact ESRCH read race or a monotonic shrink
+    between complete snapshots; bounded retries must then end with two
+    identical complete snapshots. Other API errors, inaccessible or live
+    members, truncated enumeration, PID reuse, membership additions or
+    replacements, and an unreadable WNOWAIT leader reject the proof.
     """
 
     for label, value in (
@@ -255,28 +288,60 @@ def prove_darwin_process_group_all_zombies(
         )
 
     libproc = _load_darwin_libproc(error_type)
-    before = _darwin_process_group_snapshot(
-        libproc,
-        process_group_id,
-        expected_leader_pid,
-        error_type=error_type,
-    )
-    after = _darwin_process_group_snapshot(
-        libproc,
-        process_group_id,
-        expected_leader_pid,
-        error_type=error_type,
-    )
-    before_members = tuple(record[0] for record in before)
-    after_members = tuple(record[0] for record in after)
-    if before_members != after_members:
-        raise error_type(
-            "anchored Darwin process-group membership changed during inspection"
+    previous_members: tuple[int, ...] | None = None
+    previous_complete: tuple[tuple[int, int, int], ...] | None = None
+    required_absent: frozenset[int] = frozenset()
+    known_identities: dict[int, tuple[int, int, int]] = {}
+
+    for _attempt in range(_DARWIN_PROCESS_GROUP_STABILITY_ATTEMPTS):
+        members, identities, vanished = _darwin_process_group_snapshot(
+            libproc,
+            process_group_id,
+            expected_leader_pid,
+            error_type=error_type,
         )
-    if before != after:
-        raise error_type(
-            "anchored Darwin process identity changed during inspection"
-        )
+        member_set = frozenset(members)
+
+        if previous_members is not None:
+            previous_member_set = frozenset(previous_members)
+            if required_absent & member_set:
+                raise error_type(
+                    "a vanished Darwin process-group member reappeared "
+                    "during inspection"
+                )
+            if not member_set.issubset(previous_member_set):
+                raise error_type(
+                    "anchored Darwin process-group membership changed "
+                    "during inspection"
+                )
+
+        for identity in identities:
+            process_id = identity[0]
+            known_identity = known_identities.get(process_id)
+            if known_identity is not None and known_identity != identity:
+                raise error_type(
+                    "anchored Darwin process identity changed during inspection"
+                )
+            known_identities[process_id] = identity
+
+        if not vanished:
+            if (
+                previous_complete is not None
+                and previous_members == members
+                and previous_complete == identities
+            ):
+                return
+            previous_complete = identities
+        else:
+            previous_complete = None
+
+        previous_members = members
+        required_absent = frozenset(vanished)
+
+    raise error_type(
+        "anchored Darwin process-group membership did not stabilize "
+        "within the bounded inspection attempts"
+    )
 
 
 class WindowsJob:
