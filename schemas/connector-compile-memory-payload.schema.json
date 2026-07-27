@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loss-resistant-context-compiler/connector-compile-memory-payload.schema.json",
+  "title": "Connector compile_memory payload",
+  "type": "object",
+  "properties": {
+    "session_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 256},
+    "checkpoint": {
+      "anyOf": [
+        {"$ref": "incremental-checkpoint.schema.json"},
+        {"type": "null"}
+      ]
+    },
+    "events": {
+      "anyOf": [
+        {
+          "type": "array",
+          "maxItems": 100000,
+          "items": {"$ref": "localai-source-event.schema.json"}
+        },
+        {"type": "null"}
+      ]
+    },
+    "policy": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "token_budget": {"type": "integer", "minimum": 1},
+            "minimum_compression_ratio": {"type": "number", "minimum": 1},
+            "fail_on_budget_overflow": {"type": "boolean"},
+            "include_superseded": {"type": "boolean"},
+            "include_discarded": {"type": "boolean"},
+            "verify": {"const": true},
+            "recover_missed_protected": {"type": "boolean"},
+            "fail_on_primary_extractor_error": {"type": "boolean"},
+            "chars_per_token": {"type": "number", "exclusiveMinimum": 0}
+          },
+          "additionalProperties": false
+        },
+        {"type": "null"}
+      ]
+    },
+    "archive_chain_head_sha256": {
+      "anyOf": [
+        {"type": "string", "pattern": "^[a-f0-9]{64}$", "minLength": 64, "maxLength": 64},
+        {"type": "null"}
+      ]
+    },
+    "timeout_seconds": {
+      "anyOf": [
+        {"type": "number", "exclusiveMinimum": 0},
+        {"type": "null"}
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "required": ["session_id"],
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    {
+      "required": ["checkpoint"],
+      "properties": {
+        "checkpoint": {"$ref": "incremental-checkpoint.schema.json"}
+      }
+    },
+    {
+      "required": ["events"],
+      "properties": {
+        "events": {"type": "array", "maxItems": 100000}
+      }
+    }
+  ]
+}

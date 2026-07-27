@@ -38,7 +38,11 @@
               "type": "object",
               "required": ["source_id", "start", "end"],
               "properties": {
-                "source_id": {"type": "string", "minLength": 1},
+                "source_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024
+                },
                 "start": {"type": "integer", "minimum": 0},
                 "end": {"type": "integer", "minimum": 0}
               },

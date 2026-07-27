@@ -11,7 +11,7 @@ all absolute safety/quality gates and a paired relative-gain gate pass. A
 certificate failure means “the evidence does not support the claim,” not
 necessarily “the program crashed.”
 
-## LRCBench 0.1
+## LRCBench 0.2
 
 `benchmarks/lrcbench.py` is dependency-free, deterministic for a fixed config,
 and provider-neutral. Gold atoms remain inside the evaluator and are never
@@ -28,6 +28,7 @@ Default configuration:
 | Minimum compression | 5x |
 | Seed | 56,056 |
 | Paired bootstrap samples | 2,000 |
+| Bootstrap lower quantile | 0.025 |
 
 Each generated history contains every required adversarial stratum:
 
@@ -59,9 +60,11 @@ The compiler is evaluated against three matched-budget local baselines:
 - `extractive`: rank source lines with a query-free TF-IDF-style heuristic and
   retain the highest-scoring lines under budget.
 
-The “strongest baseline” used by the certificate is the one with the highest
-critical recall, breaking ties by exact recall, quality, then system name. This
-prevents choosing a conveniently weak comparison after seeing results.
+For a bundled-only run, the local frontier result uses the strongest bundled
+baseline by critical recall, breaking ties by exact recall, quality, then
+system name. This prevents choosing a conveniently weak local comparison after
+seeing results. External runs additionally compute a separate decision for
+every explicitly registered system.
 
 ## Metrics
 
@@ -91,6 +94,14 @@ one of those safety/recall requirements is perfect, no unsupported or stale
 claim is emitted, the budget is respected, and the configured compression floor
 is met.
 
+Claim-bearing critical recall, exact recall, quality, and memory-quality
+efficiency are history-weighted. In particular,
+`memory_quality_efficiency` is the mean across histories of
+`quality_score / active_tokens`. The paired bootstrap resamples the same
+per-history quantities, so its estimand matches the corresponding point
+estimate. Other diagnostic rates retain their explicitly reported
+claim-weighted or corpus-weighted denominators.
+
 ## Certificate gates
 
 A local certificate is issued only if all of the following hold:
@@ -111,7 +122,7 @@ A local certificate is issued only if all of the following hold:
 11. The compiler and every baseline respect the matched token budget.
 12. Corpus compression meets the configured floor, normally 5x.
 13. At least one paired 50% gain basis below passes both its point estimate and
-    its 2.5th-percentile paired bootstrap margin.
+    its configured lower-quantile paired bootstrap margin.
 
 ### Relative gain basis A: critical semantic loss
 
@@ -128,30 +139,28 @@ loss_reduction = (L(baseline) - L(compiler)) / L(baseline)
 ```
 
 It qualifies only when baseline loss is at least `0.01`, loss reduction is at
-least `0.50`, and the 2.5th percentile of the paired bootstrap margin
+least `0.50`, and the configured lower quantile of the paired bootstrap margin
 `0.5 * L(baseline) - L(compiler)` is strictly positive.
 
-### Relative gain basis B: completion efficiency
+### Relative gain basis B: memory-quality efficiency
 
-Aggregate efficiency is mean quality divided by mean active tokens. The point
-estimate is:
+Per-history efficiency is quality divided by active tokens. The aggregate point
+estimate is the mean of that quantity:
 
 ```text
 efficiency_gain = efficiency(compiler) / efficiency(baseline) - 1
 ```
 
-It qualifies only when the gain is at least `0.50` and the 2.5th percentile of
-the paired per-history bootstrap margin
+It qualifies only when the gain is at least `0.50` and the configured lower
+quantile of the paired per-history bootstrap margin
 `efficiency(compiler) - 1.5 * efficiency(baseline)` is strictly positive.
 
 Raw bounded quality is deliberately not used for a “50% better” ratio: a
 perfect score cannot be 50% higher than any baseline above two thirds.
 
-Despite the current field name, this is memory-quality efficiency, not observed
-agent task-completion efficiency. The current aggregate point estimate and
-paired bootstrap also use different weighting formulations. Both must be
-aligned under one preregistered estimand and renamed before external
-publication; see [`TODO.md`](../TODO.md).
+This is a component memory metric, not observed agent task-completion
+efficiency. “Completion efficiency” is reserved for successful downstream
+tasks per total token or cost.
 
 ## Run and audit
 
@@ -179,44 +188,279 @@ python -m benchmarks \
   --minimum-compression 5 \
   --seed 56056 \
   --bootstrap-samples 2000 \
+  --bootstrap-lower-quantile 0.025 \
   --json-out benchmarks/result.json \
   --include-histories
 ```
 
-The JSON report includes the full config, deterministic dataset SHA-256,
-aggregate system metrics, optional per-history evidence, certificate margins,
-reasons, and an evidence digest. Record the code revision, Python version,
-platform, and command alongside any published result. Generated reports are
-measurements, not source fixtures, unless intentionally reviewed and committed.
+The current `lrcbench-report-0.2` JSON report includes the full config, deterministic
+dataset SHA-256, aggregate system metrics, optional per-history evidence,
+certificate margins/reasons, and two digests. `certificate.evidence_sha256`
+binds deterministic comparison evidence. Top-level `report_sha256` also binds
+the run-specific envelope: repository commit and dirty state, package and
+schema versions, Python/platform, exact command, UTC start, duration, tokenizer
+and model identity, baseline revisions, model-service cost, and failures.
+Version `0.2` additionally binds frozen external-protocol identity, document
+hash, synthetic dataset digest, and registered set into certificate evidence.
+Generated reports are measurements, not source fixtures, unless intentionally
+reviewed and committed.
+Report and corpus-export files are installed through a flushed, `fsync`ed
+same-directory atomic replacement, so a pre-replacement failure preserves an
+older evidence file rather than truncating it.
+
+Saved current-schema reports and the retained local-only `0.1` snapshot can be
+checked without rerunning the scored systems:
+
+```console
+python -m benchmarks --verify-report benchmarks/result.json
+```
+
+This path performs bounded strict JSON decoding, regenerates the deterministic
+dataset hash from the recorded configuration, recomputes both evidence
+digests, validates schema/run/comparison accounting, and reconciles included
+per-history counts, rates, and aggregates. It intentionally returns success
+for an internally valid non-issued certificate. The two embedded hashes remain
+self-hashes rather than signatures, so verification does not establish
+authorship, preregistration, or fairness.
 
 ## External candidate interchange
 
-LRCBench can export the exact generated corpus without gold atoms:
+LRCBench can export the exact generated corpus without gold atoms. A
+claim-bearing external run must use the corpus digest frozen in its protocol:
 
 ```console
-python -m benchmarks --histories 24 --export-corpus lrcbench-corpus.json
+python -m benchmarks --histories 32 --export-corpus lrcbench-corpus.json
 ```
 
-The export records schema `lrcbench-corpus-0.1`, full generation config,
-`dataset_sha256`, case ids, and ordered source events. Run an external system
-on that fixed corpus, then adapt its output to
-`lrcbench-candidate-output-0.1`. Each case supplies `rendered_text` and typed
-or untyped claims with exact source id, character offsets, and quote. The full
-schema and example are in [the benchmark README](../benchmarks/README.md).
+The export records schema `lrcbench-corpus-0.3`, full generation config,
+`dataset_sha256`, versioned producer metadata, a canonical `corpus_sha256`,
+case ids, and ordered source events. Producer metadata is bound by the corpus
+digest but excluded from the frozen dataset identity. The corpus decoder
+verifies the gold-free self-digest before an adapter run. Direct external
+artifacts use `lrcbench-candidate-output-0.2`, embed the versioned adapter/model
+producer record, and bind every other field with
+`candidate_payload_sha256`. Each case supplies `rendered_text` and typed or
+untyped claims with exact source id, character offsets, and quote. The standard
+runner can ingest a legacy producerless `0.1` adapter payload only to normalize
+it to `0.2`; direct imports cannot use that compatibility path. The full schema
+and example are in [the benchmark README](../benchmarks/README.md).
 
-Import one or more external candidates under the identical generation config:
+Serialized reports, corpora, candidates, and run manifests all enter through
+the same strict regular-file JSON reader. It enforces UTF-8, byte, physical-line,
+and nesting limits and rejects duplicate keys, NaN/infinity, special files,
+and file growth past the limit during hashing. Candidate validation and
+per-case aggregation compare the exact byte count and digest observed at each
+step, so a concurrent replacement cannot silently change the scored payload.
+
+Import one or more external candidates under the identical frozen generation
+config:
 
 ```console
-python -m benchmarks --histories 24 \
-  --external-baseline acon-output.json \
-  --external-baseline foldagent-output.json
+python -m benchmarks --histories 32 \
+  --external-protocol benchmarks/protocols/external-comparison-v1.json \
+  --expected-external-system acon \
+  --expected-external-system foldagent \
+  --external-run-manifest acon-manifest.json \
+  --external-run-manifest foldagent-manifest.json
 ```
 
-The loader fails closed on a schema or dataset-hash mismatch, missing or extra
-cases, duplicate systems, unknown fields, invalid spans, claims absent from
-rendered output, or an over-budget case. External systems do not supply trusted
-token counts: the harness adds a canonical claim/provenance sidecar and derives
-active tokens itself.
+Every external run requires a strict, self-hashed protocol with status
+`frozen`. Its registered set is authoritative; repeatable
+`--expected-external-system` values are optional assertions, but when present
+must equal that complete set. An unexpected file is rejected, while a
+registered system with no output remains in the majority denominator as an
+invalid non-win. The loader also rejects a protocol/corpus digest mismatch or
+an adapter revision that differs from the frozen candidate record. It fails
+closed on a schema mismatch, missing or extra cases, duplicate systems, unknown
+fields, invalid spans, claims absent from rendered output, or an over-budget
+case. External systems do not supply trusted token counts: the harness adds a
+canonical claim/provenance sidecar and derives active tokens itself.
+
+Direct `--external-baseline` imports remain useful for interchange diagnostics
+inside a frozen protocol, but they cannot count as certificate wins without a
+validated bounded-run manifest. A failed manifest contributes its retained
+reason and hash to the per-system invalid decision and evidence digest.
+
+The repository also provides a standard process boundary:
+
+```console
+python -m benchmarks.external_runner \
+  --system SYSTEM \
+  --corpus lrcbench-corpus.json \
+  --candidate-out SYSTEM-candidate.json \
+  --manifest-out SYSTEM-manifest.json \
+  --isolation per-case \
+  --timeout-seconds 300 \
+  --max-stdout-bytes 1000000 \
+  --max-stderr-bytes 1000000 \
+  --max-candidate-bytes 20000000 \
+  --max-memory-mb 32768 \
+  --dependency-lock-evidence requirements.lock \
+  --adapter-entrypoint-evidence adapter.py \
+  --adapter-source-root adapter-source \
+  --pass-environment HF_HOME \
+  --network-isolation-mode host-firewall \
+  --network-isolation-evidence network-policy.txt \
+  --inference-service-pid INFERENCE_SERVICE_PID \
+  --max-inference-service-memory-mb SERVICE_MEMORY_LIMIT_MB \
+  --adapter-revision REVISION \
+  --environment-id sha256:DEPENDENCY_LOCK_SHA256 \
+  --model-id qwen/qwen3.6-35b-a3b@q4_k_m \
+  --model-context-length 8192 \
+  --tokenizer-id character-estimate-v1 \
+  --inference-concurrency 1 \
+  --retry-count 0 \
+  --model-service-cost-usd 0 \
+  -- ADAPTER_COMMAND {corpus} {candidate} {system} {case_id}
+```
+
+It never shell-interprets adapter argv and never overwrites an existing output.
+On macOS only, it invokes the fixed runner-owned shell pre-limiter described
+below. The manifest uses an
+exclusive atomic install, so another file created during the run wins rather
+than being overwritten at commit time. The default `per-case` mode runs cases
+sequentially in fresh processes, gives each process a one-case gold-free corpus,
+applies per-case time/output limits, validates each candidate independently,
+and merges only complete valid coverage. The self-hashed manifest binds the
+exact invocation and outcome for every case.
+`whole-corpus` mode is retained for diagnostics but is not claim-bearing.
+Stream byte/hash evidence is read from runner-retained descriptors rather than
+reopened paths. At or below the cap it covers the full observed stream; above
+the cap it records a `cap + 1` prefix witness while the one-time descriptor-size
+observation still forces the corresponding limit failure. Growth after that
+observation is not chased.
+
+The original corpus is retained as manifest evidence. On import, the loader
+reopens its absolute path, verifies its canonical self-digest and exact file
+digest, checks the recorded case count, and reconstructs every deterministic
+one-case corpus before returning the candidate for full benchmark-side
+decoding. Executed records must be the ordered parent-corpus prefix and match
+the exact self/file digests plus runner-owned temporary path layout. A complete
+run must also retain each validated one-case candidate self-digest. Replay
+rebuilds that envelope from the registered producer and matching raw merged
+case, rejecting a substituted or reordered case payload. It also rehashes the
+retained dependency lock;
+claim controls require `environment_id` to equal
+`sha256:<dependency-lock-sha256>`. The retained adapter entrypoint must appear
+in the recorded command and in the bounded recursive inventory of
+`--adapter-source-root`. Loader replay rehashes every regular file in that
+link-free source tree and recomputes the portable command-contract digest;
+external
+scoring matches the entrypoint, source-tree, resolved-runtime, and portable
+command-contract digests to the frozen per-system protocol fields. The
+contract uses typed tokens for runner substitutions and bound paths, so
+different clean-host absolute paths produce the same digest. Every per-case
+exact invocation must normalize to that contract, and claim runs use the source
+root as their working directory. The fixed tree policy allows at most 10,000
+regular files, 256 MB per file, and 512 MB total, so the source root should be a
+dedicated immutable adapter directory rather than a build-output directory.
+The per-case runner revalidates it and the resolved runtime executable after
+each case and stops before launching another process if either changes.
+
+The child receives a bounded platform-startup environment rather than
+`os.environ` wholesale. Repeat `--pass-environment NAME` for any additional
+reviewed variable; missing names fail preflight. The manifest exposes sorted
+variable names and an aggregate byte count, but represents values only inside
+a canonical SHA-256 digest. Credential-like names make claim controls
+incomplete, and the per-system environment digest must match the frozen
+protocol. Home/cache variables are opt-in; fixed Python guards disable user-site
+imports and bytecode writes and set a deterministic hash seed and UTF-8 I/O.
+Do not treat hashing as secret storage: low-entropy values may be guessable, so
+credentials should never be passed to an offline claim run.
+
+`--max-memory-mb` applies an inherited per-process `RLIMIT_AS` ceiling on POSIX.
+That resource limits virtual address space, not physical RSS or process
+footprint, and it is not an aggregate process-tree ceiling: each descendant
+inherits the same individual limit. A usable finite ceiling is sensitive to the
+host and runtime's existing virtual mappings, including mappings present before
+adapter code starts. Windows instead uses a Job Object assigned before process
+resume with both per-process and aggregate job limits. On macOS, a fixed
+runner-owned `/bin/sh -p` script starts with an empty environment and sets the
+requested `RLIMIT_AS` soft and hard values in 1024-byte units before Python
+starts. Here `-p` selects privileged shell mode and grants no privilege. The
+script is runner-owned and its control fields are runner-generated. It passes
+the isolated no-site (`-I -S`) verifier and adapter argv only through quoted
+positional arguments;
+adapter text is never evaluated by the shell. A bounded canonical encoding of
+the exact adapter environment travels through an anonymous, unlinked
+regular-file descriptor with its expected byte count and SHA-256 digest. The
+runner first reserves Darwin `__CF_USER_TEXT_ENCODING` as `0x{uid:X}:0:0`
+before bounds and hashing; a conflicting caller value fails closed. This
+counted, hashed entry prevents CoreFoundation's default-text-encoding initializer
+from replacing that environment entry with a host/home-derived value after
+`execve`. Evidence covers the exact mapping passed to `execve`, not
+later mutations by arbitrary runtime code. The verifier first requires exact
+inherited `RLIMIT_AS`; validates the descriptor,
+file, and expected size; reads, scrubs, truncates, and closes the handoff;
+validates the retained in-memory length, SHA-256, and protocol; applies
+byte-exact `RLIMIT_FSIZE`; canonically decodes the environment; and calls
+`execve` with exact adapter argv. A pre-shell launch failure or shell,
+pre-verifier, or inexact-`RLIMIT_AS` exit closes the anonymous unlinked descriptor
+through process/context teardown without guaranteeing a scrub. Completed
+scrubbing is a retention-reduction step, not a cryptographic-erasure guarantee.
+Exact-limit status requires verifier success; a mismatch cannot be replaced by
+a different ceiling. This avoids unsafe `preexec_fn` execution and preserves
+the retained adapter command contract. Preflight and `Popen` failures are
+blocking runner errors. A post-`Popen` launcher failure is retained in a failed,
+non-scoreable manifest. On Darwin, a configured limit with
+`process_succeeded: false` conservatively records
+`memory_limit_enforced: false` because the parent has no authenticated
+verifier-completion signal; this may underreport enforcement but cannot upgrade
+the retained failure. A configured limit with `process_succeeded: true`
+requires `memory_limit_enforced: true`. The POSIX monitor
+observes leader exit without reaping (`waitid(..., WNOWAIT)`),
+signals the process group while that leader still anchors its numeric group ID,
+and only then reaps it. After a successful `SIGTERM`, Darwin may return `EPERM`
+before WNOWAIT exposes the leader's exit; the monitor reobserves only that
+still-owned leader through the same bounded grace deadline. After the final
+macOS group signal, a bounded stable
+`libproc` member snapshot must prove that every remaining member is a zombie;
+this remains the only condition under which `EPERM` is accepted. A live,
+inaccessible, raced, or uninspectable member fails the run closed. A POSIX
+process that deliberately leaves the owned group remains outside this cleanup
+boundary, so unreviewed adapters still require external isolation. Once
+process start succeeded, a cleanup/proof failure is retained as
+`process_group_cleanup_failed` with its controlled validation error and stream
+evidence. Per-case mode records that case and launches no later case; preflight
+and process-start failures remain runner errors.
+The service PID and service-memory options separately
+capture the pre-existing inference process's creation identity and executable
+digest, then sample Windows working set or Linux/macOS RSS at the runner's
+polling cadence. macOS uses `libproc` and rechecks the PID creation time around
+each executable/RSS sample. The adapter run fails if the service disappears,
+restarts, changes executable, or exceeds the ceiling; the runner does not
+terminate or contain that service, and polling can miss between-sample spikes.
+This is not a verified macOS jetsam or physical-footprint provider.
+It also cannot prove that the adapter used the designated PID or automatically
+include separate helper processes. Configured service accounting is supported
+on Windows, Linux, and macOS and fails preflight elsewhere. The wrapper is not
+a filesystem sandbox and does not establish its own network sandbox, so
+unreviewed adapter code still belongs in a separately isolated environment.
+Claim controls require a bounded retained host firewall,
+container, or network-namespace policy artifact. The runner hashes it before
+and after execution and manifest reload rechecks it, but this does not
+independently prove that the host enforced the named policy.
+
+The manifest also binds adapter revision, environment id, model identity,
+context length, tokenizer, inference concurrency, retries, and model-service
+cost. Missing per-case isolation, no enforced platform-appropriate adapter
+memory limit,
+unrecorded identity, a model other than the exact local Qwen Q4 build,
+concurrency other than one, or nonzero model service cost is a
+certificate-invalid non-win even when the candidate interchange itself is
+valid. In current runner schema `lrcbench-external-run-manifest-0.13`, a
+claim-eligible identity requires an immutable adapter revision, environment id
+`sha256:<dependency-lock-sha256>`, the exact retained lock bytes, the exact
+8192-context Qwen model, evaluator tokenizer, one slot, zero retries, zero
+service cost, retained network-isolation evidence, a retained
+command-referenced adapter entrypoint, its bounded immutable source tree, the
+resolved runtime-executable digest, a portable complete command contract, a
+bounded name-audited process-environment digest, and at least two stable
+inference-service memory samples within the ceiling. Scoring also matches the
+manifest's dependency/process-environment/network-evidence digests, adapter
+entrypoint/source-tree/runtime/command digests, service memory
+metric/executable digest/ceiling, isolation, and
+time/polling/output/candidate/adapter-memory limits to the frozen protocol.
 
 Run the built-in round-trip and negative checks before preparing an adapter:
 
@@ -224,24 +468,66 @@ Run the built-in round-trip and negative checks before preparing an adapter:
 python -m benchmarks --self-test
 ```
 
+The result-blind records under `benchmarks/compatibility/` pin ACON and
+AMA-Agent upstream revisions and license bytes without generating or inspecting
+comparative output. One ACON diagnostic adapter was routed through this runner
+against a one-case gold-free corpus. It exited before external execution because
+its clean source checkout, exact Python 3.11 runtime, dependency lock, enforced
+network evidence, inference-service accounting, and LM Studio executable were
+absent. The self-hashed manifest retains `process_succeeded: false`,
+`candidate_valid: false`, and `ready_for_scoring: false`, and no candidate file
+exists. This is an executable blocker, not a benchmark result or inclusion
+decision.
+
 A report without external candidates is labeled `local-bundled-only`. A report
-with at least one validated candidate is labeled `external-inclusive`, and
-that candidate joins the baseline pool from which the strongest critical-recall
-comparison is selected. **External-inclusive does not mean state of the art or
-“better than most.”** It says only that the listed candidates participated.
-The preregistered strict-majority bar below still applies.
+with a frozen registered external set is labeled `external-inclusive`. Every
+registered system receives a win, tie, loss, or invalid decision. The
+certificate records the protocol hashes and dataset binding, comparison set,
+number of wins, required strict majority, every result, and all margins in its
+evidence digest. **External-inclusive does not mean state of the art or
+“better than most.”** The dated inclusion protocol and downstream evidence
+requirements below still apply.
+
+## Bounded CI performance gate
+
+LRCBench measures memory quality and compression; its run duration is recorded
+but is not a performance threshold. CI therefore runs a separate fixed profile:
+
+```console
+python -m benchmarks.performance_gate --check \
+  --json-out ctxc-performance.json
+```
+
+Profile `ci-compile-v1` uses SHA-256-bound, item-dense deterministic source
+prefixes. After a 32-event warmup, it measures three compiles at 128 and 256
+events and uses each median. The committed limits are 2 seconds, 8 seconds,
+8x growth across the doubling, and 64 MiB of peak Python allocations observed
+by `tracemalloc` during a separate largest-input compile. The
+`ctxc-performance-gate-0.1` report records raw trials, environment, limits,
+violations, and its own canonical digest. The growth denominator has a recorded
+1 ms floor so sub-resolution first samples do not create meaningless ratios.
+
+The gate times compilation after source records are materialized.
+`tracemalloc` is deliberately run separately because tracing changes timing;
+it does not measure full process RSS or native allocations. Thresholds are
+broad shared-runner regression tripwires, not a portable service-level
+objective or evidence about 10,000-to-1,000,000-event behavior. Changing the
+workload requires a new profile version, workload digest, thresholds, tests,
+and documentation together.
 
 ## Current local snapshot
 
-On 2026-07-23, the current implementation's default deterministic 32-history
+On 2026-07-24, the current implementation's default deterministic 32-history
 run issued its `local-bundled-only` certificate. Its dataset SHA-256 was
-`9dd650433b9d1a018951a7a4745ba31907f6314965e44aee01ea9ecca24389ae`.
-All 102 tests also passed. The relevant observed metrics were:
+`421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`.
+At that dated evidence snapshot, the release-runway suite collected 1,053
+tests: 1,045 passed and 8 platform/optional checks were skipped on the Windows
+validation host. The relevant observed metrics were:
 
 | System | Critical | Exact | Provenance | Semantic support | Authority | Stale | Unresolved to fact | Perfect | Compression |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Compiler | 100% | 100% | 100% | 100% | 100% | 0% | 0% | 100% | 32.60x |
-| Strongest bundled extractive baseline | 88.1% | 83.6% | 100% | 100% | 0% | 100% | 0% | 0% | 30.13x |
+| Bundled extractive baseline | 88.2% | 83.6% | 100% | 100% | 0% | 100% | 0% | 0% | 30.13x |
 
 The reviewed report is
 [the recorded local evidence](results/lrcbench-local.json). It is a dated
@@ -279,11 +565,50 @@ Until those conditions are met, the accurate statement is: **the repository
 contains a local synthetic certificate against three bundled baselines, not an
 external state-of-the-art certificate.**
 
+The current versioned
+[external comparison protocol](../benchmarks/protocols/external-comparison-v1.md)
+and [self-hashed JSON manifest](../benchmarks/protocols/external-comparison-v1.json)
+form a verified draft. The result-blind screen records observed revisions and
+license evidence for ACON, FoldAgent, and AMA-Agent, plus the unresolved MemIR
+artifact. Nine explicit blockers cover final candidate decisions/adapters,
+dependency locks, adapter memory, inference-service accounting, the natural
+cohort, two downstream suites, and frozen downstream samples. The draft
+therefore cannot serve as a preregistration or support a production claim yet.
+Verify its internal state without claiming readiness:
+
+```console
+python -m benchmarks.external_protocol \
+  --verify benchmarks/protocols/external-comparison-v1.json
+```
+
+Adding `--require-frozen` must continue to fail until those blockers are
+resolved.
+
 For the original product-level claim, component memory metrics are not enough.
 The strict-majority result must additionally show at least 50% task-failure
 reduction or 1.5x successful completions per total token or cost on matched
 downstream runs. It must also show zero observed protected and exact misses on
 the frozen claim cohorts and at least 5x real-token compression per cohort.
+
+## Natural-history evidence contracts
+
+`benchmarks.natural_history` independently validates six bounded Draft 2020-12
+schemas and seven linked self-hashed fixtures. The contracts require explicit
+origin, license, consent, and privacy-review states; exact text spans and hashes;
+two distinct annotators; complete adjudication; attempted/included/excluded
+accounting; repository/task-group-disjoint splits; a gold-free export with zero
+label fields; and report counts that cannot silently omit a history.
+
+```console
+python -m benchmarks.natural_history
+```
+
+The committed records intentionally use synthetic contract text. They prove
+that the evidence format and fail-closed validator operate; they do not prove
+that a licensed, consented, privacy-reviewed natural cohort exists, that human
+annotators agreed, or that the compiler succeeds on natural histories. A real
+cohort remains a separate collection, review, annotation, freeze, and evaluation
+step. See [Natural-history evidence contracts](NATURAL_HISTORY_EVIDENCE.md).
 
 ## Known benchmark limitations
 
@@ -293,9 +618,39 @@ the frozen claim cohorts and at least 5x real-token compression per cohort.
   its English recognition vocabulary overlaps the generated templates. This
   can overestimate generalization to novel phrasing, other languages, or new
   task domains.
+- A separate frozen 64-case
+  [novel-English diagnostic](PHRASE_EVALUATION.md) measured 85.3659% precision
+  and 87.5% recall while preserving six false positives and five false
+  negatives. It reduces template-overlap uncertainty but remains locally
+  authored, small, single-message, and non-representative of production
+  prevalence.
 - The optional `ModelExtractor` is not exercised by this snapshot. Its accepted
   claims are exact complete atomic source spans, not paraphrases, so LRCBench
   does not measure free-form abstractive-summary quality for this project.
+- A separate pre-registered
+  [exact-Qwen captured-output diagnostic](QWEN_PHRASE_EVALUATION.md) exercised
+  `ModelExtractor` on 64 isolated cases. It recorded 5% accepted model-only
+  recall and a 96.9231% candidate rejection rate; deterministic recovery raised
+  final recall to 87.5%. That result exposes an exact-span reliability gap but
+  remains locally authored, small, English-only, and outside LRCBench's
+  downstream comparison protocol.
+- The later unique-literal response mode removes model offset arithmetic. A
+  model-free
+  [post-hoc ablation](QWEN_PHRASE_EVALUATION.md#post-hoc-unique-literal-offset-ablation)
+  transformed the 65 saved outputs and measured 63.1579% literal-only
+  precision, 60% recall, and 2 final verification failures. It did not call
+  the model or evaluate the new prompt and may not be presented as
+  claim-bearing evidence.
+- A new disjoint 64-case corpus and
+  [paired pre-result protocol and result](QWEN_PAIRED_EVALUATION.md) record the
+  128-call coordinate-versus-unique-literal comparison. Literal mode improved
+  model-only recall from 17.5% to 92.5% and F1 from 29.7872% to 82.2222%, but
+  reduced precision from 100% to 74%, admitted 13 false positives, and produced
+  four final verification failures. After deterministic recovery, its F1
+  advantage was only 6.4974 points and its precision was 12.0638 points lower.
+  The local CLI offers no seed or temperature control, so the
+  one-draw-per-mode comparison remains sensitive to sampling noise even with
+  alternating prompt order.
 - The four-characters-per-token estimate is deterministic but not a provider
   tokenizer.
 - Local baselines are intentionally simple and are not substitutes for current
@@ -303,6 +658,8 @@ the frozen claim cohorts and at least 5x real-token compression per cohort.
 - Atom recall is a proxy for downstream completion, not completion itself.
 - The paired bootstrap quantifies sampling variation over generated histories;
   it does not cover benchmark-design bias or implementation mistakes.
-- The current certificate selects one strongest baseline. It does not compute a
-  separate win set or enforce the strict-majority rule required for a claim
-  about “most” external systems.
+- No registered external set has been run, so the implemented per-system
+  strict-majority logic has no external evidence behind it yet.
+- A malformed candidate passed directly with `--external-baseline` aborts the
+  diagnostic import. Claim-bearing runs should use the bounded manifest path,
+  which preserves malformed output as a per-system invalid decision.

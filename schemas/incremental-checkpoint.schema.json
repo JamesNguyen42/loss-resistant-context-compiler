@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loss-resistant-context-compiler/incremental-checkpoint.schema.json",
+  "title": "Context compiler incremental checkpoint",
+  "type": "object",
+  "required": [
+    "schema",
+    "session_id",
+    "source_records",
+    "source_count",
+    "source_digest",
+    "archive_chain_head_sha256",
+    "archive_head_verified",
+    "checkpoint_sha256"
+  ],
+  "properties": {
+    "schema": {"const": "ctxc-incremental-checkpoint-0.1"},
+    "session_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "source_records": {
+      "type": "array",
+      "maxItems": 100000,
+      "items": {"$ref": "#/$defs/canonicalSourceRecord"}
+    },
+    "source_count": {"type": "integer", "minimum": 0, "maximum": 100000},
+    "source_digest": {"$ref": "#/$defs/sha256"},
+    "archive_chain_head_sha256": {
+      "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+    },
+    "archive_head_verified": {"type": "boolean"},
+    "checkpoint_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {"archive_head_verified": {"const": true}},
+        "required": ["archive_head_verified"]
+      },
+      "then": {
+        "properties": {
+          "archive_chain_head_sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$", "minLength": 64, "maxLength": 64},
+    "canonicalSourceRecord": {
+      "type": "object",
+      "required": [
+        "id",
+        "sequence",
+        "role",
+        "content",
+        "timestamp",
+        "metadata",
+        "content_sha256",
+        "record_sha256"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "sequence": {"type": "integer", "minimum": 0},
+        "role": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S"},
+        "content": {"type": "string"},
+        "timestamp": {"type": ["string", "null"], "maxLength": 256},
+        "metadata": {"type": "object"},
+        "content_sha256": {"$ref": "#/$defs/sha256"},
+        "record_sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

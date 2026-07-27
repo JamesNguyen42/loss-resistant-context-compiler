@@ -238,6 +238,8 @@ class HeldoutLanguageCoverageTests(unittest.TestCase):
         examples = (
             ("Please preserve the public API.", MemoryKind.CONSTRAINT),
             ("Leave the authentication endpoint unchanged.", MemoryKind.CONSTRAINT),
+            ("Leave the authentication flow alone.", MemoryKind.CONSTRAINT),
+            ("The database stays PostgreSQL.", MemoryKind.CONSTRAINT),
             ("The SDK needs to stay unchanged.", MemoryKind.CONSTRAINT),
             ("No modifications to the wire protocol.", MemoryKind.CONSTRAINT),
             (

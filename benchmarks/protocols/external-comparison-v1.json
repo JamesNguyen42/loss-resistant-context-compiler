@@ -1,0 +1,215 @@
+{
+  "schema": "lrcbench-external-protocol-0.10",
+  "protocol_id": "external-comparison-v1",
+  "status": "draft",
+  "created_at": "2026-07-24T00:00:00+00:00",
+  "frozen_at": null,
+  "freeze_repository_commit": null,
+  "protocol_document": {
+    "path": "external-comparison-v1.md",
+    "file_sha256": "4c7d0f02ba96aa4bba41ba212bc199cf88255184cdbc314506b096ddbd8519e9"
+  },
+  "comparison_candidates": [
+    {
+      "system": "acon",
+      "display_name": "ACON",
+      "repository": "https://github.com/microsoft/acon",
+      "status": "screening",
+      "revision": "d63f9ae18959dc7215ff62899c94c5e8c56847ae",
+      "revision_observed_at": "2026-07-24T16:19:49.330722+00:00",
+      "license_spdx": "MIT",
+      "license_file_sha256": "9906940f61b1f0b533fa7d99baf55178b2808fbe113ea51dfbfad8572ccd5f2b",
+      "dependency_lock_sha256": null,
+      "adapter_revision": null,
+      "adapter_entrypoint_sha256": null,
+      "adapter_source_tree_sha256": null,
+      "adapter_runtime_executable_sha256": null,
+      "adapter_environment_sha256": null,
+      "adapter_command_sha256": null,
+      "decision_reason": "Official implementation exposes history compression and local-vLLM hooks, but its documented quick start uses an OpenAI key; exact-Qwen CLI adaptation and a resolved offline environment remain unverified."
+    },
+    {
+      "system": "ama-agent",
+      "display_name": "AMA-Agent",
+      "repository": "https://github.com/AMA-Bench/AMA-Bench",
+      "status": "screening",
+      "revision": "ddfd319e0be33424288c13806f1eafc63e625b59",
+      "revision_observed_at": "2026-07-24T16:19:49.330722+00:00",
+      "license_spdx": "MIT",
+      "license_file_sha256": "00cfaf3d10c367a0efe213b8e3cc937f3ca83d5e7cff581e83ae48941ca6e4b7",
+      "dependency_lock_sha256": null,
+      "adapter_revision": null,
+      "adapter_entrypoint_sha256": null,
+      "adapter_source_tree_sha256": null,
+      "adapter_runtime_executable_sha256": null,
+      "adapter_environment_sha256": null,
+      "adapter_command_sha256": null,
+      "decision_reason": "Official benchmark and AMA-Agent code expose a two-stage memory interface and local-vLLM path, but exact-Qwen CLI adaptation, deterministic grading, and a resolved offline environment remain unverified."
+    },
+    {
+      "system": "foldagent",
+      "display_name": "FoldAgent",
+      "repository": "https://github.com/sunnweiwei/FoldAgent",
+      "status": "screening",
+      "revision": "58a2d6964ecebe99940529eace50a0558901b8a5",
+      "revision_observed_at": "2026-07-24T16:19:49.330722+00:00",
+      "license_spdx": "Apache-2.0",
+      "license_file_sha256": "5ad8c213095c573921d7388edf93f6a9f54490b8ebf3b165ae8ef1947cf70846",
+      "dependency_lock_sha256": null,
+      "adapter_revision": null,
+      "adapter_entrypoint_sha256": null,
+      "adapter_source_tree_sha256": null,
+      "adapter_runtime_executable_sha256": null,
+      "adapter_environment_sha256": null,
+      "adapter_command_sha256": null,
+      "decision_reason": "Public reimplementation supports local vLLM, but it changes agent trajectory structure rather than accepting arbitrary history as a drop-in compressor; matched exact-Qwen component adaptation and an offline environment remain unverified."
+    },
+    {
+      "system": "memir",
+      "display_name": "MemIR",
+      "repository": null,
+      "status": "screening",
+      "revision": null,
+      "revision_observed_at": null,
+      "license_spdx": null,
+      "license_file_sha256": null,
+      "dependency_lock_sha256": null,
+      "adapter_revision": null,
+      "adapter_entrypoint_sha256": null,
+      "adapter_source_tree_sha256": null,
+      "adapter_runtime_executable_sha256": null,
+      "adapter_environment_sha256": null,
+      "adapter_command_sha256": null,
+      "decision_reason": "The arXiv v1 paper specifies the architecture and prompts but identifies no public implementation revision or code license; artifact availability must be resolved before inclusion."
+    }
+  ],
+  "registered_systems": [],
+  "constraints": {
+    "model_id": "qwen/qwen3.6-35b-a3b@q4_k_m",
+    "quantization": "Q4_K_M",
+    "model_context_length": 8192,
+    "inference_concurrency": 1,
+    "adapter_process_concurrency": 1,
+    "network_model_api": false,
+    "execution_network_access": false,
+    "paid_service": false,
+    "model_service_cost_usd": 0,
+    "retry_count": 0,
+    "tokenizer_id": "character-estimate-v1",
+    "active_token_budget": 900
+  },
+  "datasets": [
+    {
+      "id": "lrcbench-local",
+      "kind": "synthetic",
+      "status": "frozen",
+      "revision": "lrcbench-0.2-seed-56056-histories-32",
+      "manifest_sha256": "421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761",
+      "sample_size": 32,
+      "seeds": [
+        56056
+      ],
+      "annotation": "Deterministic local synthetic claim cohort; not natural or independent evidence."
+    },
+    {
+      "id": "natural-history-cohort",
+      "kind": "natural-history",
+      "status": "pending",
+      "revision": null,
+      "manifest_sha256": null,
+      "sample_size": null,
+      "seeds": [],
+      "annotation": "Requires privacy, licensing, independent annotation, and a sealed manifest."
+    },
+    {
+      "id": "public-coding-suite",
+      "kind": "coding-task",
+      "status": "pending",
+      "revision": null,
+      "manifest_sha256": null,
+      "sample_size": null,
+      "seeds": [],
+      "annotation": "Public long-horizon coding suite and immutable revision are not selected."
+    },
+    {
+      "id": "public-second-suite",
+      "kind": "second-task",
+      "status": "pending",
+      "revision": null,
+      "manifest_sha256": null,
+      "sample_size": null,
+      "seeds": [],
+      "annotation": "Materially different public tool-use or research suite is not selected."
+    }
+  ],
+  "statistics": {
+    "lrcbench_seed": 56056,
+    "minimum_synthetic_histories": 24,
+    "default_synthetic_histories": 32,
+    "paired_bootstrap_samples": 2000,
+    "bootstrap_lower_quantile": 0.025,
+    "component_gain_threshold": 0.5,
+    "minimum_compression_ratio": 5.0,
+    "minimum_registered_systems": 4
+  },
+  "runner": {
+    "isolation_mode": "per_case",
+    "timeout_seconds": 300,
+    "poll_interval_seconds": 0.02,
+    "network_isolation_mode": null,
+    "network_isolation_evidence_sha256": null,
+    "max_stdout_bytes": 1000000,
+    "max_stderr_bytes": 1000000,
+    "max_candidate_bytes": 20000000,
+    "max_memory_mb": null,
+    "inference_service_memory_metric": null,
+    "inference_service_executable_sha256": null,
+    "max_inference_service_memory_mb": null,
+    "adapter_shell_interpretation": false,
+    "darwin_prelimit_shell_prefix": ["/bin/sh", "-p", "-c"],
+    "darwin_prelimit_launcher_protocol": "ctxc-darwin-prelimit-v1",
+    "darwin_prelimit_launcher_sha256": "db3647ef188ef005cc6c0157acd3d63597f1bc9e5570b9a106e615088ca77ecc",
+    "overwrite_existing_outputs": false,
+    "failure_policy": "registered-failures-are-non-wins",
+    "offline_execution": true
+  },
+  "blockers": [
+    {
+      "id": "adapter-memory-limit",
+      "description": "Freeze an adapter process-tree memory ceiling supported by the evaluation hardware."
+    },
+    {
+      "id": "candidate-adapters",
+      "description": "Complete result-blind diagnostic adapters, retained source-tree, entrypoint, runtime, process-environment, and portable command pins, and inclusion decisions for every screened system."
+    },
+    {
+      "id": "candidate-dependency-locks",
+      "description": "Create resolved, hash-pinned, offline-installable environments for every included system."
+    },
+    {
+      "id": "coding-task-suite",
+      "description": "Select and pin one public long-horizon coding task suite."
+    },
+    {
+      "id": "downstream-samples",
+      "description": "Freeze downstream sample sizes and task seeds before evaluating any registered system."
+    },
+    {
+      "id": "inference-service-accounting",
+      "description": "Freeze containment or shared resource accounting for the pre-existing local inference service."
+    },
+    {
+      "id": "natural-history-cohort",
+      "description": "Seal a licensed, privacy-reviewed natural coding-agent history cohort with independent annotations."
+    },
+    {
+      "id": "network-isolation-evidence",
+      "description": "Freeze and retain host, container, or namespace evidence that adapter execution had no network access."
+    },
+    {
+      "id": "second-task-suite",
+      "description": "Select and pin a materially different public tool-use or research task suite."
+    }
+  ],
+  "protocol_sha256": "a7ee7a92221728be2988b63c8678d4d88936bc65c97e4ced745d770eafefa08d"
+}

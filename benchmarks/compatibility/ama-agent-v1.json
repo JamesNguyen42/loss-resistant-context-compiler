@@ -1,0 +1,71 @@
+{
+  "schema": "lrcbench-compatibility-preflight-0.1",
+  "preflight_id": "ama-agent-ddfd319-result-blind",
+  "system": "ama-agent",
+  "display_name": "AMA-Agent",
+  "status": "screening",
+  "result_blind": true,
+  "comparative_output_generated": false,
+  "comparative_output_inspected": false,
+  "claim_ready": false,
+  "source": {
+    "repository": "https://github.com/AMA-Bench/AMA-Bench",
+    "revision": "ddfd319e0be33424288c13806f1eafc63e625b59",
+    "commit_url": "https://github.com/AMA-Bench/AMA-Bench/commit/ddfd319e0be33424288c13806f1eafc63e625b59",
+    "tree_url": "https://github.com/AMA-Bench/AMA-Bench/tree/ddfd319e0be33424288c13806f1eafc63e625b59",
+    "local_tree_state": "not-materialized",
+    "clean_tree_required": true
+  },
+  "license": {
+    "spdx": "MIT",
+    "file_url": "https://github.com/AMA-Bench/AMA-Bench/blob/ddfd319e0be33424288c13806f1eafc63e625b59/LICENSE",
+    "file_sha256": "3c8bff7214b9a3f79e2b1e76413104fff6df8b315d6598b2e8d16a9cadd2e244"
+  },
+  "dependencies": {
+    "declaration_url": "https://github.com/AMA-Bench/AMA-Bench/blob/ddfd319e0be33424288c13806f1eafc63e625b59/requirements.txt",
+    "declared_python": "3.9-3.11",
+    "declared_platform": "Linux; CUDA GPU recommended",
+    "resolved_lock_state": "absent",
+    "offline_wheelhouse_state": "absent",
+    "notes": "requirements.txt mixes exact pins with unhashed ranges and unconstrained packages; it is not a resolved transitive lock."
+  },
+  "interface": {
+    "entrypoint_url": "https://github.com/AMA-Bench/AMA-Bench/blob/ddfd319e0be33424288c13806f1eafc63e625b59/src/method/ama_agent.py",
+    "model_client_url": "https://github.com/AMA-Bench/AMA-Bench/blob/ddfd319e0be33424288c13806f1eafc63e625b59/src/model_client.py",
+    "adapter_seam": "AMAAgentMethod exposes memory_construction and memory_retrieve through an injected model client.",
+    "rendered_context_available": true,
+    "exact_source_provenance_available": false
+  },
+  "upstream_execution": {
+    "readme_url": "https://github.com/AMA-Bench/AMA-Bench/blob/ddfd319e0be33424288c13806f1eafc63e625b59/README.md",
+    "local_config_url": "https://github.com/AMA-Bench/AMA-Bench/blob/ddfd319e0be33424288c13806f1eafc63e625b59/configs/qwen3-32B.yaml",
+    "documented_command": "python src/run.py --llm-server vllm --llm-config configs/qwen3-32B.yaml --subset openend --method longcontext --test-dir dataset/test --judge-config configs/llm_judge.yaml",
+    "documented_runtime": "local OpenAI-compatible vLLM server; Qwen3-32B; two GPUs; 32000 context; generation and LLM-as-judge",
+    "matched_offline_command_state": "unresolved"
+  },
+  "required_diagnostic_contract": {
+    "model_id": "qwen/qwen3.6-35b-a3b@q4_k_m",
+    "quantization": "Q4_K_M",
+    "model_context_length": 8192,
+    "inference_concurrency": 1,
+    "retry_count": 0,
+    "model_service_cost_usd": 0,
+    "adapter_isolation": "per-case",
+    "adapter_memory_limit_mb": 32768,
+    "timeout_seconds": 300,
+    "network_access": false,
+    "network_isolation_evidence_required": true,
+    "inference_service_pid_and_memory_evidence_required": true
+  },
+  "diagnostic_adapter": null,
+  "blockers": [
+    "clean pinned AMA-Agent source tree is not retained locally",
+    "resolved hash-pinned offline dependency lock and wheelhouse are absent",
+    "documented vLLM Qwen3-32B two-GPU 32000-context runtime does not match the frozen exact-Qwen 8192 one-slot contract",
+    "upstream ModelClient defaults to three retries unless every call path is adapted",
+    "generation and retrieval require multiple LLM calls and optional embedding dependencies",
+    "adapter environment, command, service, and network-isolation evidence are not frozen",
+    "AMA-Agent retrieved context does not expose LRCBench exact source spans"
+  ],
+  "decision": "Remain in result-blind screening; ACON is the narrower first diagnostic adapter. Do not score or make a superiority claim."
+}

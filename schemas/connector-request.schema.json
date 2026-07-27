@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loss-resistant-context-compiler/connector-request.schema.json",
+  "title": "Context compiler connector request envelope",
+  "type": "object",
+  "required": ["schema", "request_id", "operation", "payload"],
+  "properties": {
+    "schema": {"const": "ctxc-connector-request-0.1"},
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "operation": {
+      "enum": [
+        "capabilities",
+        "ingest_source_events",
+        "compile_memory",
+        "render_context",
+        "verify_memory",
+        "inspect_memory"
+      ]
+    },
+    "payload": {"type": "object"}
+  },
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "operation": {"const": "capabilities"},
+        "payload": {"$ref": "connector-capabilities-payload.schema.json"}
+      }
+    },
+    {
+      "properties": {
+        "operation": {"const": "ingest_source_events"},
+        "payload": {"$ref": "connector-ingest-source-events-payload.schema.json"}
+      }
+    },
+    {
+      "properties": {
+        "operation": {"const": "compile_memory"},
+        "payload": {"$ref": "connector-compile-memory-payload.schema.json"}
+      }
+    },
+    {
+      "properties": {
+        "operation": {"const": "render_context"},
+        "payload": {"$ref": "connector-render-context-payload.schema.json"}
+      }
+    },
+    {
+      "properties": {
+        "operation": {"const": "verify_memory"},
+        "payload": {"$ref": "connector-verify-memory-payload.schema.json"}
+      }
+    },
+    {
+      "properties": {
+        "operation": {"const": "inspect_memory"},
+        "payload": {"$ref": "connector-inspect-memory-payload.schema.json"}
+      }
+    }
+  ]
+}

@@ -19,6 +19,22 @@ from enum import StrEnum
 from typing import Any
 
 SCHEMA_VERSION = "1.0"
+COMPILATION_METRICS_SCHEMA = "compilation-metrics-0.1"
+MAX_SOURCE_ID_CHARS = 1_024
+MAX_SOURCE_ROLE_CHARS = 128
+MAX_SOURCE_TIMESTAMP_CHARS = 256
+AUTHENTICATED_AUTHORITY_METADATA_KEY = "ctxc_authenticated_authority"
+PRIMARY_EXTRACTOR_FAILED_MESSAGE = (
+    "The primary extractor failed; verified deterministic recovery was used."
+)
+PRIMARY_EXTRACTOR_DEGRADED_MESSAGE = (
+    "The primary extractor returned unusable output; verified deterministic "
+    "recovery was used."
+)
+ADDITIVE_SAFETY_EXTRACTOR_FAILED_MESSAGE = (
+    "The additive safety extractor failed; built-in deterministic "
+    "certification remained active."
+)
 
 
 class _FrozenDict(dict):
@@ -26,7 +42,7 @@ class _FrozenDict(dict):
 
     @staticmethod
     def _immutable(*_args: Any, **_kwargs: Any) -> None:
-        raise TypeError("source metadata is immutable")
+        raise TypeError("verified state is immutable")
 
     __setitem__ = _immutable
     __delitem__ = _immutable
@@ -40,13 +56,16 @@ class _FrozenDict(dict):
     def __deepcopy__(self, _memo: dict[int, Any]) -> _FrozenDict:
         return self
 
+    def __reduce__(self) -> tuple[type[_FrozenDict], tuple[dict[str, Any]]]:
+        return _FrozenDict, (dict(self),)
+
 
 class _FrozenList(list):
     """JSON-serializable list that rejects mutation after construction."""
 
     @staticmethod
     def _immutable(*_args: Any, **_kwargs: Any) -> None:
-        raise TypeError("source metadata is immutable")
+        raise TypeError("verified state is immutable")
 
     __setitem__ = _immutable
     __delitem__ = _immutable
@@ -63,6 +82,9 @@ class _FrozenList(list):
 
     def __deepcopy__(self, _memo: dict[int, Any]) -> _FrozenList:
         return self
+
+    def __reduce__(self) -> tuple[type[_FrozenList], tuple[list[Any]]]:
+        return _FrozenList, (list(self),)
 
 
 def _freeze_json(value: Any) -> Any:
@@ -106,6 +128,11 @@ def stable_hash_parts(*values: Any, length: int = 24) -> str:
         allow_nan=False,
     )
     return stable_hash(canonical, length=length)
+
+
+def _validate_source_field_length(value: str, *, label: str, maximum: int) -> None:
+    if len(value) > maximum:
+        raise ValueError(f"{label} exceeds {maximum} characters")
 
 
 def utc_now() -> str:
@@ -167,16 +194,32 @@ class SourceRecord:
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not self.id:
             raise TypeError("source record id must be a non-empty string")
+        _validate_source_field_length(
+            self.id,
+            label="source record id",
+            maximum=MAX_SOURCE_ID_CHARS,
+        )
         if isinstance(self.sequence, bool) or not isinstance(self.sequence, int):
             raise TypeError("source sequence must be an integer")
         if self.sequence < 0:
             raise ValueError("source sequence cannot be negative")
         if not isinstance(self.role, str) or not self.role.strip():
             raise TypeError("source role must be a non-empty string")
+        _validate_source_field_length(
+            self.role,
+            label="source role",
+            maximum=MAX_SOURCE_ROLE_CHARS,
+        )
         if not isinstance(self.content, str):
             raise TypeError("source content must be a string")
         if self.timestamp is not None and not isinstance(self.timestamp, str):
             raise TypeError("source timestamp must be a string or null")
+        if self.timestamp is not None:
+            _validate_source_field_length(
+                self.timestamp,
+                label="source timestamp",
+                maximum=MAX_SOURCE_TIMESTAMP_CHARS,
+            )
         if not isinstance(self.metadata, dict):
             raise TypeError("source metadata must be an object")
         object.__setattr__(self, "metadata", _freeze_json(self.metadata))
@@ -208,6 +251,24 @@ class SourceRecord:
     ) -> SourceRecord:
         if id is not None and (not isinstance(id, str) or not id):
             raise ValueError("source id must be null or a non-empty string")
+        if id is not None:
+            _validate_source_field_length(
+                id,
+                label="source id",
+                maximum=MAX_SOURCE_ID_CHARS,
+            )
+        if isinstance(role, str):
+            _validate_source_field_length(
+                role,
+                label="source role",
+                maximum=MAX_SOURCE_ROLE_CHARS,
+            )
+        if isinstance(timestamp, str):
+            _validate_source_field_length(
+                timestamp,
+                label="source timestamp",
+                maximum=MAX_SOURCE_TIMESTAMP_CHARS,
+            )
         metadata_value = {} if metadata is None else copy.deepcopy(metadata)
         generated_hash = stable_hash_parts(
             sequence,
@@ -298,6 +359,19 @@ class SourceRecord:
         )
 
 
+def source_is_untrusted_historical(source: SourceRecord) -> bool:
+    """Return whether a connector explicitly marked assistant/tool state untrusted.
+
+    Absence of the marker intentionally preserves the standalone API's
+    historical authority behavior. Only the optional connector writes it.
+    """
+
+    return (
+        source.role.strip().casefold() in {"assistant", "tool", "function"}
+        and source.metadata.get(AUTHENTICATED_AUTHORITY_METADATA_KEY) is False
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ProvenanceSpan:
     """A byte-independent character span anchored to immutable source text."""
@@ -309,6 +383,21 @@ class ProvenanceSpan:
     quote_sha256: str = ""
 
     def __post_init__(self) -> None:
+        if not isinstance(self.source_id, str) or not self.source_id:
+            raise TypeError("provenance source_id must be a non-empty string")
+        _validate_source_field_length(
+            self.source_id,
+            label="provenance source_id",
+            maximum=MAX_SOURCE_ID_CHARS,
+        )
+        if isinstance(self.start, bool) or not isinstance(self.start, int):
+            raise TypeError("provenance start must be an integer")
+        if isinstance(self.end, bool) or not isinstance(self.end, int):
+            raise TypeError("provenance end must be an integer")
+        if not isinstance(self.quote, str):
+            raise TypeError("provenance quote must be a string")
+        if not isinstance(self.quote_sha256, str):
+            raise TypeError("provenance quote_sha256 must be a string")
         if self.start < 0 or self.end < self.start:
             raise ValueError("invalid provenance offsets")
         digest = hashlib.sha256(self.quote.encode("utf-8")).hexdigest()
@@ -378,8 +467,9 @@ class ProvenanceSpan:
 
 
 _ATOM_PREFIX = re.compile(
-    r"^\s*(?:(?:[-*+]|\d+[.)])\s+|[A-Za-z_ -]+:\s*)?$"
+    r"^\s*(?:(?:[-*+]|\d+[.)])\s+|[A-Za-z_ -]+?\s*:\s*)?$"
 )
+_LINE_BREAK = re.compile(r"\r\n|[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]")
 
 
 def provenance_span_is_atomic(source: SourceRecord, span: ProvenanceSpan) -> bool:
@@ -387,10 +477,17 @@ def provenance_span_is_atomic(source: SourceRecord, span: ProvenanceSpan) -> boo
 
     if span.source_id != source.id or span.end > len(source.content):
         return False
-    line_start = source.content.rfind("\n", 0, span.start) + 1
-    line_end = source.content.find("\n", span.end)
-    if line_end < 0:
-        line_end = len(source.content)
+    if _LINE_BREAK.search(source.content, span.start, span.end):
+        return False
+    line_start = 0
+    for boundary in _LINE_BREAK.finditer(source.content, 0, span.start):
+        line_start = boundary.end()
+    next_boundary = _LINE_BREAK.search(source.content, span.end)
+    line_end = (
+        next_boundary.start()
+        if next_boundary is not None
+        else len(source.content)
+    )
     left = source.content[line_start:span.start]
     right = source.content[span.end:line_end]
     left_trimmed = left.rstrip()
@@ -423,6 +520,12 @@ class MemoryItem:
     supersedes: list[str] = field(default_factory=list)
     conflicts_with: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    _sealed: bool = field(default=False, init=False, repr=False, compare=False)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if getattr(self, "_sealed", False):
+            raise TypeError("verified memory item is immutable")
+        object.__setattr__(self, name, value)
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not self.id:
@@ -461,6 +564,19 @@ class MemoryItem:
         self.provenance = list(self.provenance)
         self.metadata = copy.deepcopy(self.metadata)
 
+    def seal(self) -> MemoryItem:
+        """Recursively freeze this item after it has passed resolution and verification."""
+
+        if self._sealed:
+            return self
+        object.__setattr__(self, "provenance", _FrozenList(self.provenance))
+        object.__setattr__(self, "tags", _FrozenList(self.tags))
+        object.__setattr__(self, "supersedes", _FrozenList(self.supersedes))
+        object.__setattr__(self, "conflicts_with", _FrozenList(self.conflicts_with))
+        object.__setattr__(self, "metadata", _freeze_json(self.metadata))
+        object.__setattr__(self, "_sealed", True)
+        return self
+
     @property
     def protected(self) -> bool:
         return self.kind in PROTECTED_KINDS or "resolves-protected" in self.tags
@@ -485,7 +601,7 @@ class MemoryItem:
             "tags": list(self.tags),
             "supersedes": list(self.supersedes),
             "conflicts_with": list(self.conflicts_with),
-            "metadata": copy.deepcopy(self.metadata),
+            "metadata": _thaw_json(self.metadata),
             "provenance": [span.to_dict() for span in self.provenance],
         }
 
@@ -578,6 +694,68 @@ class MemoryItem:
         return item
 
 
+_LABELED_WRAPPER_PREFIX = re.compile(
+    r"^\s*(?:(?:[A-Za-z][A-Za-z0-9_ -]{0,127}\s*:\s*)?"
+    r"(?:(?:[-*+]|\d+[.)])\s+)?)$"
+)
+
+
+def memory_item_covers_candidate(
+    candidate: MemoryItem,
+    retained: MemoryItem,
+) -> bool:
+    """Return whether a retained atom satisfies one extracted candidate.
+
+    Besides the historical exact-text/span relation, an explicit ASCII label
+    or bullet may wrap an otherwise identical ordinary atom. This lets a
+    domain-label extractor retain the clean value without a built-in recovery
+    pass reintroducing the label as a second claim.
+    """
+
+    if candidate.kind != retained.kind:
+        return False
+    candidate_spans = {
+        (span.source_id, span.start, span.end)
+        for span in candidate.provenance
+    }
+    retained_spans = {
+        (span.source_id, span.start, span.end)
+        for span in retained.provenance
+    }
+    if (
+        candidate.text.strip() == retained.text.strip()
+        and candidate_spans <= retained_spans
+    ):
+        return True
+    if (
+        candidate.exact
+        or retained.exact
+        or len(candidate.provenance) != 1
+        or len(retained.provenance) != 1
+    ):
+        return False
+    outer = candidate.provenance[0]
+    inner = retained.provenance[0]
+    if (
+        outer.source_id != inner.source_id
+        or outer.start > inner.start
+        or outer.end < inner.end
+        or candidate.text.strip() != outer.quote.strip()
+        or retained.text.strip() != inner.quote.strip()
+    ):
+        return False
+    relative_start = inner.start - outer.start
+    relative_end = relative_start + len(inner.quote)
+    if outer.quote[relative_start:relative_end] != inner.quote:
+        return False
+    prefix = outer.quote[:relative_start]
+    suffix = outer.quote[relative_end:]
+    return (
+        _LABELED_WRAPPER_PREFIX.fullmatch(prefix) is not None
+        and not suffix.strip()
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class VerificationIssue:
     code: str
@@ -596,7 +774,7 @@ class VerificationIssue:
         }
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class VerificationReport:
     passed: bool
     issues: list[VerificationIssue] = field(default_factory=list)
@@ -605,6 +783,9 @@ class VerificationReport:
     provenance_valid: int = 0
     provenance_total: int = 0
     recovered_items: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "issues", _FrozenList(self.issues))
 
     @property
     def protected_recall(self) -> float:
@@ -649,8 +830,19 @@ class CompilationPolicy:
     verify: bool = True
     recover_missed_protected: bool = True
     chars_per_token: float = 4.0
+    fail_on_primary_extractor_error: bool = False
 
     def __post_init__(self) -> None:
+        for name in (
+            "fail_on_budget_overflow",
+            "include_superseded",
+            "include_discarded",
+            "verify",
+            "recover_missed_protected",
+            "fail_on_primary_extractor_error",
+        ):
+            if not isinstance(getattr(self, name), bool):
+                raise TypeError(f"{name} must be a boolean")
         if isinstance(self.token_budget, bool) or not isinstance(self.token_budget, int):
             raise TypeError("token_budget must be an integer")
         if self.token_budget <= 0:
@@ -673,7 +865,7 @@ class CompilationPolicy:
             raise ValueError("chars_per_token must be positive")
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class CompressionStats:
     source_chars: int
     active_chars: int
@@ -697,6 +889,129 @@ class CompressionStats:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class CompilationMetrics:
+    """Bounded operational telemetry for one completed compilation."""
+
+    source_records: int
+    primary_extracted_items: int
+    recovery_candidate_items: int
+    certification_candidate_items: int
+    recovery_added_items: int
+    resolved_items: int
+    selected_items: int
+    active_items: int
+    superseded_items: int
+    discarded_items: int
+    conflicting_items: int
+    detected_conflicts: int
+    protected_items: int
+    protected_selected_items: int
+    protected_prompt_tokens: int
+    protected_budget_overflow: int
+    verification_error_count: int
+    verification_warning_count: int
+    verification_info_count: int
+    compile_duration_seconds: float
+
+    def __post_init__(self) -> None:
+        integer_fields = (
+            "source_records",
+            "primary_extracted_items",
+            "recovery_candidate_items",
+            "certification_candidate_items",
+            "recovery_added_items",
+            "resolved_items",
+            "selected_items",
+            "active_items",
+            "superseded_items",
+            "discarded_items",
+            "conflicting_items",
+            "detected_conflicts",
+            "protected_items",
+            "protected_selected_items",
+            "protected_prompt_tokens",
+            "protected_budget_overflow",
+            "verification_error_count",
+            "verification_warning_count",
+            "verification_info_count",
+        )
+        for name in integer_fields:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer")
+            if value < 0:
+                raise ValueError(f"{name} cannot be negative")
+        duration = self.compile_duration_seconds
+        try:
+            finite_duration = (
+                not isinstance(duration, bool)
+                and isinstance(duration, (int, float))
+                and math.isfinite(float(duration))
+                and duration >= 0
+            )
+        except OverflowError:
+            finite_duration = False
+        if not finite_duration:
+            raise ValueError(
+                "compile_duration_seconds must be finite and non-negative"
+            )
+        if (
+            self.active_items
+            + self.superseded_items
+            + self.discarded_items
+            + self.conflicting_items
+            != self.resolved_items
+        ):
+            raise ValueError("status item counts must sum to resolved_items")
+        if self.selected_items > self.resolved_items:
+            raise ValueError("selected_items cannot exceed resolved_items")
+        if self.recovery_added_items > self.resolved_items:
+            raise ValueError("recovery_added_items cannot exceed resolved_items")
+        if self.certification_candidate_items > self.recovery_candidate_items:
+            raise ValueError(
+                "certification_candidate_items cannot exceed "
+                "recovery_candidate_items"
+            )
+        if self.protected_items > self.resolved_items:
+            raise ValueError("protected_items cannot exceed resolved_items")
+        if self.protected_selected_items > min(
+            self.protected_items,
+            self.selected_items,
+        ):
+            raise ValueError(
+                "protected_selected_items exceeds protected or selected items"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": COMPILATION_METRICS_SCHEMA,
+            "source_records": self.source_records,
+            "primary_extracted_items": self.primary_extracted_items,
+            "recovery_candidate_items": self.recovery_candidate_items,
+            "certification_candidate_items": self.certification_candidate_items,
+            "recovery_added_items": self.recovery_added_items,
+            "resolved_items": self.resolved_items,
+            "selected_items": self.selected_items,
+            "active_items": self.active_items,
+            "superseded_items": self.superseded_items,
+            "discarded_items": self.discarded_items,
+            "conflicting_items": self.conflicting_items,
+            "detected_conflicts": self.detected_conflicts,
+            "protected_items": self.protected_items,
+            "protected_selected_items": self.protected_selected_items,
+            "protected_prompt_tokens": self.protected_prompt_tokens,
+            "protected_budget_overflow": self.protected_budget_overflow,
+            "verification_error_count": self.verification_error_count,
+            "verification_warning_count": self.verification_warning_count,
+            "verification_info_count": self.verification_info_count,
+            "compile_duration_seconds": round(
+                float(self.compile_duration_seconds),
+                6,
+            ),
+        }
+
+
 @dataclass(slots=True)
 class CompiledMemory:
     schema_version: str
@@ -708,13 +1023,74 @@ class CompiledMemory:
     verification: VerificationReport
     compression: CompressionStats
     compiler_metadata: dict[str, Any] = field(default_factory=dict)
+    _snapshot_sha256: str = field(default="", init=False, repr=False, compare=False)
+    _sealed: bool = field(default=False, init=False, repr=False, compare=False)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if getattr(self, "_sealed", False):
+            raise TypeError("compiled memory is immutable")
+        object.__setattr__(self, name, value)
+
+    def _snapshot_payload(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "compiled_at": self.compiled_at,
+            "source_digest": self.source_digest,
+            "source_count": self.source_count,
+            "items": [item.to_dict() for item in self.items],
+            "selected_item_ids": list(self.selected_item_ids),
+            "verification": self.verification.to_dict(),
+            "compression": self.compression.to_dict(),
+            "compiler_metadata": _thaw_json(self.compiler_metadata),
+        }
+
+    def _compute_snapshot_sha256(self) -> str:
+        canonical = json.dumps(
+            self._snapshot_payload(),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def _assert_snapshot_integrity(self) -> None:
+        if self._sealed and self._compute_snapshot_sha256() != self._snapshot_sha256:
+            raise ValueError("compiled memory changed after verification")
+
+    def seal(self) -> CompiledMemory:
+        """Freeze every verified field and bind renderers to the final snapshot."""
+
+        if self._sealed:
+            self._assert_snapshot_integrity()
+            return self
+        object.__setattr__(
+            self,
+            "items",
+            _FrozenList(item.seal() for item in self.items),
+        )
+        object.__setattr__(
+            self,
+            "selected_item_ids",
+            _FrozenList(self.selected_item_ids),
+        )
+        object.__setattr__(
+            self,
+            "compiler_metadata",
+            _freeze_json(self.compiler_metadata),
+        )
+        object.__setattr__(self, "_snapshot_sha256", self._compute_snapshot_sha256())
+        object.__setattr__(self, "_sealed", True)
+        return self
 
     @property
     def active_items(self) -> list[MemoryItem]:
+        self._assert_snapshot_integrity()
         selected = set(self.selected_item_ids)
         return [item for item in self.items if item.id in selected]
 
     def by_kind(self, *, selected_only: bool = True) -> dict[MemoryKind, list[MemoryItem]]:
+        self._assert_snapshot_integrity()
         grouped: dict[MemoryKind, list[MemoryItem]] = {kind: [] for kind in MemoryKind}
         items = self.active_items if selected_only else self.items
         for item in items:
@@ -722,6 +1098,7 @@ class CompiledMemory:
         return {kind: values for kind, values in grouped.items() if values}
 
     def to_dict(self, *, include_all_items: bool = True) -> dict[str, Any]:
+        self._assert_snapshot_integrity()
         chosen = self.items if include_all_items else self.active_items
         payload = {
             "schema_version": self.schema_version,
@@ -733,7 +1110,7 @@ class CompiledMemory:
             "selected_item_ids": list(self.selected_item_ids),
             "verification": self.verification.to_dict(),
             "compression": self.compression.to_dict(),
-            "compiler_metadata": copy.deepcopy(self.compiler_metadata),
+            "compiler_metadata": _thaw_json(self.compiler_metadata),
         }
         canonical = json.dumps(
             payload,
@@ -763,6 +1140,7 @@ class CompiledMemory:
         if not self.verification.passed and not allow_unverified:
             raise ValueError("refusing to render active context from unverified memory")
 
+        self._assert_snapshot_integrity()
         return render_typed_memory(self.items, self.selected_item_ids)
 
 
@@ -781,7 +1159,10 @@ def render_prompt_item(item: MemoryItem) -> str:
     }
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     encoded = (
-        encoded.replace("<", "\\u003c")
+        encoded.replace("\u0085", "\\u0085")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+        .replace("<", "\\u003c")
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")
     )

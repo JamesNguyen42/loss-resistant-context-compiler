@@ -3,15 +3,18 @@ from __future__ import annotations
 import pytest
 
 from benchmarks.lrcbench import (
-    CANDIDATE_SCHEMA,
+    LEGACY_ADAPTER_CANDIDATE_SCHEMA,
     BenchmarkConfig,
     CandidateOutput,
+    CandidateProducerMetadata,
     ExternalBaselineError,
     OutputClaim,
     OutputSpan,
+    _canonical_sha256,
     _claim_matches,
     _claim_semantically_supported,
     _compiler_output,
+    candidate_document,
     dataset_digest,
     decode_external_candidate,
     estimate_tokens,
@@ -30,6 +33,19 @@ def _fixture():
     )
     case = generate_histories(config)[0]
     return config, case
+
+
+def _candidate_producer() -> CandidateProducerMetadata:
+    return CandidateProducerMetadata(
+        adapter_revision="test-adapter",
+        environment_id="test-environment",
+        model_id="test-model",
+        model_context_length=4096,
+        tokenizer_id="test-tokenizer",
+        inference_concurrency=1,
+        retry_count=0,
+        model_service_cost_usd=0.0,
+    )
 
 
 def _claim(atom, *, text: str | None = None, kind: str | None = None) -> OutputClaim:
@@ -228,12 +244,13 @@ def test_external_interchange_rejects_active_token_override_and_overflow() -> No
         "rendered_text": "x" * 600,
         "claims": [],
     }
-    payload = {
-        "schema": CANDIDATE_SCHEMA,
-        "dataset_sha256": digest,
-        "system": "external-test",
-        "cases": [case_payload],
-    }
+    producer = _candidate_producer()
+    payload = candidate_document(
+        dataset_sha256=digest,
+        system="external-test",
+        cases=[case_payload],
+        producer=producer,
+    )
 
     with pytest.raises(ExternalBaselineError, match="exceeding the matched budget"):
         decode_external_candidate(
@@ -243,7 +260,48 @@ def test_external_interchange_rejects_active_token_override_and_overflow() -> No
             token_budget=config.token_budget,
         )
 
+    atom = cases[0].gold_atoms[0]
+    sidecar_case = {
+        "case_id": cases[0].id,
+        "rendered_text": atom.text,
+        "claims": [
+            {
+                "text": atom.text,
+                "kind": atom.kind,
+                "provenance": [
+                    {
+                        "source_id": atom.source_id,
+                        "start": atom.start,
+                        "end": atom.end,
+                        "quote": atom.text,
+                    }
+                ],
+            }
+            for _ in range(32)
+        ],
+    }
+    assert estimate_tokens(sidecar_case["rendered_text"]) < config.token_budget
+    sidecar_payload = candidate_document(
+        dataset_sha256=digest,
+        system="external-test",
+        cases=[sidecar_case],
+        producer=producer,
+    )
+    with pytest.raises(ExternalBaselineError, match="exceeding the matched budget"):
+        decode_external_candidate(
+            sidecar_payload,
+            cases=cases,
+            dataset_sha256=digest,
+            token_budget=config.token_budget,
+        )
+
     case_payload["active_tokens"] = 1
+    payload = candidate_document(
+        dataset_sha256=digest,
+        system="external-test",
+        cases=[case_payload],
+        producer=producer,
+    )
     with pytest.raises(ExternalBaselineError, match="unknown fields: active_tokens"):
         decode_external_candidate(
             payload,
@@ -251,3 +309,83 @@ def test_external_interchange_rejects_active_token_override_and_overflow() -> No
             dataset_sha256=digest,
             token_budget=config.token_budget,
         )
+
+
+def test_candidate_envelope_binds_producer_and_supports_runner_legacy_input() -> None:
+    config, case = _fixture()
+    cases = (case,)
+    digest = dataset_digest(cases, config)
+    producer = _candidate_producer()
+    case_payload = {
+        "case_id": case.id,
+        "rendered_text": "",
+        "claims": [],
+    }
+    payload = candidate_document(
+        dataset_sha256=digest,
+        system="external-test",
+        cases=[case_payload],
+        producer=producer,
+    )
+
+    system, decoded = decode_external_candidate(
+        payload,
+        cases=cases,
+        dataset_sha256=digest,
+        token_budget=config.token_budget,
+        expected_producer=producer,
+    )
+
+    assert system == "external-test"
+    assert set(decoded) == {case.id}
+    tampered = {
+        **payload,
+        "producer": {
+            **payload["producer"],
+            "adapter_revision": "tampered-adapter",
+        },
+    }
+    with pytest.raises(
+        ExternalBaselineError,
+        match="candidate_payload_sha256 mismatch",
+    ):
+        decode_external_candidate(
+            tampered,
+            cases=cases,
+            dataset_sha256=digest,
+            token_budget=config.token_budget,
+        )
+
+    tampered.pop("candidate_payload_sha256")
+    tampered["candidate_payload_sha256"] = _canonical_sha256(tampered)
+    with pytest.raises(ExternalBaselineError, match="registered runner identity"):
+        decode_external_candidate(
+            tampered,
+            cases=cases,
+            dataset_sha256=digest,
+            token_budget=config.token_budget,
+            expected_producer=producer,
+        )
+
+    legacy_payload = {
+        "schema": LEGACY_ADAPTER_CANDIDATE_SCHEMA,
+        "dataset_sha256": digest,
+        "system": "external-test",
+        "cases": [case_payload],
+    }
+    with pytest.raises(ExternalBaselineError, match="schema must be"):
+        decode_external_candidate(
+            legacy_payload,
+            cases=cases,
+            dataset_sha256=digest,
+            token_budget=config.token_budget,
+        )
+    legacy_system, _legacy_decoded = decode_external_candidate(
+        legacy_payload,
+        cases=cases,
+        dataset_sha256=digest,
+        token_budget=config.token_budget,
+        expected_producer=producer,
+        allow_legacy_adapter=True,
+    )
+    assert legacy_system == "external-test"

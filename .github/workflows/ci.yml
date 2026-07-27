@@ -18,10 +18,10 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -31,40 +31,183 @@ jobs:
       - name: Run the complete test suite
         run: python -m pytest -q
       - name: Run static checks
-        run: python -m ruff check src tests benchmarks
+        run: >-
+          python -m ruff check
+          src tests benchmarks scripts conformance _ctxc_build_backend.py
+      - name: Compile all Python sources
+        run: >-
+          python -m compileall -q
+          src benchmarks tests scripts conformance _ctxc_build_backend.py
+
+  platform-smoke:
+    name: release and filesystem smoke (${{ matrix.os }}, Python 3.13)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONHASHSEED: "0"
+      SOURCE_DATE_EPOCH: "1700000000"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install development package
+        run: python -m pip install -e ".[dev]"
+      - name: Run cross-platform filesystem regressions
+        run: >-
+          python -m pytest -q
+          tests/test_archive_locking.py
+          tests/test_archive_file_safety.py
+          tests/test_compile_deadline.py
+          tests/test_deterministic_sdist.py
+          tests/test_external_runner.py
+          tests/test_local_qwen.py
+          tests/test_parent_directory_safety.py
+          tests/test_release_install_smoke.py
+      - name: Build wheel and source distribution
+        run: |
+          python -m pip wheel . --no-deps --wheel-dir dist
+          python -m _ctxc_build_backend --sdist-dir dist
+      - name: Install and smoke-test wheel and sdist separately
+        run: python scripts/release_install_smoke.py --dist-dir dist --schema-dir schemas
+
+  reproducibility:
+    name: exact repeated release builds
+    needs: [unit-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONHASHSEED: "0"
+      SOURCE_DATE_EPOCH: "1700000000"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source-first
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source-second
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: source-first/pyproject.toml
+      - name: Provision and record the same-job release toolchain
+        run: |
+          python -m pip install --disable-pip-version-check "pip==25.0.1" "setuptools==83.0.0" "wheel==0.47.0"
+          python -VV > release-python.txt
+          python -m pip freeze --all > release-build-toolchain.txt
+      - name: Build the first clean candidate
+        working-directory: source-first
+        run: |
+          python -m pip wheel . --no-build-isolation --no-deps --wheel-dir ../dist-first
+          python -m _ctxc_build_backend --sdist-dir ../dist-first
+      - name: Build the second clean candidate
+        working-directory: source-second
+        run: |
+          python -m pip wheel . --no-build-isolation --no-deps --wheel-dir ../dist-second
+          python -m _ctxc_build_backend --sdist-dir ../dist-second
+      - name: Require byte-identical wheel and sdist outputs
+        working-directory: source-first
+        env:
+          PYTHONPATH: src
+        run: >-
+          python -m scripts.release_reproducibility
+          --first-dist ../dist-first
+          --second-dist ../dist-second
+          --json-out ../release-reproducibility.json
+      - name: Retain repeated-build evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exact-release-builds-python-3.13
+          path: |
+            dist-first/*.whl
+            dist-first/*.tar.gz
+            dist-second/*.whl
+            dist-second/*.tar.gz
+            release-reproducibility.json
+            release-python.txt
+            release-build-toolchain.txt
+          if-no-files-found: error
 
   benchmark:
     name: LRCBench (24 histories)
-    needs: unit-tests
+    needs: [unit-tests, platform-smoke, reproducibility]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      PYTHONHASHSEED: "0"
+      SOURCE_DATE_EPOCH: "1700000000"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: pyproject.toml
       - name: Install package
-        run: python -m pip install -e .
-      - name: Build wheel and verify packaged schemas
+        run: python -m pip install -e ".[dev]"
+      - name: Build release archives and verify packaged contents
         run: |
           python -m pip wheel . --no-deps --wheel-dir dist
-          python -c "import glob, zipfile; p=glob.glob('dist/*.whl')[0]; names=zipfile.ZipFile(p).namelist(); assert sum(name.endswith('.schema.json') for name in names) == 3, names"
+          python -m _ctxc_build_backend --sdist-dir dist
+          python -c "import glob, os, pathlib, tarfile, zipfile; w=glob.glob('dist/*.whl'); s=glob.glob('dist/*.tar.gz'); assert len(w)==len(s)==1, (w,s); assert os.path.basename(w[0]).startswith('loss_resistant_context_compiler-'); expected={p.name for p in pathlib.Path('schemas').glob('*.schema.json')}; installed={pathlib.Path(n).name for n in zipfile.ZipFile(w[0]).namelist() if n.endswith('.schema.json')}; assert installed==expected, (installed,expected); sn=tarfile.open(s[0]).getnames(); required=('_ctxc_build_backend.py','CHANGELOG.md','CONTRIBUTING.md','SECURITY.md','SUPPORT.md','docs/RELEASE_POLICY.md','docs/RELEASE_CHECKLIST.md','docs/SUPPLY_CHAIN.md','benchmarks/lrcbench.py','benchmarks/natural_history.py','benchmarks/compatibility/acon-diagnostic-failed-manifest.json','conformance/run_connector_conformance.py','conformance/fixtures/golden-success.jsonl','conformance/fixtures/golden-negative.jsonl','scripts/release_install_smoke.py','scripts/release_artifact_manifest.py'); assert all(any(n.endswith('/'+r) for n in sn) for r in required), sn; assert sum('/benchmarks/schemas/natural-history/' in n and n.endswith('.schema.json') for n in sn)==6, sn; assert sum('/benchmarks/data/natural_history/' in n and n.endswith('.json') for n in sn)==7, sn"
+      - name: Retain and verify release archive checksums
+        run: |
+          python -m scripts.release_artifact_manifest create --dist-dir dist --revision "${{ github.sha }}" --manifest-out dist/release-artifacts.json --checksums-out dist/SHA256SUMS
+          python -m scripts.release_artifact_manifest verify --dist-dir dist --manifest dist/release-artifacts.json --checksums dist/SHA256SUMS
+      - name: Install wheel and sdist in clean environments
+        run: python scripts/release_install_smoke.py --dist-dir dist --schema-dir schemas
       - name: Validate external candidate interchange
         run: python -m benchmarks --self-test
+      - name: Verify external protocol readiness artifact
+        run: >-
+          python -m benchmarks.external_protocol
+          --verify benchmarks/protocols/external-comparison-v1.json
+      - name: Validate connector schemas and transcripts
+        run: python conformance/run_connector_conformance.py
+      - name: Validate natural-history contract fixtures
+        run: python -m benchmarks.natural_history
+      - name: Replay frozen diagnostic evidence offline
+        run: |
+          python -m benchmarks --verify-report docs/results/lrcbench-local.json
+          python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json
+          python -m benchmarks.qwen_phrase_eval --verify-report docs/results/qwen-novel-english-phrases-v1.json
+          python -m benchmarks.qwen_literal_ablation --verify-report docs/results/qwen-literal-offset-ablation-v1.json
+          python -m benchmarks.qwen_paired_eval --verify-report docs/results/qwen-heldout-paired-extractors-v1.json
       - name: Run the fail-closed 24-history certificate
         run: >-
           python -m benchmarks
           --histories 24
           --json-out lrcbench-24.json
           --include-histories
+      - name: Run the bounded compiler performance gate
+        run: >-
+          python -m benchmarks.performance_gate
+          --check
+          --json-out ctxc-performance.json
       - name: Upload auditable benchmark evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: lrcbench-24-python-3.11
-          path: lrcbench-24.json
+          path: |
+            lrcbench-24.json
+            ctxc-performance.json
+            dist/*.whl
+            dist/*.tar.gz
+            dist/SHA256SUMS
+            dist/release-artifacts.json
           if-no-files-found: warn

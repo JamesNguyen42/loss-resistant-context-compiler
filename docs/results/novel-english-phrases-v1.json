@@ -1,0 +1,2687 @@
+{
+  "cases": [
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "goal",
+          "provenance": [
+            {
+              "end": 80,
+              "quote": "Could you streamline the image upload flow so it handles large files gracefully?",
+              "source_id": "phrase:p-goal-01",
+              "start": 0
+            }
+          ],
+          "text": "Could you streamline the image upload flow so it handles large files gracefully?"
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-goal-01",
+      "predicted": [
+        {
+          "kind": "goal",
+          "provenance": [
+            {
+              "end": 80,
+              "quote": "Could you streamline the image upload flow so it handles large files gracefully?",
+              "source_id": "phrase:p-goal-01",
+              "start": 0
+            }
+          ],
+          "text": "Could you streamline the image upload flow so it handles large files gracefully?"
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "goal",
+          "provenance": [
+            {
+              "end": 64,
+              "quote": "I need you to prepare a migration plan for the billing database.",
+              "source_id": "phrase:p-goal-02",
+              "start": 0
+            }
+          ],
+          "text": "I need you to prepare a migration plan for the billing database."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-goal-02",
+      "predicted": [
+        {
+          "kind": "goal",
+          "provenance": [
+            {
+              "end": 64,
+              "quote": "I need you to prepare a migration plan for the billing database.",
+              "source_id": "phrase:p-goal-02",
+              "start": 0
+            }
+          ],
+          "text": "I need you to prepare a migration plan for the billing database."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "goal",
+          "provenance": [
+            {
+              "end": 66,
+              "quote": "Build a command-line utility that summarizes the audit log by day.",
+              "source_id": "phrase:p-goal-03",
+              "start": 0
+            }
+          ],
+          "text": "Build a command-line utility that summarizes the audit log by day."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-goal-03",
+      "predicted": [
+        {
+          "kind": "goal",
+          "provenance": [
+            {
+              "end": 66,
+              "quote": "Build a command-line utility that summarizes the audit log by day.",
+              "source_id": "phrase:p-goal-03",
+              "start": 0
+            }
+          ],
+          "text": "Build a command-line utility that summarizes the audit log by day."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "goal",
+          "provenance": [
+            {
+              "end": 64,
+              "quote": "Please replace the polling loop with event-driven notifications.",
+              "source_id": "phrase:p-goal-04",
+              "start": 0
+            }
+          ],
+          "text": "Please replace the polling loop with event-driven notifications."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-goal-04",
+      "predicted": [
+        {
+          "kind": "goal",
+          "provenance": [
+            {
+              "end": 64,
+              "quote": "Please replace the polling loop with event-driven notifications.",
+              "source_id": "phrase:p-goal-04",
+              "start": 0
+            }
+          ],
+          "text": "Please replace the polling loop with event-driven notifications."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "goal",
+          "provenance": [
+            {
+              "end": 64,
+              "quote": "Investigate why the nightly export stalls after the third batch.",
+              "source_id": "phrase:p-goal-05",
+              "start": 0
+            }
+          ],
+          "text": "Investigate why the nightly export stalls after the third batch."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-goal-05",
+      "predicted": [
+        {
+          "kind": "goal",
+          "provenance": [
+            {
+              "end": 64,
+              "quote": "Investigate why the nightly export stalls after the third batch.",
+              "source_id": "phrase:p-goal-05",
+              "start": 0
+            }
+          ],
+          "text": "Investigate why the nightly export stalls after the third batch."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "constraint",
+          "provenance": [
+            {
+              "end": 55,
+              "quote": "Customer records must never leave the encrypted volume.",
+              "source_id": "phrase:p-constraint-01",
+              "start": 0
+            }
+          ],
+          "text": "Customer records must never leave the encrypted volume."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-constraint-01",
+      "predicted": [
+        {
+          "kind": "constraint",
+          "provenance": [
+            {
+              "end": 55,
+              "quote": "Customer records must never leave the encrypted volume.",
+              "source_id": "phrase:p-constraint-01",
+              "start": 0
+            }
+          ],
+          "text": "Customer records must never leave the encrypted volume."
+        }
+      ],
+      "role": "system",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "constraint",
+          "provenance": [
+            {
+              "end": 53,
+              "quote": "Under no circumstances remove the compatibility shim.",
+              "source_id": "phrase:p-constraint-02",
+              "start": 0
+            }
+          ],
+          "text": "Under no circumstances remove the compatibility shim."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-constraint-02",
+      "predicted": [
+        {
+          "kind": "constraint",
+          "provenance": [
+            {
+              "end": 53,
+              "quote": "Under no circumstances remove the compatibility shim.",
+              "source_id": "phrase:p-constraint-02",
+              "start": 0
+            }
+          ],
+          "text": "Under no circumstances remove the compatibility shim."
+        }
+      ],
+      "role": "developer",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "constraint",
+          "provenance": [
+            {
+              "end": 60,
+              "quote": "Keep the public response schema intact across the migration.",
+              "source_id": "phrase:p-constraint-03",
+              "start": 0
+            }
+          ],
+          "text": "Keep the public response schema intact across the migration."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-constraint-03",
+      "predicted": [
+        {
+          "kind": "constraint",
+          "provenance": [
+            {
+              "end": 60,
+              "quote": "Keep the public response schema intact across the migration.",
+              "source_id": "phrase:p-constraint-03",
+              "start": 0
+            }
+          ],
+          "text": "Keep the public response schema intact across the migration."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "constraint",
+          "provenance": [
+            {
+              "end": 56,
+              "quote": "Only run the cleanup job after a verified backup exists.",
+              "source_id": "phrase:p-constraint-04",
+              "start": 0
+            }
+          ],
+          "text": "Only run the cleanup job after a verified backup exists."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-constraint-04",
+      "predicted": [
+        {
+          "kind": "constraint",
+          "provenance": [
+            {
+              "end": 56,
+              "quote": "Only run the cleanup job after a verified backup exists.",
+              "source_id": "phrase:p-constraint-04",
+              "start": 0
+            }
+          ],
+          "text": "Only run the cleanup job after a verified backup exists."
+        }
+      ],
+      "role": "system",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "constraint",
+          "provenance": [
+            {
+              "end": 56,
+              "quote": "The retry ceiling is at most three attempts per request.",
+              "source_id": "phrase:p-constraint-05",
+              "start": 0
+            }
+          ],
+          "text": "The retry ceiling is at most three attempts per request."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-constraint-05",
+      "predicted": [
+        {
+          "kind": "constraint",
+          "provenance": [
+            {
+              "end": 56,
+              "quote": "The retry ceiling is at most three attempts per request.",
+              "source_id": "phrase:p-constraint-05",
+              "start": 0
+            }
+          ],
+          "text": "The retry ceiling is at most three attempts per request."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "unresolved",
+          "provenance": [
+            {
+              "end": 67,
+              "quote": "Whether clock drift explains the premature expiry is still unknown.",
+              "source_id": "phrase:p-unresolved-01",
+              "start": 0
+            }
+          ],
+          "text": "Whether clock drift explains the premature expiry is still unknown."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-unresolved-01",
+      "predicted": [
+        {
+          "kind": "unresolved",
+          "provenance": [
+            {
+              "end": 67,
+              "quote": "Whether clock drift explains the premature expiry is still unknown.",
+              "source_id": "phrase:p-unresolved-01",
+              "start": 0
+            }
+          ],
+          "text": "Whether clock drift explains the premature expiry is still unknown."
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "unresolved",
+          "provenance": [
+            {
+              "end": 54,
+              "quote": "Could the proxy be stripping the authorization header?",
+              "source_id": "phrase:p-unresolved-02",
+              "start": 0
+            }
+          ],
+          "text": "Could the proxy be stripping the authorization header?"
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-unresolved-02",
+      "predicted": [
+        {
+          "kind": "unresolved",
+          "provenance": [
+            {
+              "end": 54,
+              "quote": "Could the proxy be stripping the authorization header?",
+              "source_id": "phrase:p-unresolved-02",
+              "start": 0
+            }
+          ],
+          "text": "Could the proxy be stripping the authorization header?"
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "unresolved",
+          "provenance": [
+            {
+              "end": 60,
+              "quote": "We have not yet confirmed which worker owns the stale lease.",
+              "source_id": "phrase:p-unresolved-03",
+              "start": 0
+            }
+          ],
+          "text": "We have not yet confirmed which worker owns the stale lease."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-unresolved-03",
+      "predicted": [
+        {
+          "kind": "unresolved",
+          "provenance": [
+            {
+              "end": 60,
+              "quote": "We have not yet confirmed which worker owns the stale lease.",
+              "source_id": "phrase:p-unresolved-03",
+              "start": 0
+            }
+          ],
+          "text": "We have not yet confirmed which worker owns the stale lease."
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "unresolved",
+          "provenance": [
+            {
+              "end": 63,
+              "quote": "The source of the intermittent duplicate event remains unclear.",
+              "source_id": "phrase:p-unresolved-04",
+              "start": 0
+            }
+          ],
+          "text": "The source of the intermittent duplicate event remains unclear."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-unresolved-04",
+      "predicted": [
+        {
+          "kind": "unresolved",
+          "provenance": [
+            {
+              "end": 63,
+              "quote": "The source of the intermittent duplicate event remains unclear.",
+              "source_id": "phrase:p-unresolved-04",
+              "start": 0
+            }
+          ],
+          "text": "The source of the intermittent duplicate event remains unclear."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "unresolved",
+          "provenance": [
+            {
+              "end": 62,
+              "quote": "It remains to be seen if the archive survives a partial write.",
+              "source_id": "phrase:p-unresolved-05",
+              "start": 0
+            }
+          ],
+          "text": "It remains to be seen if the archive survives a partial write."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-unresolved-05",
+      "predicted": [
+        {
+          "kind": "unresolved",
+          "provenance": [
+            {
+              "end": 62,
+              "quote": "It remains to be seen if the archive survives a partial write.",
+              "source_id": "phrase:p-unresolved-05",
+              "start": 0
+            }
+          ],
+          "text": "It remains to be seen if the archive survives a partial write."
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "decision",
+          "provenance": [
+            {
+              "end": 50,
+              "quote": "We decided to retain SQLite for the offline cache.",
+              "source_id": "phrase:p-decision-01",
+              "start": 0
+            }
+          ],
+          "text": "We decided to retain SQLite for the offline cache."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-decision-01",
+      "predicted": [
+        {
+          "kind": "decision",
+          "provenance": [
+            {
+              "end": 50,
+              "quote": "We decided to retain SQLite for the offline cache.",
+              "source_id": "phrase:p-decision-01",
+              "start": 0
+            }
+          ],
+          "text": "We decided to retain SQLite for the offline cache."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "decision",
+          "provenance": [
+            {
+              "end": 65,
+              "quote": "The team selected the bounded queue after reviewing both options.",
+              "source_id": "phrase:p-decision-02",
+              "start": 0
+            }
+          ],
+          "text": "The team selected the bounded queue after reviewing both options."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-decision-02",
+      "predicted": [
+        {
+          "kind": "decision",
+          "provenance": [
+            {
+              "end": 65,
+              "quote": "The team selected the bounded queue after reviewing both options.",
+              "source_id": "phrase:p-decision-02",
+              "start": 0
+            }
+          ],
+          "text": "The team selected the bounded queue after reviewing both options."
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "decision",
+          "provenance": [
+            {
+              "end": 48,
+              "quote": "We will use monotonic time for lease expiration.",
+              "source_id": "phrase:p-decision-03",
+              "start": 0
+            }
+          ],
+          "text": "We will use monotonic time for lease expiration."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-decision-03",
+      "predicted": [
+        {
+          "kind": "decision",
+          "provenance": [
+            {
+              "end": 48,
+              "quote": "We will use monotonic time for lease expiration.",
+              "source_id": "phrase:p-decision-03",
+              "start": 0
+            }
+          ],
+          "text": "We will use monotonic time for lease expiration."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": false,
+      "expected": [
+        {
+          "kind": "decision",
+          "provenance": [
+            {
+              "end": 62,
+              "quote": "Going forward, the importer will reject duplicate identifiers.",
+              "source_id": "phrase:p-decision-04",
+              "start": 0
+            }
+          ],
+          "text": "Going forward, the importer will reject duplicate identifiers."
+        }
+      ],
+      "false_negative_count": 1,
+      "false_negatives": [
+        {
+          "kind": "decision",
+          "provenance": [
+            {
+              "end": 62,
+              "quote": "Going forward, the importer will reject duplicate identifiers.",
+              "source_id": "phrase:p-decision-04",
+              "start": 0
+            }
+          ],
+          "text": "Going forward, the importer will reject duplicate identifiers."
+        }
+      ],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-decision-04",
+      "predicted": [],
+      "role": "assistant",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": false,
+      "expected": [
+        {
+          "kind": "decision",
+          "provenance": [
+            {
+              "end": 62,
+              "quote": "Our settled choice is to ship the schema migration separately.",
+              "source_id": "phrase:p-decision-05",
+              "start": 0
+            }
+          ],
+          "text": "Our settled choice is to ship the schema migration separately."
+        }
+      ],
+      "false_negative_count": 1,
+      "false_negatives": [
+        {
+          "kind": "decision",
+          "provenance": [
+            {
+              "end": 62,
+              "quote": "Our settled choice is to ship the schema migration separately.",
+              "source_id": "phrase:p-decision-05",
+              "start": 0
+            }
+          ],
+          "text": "Our settled choice is to ship the schema migration separately."
+        }
+      ],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-decision-05",
+      "predicted": [],
+      "role": "user",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "confirmed_fact",
+          "provenance": [
+            {
+              "end": 59,
+              "quote": "We verified that the checksum matches the archived payload.",
+              "source_id": "phrase:p-fact-01",
+              "start": 0
+            }
+          ],
+          "text": "We verified that the checksum matches the archived payload."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-fact-01",
+      "predicted": [
+        {
+          "kind": "confirmed_fact",
+          "provenance": [
+            {
+              "end": 59,
+              "quote": "We verified that the checksum matches the archived payload.",
+              "source_id": "phrase:p-fact-01",
+              "start": 0
+            }
+          ],
+          "text": "We verified that the checksum matches the archived payload."
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "confirmed_fact",
+          "provenance": [
+            {
+              "end": 47,
+              "quote": "The failure occurs only when the cache is cold.",
+              "source_id": "phrase:p-fact-02",
+              "start": 0
+            }
+          ],
+          "text": "The failure occurs only when the cache is cold."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-fact-02",
+      "predicted": [
+        {
+          "kind": "confirmed_fact",
+          "provenance": [
+            {
+              "end": 47,
+              "quote": "The failure occurs only when the cache is cold.",
+              "source_id": "phrase:p-fact-02",
+              "start": 0
+            }
+          ],
+          "text": "The failure occurs only when the cache is cold."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "confirmed_fact",
+          "provenance": [
+            {
+              "end": 65,
+              "quote": "Tests pass on Python 3.13 with the optional accelerator disabled.",
+              "source_id": "phrase:p-fact-03",
+              "start": 0
+            }
+          ],
+          "text": "Tests pass on Python 3.13 with the optional accelerator disabled."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-fact-03",
+      "predicted": [
+        {
+          "kind": "confirmed_fact",
+          "provenance": [
+            {
+              "end": 65,
+              "quote": "Tests pass on Python 3.13 with the optional accelerator disabled.",
+              "source_id": "phrase:p-fact-03",
+              "start": 0
+            }
+          ],
+          "text": "Tests pass on Python 3.13 with the optional accelerator disabled."
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": false,
+      "expected": [
+        {
+          "kind": "confirmed_fact",
+          "provenance": [
+            {
+              "end": 55,
+              "quote": "Measurement showed a median latency of 84 milliseconds.",
+              "source_id": "phrase:p-fact-04",
+              "start": 0
+            }
+          ],
+          "text": "Measurement showed a median latency of 84 milliseconds."
+        }
+      ],
+      "false_negative_count": 1,
+      "false_negatives": [
+        {
+          "kind": "confirmed_fact",
+          "provenance": [
+            {
+              "end": 55,
+              "quote": "Measurement showed a median latency of 84 milliseconds.",
+              "source_id": "phrase:p-fact-04",
+              "start": 0
+            }
+          ],
+          "text": "Measurement showed a median latency of 84 milliseconds."
+        }
+      ],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-fact-04",
+      "predicted": [],
+      "role": "user",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "confirmed_fact",
+          "provenance": [
+            {
+              "end": 60,
+              "quote": "The root cause is a stale descriptor retained by the worker.",
+              "source_id": "phrase:p-fact-05",
+              "start": 0
+            }
+          ],
+          "text": "The root cause is a stale descriptor retained by the worker."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-fact-05",
+      "predicted": [
+        {
+          "kind": "confirmed_fact",
+          "provenance": [
+            {
+              "end": 60,
+              "quote": "The root cause is a stale descriptor retained by the worker.",
+              "source_id": "phrase:p-fact-05",
+              "start": 0
+            }
+          ],
+          "text": "The root cause is a stale descriptor retained by the worker."
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "discarded_attempt",
+          "provenance": [
+            {
+              "end": 63,
+              "quote": "Restarting the worker did not fix the missing acknowledgements.",
+              "source_id": "phrase:p-discarded-01",
+              "start": 0
+            }
+          ],
+          "text": "Restarting the worker did not fix the missing acknowledgements."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-discarded-01",
+      "predicted": [
+        {
+          "kind": "discarded_attempt",
+          "provenance": [
+            {
+              "end": 63,
+              "quote": "Restarting the worker did not fix the missing acknowledgements.",
+              "source_id": "phrase:p-discarded-01",
+              "start": 0
+            }
+          ],
+          "text": "Restarting the worker did not fix the missing acknowledgements."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "discarded_attempt",
+          "provenance": [
+            {
+              "end": 59,
+              "quote": "We tried increasing the timeout, but it made no difference.",
+              "source_id": "phrase:p-discarded-02",
+              "start": 0
+            }
+          ],
+          "text": "We tried increasing the timeout, but it made no difference."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-discarded-02",
+      "predicted": [
+        {
+          "kind": "discarded_attempt",
+          "provenance": [
+            {
+              "end": 59,
+              "quote": "We tried increasing the timeout, but it made no difference.",
+              "source_id": "phrase:p-discarded-02",
+              "start": 0
+            }
+          ],
+          "text": "We tried increasing the timeout, but it made no difference."
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "discarded_attempt",
+          "provenance": [
+            {
+              "end": 37,
+              "quote": "Switching DNS providers did not help.",
+              "source_id": "phrase:p-discarded-03",
+              "start": 0
+            }
+          ],
+          "text": "Switching DNS providers did not help."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-discarded-03",
+      "predicted": [
+        {
+          "kind": "discarded_attempt",
+          "provenance": [
+            {
+              "end": 37,
+              "quote": "Switching DNS providers did not help.",
+              "source_id": "phrase:p-discarded-03",
+              "start": 0
+            }
+          ],
+          "text": "Switching DNS providers did not help."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": false,
+      "expected": [
+        {
+          "kind": "discarded_attempt",
+          "provenance": [
+            {
+              "end": 81,
+              "quote": "The manual retry approach was abandoned after it reproduced the duplicate charge.",
+              "source_id": "phrase:p-discarded-04",
+              "start": 0
+            }
+          ],
+          "text": "The manual retry approach was abandoned after it reproduced the duplicate charge."
+        }
+      ],
+      "false_negative_count": 1,
+      "false_negatives": [
+        {
+          "kind": "discarded_attempt",
+          "provenance": [
+            {
+              "end": 81,
+              "quote": "The manual retry approach was abandoned after it reproduced the duplicate charge.",
+              "source_id": "phrase:p-discarded-04",
+              "start": 0
+            }
+          ],
+          "text": "The manual retry approach was abandoned after it reproduced the duplicate charge."
+        }
+      ],
+      "false_positive_count": 1,
+      "false_positives": [
+        {
+          "kind": "confirmed_fact",
+          "provenance": [
+            {
+              "end": 81,
+              "quote": "The manual retry approach was abandoned after it reproduced the duplicate charge.",
+              "source_id": "phrase:p-discarded-04",
+              "start": 0
+            }
+          ],
+          "text": "The manual retry approach was abandoned after it reproduced the duplicate charge."
+        }
+      ],
+      "id": "p-discarded-04",
+      "predicted": [
+        {
+          "kind": "confirmed_fact",
+          "provenance": [
+            {
+              "end": 81,
+              "quote": "The manual retry approach was abandoned after it reproduced the duplicate charge.",
+              "source_id": "phrase:p-discarded-04",
+              "start": 0
+            }
+          ],
+          "text": "The manual retry approach was abandoned after it reproduced the duplicate charge."
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 0,
+      "verification_issues": [],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "discarded_attempt",
+          "provenance": [
+            {
+              "end": 64,
+              "quote": "Reinstalling the client failed to resolve the handshake problem.",
+              "source_id": "phrase:p-discarded-05",
+              "start": 0
+            }
+          ],
+          "text": "Reinstalling the client failed to resolve the handshake problem."
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-discarded-05",
+      "predicted": [
+        {
+          "kind": "discarded_attempt",
+          "provenance": [
+            {
+              "end": 64,
+              "quote": "Reinstalling the client failed to resolve the handshake problem.",
+              "source_id": "phrase:p-discarded-05",
+              "start": 0
+            }
+          ],
+          "text": "Reinstalling the client failed to resolve the handshake problem."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "exact_error",
+          "provenance": [
+            {
+              "end": 48,
+              "quote": "E   AssertionError: expected status 204, got 409",
+              "source_id": "phrase:p-error-01",
+              "start": 0
+            }
+          ],
+          "text": "E   AssertionError: expected status 204, got 409"
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-error-01",
+      "predicted": [
+        {
+          "kind": "exact_error",
+          "provenance": [
+            {
+              "end": 48,
+              "quote": "E   AssertionError: expected status 204, got 409",
+              "source_id": "phrase:p-error-01",
+              "start": 0
+            }
+          ],
+          "text": "E   AssertionError: expected status 204, got 409"
+        }
+      ],
+      "role": "tool",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "exact_error",
+          "provenance": [
+            {
+              "end": 59,
+              "quote": "TS2322: Type 'undefined' is not assignable to type 'string'",
+              "source_id": "phrase:p-error-02",
+              "start": 0
+            }
+          ],
+          "text": "TS2322: Type 'undefined' is not assignable to type 'string'"
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-error-02",
+      "predicted": [
+        {
+          "kind": "exact_error",
+          "provenance": [
+            {
+              "end": 59,
+              "quote": "TS2322: Type 'undefined' is not assignable to type 'string'",
+              "source_id": "phrase:p-error-02",
+              "start": 0
+            }
+          ],
+          "text": "TS2322: Type 'undefined' is not assignable to type 'string'"
+        }
+      ],
+      "role": "tool",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "exact_error",
+          "provenance": [
+            {
+              "end": 87,
+              "quote": "error[E0502]: cannot borrow 'state' as mutable because it is also borrowed as immutable",
+              "source_id": "phrase:p-error-03",
+              "start": 0
+            }
+          ],
+          "text": "error[E0502]: cannot borrow 'state' as mutable because it is also borrowed as immutable"
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-error-03",
+      "predicted": [
+        {
+          "kind": "exact_error",
+          "provenance": [
+            {
+              "end": 87,
+              "quote": "error[E0502]: cannot borrow 'state' as mutable because it is also borrowed as immutable",
+              "source_id": "phrase:p-error-03",
+              "start": 0
+            }
+          ],
+          "text": "error[E0502]: cannot borrow 'state' as mutable because it is also borrowed as immutable"
+        }
+      ],
+      "role": "tool",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": false,
+      "expected": [
+        {
+          "kind": "exact_error",
+          "provenance": [
+            {
+              "end": 37,
+              "quote": "HTTP status 503: upstream unavailable",
+              "source_id": "phrase:p-error-04",
+              "start": 0
+            }
+          ],
+          "text": "HTTP status 503: upstream unavailable"
+        }
+      ],
+      "false_negative_count": 1,
+      "false_negatives": [
+        {
+          "kind": "exact_error",
+          "provenance": [
+            {
+              "end": 37,
+              "quote": "HTTP status 503: upstream unavailable",
+              "source_id": "phrase:p-error-04",
+              "start": 0
+            }
+          ],
+          "text": "HTTP status 503: upstream unavailable"
+        }
+      ],
+      "false_positive_count": 1,
+      "false_positives": [
+        {
+          "kind": "exact_error",
+          "provenance": [
+            {
+              "end": 37,
+              "quote": "status 503: upstream unavailable",
+              "source_id": "phrase:p-error-04",
+              "start": 5
+            }
+          ],
+          "text": "status 503: upstream unavailable"
+        }
+      ],
+      "id": "p-error-04",
+      "predicted": [
+        {
+          "kind": "exact_error",
+          "provenance": [
+            {
+              "end": 37,
+              "quote": "status 503: upstream unavailable",
+              "source_id": "phrase:p-error-04",
+              "start": 5
+            }
+          ],
+          "text": "status 503: upstream unavailable"
+        }
+      ],
+      "role": "tool",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "exact_error",
+          "provenance": [
+            {
+              "end": 58,
+              "quote": "ValueError: invalid literal for int() with base 10: 'nine'",
+              "source_id": "phrase:p-error-05",
+              "start": 0
+            }
+          ],
+          "text": "ValueError: invalid literal for int() with base 10: 'nine'"
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-error-05",
+      "predicted": [
+        {
+          "kind": "exact_error",
+          "provenance": [
+            {
+              "end": 58,
+              "quote": "ValueError: invalid literal for int() with base 10: 'nine'",
+              "source_id": "phrase:p-error-05",
+              "start": 0
+            }
+          ],
+          "text": "ValueError: invalid literal for int() with base 10: 'nine'"
+        }
+      ],
+      "role": "tool",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "exact_reference",
+          "provenance": [
+            {
+              "end": 49,
+              "quote": "/workspace/services/auth/token.py:118-164",
+              "source_id": "phrase:p-reference-01",
+              "start": 8
+            }
+          ],
+          "text": "/workspace/services/auth/token.py:118-164"
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-reference-01",
+      "predicted": [
+        {
+          "kind": "exact_reference",
+          "provenance": [
+            {
+              "end": 49,
+              "quote": "/workspace/services/auth/token.py:118-164",
+              "source_id": "phrase:p-reference-01",
+              "start": 8
+            }
+          ],
+          "text": "/workspace/services/auth/token.py:118-164"
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "exact_reference",
+          "provenance": [
+            {
+              "end": 61,
+              "quote": "C:\\Project Files\\Agent Core\\worker.py:27",
+              "source_id": "phrase:p-reference-02",
+              "start": 21
+            }
+          ],
+          "text": "C:\\Project Files\\Agent Core\\worker.py:27"
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-reference-02",
+      "predicted": [
+        {
+          "kind": "exact_reference",
+          "provenance": [
+            {
+              "end": 61,
+              "quote": "C:\\Project Files\\Agent Core\\worker.py:27",
+              "source_id": "phrase:p-reference-02",
+              "start": 21
+            }
+          ],
+          "text": "C:\\Project Files\\Agent Core\\worker.py:27"
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "exact_reference",
+          "provenance": [
+            {
+              "end": 34,
+              "quote": "src/cache/store.py#L80-L96",
+              "source_id": "phrase:p-reference-03",
+              "start": 8
+            }
+          ],
+          "text": "src/cache/store.py#L80-L96"
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-reference-03",
+      "predicted": [
+        {
+          "kind": "exact_reference",
+          "provenance": [
+            {
+              "end": 34,
+              "quote": "src/cache/store.py#L80-L96",
+              "source_id": "phrase:p-reference-03",
+              "start": 8
+            }
+          ],
+          "text": "src/cache/store.py#L80-L96"
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "exact_reference",
+          "provenance": [
+            {
+              "end": 45,
+              "quote": "src/compiler/resolver.py lines 215-239",
+              "source_id": "phrase:p-reference-04",
+              "start": 7
+            }
+          ],
+          "text": "src/compiler/resolver.py lines 215-239"
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-reference-04",
+      "predicted": [
+        {
+          "kind": "exact_reference",
+          "provenance": [
+            {
+              "end": 45,
+              "quote": "src/compiler/resolver.py lines 215-239",
+              "source_id": "phrase:p-reference-04",
+              "start": 7
+            }
+          ],
+          "text": "src/compiler/resolver.py lines 215-239"
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [
+        {
+          "kind": "exact_reference",
+          "provenance": [
+            {
+              "end": 79,
+              "quote": "tests/test_archive.py::TestRecovery::test_partial_write[param-2]",
+              "source_id": "phrase:p-reference-05",
+              "start": 15
+            }
+          ],
+          "text": "tests/test_archive.py::TestRecovery::test_partial_write[param-2]"
+        }
+      ],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "p-reference-05",
+      "predicted": [
+        {
+          "kind": "exact_reference",
+          "provenance": [
+            {
+              "end": 79,
+              "quote": "tests/test_archive.py::TestRecovery::test_partial_write[param-2]",
+              "source_id": "phrase:p-reference-05",
+              "start": 15
+            }
+          ],
+          "text": "tests/test_archive.py::TestRecovery::test_partial_write[param-2]"
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 1,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-tool-01",
+      "predicted": [],
+      "role": "tool",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-tool-02",
+      "predicted": [],
+      "role": "tool",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-tool-03",
+      "predicted": [],
+      "role": "tool",
+      "true_positive_count": 0,
+      "verification_issues": [],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-tool-04",
+      "predicted": [],
+      "role": "tool",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-tool-05",
+      "predicted": [],
+      "role": "tool",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-tool-06",
+      "predicted": [],
+      "role": "tool",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-tool-07",
+      "predicted": [],
+      "role": "tool",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-tool-08",
+      "predicted": [],
+      "role": "tool",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-authority-01",
+      "predicted": [],
+      "role": "assistant",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-authority-02",
+      "predicted": [],
+      "role": "assistant",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-authority-03",
+      "predicted": [],
+      "role": "assistant",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-authority-04",
+      "predicted": [],
+      "role": "assistant",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-authority-05",
+      "predicted": [],
+      "role": "assistant",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-authority-06",
+      "predicted": [],
+      "role": "assistant",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-authority-07",
+      "predicted": [],
+      "role": "assistant",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-authority-08",
+      "predicted": [],
+      "role": "assistant",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": false,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 1,
+      "false_positives": [
+        {
+          "kind": "constraint",
+          "provenance": [
+            {
+              "end": 51,
+              "quote": "The glossary defines “must” as a normative keyword.",
+              "source_id": "phrase:n-mention-01",
+              "start": 0
+            }
+          ],
+          "text": "The glossary defines “must” as a normative keyword."
+        }
+      ],
+      "id": "n-mention-01",
+      "predicted": [
+        {
+          "kind": "constraint",
+          "provenance": [
+            {
+              "end": 51,
+              "quote": "The glossary defines “must” as a normative keyword.",
+              "source_id": "phrase:n-mention-01",
+              "start": 0
+            }
+          ],
+          "text": "The glossary defines “must” as a normative keyword."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-mention-02",
+      "predicted": [],
+      "role": "user",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-mention-03",
+      "predicted": [],
+      "role": "assistant",
+      "true_positive_count": 0,
+      "verification_issues": [],
+      "verification_passed": true
+    },
+    {
+      "exact_match": false,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 1,
+      "false_positives": [
+        {
+          "kind": "unresolved",
+          "provenance": [
+            {
+              "end": 74,
+              "quote": "The phrase “tests failed” appears in the sample output, not in a live run.",
+              "source_id": "phrase:n-mention-04",
+              "start": 0
+            }
+          ],
+          "text": "The phrase “tests failed” appears in the sample output, not in a live run."
+        }
+      ],
+      "id": "n-mention-04",
+      "predicted": [
+        {
+          "kind": "unresolved",
+          "provenance": [
+            {
+              "end": 74,
+              "quote": "The phrase “tests failed” appears in the sample output, not in a live run.",
+              "source_id": "phrase:n-mention-04",
+              "start": 0
+            }
+          ],
+          "text": "The phrase “tests failed” appears in the sample output, not in a live run."
+        }
+      ],
+      "role": "assistant",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": false,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 1,
+      "false_positives": [
+        {
+          "kind": "decision",
+          "provenance": [
+            {
+              "end": 67,
+              "quote": "Alice used the word “decision” while describing the meeting agenda.",
+              "source_id": "phrase:n-mention-05",
+              "start": 0
+            }
+          ],
+          "text": "Alice used the word “decision” while describing the meeting agenda."
+        }
+      ],
+      "id": "n-mention-05",
+      "predicted": [
+        {
+          "kind": "decision",
+          "provenance": [
+            {
+              "end": 67,
+              "quote": "Alice used the word “decision” while describing the meeting agenda.",
+              "source_id": "phrase:n-mention-05",
+              "start": 0
+            }
+          ],
+          "text": "Alice used the word “decision” while describing the meeting agenda."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-mention-06",
+      "predicted": [],
+      "role": "assistant",
+      "true_positive_count": 0,
+      "verification_issues": [],
+      "verification_passed": true
+    },
+    {
+      "exact_match": false,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 1,
+      "false_positives": [
+        {
+          "kind": "confirmed_fact",
+          "provenance": [
+            {
+              "end": 78,
+              "quote": "The template contains the sentence “verified by reviewer” as placeholder text.",
+              "source_id": "phrase:n-mention-07",
+              "start": 0
+            }
+          ],
+          "text": "The template contains the sentence “verified by reviewer” as placeholder text."
+        }
+      ],
+      "id": "n-mention-07",
+      "predicted": [
+        {
+          "kind": "confirmed_fact",
+          "provenance": [
+            {
+              "end": 78,
+              "quote": "The template contains the sentence “verified by reviewer” as placeholder text.",
+              "source_id": "phrase:n-mention-07",
+              "start": 0
+            }
+          ],
+          "text": "The template contains the sentence “verified by reviewer” as placeholder text."
+        }
+      ],
+      "role": "user",
+      "true_positive_count": 0,
+      "verification_issues": [],
+      "verification_passed": true
+    },
+    {
+      "exact_match": true,
+      "expected": [],
+      "false_negative_count": 0,
+      "false_negatives": [],
+      "false_positive_count": 0,
+      "false_positives": [],
+      "id": "n-mention-08",
+      "predicted": [],
+      "role": "assistant",
+      "true_positive_count": 0,
+      "verification_issues": [
+        {
+          "code": "compression_target_not_met",
+          "item_id": null,
+          "message": "The requested compression ratio is impossible without dropping retained state.",
+          "severity": "warning",
+          "source_id": null
+        }
+      ],
+      "verification_passed": true
+    }
+  ],
+  "corpus": {
+    "case_count": 64,
+    "corpus_sha256": "19a31bf953f7b8b46a39336d08a18e7011eb2b0d326b7dd4e0ce7947e7e15712",
+    "negative_case_count": 24,
+    "positive_case_count": 40,
+    "schema": "ctxc-phrase-corpus-0.1",
+    "scope": "local-novel-english-diagnostic"
+  },
+  "metrics": {
+    "by_kind": {
+      "confirmed_fact": {
+        "expected": 5,
+        "f1": 0.727273,
+        "false_negatives": 1,
+        "false_positives": 2,
+        "precision": 0.666667,
+        "predicted": 6,
+        "recall": 0.8,
+        "true_positives": 4
+      },
+      "constraint": {
+        "expected": 5,
+        "f1": 0.909091,
+        "false_negatives": 0,
+        "false_positives": 1,
+        "precision": 0.833333,
+        "predicted": 6,
+        "recall": 1.0,
+        "true_positives": 5
+      },
+      "decision": {
+        "expected": 5,
+        "f1": 0.666667,
+        "false_negatives": 2,
+        "false_positives": 1,
+        "precision": 0.75,
+        "predicted": 4,
+        "recall": 0.6,
+        "true_positives": 3
+      },
+      "discarded_attempt": {
+        "expected": 5,
+        "f1": 0.888889,
+        "false_negatives": 1,
+        "false_positives": 0,
+        "precision": 1.0,
+        "predicted": 4,
+        "recall": 0.8,
+        "true_positives": 4
+      },
+      "exact_error": {
+        "expected": 5,
+        "f1": 0.8,
+        "false_negatives": 1,
+        "false_positives": 1,
+        "precision": 0.8,
+        "predicted": 5,
+        "recall": 0.8,
+        "true_positives": 4
+      },
+      "exact_reference": {
+        "expected": 5,
+        "f1": 1.0,
+        "false_negatives": 0,
+        "false_positives": 0,
+        "precision": 1.0,
+        "predicted": 5,
+        "recall": 1.0,
+        "true_positives": 5
+      },
+      "goal": {
+        "expected": 5,
+        "f1": 1.0,
+        "false_negatives": 0,
+        "false_positives": 0,
+        "precision": 1.0,
+        "predicted": 5,
+        "recall": 1.0,
+        "true_positives": 5
+      },
+      "unresolved": {
+        "expected": 5,
+        "f1": 0.909091,
+        "false_negatives": 0,
+        "false_positives": 1,
+        "precision": 0.833333,
+        "predicted": 6,
+        "recall": 1.0,
+        "true_positives": 5
+      }
+    },
+    "case_exact_match_rate": 0.859375,
+    "case_exact_matches": 55,
+    "expected_atoms": 40,
+    "f1": 0.864198,
+    "false_negatives": 5,
+    "false_positives": 6,
+    "negative_case_accuracy": 0.833333,
+    "negative_cases_without_predictions": 20,
+    "positive_case_exact_match_rate": 0.875,
+    "positive_case_exact_matches": 35,
+    "precision": 0.853659,
+    "predicted_atoms": 41,
+    "recall": 0.875,
+    "true_positives": 35,
+    "verification_failures": 0
+  },
+  "report_sha256": "3b137430c0430e65c090ff30b3fabd369fbfd7d23cf3299e580a90badab989ea",
+  "schema": "ctxc-phrase-eval-report-0.1",
+  "system": {
+    "extractor_revision": "rules-v1",
+    "minimum_compression_ratio": 1.0,
+    "model_id": "deterministic-no-model",
+    "model_service_cost_usd": 0.0,
+    "name": "default-deterministic-compiler",
+    "network_model_api": false,
+    "package_version": "0.1.0",
+    "token_budget": 100000
+  }
+}

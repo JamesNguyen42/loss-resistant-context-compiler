@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loss-resistant-context-compiler/connector-capabilities-result.schema.json",
+  "title": "Connector capabilities result",
+  "type": "object",
+  "required": [
+    "protocol_version",
+    "request_schema",
+    "response_schema",
+    "source_event_schema",
+    "context_bundle_schema",
+    "checkpoint_schema",
+    "operations",
+    "transport",
+    "incremental",
+    "token_accounting",
+    "authority",
+    "certificate",
+    "optional_dependencies"
+  ],
+  "properties": {
+    "protocol_version": {"const": "0.1"},
+    "request_schema": {"const": "ctxc-connector-request-0.1"},
+    "response_schema": {"const": "ctxc-connector-response-0.1"},
+    "source_event_schema": {"const": "localai-source-event-0.1"},
+    "context_bundle_schema": {"const": "localai-context-bundle-0.1"},
+    "checkpoint_schema": {"const": "ctxc-incremental-checkpoint-0.1"},
+    "operations": {
+      "const": [
+        "capabilities",
+        "ingest_source_events",
+        "compile_memory",
+        "render_context",
+        "verify_memory",
+        "inspect_memory"
+      ]
+    },
+    "transport": {
+      "type": "object",
+      "required": [
+        "stdio_jsonl",
+        "one_request_per_line",
+        "plain_json_process_boundary"
+      ],
+      "properties": {
+        "stdio_jsonl": {"const": true},
+        "one_request_per_line": {"const": true},
+        "plain_json_process_boundary": {"const": true}
+      },
+      "additionalProperties": false
+    },
+    "incremental": {
+      "type": "object",
+      "required": ["supported", "checkpoint_resume", "batch_semantics_preserved"],
+      "properties": {
+        "supported": {"const": true},
+        "checkpoint_resume": {"const": true},
+        "batch_semantics_preserved": {"const": true}
+      },
+      "additionalProperties": false
+    },
+    "token_accounting": {
+      "type": "object",
+      "required": ["exact_available", "tokenizer_identity", "mode"],
+      "properties": {
+        "exact_available": {"type": "boolean"},
+        "tokenizer_identity": {"type": "string", "minLength": 1, "maxLength": 256},
+        "mode": {"enum": ["exact", "estimated"]}
+      },
+      "additionalProperties": false
+    },
+    "authority": {
+      "type": "object",
+      "required": [
+        "assistant_and_tool_default",
+        "authenticated_authority_supported",
+        "tool_state_scope"
+      ],
+      "properties": {
+        "assistant_and_tool_default": {"const": "untrusted_historical"},
+        "authenticated_authority_supported": {"const": true},
+        "tool_state_scope": {"const": "confirmed_fact_only"}
+      },
+      "additionalProperties": false
+    },
+    "certificate": {
+      "type": "object",
+      "required": ["wording", "detector_scoped", "semantic_completeness_claimed"],
+      "properties": {
+        "wording": {"const": "all detected protected commitments retained"},
+        "detector_scoped": {"const": true},
+        "semantic_completeness_claimed": {"const": false}
+      },
+      "additionalProperties": false
+    },
+    "optional_dependencies": {
+      "type": "object",
+      "required": ["localai_contracts_required"],
+      "properties": {"localai_contracts_required": {"const": false}},
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

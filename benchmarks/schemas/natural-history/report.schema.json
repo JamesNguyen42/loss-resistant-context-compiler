@@ -1,0 +1,373 @@
+{
+  "$id": "https://example.invalid/loss-resistant-context-compiler/benchmarks/natural-history-report-0.1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "adjudication_sha256": {
+      "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
+      "type": "string"
+    },
+    "corpus_sha256": {
+      "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
+      "type": "string"
+    },
+    "histories": {
+      "items": {
+        "$ref": "#/$defs/historyResult"
+      },
+      "maxItems": 10000,
+      "minItems": 1,
+      "type": "array"
+    },
+    "report_sha256": {
+      "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
+      "type": "string"
+    },
+    "run": {
+      "additionalProperties": false,
+      "properties": {
+        "claim_scope": {
+          "const": "diagnostic-only"
+        },
+        "finished_at_utc": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9]Z(?![\\s\\S])", "minLength": 20, "maxLength": 20,
+          "type": "string"
+        },
+        "run_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
+          "type": "string"
+        },
+        "semantic_completeness_claimed": {
+          "const": false
+        },
+        "started_at_utc": {
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9]Z(?![\\s\\S])", "minLength": 20, "maxLength": 20,
+          "type": "string"
+        },
+        "system_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
+          "type": "string"
+        },
+        "system_revision": {
+          "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
+          "type": "string"
+        },
+        "tokenizer_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "system_id",
+        "system_revision",
+        "started_at_utc",
+        "finished_at_utc",
+        "tokenizer_id",
+        "claim_scope",
+        "semantic_completeness_claimed"
+      ],
+      "type": "object"
+    },
+    "schema": {
+      "const": "ctxc-natural-history-report-0.1"
+    },
+    "split_sha256": {
+      "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64,
+      "type": "string"
+    },
+    "summary": {
+      "additionalProperties": false,
+      "properties": {
+        "all_histories_retained": {
+          "const": true
+        },
+        "claim_ready": {
+          "const": false
+        },
+        "complete_without_failures": {
+          "type": "boolean"
+        },
+        "exact_expected": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "exact_matched": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expected_label_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failed_history_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "history_count": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "matched_label_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "natural_history_claimed": {
+          "type": "boolean"
+        },
+        "protected_expected": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "protected_matched": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "scored_history_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "semantic_completeness_claimed": {
+          "const": false
+        }
+      },
+      "required": [
+        "history_count",
+        "scored_history_count",
+        "failed_history_count",
+        "expected_label_count",
+        "matched_label_count",
+        "protected_expected",
+        "protected_matched",
+        "exact_expected",
+        "exact_matched",
+        "all_histories_retained",
+        "complete_without_failures",
+        "natural_history_claimed",
+        "semantic_completeness_claimed",
+        "claim_ready"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "corpus_sha256",
+    "adjudication_sha256",
+    "split_sha256",
+    "run",
+    "histories",
+    "summary",
+    "report_sha256"
+  ],
+  "title": "Natural-history diagnostic report contract",
+  "type": "object",
+  "$defs": {
+    "historyResult": {
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "properties": {
+          "active_characters": {
+            "type": "null"
+          },
+          "authority_violations": {
+            "type": "null"
+          },
+          "exact_matched": {
+            "type": "null"
+          },
+          "failure_code": {
+            "type": "string"
+          },
+          "matched_label_count": {
+            "type": "null"
+          },
+          "observed_label_count": {
+            "type": "null"
+          },
+          "protected_matched": {
+            "type": "null"
+          },
+          "provenance_errors": {
+            "type": "null"
+          },
+          "stale_claims": {
+            "type": "null"
+          },
+          "unresolved_to_fact": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "active_characters": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "authority_violations": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "exact_matched": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failure_code": {
+            "type": "null"
+          },
+          "matched_label_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "observed_label_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "protected_matched": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "provenance_errors": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stale_claims": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unresolved_to_fact": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        }
+      },
+      "properties": {
+        "active_characters": {
+          "$ref": "#/$defs/nonnegativeOrNull"
+        },
+        "authority_violations": {
+          "$ref": "#/$defs/nonnegativeOrNull"
+        },
+        "exact_expected": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "exact_matched": {
+          "$ref": "#/$defs/nonnegativeOrNull"
+        },
+        "expected_label_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failure_code": {
+          "oneOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "history_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._:-]{0,255}(?![\\s\\S])",
+          "type": "string"
+        },
+        "matched_label_count": {
+          "$ref": "#/$defs/nonnegativeOrNull"
+        },
+        "observed_label_count": {
+          "$ref": "#/$defs/nonnegativeOrNull"
+        },
+        "outcome": {
+          "enum": [
+            "scored",
+            "failed"
+          ]
+        },
+        "protected_expected": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "protected_matched": {
+          "$ref": "#/$defs/nonnegativeOrNull"
+        },
+        "provenance_errors": {
+          "$ref": "#/$defs/nonnegativeOrNull"
+        },
+        "source_characters": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "split": {
+          "enum": [
+            "train",
+            "development",
+            "test"
+          ]
+        },
+        "stale_claims": {
+          "$ref": "#/$defs/nonnegativeOrNull"
+        },
+        "unresolved_to_fact": {
+          "$ref": "#/$defs/nonnegativeOrNull"
+        }
+      },
+      "required": [
+        "history_id",
+        "split",
+        "outcome",
+        "failure_code",
+        "expected_label_count",
+        "protected_expected",
+        "exact_expected",
+        "observed_label_count",
+        "matched_label_count",
+        "protected_matched",
+        "exact_matched",
+        "provenance_errors",
+        "authority_violations",
+        "stale_claims",
+        "unresolved_to_fact",
+        "source_characters",
+        "active_characters"
+      ],
+      "type": "object"
+    },
+    "nonnegativeOrNull": {
+      "oneOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

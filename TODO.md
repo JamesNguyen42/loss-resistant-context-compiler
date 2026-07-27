@@ -41,24 +41,60 @@ raw evidence when completing benchmark work.
   temporal state.
 - [x] Replay and verify portable JSON artifacts against an independently
   supplied source set.
-- [x] Provide `ctxc compile`, `verify`, `inspect`, and `archive`.
-- [x] Provide JSON Schemas for source events, model output, and compiled memory.
+- [x] Provide `ctxc compile`, `verify`, `inspect`, `diff`, `redact`, and
+  `archive`.
+- [x] Add the optional standard-library LocalAI connector with
+  `capabilities`, `ingest_source_events`, `compile_memory`, `render_context`,
+  `verify_memory`, and `inspect_memory` over one strict shared versioned
+  request/response JSONL envelope and `ctxc connector --stdio`.
+- [x] Keep ordinary API and CLI behavior independent of `localai-contracts`
+  and every sibling project; accept structural contract objects in-process and
+  plain versioned JSON across a process boundary.
+- [x] Map connector SourceEvents into fresh immutable SourceRecords while
+  preserving hashes, redaction/provenance metadata, and core role authority;
+  default assistant/tool history to untrusted unless the host authenticates
+  the applicable authority path.
+- [x] Emit a self-hashed ContextBundle with the required trusted-memory
+  categories, source spans/hashes, explicit protected overflow, and bindings
+  for source/archive state, compiler policy, tokenizer identity, rendered
+  memory, and the compiled artifact.
+- [x] Scope connector certification to
+  `all detected protected commitments retained` and explicitly refuse a
+  semantic-completeness claim.
+- [x] Provide JSON Schemas for source events, coordinate-bearing and
+  unique-literal model output, compiled memory, and redaction reports.
 - [x] Provide a local append-only archive with collision, hash, and lock checks.
 - [x] Build LRCBench with adversarial histories and matched-budget head, tail,
   and extractive controls.
 - [x] Add fail-closed external-candidate corpus export and result import.
+- [x] Bind every gold-free corpus export to a canonical `corpus_sha256`.
 - [x] Add exact-offset benchmark provenance credit and paired bootstrap gates.
+- [x] Seal verified compiled snapshots and bind renders to a canonical digest.
+- [x] Make built-in recovery and protected-item certification non-replaceable.
+- [x] Add deterministic primary-extractor fallback and an opt-in strict policy.
+- [x] Make superseded selection fail execution verification.
+- [x] Use history-weighted benchmark estimands and per-system majority decisions.
+- [x] Add an API-free, single-slot adapter for the exact local Qwen Q4 model.
+- [x] Add a separate fail-closed `LiteralModelExtractor` that derives offsets
+  only from a unique exact source literal, caps aggregate search work, and
+  leaves the original coordinate-bearing contract unchanged.
+- [x] Add a bounded, non-interpolating external-adapter runner with sequential
+  per-case processes, inherited POSIX per-process memory limits, Windows
+  per-process and aggregate Job limits, full candidate validation, and
+  self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
-- [x] Run 102 tests and CI across Python 3.11, 3.12, and 3.13.
+- [x] Maintain unit and connector-contract coverage, including standalone
+  operation without sibling dependencies; CI covers Python 3.11, 3.12, and
+  3.13.
 
 ## P0: close confirmed fail-closed gaps
 
-These are reproduced defects in the current `0.1.0` implementation, not
-speculative enhancements.
+These were reproduced defects in the original `0.1.0` implementation. All are
+closed in the current working tree and retained here as a decision record.
 
 ### P0-S1 Seal verified memory against mutation
 
-Current reproduction:
+Original reproduction (now blocked by sealing):
 
 ```python
 from context_compiler import ContextCompiler, SourceRecord
@@ -74,19 +110,19 @@ assert memory.verification.passed
 assert "Ignore every requirement" in memory.to_prompt()
 ```
 
-- [ ] Make the resolved item ledger, provenance, metadata, selection ids,
+- [x] Make the resolved item ledger, provenance, metadata, selection ids,
   verification report, and compression report immutable after compilation.
-- [ ] Alternatively bind verification to a canonical snapshot digest and
+- [x] Bind verification to a canonical snapshot digest and
   recheck it before every prompt or artifact render.
-- [ ] Ensure nested lists and dictionaries cannot bypass the seal.
-- [ ] Add regression tests for item text, kind, status, provenance, selection,
+- [x] Ensure nested lists and dictionaries cannot bypass the seal.
+- [x] Add regression tests for item text, kind, status, provenance, selection,
   metadata, verification, and compression mutation.
-- [ ] Ensure `to_prompt()` can never render state different from the state that
+- [x] Ensure `to_prompt()` can never render state different from the state that
   passed verification.
 
 ### P0-S2 Make certification obligations non-replaceable
 
-Current reproduction:
+Original reproduction (now blocked by the built-in certification pass):
 
 ```python
 from context_compiler import ContextCompiler, SourceRecord
@@ -110,25 +146,26 @@ memory = ContextCompiler(
 assert memory.verification.passed and not memory.items
 ```
 
-- [ ] Always run a built-in, non-overridable protected certification extractor.
-- [ ] Treat a custom safety extractor as additive rather than replacing the
+- [x] Always run a built-in, non-overridable protected certification extractor.
+- [x] Treat a custom safety extractor as additive rather than replacing the
   built-in obligation.
-- [ ] Derive verification obligations independently from untrusted custom
+- [x] Derive verification obligations independently from untrusted custom
   extractors.
-- [ ] Add an explicit unsafe testing seam if replacement is necessary for unit
-  tests, and make it impossible to produce a verified prompt.
-- [ ] Add regression tests for empty, malicious, throwing, and partial custom
+- [x] Keep the built-in pass outside constructor injection seams; unsafe
+  replacement is neither needed nor exposed.
+- [x] Add regression tests for empty, malicious, throwing, and partial custom
   extractors.
 
 ### P0-S3 Fall back safely after provider failure
 
-Current behavior:
+Original behavior:
 
 - `ModelExtractor` provider exceptions propagate;
 - primary extraction runs before deterministic safety extraction;
 - a timeout prevents any verified deterministic fallback result.
 
-Current reproduction:
+Original reproduction (now returns verified deterministic fallback with a
+warning):
 
 ```python
 from context_compiler import ContextCompiler, ModelExtractor, SourceRecord
@@ -146,19 +183,28 @@ ContextCompiler(
 ).compile([source])  # raises before deterministic fallback
 ```
 
-- [ ] Validate and hash sources before invoking any provider.
-- [ ] Run the non-overridable deterministic safety pass before or independently
+- [x] Validate and hash sources before invoking any provider.
+- [x] Run the non-overridable deterministic safety pass before or independently
   of the provider call.
-- [ ] Add provider deadlines, cancellation, and bounded response handling.
-- [ ] On timeout, malformed output, or outage, return verified deterministic
+- [x] Bound response characters, decoded JSON size, and candidate count.
+- [x] Add a hard subprocess timeout and an owned POSIX process-group or Windows
+  Job cancellation boundary to the exact local Qwen CLI adapter. Keep the POSIX
+  leader waitable until group signaling finishes, then reap it without retrying
+  a reusable numeric process-group ID.
+- [x] On timeout, malformed output, or outage, return verified deterministic
   memory plus an explicit degradation issue when policy permits.
-- [ ] Provide a strict policy that fails without rendering when provider
+- [x] Provide a strict policy that fails without rendering when provider
   extraction is mandatory.
-- [ ] Add injected timeout, connection, malformed JSON, and cancellation tests.
+- [x] Add injected exception, timeout, malformed JSON, oversized response, and
+  local subprocess-timeout tests.
+
+Generic in-process completion callables cannot be forcibly cancelled by this
+library. Any future transport adapter must enforce its own deadline and
+transport-level cancellation before it is considered production-ready.
 
 ### P0-S4 Keep superseded state out of verified execution prompts
 
-Current reproduction:
+Original reproduction (now produces a failed verification report):
 
 ```python
 from context_compiler import (
@@ -198,72 +244,80 @@ assert any(
 )
 ```
 
-- [ ] Decide whether `include_superseded` is an audit-only view or an execution
+- [x] Decide that `include_superseded` is an audit-only view, not an execution
   prompt feature.
-- [ ] If audit-only, prevent normal `to_prompt()` rendering and verification
+- [x] Prevent normal `to_prompt()` rendering and verification
   certification for artifacts that select superseded state.
-- [ ] If retained in a prompt, add a separately reviewed non-executable
-  historical envelope and demonstrate that downstream models do not treat it
-  as current state.
-- [ ] Add compile-time and independent-replay regression tests.
-- [ ] Keep the default exclusion behavior unchanged.
+- [x] Add compile-time and independent-replay regression tests.
+- [x] Keep the default exclusion behavior unchanged.
 
 ### P0-B1 Make benchmark estimands internally consistent
 
-The current point estimates and paired bootstrap do not always weight the same
-quantity:
+The original point estimates and paired bootstrap did not always weight the
+same quantity:
 
 - aggregate critical recall is atom-weighted, while the bootstrap averages
   per-history recall;
 - aggregate efficiency is mean quality divided by mean active tokens, while
   the bootstrap averages per-history quality divided by tokens;
-- the name `completion_efficiency` describes memory-quality efficiency, not
+- the original name `completion_efficiency` described memory-quality efficiency, not
   observed downstream task completion.
 
-- [ ] Choose history-weighted, atom-weighted, or cluster-weighted estimands in
-  the preregistered protocol.
-- [ ] Use the same estimand for point estimates, bootstrap samples, thresholds,
+- [x] Choose history-weighted estimands for the benchmark protocol.
+- [x] Use the same estimand for point estimates, bootstrap samples, thresholds,
   and report labels.
-- [ ] Align the percentile and confidence label. The implementation uses the
-  2.5th percentile, which is the lower endpoint of a two-sided 95% interval or
-  a conservative one-sided 97.5% bound, not a one-sided 95% bound.
-- [ ] Rename the current metric to `memory_quality_efficiency`.
-- [ ] Reserve “completion efficiency” for actual successful downstream tasks
+- [x] Make the lower quantile explicit and configurable; the default is `0.025`
+  and reports label it as a lower quantile rather than a one-sided 95% bound.
+- [x] Rename the current metric to `memory_quality_efficiency`.
+- [x] Reserve “completion efficiency” for actual successful downstream tasks
   per token or cost.
-- [ ] Add unequal-history-size tests that fail when point and bootstrap
+- [x] Add unequal-history-size tests that fail when point and bootstrap
   estimands diverge.
 
 ### P0-B2 Implement per-system majority decisions
 
-- [ ] Compute a separate absolute-gate and relative-gain result for every
+- [x] Compute a separate absolute-gate and relative-gain result for every
   preregistered external system.
-- [ ] Record a win, tie, loss, invalid run, or excluded result for each system.
-- [ ] Count preregistered invalid, timed-out, or failed systems as non-wins in
+- [x] Record a win, tie, loss, or invalid result for each registered system.
+- [x] Count preregistered missing or invalid systems as non-wins in
   the majority denominator unless the exclusion rule was frozen in advance.
-- [ ] Enforce `|W| > |R| / 2` rather than issuing one strongest-baseline
+- [x] Enforce `|W| > |R| / 2` rather than issuing one strongest-baseline
   certificate as proof of “most.”
-- [ ] Keep the strongest-baseline result as a useful frontier metric with a
+- [x] Keep the bundled strongest-baseline result as a useful local frontier
+  metric with a
   different name.
-- [ ] Bind the comparison set and all per-system results into the evidence
+- [x] Bind the comparison set and all per-system results into the evidence
   digest.
 
 ## P0: establish credible external evidence
 
 ### P0-E1 Freeze the related-system comparison protocol
 
-- [ ] Write a dated inclusion and exclusion protocol before running external
+- [x] Write a dated inclusion and exclusion protocol before running external
   experiments.
-- [ ] Define “materially comparable” in terms of active-context reduction,
+- [x] Define “materially comparable” in terms of active-context reduction,
   long-horizon memory, runnable artifacts, and support for matched evaluation.
-- [ ] Select at least four serious candidates when possible so “most” is not a
-  comparison against one convenient baseline.
+- [x] Select at least four serious screening candidates so “most” is not a
+  comparison against one convenient baseline; inclusion decisions remain open.
 - [ ] Evaluate ACON, FoldAgent, AMA-Agent, and MemIR for inclusion using the
-  protocol; record a technical reason for every exclusion.
+  protocol; record a technical reason for every exclusion. Result-blind records
+  now pin ACON and AMA-Agent revisions and license bytes without comparative
+  output; FoldAgent/MemIR review and all final decisions remain blocked.
 - [ ] Pin repository revisions, dependency locks, models, prompts, system
   settings, and licenses for every included system.
 - [ ] Freeze the primary metrics, failure policy, seeds, sample sizes, and
-  statistical test before seeing comparative results.
-- [ ] Publish the protocol in a versioned file under `benchmarks/protocols/`.
+  statistical test before seeing comparative results. Metrics, synthetic seed,
+  bootstrap rule, failure policy, and thresholds are fixed in the draft;
+  downstream samples remain an explicit blocker.
+- [x] Publish a versioned draft under `benchmarks/protocols/`; it remains
+  explicitly non-claim-bearing until every recorded blocker is resolved.
+- [x] Add a bounded strict self-hashed JSON protocol verifier that binds the
+  dated Markdown, rejects incomplete frozen identities/datasets/resources, and
+  exposes `claim_ready: false` for the current draft.
+- [x] Require every external LRCBench run to load a frozen protocol and match
+  its complete registered set, adapter/environment/model contract, retained
+  network-isolation evidence, runner limits, and synthetic dataset digest; bind
+  that evidence in `lrcbench-report-0.2`.
 
 Acceptance:
 
@@ -274,20 +328,94 @@ Acceptance:
 
 ### P0-E2 Build reproducible external-system adapters
 
-- [ ] Add a subprocess or container runner with per-case time, memory, and
-  output limits.
-- [ ] Keep gold atoms completely outside candidate inputs.
-- [ ] Normalize every candidate through
-  `lrcbench-candidate-output-0.1`.
-- [ ] Record system revision, environment image, model id, tokenizer, context
-  limit, Python/platform, exact command, timestamp, latency, failures, retries,
-  and cost.
-- [ ] Count the final rendered output and provenance ledger under the same
-  tokenizer and token budget for every system.
-- [ ] Fail closed on missing cases, duplicate cases, malformed spans, unknown
-  fields, budget overruns, timeouts, or partial output.
+- [x] Add a non-interpolating whole-adapter subprocess runner with time,
+  stdout, stderr, and candidate limits, overwrite refusal, owned POSIX
+  process-group or Windows Job termination, candidate validation, and a
+  self-hashed manifest. Adapter commands stay literal argument vectors. POSIX
+  children that deliberately leave the group remain outside this boundary.
+- [x] Add sequential per-case isolation and cross-platform adapter memory
+  enforcement. POSIX applies an inherited `RLIMIT_AS` virtual-address-space
+  ceiling independently to each process; it is neither physical RSS/footprint
+  accounting nor an aggregate tree bound. On Darwin a fixed runner-owned
+  `/bin/sh -p` pre-limiter (privileged mode, with no privilege grant) starts
+  with an empty environment and forwards only quoted positional arguments.
+  A bounded canonical anonymous-FD handoff carries the exact adapter
+  environment with byte-count and SHA-256 verification. The isolated verifier
+  first confirms exact inherited `RLIMIT_AS`; validates the descriptor, file,
+  and expected size; reads, scrubs, truncates, and closes the handoff; validates
+  the retained in-memory length, SHA-256, and protocol; applies byte-exact
+  `RLIMIT_FSIZE`; canonically decodes; and calls `execve` with literal adapter
+  argv. A pre-shell launch failure or shell, pre-verifier, or inexact-`RLIMIT_AS` exit
+  closes the anonymous unlinked descriptor through process/context teardown
+  without guaranteeing a scrub. Completed scrubbing is not cryptographic
+  erasure. Exact-limit status requires verifier success; any mismatch fails. A
+  usable finite ceiling is host/runtime-map sensitive. Preflight and `Popen`
+  failures remain blocking; after `Popen`, launcher failure stays retained and
+  non-scoreable. On Darwin, a configured limit with `process_succeeded: false`
+  conservatively records `memory_limit_enforced: false` because the parent has
+  no authenticated verifier-completion signal; this can underreport enforcement
+  but cannot upgrade the retained failure. A configured limit with
+  `process_succeeded: true` requires `memory_limit_enforced: true`.
+  The unreaped leader anchors cleanup. After a successful `SIGTERM`, a Darwin
+  `EPERM` liveness probe permits only bounded reobservation of that leader
+  through the existing grace deadline, and stable all-zombie proof remains
+  required.
+  Windows creates the process suspended, assigns and verifies a Job Object with
+  per-process and aggregate memory limits, then resumes it.
+- [x] Account separately for a pre-existing inference service outside the
+  adapter process tree. The runner binds PID creation identity and executable
+  digest, samples Windows working set or Linux/macOS RSS at the fixed polling
+  cadence, records peak/sample evidence, and fails the adapter on restart,
+  disappearance, executable change, or ceiling breach. This is monitoring,
+  not containment or a verified macOS jetsam/physical-footprint provider, and
+  the draft protocol still must freeze the executable, metric, and ceiling
+  before claim-bearing runs.
+- [x] Require claim-bearing manifests to retain a bounded host firewall,
+  container, or network-namespace policy artifact; hash it before execution,
+  detect mutation, revalidate it on import, and match it to the frozen
+  protocol. The runner does not itself establish or prove that isolation.
+- [x] Keep gold atoms completely outside candidate inputs and bind the exported
+  corpus to its own canonical digest.
+- [x] Normalize every candidate through
+  `lrcbench-candidate-output-0.2`; the bounded runner upgrades the legacy
+  producerless adapter payload before retaining or scoring it.
+- [x] Record system/adapter revision, environment id, model id, tokenizer,
+  context limit, inference concurrency, Python/platform, exact command,
+  timestamp, latency, failures, retries, and cost; incomplete, non-Qwen,
+  multi-slot, or paid-model metadata is a certificate non-win. Current runner
+  manifests retain and rehash the actual dependency lock, require canonical
+  `sha256:<dependency-lock-sha256>` environment identity, and scoring matches
+  it to the frozen protocol. They also retain and rehash the adapter entrypoint
+  and every regular file in a bounded immutable source root, require the exact
+  command to reference that covered entrypoint, and match the entrypoint,
+  source-tree, resolved runtime-executable, and portable command-contract
+  digests to the preregistration rather than trusting the supplied adapter
+  revision alone. Every per-case invocation is checked against that contract.
+- [x] Reconstruct every one-case corpus during manifest replay and require the
+  case audit to be the ordered parent-corpus prefix with exact self/file
+  digests and runner-owned temporary path structure.
+- [x] Retain every validated one-case candidate self-digest and reconcile it
+  with the matching raw case in the retained merged candidate during replay.
+- [x] Replace full host-environment inheritance with a bounded startup
+  allowlist, opt-in named pass-through, value-redacted hashing, and a
+  per-system environment digest frozen by external scoring.
+- [x] Count the final rendered output and provenance ledger under the same
+  evaluator-owned tokenizer and token budget for every system; external
+  candidates receive a canonical typed-claim/provenance sidecar, and tests show
+  that sidecar overhead alone can trigger matched-budget rejection.
+- [x] Fail closed on missing cases, duplicate cases, malformed spans, unknown
+  fields, budget overruns, timeouts, output limits, or partial output.
+- [x] Convert validated runner-manifest failures, including malformed candidate
+  output, into retained per-system invalid decisions and bind their hashes and
+  reasons into evidence. Manually supplied malformed diagnostic files still
+  abort direct `--external-baseline` import.
+- [x] Add one pinned offline diagnostic adapter and route it through the existing
+  runner without paid services or comparative inspection. The ACON attempt is
+  retained as a failed, non-scoreable manifest because source checkout, exact
+  Python, dependency lock, network evidence, inference-service accounting, and
+  LM Studio were unavailable.
 - [ ] Add one adapter directory per included system with setup and reproduction
-  instructions.
+  instructions; no system has been included yet.
 - [ ] Run each adapter from a clean environment in CI or a documented benchmark
   runner.
 
@@ -299,7 +427,12 @@ Acceptance:
 
 ### P0-E3 Add held-out natural agent histories
 
-- [ ] Define a privacy and licensing policy for real trajectories.
+- [x] Materialize bounded versioned schemas and self-hashed contract fixtures
+  for corpus intake, license/consent/privacy review, exact-span annotations, two
+  independent annotators, complete adjudication, repository/task-group splits,
+  gold-free export, complete accounting, and reports. These synthetic fixtures
+  prove the contract only; they are not a collected natural cohort.
+- [ ] Approve and apply a privacy and licensing policy to real trajectories.
 - [ ] Collect public or explicitly consented coding-agent histories from
   multiple repositories, task types, and history lengths.
 - [ ] Redact or tokenize credentials and personal data before committing any
@@ -374,29 +507,77 @@ than most related technology” within the exact dated evaluation scope.
 
 ### Extraction coverage
 
-- [ ] Add property-based tests for arbitrary source ids, offsets, Unicode,
-  whitespace, and clause boundaries.
-- [ ] Add grammar-based fuzzing for labels, bullets, conjunctions, negation,
+- [x] Add fixed-seed property-style tests for arbitrary control/Unicode source
+  ids, character offsets, every Python line boundary, whitespace, and
+  semicolon/punctuation/conjunction clause boundaries.
+- [x] Add grammar-based fuzzing for labels, bullets, conjunctions, negation,
   numbers, units, paths, diagnostics, and corrections.
-- [ ] Measure false positives and false negatives on novel English phrasing.
+- [x] Add natural-language regressions for indirect preservation requirements,
+  including “the database stays PostgreSQL” and “leave the authentication flow
+  alone.”
+- [x] Measure false positives and false negatives on a frozen, locally
+  authored 64-case novel-English diagnostic, retaining all misses and explicit
+  limits on independence and representativeness.
 - [ ] Evaluate non-English and mixed-language histories before claiming
   multilingual support.
-- [ ] Add domain packs or documented extension hooks rather than continually
-  widening one global regular-expression vocabulary.
-- [ ] Test extremely long lines, huge tool schemas, binary-looking output, and
+- [x] Add bounded domain-label packs and strict extractor composition, with a
+  public protocol, immutable/capped alias configuration, fixed authority
+  gates, exact spans, replay limitations, and a deployment guide, rather than
+  continually widening one global regular-expression vocabulary.
+- [x] Test extremely long lines, huge tool schemas, binary-looking output, and
   high record counts under explicit resource limits.
 
 ### Model extractor evaluation
 
-- [ ] Build provider adapters outside the standard-library core.
-- [ ] Evaluate at least one small local model and multiple hosted model
-  families.
-- [ ] Record extraction recall, rejection rate, latency, cost, and recovery-pass
-  contribution separately.
-- [ ] Test malicious model output, unknown keys, malformed JSON, NaN/infinity,
+- [x] Add an API-free LM Studio CLI adapter restricted to the exact local
+  `qwen/qwen3.6-35b-a3b@q4_k_m` model, Q4 quantization, and one inference slot.
+- [x] Run one scoped end-to-end diagnostic on the public example and record
+  accepted/rejected and deterministic-recovery contributions.
+- [x] Freeze a sequential captured-output evaluator and bounded offline
+  verifier before the first corpus-scale model run. Bind every exact
+  ModelExtractor prompt/output and score model-only acceptance, rejection,
+  recovery, final verification, latency, and zero service cost separately.
+- [x] Evaluate the exact local Qwen model across the frozen 64-case
+  novel-phrasing diagnostic; do not generalize from the one integration
+  diagnostic or this locally authored corpus. Retain the
+  [captured-output report](docs/results/qwen-novel-english-phrases-v1.json).
+- [x] Record extraction recall, rejection rate, latency, cost, and recovery-pass
+  contribution separately in the
+  [exact-Qwen result audit](docs/QWEN_PHRASE_EVALUATION.md).
+- [x] Test oversized output, excessive candidate counts, malformed JSON, and
+  subprocess timeout at the adapter boundary.
+- [x] Test malicious model output, duplicate and unknown keys, NaN/infinity,
   invalid offsets, role forgery, reserved tags, and paraphrases.
-- [ ] Decide whether exact-span-only model extraction remains the permanent
-  contract or whether a separately verified abstractive path is justified.
+- [x] Retain exact-source-literal model extraction as the permanent admission
+  contract for now. Permit deterministic unique-literal offset derivation as a
+  separate schema, but do not add an abstractive path without new evidence and
+  an independently verified semantic-support design.
+- [x] Replay the frozen 64-case Qwen captures through unique-literal validation
+  as an explicitly post-hoc, zero-model-call offset ablation. Bind the
+  transformation and results in a
+  [self-hashed report](docs/results/qwen-literal-offset-ablation-v1.json), and
+  preserve its 14 literal-only false positives and 2 final verification
+  failures as limitations rather than claim-bearing evidence.
+- [x] Freeze a new self-hashed 64-case corpus disjoint from the first phrase
+  set and a clean-tree paired evaluator before any target-prompt result.
+  Counterbalance coordinate/unique-literal order, require 128 sequential calls,
+  make no retry, retain failures, record one uncontrolled draw per mode, and
+  install the first live report exclusively. See the
+  [pre-result protocol](docs/QWEN_PAIRED_EVALUATION.md).
+- [x] Execute the frozen paired evaluator with the exact local Qwen Q4 build,
+  publish all coordinate and unique-literal outputs and failures, replay the
+  report offline, and do not tune the corpus, validators, recovery, or scoring
+  after observing results. The 128-call report records a large model-only
+  recall gain alongside 13 literal-mode false positives, lower precision, 4
+  final verification failures, and one coordinate-mode JSON contamination
+  event; see the
+  [paired result audit](docs/QWEN_PAIRED_EVALUATION.md).
+- [x] Harden LM Studio stdout framing against bounded non-JSON status prefixes
+  without accepting ambiguous or trailing payloads. Specify and test the
+  transport rule independently; do not rerun or rescore the observed paired
+  corpus as evidence for that follow-up. The adapter now accepts only a bounded
+  exact-model loading prefix plus one JSON object; synthetic tests preserve the
+  original report.
 - [ ] Never weaken deterministic recovery merely to improve model-only metrics.
 
 ### Temporal and semantic state
@@ -416,31 +597,59 @@ than most related technology” within the exact dated evaluation scope.
 
 ### Incremental compiler
 
-- [ ] Add an incremental session API that accepts one event at a time.
+The first correctness/restart slice is implemented. It intentionally delegates
+every changed source prefix to ordinary batch compilation; it is not evidence
+of sublinear compile cost.
+
+- [x] Add an incremental session API that accepts appended event batches,
+  including one event at a time.
 - [ ] Avoid reparsing the full history after every event while preserving the
-  same final artifact as batch compilation.
-- [ ] Define invalidation rules for corrections, conflicts, and archive reloads.
-- [ ] Add deterministic checkpoint and resume support.
+  same final artifact as batch compilation. Ordinary no-deadline calls for an
+  unchanged prefix reuse one sealed cached result, but every accepted event
+  currently reparses and recompiles the complete prefix.
+- [ ] Define fine-grained invalidation rules for corrections, conflicts, and
+  archive reloads. The current safe invalidation rule discards the cached result
+  and recompiles the full prefix.
+- [x] Add deterministic self-hashed checkpoint and resume support that
+  reconstructs the exact immutable source prefix and preserves batch ledger,
+  selection, verification, and prompt semantics.
 - [ ] Benchmark compile latency and peak memory from 10,000 to 1,000,000 events.
-- [ ] Add bounded caches without allowing cached state to bypass verification.
+- [ ] Add broader bounded caches without allowing cached state to bypass
+  verification. The current implementation caches only one already sealed
+  result for an unchanged source digest.
+- [ ] Add persistent/concurrent session storage and multi-session archive
+  isolation. Current stdio sessions are sequential and in-memory, and one
+  configured archive is owned by one connector session.
 
 ### Agent framework adapters
 
-- [ ] Define a small framework-neutral integration protocol.
+- [x] Define a small framework-neutral integration protocol with versioned
+  SourceEvent, ContextBundle, checkpoint, and strict request/response envelopes.
 - [ ] Add at least one production-quality coding-agent integration.
 - [ ] Add adapters for selected popular agent runtimes after verifying their
   role and event semantics.
-- [ ] Map tool, developer, system, assistant, and user authority explicitly.
-- [ ] Prevent retrieved documents and tool text from being mislabeled as
-  authoritative actors.
+- [x] Map tool, developer, system, assistant, and user authority explicitly at
+  the connector boundary; assistant and tool output defaults to untrusted
+  history unless authenticated host metadata enables a narrower core path.
+- [x] Prevent assistant/tool SourceEvent metadata from self-promoting
+  historical output into authoritative state; authenticated tool state remains
+  confirmed-fact-only.
+- [ ] Define and enforce retrieved-document role semantics so framework
+  adapters cannot mislabel retrieved text as an authoritative actor.
 - [ ] Add examples showing compilation before context-window overflow and
   rehydration of exact source spans on demand.
 
 ### Token accounting and selection
 
-- [ ] Add named tokenizer adapters for the models used in evaluation.
+- [ ] Add named tokenizer adapters for the models used in evaluation. The
+  connector now accepts a generic exact in-process adapter, but ships no
+  provider/model-specific tokenizer.
+- [x] Bind an in-process exact token-counter identity into connector bundles
+  and replay, label the fallback character counter as estimated, and reject an
+  estimated bundle relabeled as exact.
 - [ ] Include chat framing, tool schemas, and provenance pointers in budget
-  accounting.
+  accounting. Current compiler accounting covers its typed-memory envelope and
+  provenance pointers, not arbitrary host chat framing or tool schemas.
 - [ ] Test hard model context limits with strict overflow behavior.
 - [ ] Compare the current priority-per-token selector with constrained
   optimization and learned policies.
@@ -451,51 +660,156 @@ than most related technology” within the exact dated evaluation scope.
 
 ### Security and privacy
 
-- [ ] Add optional secret and sensitive-data preprocessing with an auditable
-  redaction map.
+- [x] Add optional fixed-detector preprocessing for common secrets in source
+  content, with length/line-boundary-preserving masks, recomputed source
+  hashes, bounded source iterables/scans, exact replay, and a self-hashed audit
+  map that omits original content-secret text and hashes.
+- [ ] Extend privacy policy beyond common content secrets: define reviewed
+  metadata/id/timestamp handling and evaluate PII or domain-sensitive-data
+  detection without claiming completeness from lexical heuristics.
 - [ ] Define encryption-at-rest and access-control guidance for source archives.
-- [ ] Add external signatures or trusted manifests for artifacts and source
-  digests.
-- [ ] Add monotonic versions or hash chaining for rollback detection.
+- [x] Add strict detached trusted manifests for complete replay-verified
+  artifacts, exact source digests/counts, and optional source-archive chain
+  heads. Verification requires a manifest SHA-256 retained outside the bundle
+  boundary; unanchored Python verification cannot report success. Digital
+  signatures and key management remain future work.
+- [x] Add canonical source-archive entry hash chaining and optional
+  externally retained head checks for stale-state and valid-prefix rollback
+  detection; document that standalone self-hashes remain recomputable and do
+  not replace a protected monotonic/signature anchor.
 - [ ] Define safe retention, deletion, and backup workflows.
-- [ ] Add security tests for path traversal, archive races, oversized JSON,
-  decompression bombs, and hostile metadata.
+- [x] Complete the hostile serialized-file and structural-metadata matrix:
+  source, artifact, and archive paths reject symlink/special-file inputs,
+  detect substitution/in-place mutation, bound replacement retries, and refuse
+  compressed bytes without decompression; archive hard-link aliases, writer
+  races, oversized/ambiguous JSON, canonical immutable metadata, and fixed
+  source-id/role/timestamp amplification ceilings have fail-closed coverage.
+- [x] Define and test the parent-directory traversal boundary. Shared guards
+  reject linked/reparse ancestors, freeze the full lexical ancestor chain,
+  use pinned descriptor-relative parents on POSIX, and revalidate before and
+  after reads, writes, and archive-lock opens. On Windows and other hosts
+  without directory-relative replacement, a privileged rename inside the
+  final path syscall remains an explicit filesystem trust boundary.
 - [ ] Complete an external security review before a production claim.
 
 ### Reliability and operations
 
-- [ ] Add configurable limits for source bytes, record count, line length,
-  model response size, archive size, and compile duration.
-- [ ] Add structured diagnostics that distinguish invalid input, extraction
-  rejection, integrity failure, budget overflow, and policy failure.
-- [ ] Embed commit SHA, package and schema versions, Python/platform, command,
-  tokenizer id, run timestamp, baseline revisions, latency, cost, and failures
-  in every benchmark evidence artifact.
-- [ ] Add metrics for item counts, protected overflow, recovery additions,
-  conflicts, verification failures, and compile latency.
-- [ ] Add crash-safe archive recovery and document stale-lock handling.
-- [ ] Test filesystem semantics on Windows, Linux, macOS, and network storage.
-- [ ] Define schema migrations and backward-compatibility guarantees.
-- [ ] Add reproducible performance regression thresholds to CI.
+- [x] Add shared configurable limits for source bytes, record count, line
+  length, canonical record size, JSON depth, and archive size. Model response
+  size and candidate count are also bounded.
+- [x] Add fail-closed compilation expansion limits for per-extractor
+  items/rejections/canonical and auxiliary bytes; total candidates, resolved
+  items, provenance spans, and shared recovery/resolution/conflict/selection/
+  verification item work. Abort rather than truncate protected state.
+- [x] Add strict, configurable artifact limits for raw/canonical bytes, line
+  length, JSON depth, item/selection counts, provenance spans, and embedded
+  verification issues across CLI and direct replay.
+- [x] Add an opt-in portable whole-compile deadline for materialized,
+  serializable jobs. Run the pipeline in an isolated POSIX process group or
+  Windows Job Object, signal the owned POSIX group or terminate the Windows Job
+  on timeout, copy caller inputs across the boundary, and accept successful
+  results only through bounded strict JSON plus sealed-snapshot reconstruction.
+- [x] Add opt-in versioned JSON runtime diagnostics that distinguish resource,
+  I/O, invalid JSON/type/value, integrity, timeout, and policy failures while
+  retaining the default human-readable CLI contract.
+- [x] Add opt-in `ctxc-event-0.1` JSONL completion events on stderr with the
+  actual artifact digest/ledger mode, extraction rejection and failure state,
+  recovery contributions, verification outcomes, compression/budget state,
+  and versioned compilation metrics; preserve silent default stderr.
+- [x] Make every CLI `-o/--output` write a same-directory flushed, `fsync`ed,
+  atomic replacement that cleans failed temporary files and preserves existing
+  regular-file permissions.
+- [x] Make archive appends crash-safe before replacement by committing the
+  complete bounded event log through the same atomic writer under the exclusive
+  lock; readers see either the old or new complete archive.
+- [x] Commit benchmark reports, gold-free corpus exports, per-case corpus
+  inputs, and runner manifests through the atomic writer; use exclusive install
+  for manifests so a check/write race cannot overwrite another producer.
+- [x] Embed commit SHA plus dirty state, package and schema versions,
+  Python/platform, exact command, tokenizer/model id, UTC start, duration,
+  baseline revisions, cost, and failures in benchmark reports; bind the
+  envelope with `report_sha256` while retaining deterministic certificate
+  `evidence_sha256`.
+- [x] Add a bounded strict verifier for saved current-schema benchmark reports
+  that rejects duplicate/non-finite JSON, regenerates the dataset identity,
+  recomputes report and certificate digests, validates protocol/comparison/run
+  metadata, reconciles included per-history counts and rates, and retains a
+  local-only replay path for the committed `lrcbench-report-0.1` snapshot.
+- [x] Route serialized benchmark reports, corpora, candidates, and manifests
+  through one strict regular-file reader with byte, line, and depth limits;
+  reject ambiguous/non-finite JSON and bind validation to the exact candidate
+  bytes so mutation races fail closed.
+- [x] Version and propagate equivalent producer metadata through corpus and
+  candidate interchange artifacts without invalidating frozen dataset identity;
+  bind corpus and candidate envelopes independently with canonical self-digests.
+- [x] Add versioned artifact metrics for item counts, protected overflow,
+  post-resolution recovery additions, conflicts, verification outcomes, and
+  compile latency; surface them through `ctxc inspect` and independently
+  reconcile all replayable fields while accepting older schema-1.0 artifacts
+  that omit the optional metrics and compilation-limit records.
+- [x] Make `ctxc inspect` fail closed on malformed, unsupported, internally
+  inconsistent, or stale-self-hash artifact envelopes; expose the same bounded
+  source-independent validation through the Python API.
+- [x] Eliminate ordinary stale-lock recovery by replacing create/delete lock
+  ownership with a persistent OS advisory lock that releases on descriptor
+  close or process death; document that marker existence does not mean held.
+- [x] Test local-filesystem lock/path/release-smoke semantics on Ubuntu, Windows,
+  and macOS in CI; complete-suite coverage remains Ubuntu-only.
+- [ ] Test advisory-lock, hard-link, rename, identity, and durability semantics on
+  representative network/distributed storage.
+- [x] Publish the exact artifact reader/writer support window through
+  `ctxc-artifact-schema-compatibility-0.1`; document and test that unknown
+  versions fail closed and that no automatic or silent migration exists.
+- [x] Add a versioned, fixed-digest CI compile profile with median-latency,
+  doubling-growth, and traced-Python-memory ceilings plus a self-hashed report.
 
 ### Packaging and release
 
-- [ ] Choose the stable distribution name and resolve the current distinction
-  between repository name and `lossless-context-compiler`.
-- [ ] Publish signed source and wheel artifacts to a test package index.
-- [ ] Add release notes, a changelog, semantic-versioning policy, and support
+- [x] Standardize the stable distribution and installed schema directory on
+  `loss-resistant-context-compiler`; retain `context_compiler` and `ctxc`, and
+  document that the old pre-beta `lossless-context-compiler` metadata is not a
+  package alias or automatic upgrade relationship.
+- [x] Add release notes, a changelog, semantic-versioning policy, and support
   matrix.
-- [ ] Verify installation from a clean Python environment on all supported
-  platforms.
-- [ ] Add supply-chain scanning and dependency review for optional adapters.
+- [x] Build and install wheel and sdist separately in clean environments on
+  Ubuntu plus provisional Windows/macOS Python 3.13 smoke hosts; verify metadata,
+  all 25 schemas, `ctxc --help`, compile, trust-create, and trust-verify.
+- [ ] Publish signed source and wheel artifacts to an explicitly approved test
+  package index and retain install evidence from that index.
+- [x] Add immutable GitHub Action pins, Python/Actions Dependabot, CODEOWNERS,
+  high-severity pull-request dependency review, and pinned Python CodeQL with
+  narrow upload authority.
+- [x] Add bounded exact-name SHA-256 evidence for one wheel and one sdist, with
+  lexical real-directory and single-link archive checks, two-pass mutation
+  detection, no-overwrite outputs, a self-hashed manifest completion marker,
+  and CI retention. This is substitution-detection groundwork, not provenance
+  or signing.
+- [x] Make repeated clean candidate builds byte-for-byte reproducible within
+  one same-job, explicitly versioned toolchain. The project PEP 517 wrapper now
+  validates the raw Setuptools sdist, normalizes its gzip/tar/PAX identity from
+  an explicit `SOURCE_DATE_EPOCH`, preserves exact member content and
+  structure, and leaves the separate byte comparator strict. CI compares wheel
+  and sdist outputs from two clean checkouts with pip 25.0.1, Setuptools 83.0.0,
+  and wheel 0.47.0, and retains the resolved Python/tool inventory. This does
+  not establish cross-toolchain, cross-platform, offline, hash-pinned-input, or
+  independently reproduced builds.
+- [ ] Replace the sdist smoke's online lower-bounded `setuptools`/`wheel`
+  bootstrap with a reviewed hash-pinned offline build wheelhouse and retain the
+  offline install evidence.
+- [ ] Add resolved locks plus vulnerability and license scanning for each
+  optional external adapter.
 - [ ] Publish `0.2.0` only after the external runner and natural-history corpus
   format are stable.
 
 ## P2: developer and research experience
 
-- [ ] Add an HTML or terminal inspector for item provenance, status, conflicts,
-  and selection decisions.
-- [ ] Add a diff view between two compiled artifacts.
+- [x] Add a bounded terminal inspector for item provenance, temporal status,
+  conflicts, and selection state; escape terminal/control/format characters
+  and retain versioned `ctxc-artifact-inspection-0.1` JSON as the default
+  output.
+- [x] Add an integrity-gated `ctxc-artifact-diff-0.1` view between two
+  compiled artifacts with deterministic payload/item/selection/report changes,
+  incomplete-ledger scope warnings, optional item details, and a self-digest.
 - [ ] Add a benchmark dashboard generated only from signed or hashed reports.
 - [ ] Add compact examples for coding, research, operations, and customer
   support histories.
@@ -512,13 +826,16 @@ than most related technology” within the exact dated evaluation scope.
 
 ### `0.2.0` — external evaluation infrastructure
 
-- verified-memory mutation, safety-override, provider-fallback, and
+- [x] verified-memory mutation, safety-override, provider-fallback, and
   superseded-rendering defects closed;
-- benchmark estimands made consistent and renamed accurately;
+- [x] benchmark estimands made consistent and renamed accurately;
+- [x] per-system registered comparison decisions and strict-majority logic;
+- [x] exact local Qwen CLI adapter with one-slot enforcement;
 - frozen comparison protocol;
-- reproducible external runner;
+- [x] reproducible external runner;
 - at least two working external adapters;
-- exact tokenizer accounting;
+- generic exact token-counter accounting landed; named evaluation-tokenizer
+  adapters remain pending;
 - versioned benchmark manifests.
 
 ### `0.3.0` — held-out and downstream evidence
@@ -530,10 +847,11 @@ than most related technology” within the exact dated evaluation scope.
 
 ### `0.4.0` — live integration beta
 
-- incremental compiler;
+- efficient incremental invalidation beyond the current full-prefix recompile;
 - at least two agent integrations;
 - operational limits and metrics;
-- schema migration policy.
+- machine-readable artifact schema compatibility and no-silent-migration
+  policy;
 
 ### `1.0.0` — evidence-backed production release
 
@@ -554,22 +872,19 @@ than most related technology” within the exact dated evaluation scope.
 
 The next chat should start here unless new evidence changes the priority:
 
-1. add failing regression tests for the four confirmed in-process safety
-   defects;
-2. seal compiled state and make the built-in certification pass
-   non-replaceable;
-3. implement deterministic fallback for bounded provider failures;
-4. isolate or reject superseded state in verified execution prompts;
-5. align and rename the benchmark estimands;
-6. add per-system strict-majority certificate decisions;
-7. create `benchmarks/protocols/external-comparison-v1.md`;
-8. define inclusion rules and freeze the initial related-system set;
-9. implement a resource-bounded external subprocess/container runner;
-10. add one end-to-end external adapter;
-11. run the interchange self-test and the adapter on a small
-   diagnostic corpus;
-12. add tests for every adapter failure mode;
-13. freeze a full corpus only after the diagnostic path is reliable;
-14. record results without changing the claim boundary.
+1. preserve and replay the completed held-out paired result without tuning its
+   corpus, validators, recovery, scoring, or recorded metrics;
+2. resolve the nine explicit blockers in the external-comparison manifest;
+3. complete result-blind inclusion decisions and freeze the initial
+   related-system set;
+4. supply the exact clean Python 3.11 checkout, dependency lock, network-policy
+   evidence, inference-service accounting, and LM Studio executable needed to
+   rerun the retained ACON diagnostic;
+5. add clean reproducible adapters only for systems admitted by the frozen
+   result-blind protocol;
+6. collect licensed/consented histories under the implemented natural-history
+   contracts, perform independent annotation/adjudication and privacy review;
+7. freeze a full natural corpus only after those reviews and split checks pass;
+8. record every failure and result without changing the claim boundary.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) before changing code or benchmark rules.

@@ -11,20 +11,37 @@ import argparse
 import hashlib
 import json
 import math
+import os
+import platform
 import random
 import re
+import subprocess
+import sys
+import time
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from statistics import fmean
 from typing import Any
 
 from context_compiler import CompilationPolicy, ContextCompiler, MemoryKind, SourceRecord
+from context_compiler import __version__ as PACKAGE_VERSION
+from context_compiler.atomic import atomic_write_text
 
-BENCHMARK_VERSION = "lrcbench-0.1"
-CORPUS_SCHEMA = "lrcbench-corpus-0.1"
-CANDIDATE_SCHEMA = "lrcbench-candidate-output-0.1"
+from .json_io import StrictJsonError, StrictJsonLimits, load_strict_json_file
+
+BENCHMARK_VERSION = "lrcbench-0.2"
+REPORT_SCHEMA = "lrcbench-report-0.2"
+LEGACY_REPORT_SCHEMA = "lrcbench-report-0.1"
+CORPUS_SCHEMA = "lrcbench-corpus-0.3"
+CANDIDATE_SCHEMA = "lrcbench-candidate-output-0.2"
+CORPUS_PRODUCER_SCHEMA = "lrcbench-corpus-producer-0.1"
+CANDIDATE_PRODUCER_SCHEMA = "lrcbench-candidate-producer-0.1"
+LEGACY_ADAPTER_CANDIDATE_SCHEMA = "lrcbench-candidate-output-0.1"
+TOKENIZER_ID = "character-estimate-v1"
+DEFAULT_EXTERNAL_CANDIDATE_BYTES = 20_000_000
 REQUIRED_BASELINES = ("head", "tail", "extractive")
 BUNDLED_SYSTEMS = ("compiler", *REQUIRED_BASELINES)
 REQUIRED_STRATA = (
@@ -91,8 +108,26 @@ class BenchmarkConfig:
     minimum_compression: float = 5.0
     seed: int = 56_056
     bootstrap_samples: int = 2_000
+    bootstrap_lower_quantile: float = 0.025
 
     def __post_init__(self) -> None:
+        for name in (
+            "histories",
+            "messages_per_history",
+            "noise_lines_per_message",
+            "token_budget",
+            "seed",
+            "bootstrap_samples",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer")
+        for name in ("minimum_compression", "bootstrap_lower_quantile"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError(f"{name} must be numeric")
+            if not math.isfinite(float(value)):
+                raise ValueError(f"{name} must be finite")
         if self.histories < 1:
             raise ValueError("histories must be positive")
         if self.messages_per_history < 24:
@@ -105,6 +140,137 @@ class BenchmarkConfig:
             raise ValueError("minimum_compression must be at least 1")
         if self.bootstrap_samples < 100:
             raise ValueError("bootstrap_samples must be at least 100")
+        if not 0.0 < self.bootstrap_lower_quantile < 0.5:
+            raise ValueError("bootstrap_lower_quantile must be between 0 and 0.5")
+
+
+@dataclass(frozen=True, slots=True)
+class CorpusProducerMetadata:
+    """Versioned identity for the process that exported a gold-free corpus."""
+
+    created_at: str
+    repository_commit: str | None
+    repository_dirty: bool | None
+    package_version: str
+    python_version: str
+    platform: str
+    command: tuple[str, ...]
+    tokenizer_id: str = TOKENIZER_ID
+    model_id: str = "deterministic-no-model"
+    model_service_cost_usd: float = 0.0
+
+    def __post_init__(self) -> None:
+        try:
+            created_at = datetime.fromisoformat(self.created_at)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("created_at must be an ISO-8601 timestamp") from exc
+        if created_at.utcoffset() is None:
+            raise ValueError("created_at must include a timezone")
+        if self.repository_commit is not None and (
+            not isinstance(self.repository_commit, str)
+            or re.fullmatch(
+                r"[0-9a-f]{40}|[0-9a-f]{64}",
+                self.repository_commit,
+            )
+            is None
+        ):
+            raise ValueError(
+                "repository_commit must be a lowercase Git object id or None"
+            )
+        if self.repository_dirty is not None and not isinstance(
+            self.repository_dirty,
+            bool,
+        ):
+            raise TypeError("repository_dirty must be a boolean or None")
+        for name in ("package_version", "python_version", "platform"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise TypeError(f"{name} must be a non-empty string")
+        if not isinstance(self.command, tuple) or not self.command or not all(
+            isinstance(part, str) and part for part in self.command
+        ):
+            raise TypeError("command must contain non-empty strings")
+        if self.tokenizer_id != TOKENIZER_ID:
+            raise ValueError(f"tokenizer_id must be {TOKENIZER_ID!r}")
+        if self.model_id != "deterministic-no-model":
+            raise ValueError("corpus production must record deterministic-no-model")
+        cost = self.model_service_cost_usd
+        if (
+            isinstance(cost, bool)
+            or not isinstance(cost, (int, float))
+            or float(cost) != 0.0
+        ):
+            raise ValueError("corpus production model_service_cost_usd must be zero")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema": CORPUS_PRODUCER_SCHEMA,
+            "created_at": self.created_at,
+            "repository_commit": self.repository_commit,
+            "repository_dirty": self.repository_dirty,
+            "package_version": self.package_version,
+            "python_version": self.python_version,
+            "platform": self.platform,
+            "command": list(self.command),
+            "tokenizer_id": self.tokenizer_id,
+            "model_id": self.model_id,
+            "model_service_cost_usd": float(self.model_service_cost_usd),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateProducerMetadata:
+    """Versioned adapter/model identity embedded in a candidate artifact."""
+
+    adapter_revision: str
+    environment_id: str
+    model_id: str
+    model_context_length: int
+    tokenizer_id: str
+    inference_concurrency: int
+    retry_count: int
+    model_service_cost_usd: float
+
+    def __post_init__(self) -> None:
+        for name in (
+            "adapter_revision",
+            "environment_id",
+            "model_id",
+            "tokenizer_id",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise TypeError(f"{name} must be a non-empty string")
+        for name in (
+            "model_context_length",
+            "inference_concurrency",
+            "retry_count",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer")
+            if value < 0:
+                raise ValueError(f"{name} cannot be negative")
+        cost = self.model_service_cost_usd
+        if isinstance(cost, bool) or not isinstance(cost, (int, float)):
+            raise TypeError("model_service_cost_usd must be numeric")
+        if not 0 <= float(cost) < float("inf"):
+            raise ValueError(
+                "model_service_cost_usd must be finite and non-negative"
+            )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema": CANDIDATE_PRODUCER_SCHEMA,
+            "adapter_revision": self.adapter_revision,
+            "environment_id": self.environment_id,
+            "model_id": self.model_id,
+            "model_context_length": self.model_context_length,
+            "tokenizer_id": self.tokenizer_id,
+            "inference_concurrency": self.inference_concurrency,
+            "retry_count": self.retry_count,
+            "model_service_cost_usd": float(self.model_service_cost_usd),
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,6 +372,7 @@ class AggregateMetrics:
     budget_compliance_rate: float
     corpus_compression_ratio: float
     quality_score: float
+    memory_quality_efficiency: float
     source_tokens: int
     active_tokens: int
     histories: int
@@ -218,6 +385,57 @@ class AggregateMetrics:
 
 
 @dataclass(frozen=True, slots=True)
+class RunManifestEvidence:
+    system: str
+    manifest_sha256: str
+    failure_reason: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ExternalProtocolEvidence:
+    protocol_id: str
+    protocol_sha256: str
+    document_sha256: str
+    synthetic_dataset_sha256: str
+    registered_systems: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.protocol_id, str)
+            or _SYSTEM_RE.fullmatch(self.protocol_id) is None
+            or self.protocol_id != self.protocol_id.lower()
+        ):
+            raise ValueError("external protocol id is invalid")
+        for name in (
+            "protocol_sha256",
+            "document_sha256",
+            "synthetic_dataset_sha256",
+        ):
+            value = getattr(self, name)
+            if (
+                not isinstance(value, str)
+                or re.fullmatch(r"[0-9a-f]{64}", value) is None
+            ):
+                raise ValueError(f"external protocol {name} is invalid")
+        if (
+            not isinstance(self.registered_systems, tuple)
+            or len(self.registered_systems) < 4
+            or self.registered_systems
+            != tuple(sorted(set(self.registered_systems)))
+            or not all(
+                isinstance(system, str)
+                and _SYSTEM_RE.fullmatch(system) is not None
+                and system == system.lower()
+                for system in self.registered_systems
+            )
+        ):
+            raise ValueError(
+                "external protocol must register at least four valid, unique, "
+                "lowercase, sorted systems"
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class GainCertificate:
     issued: bool
     candidate: str
@@ -226,15 +444,124 @@ class GainCertificate:
     baseline_quality: float
     gain_basis: str | None
     critical_semantic_loss_reduction: float | None
-    completion_efficiency_gain: float | None
-    critical_loss_margin_lower_95: float
-    completion_efficiency_margin_lower_95: float
+    memory_quality_efficiency_gain: float | None
+    critical_loss_margin_lower: float | None
+    memory_quality_efficiency_margin_lower: float | None
+    bootstrap_lower_quantile: float
     evidence_sha256: str
     scope: str
     compared_baselines: tuple[str, ...]
     external_baselines: tuple[str, ...]
+    external_wins: int
+    external_required_wins: int
+    external_majority_passed: bool | None
+    external_manifests: tuple[RunManifestEvidence, ...]
+    external_protocol: ExternalProtocolEvidence | None
+    comparisons: tuple[SystemComparison, ...]
     reasons: tuple[str, ...]
     claim: str
+
+
+@dataclass(frozen=True, slots=True)
+class SystemComparison:
+    system: str
+    external: bool
+    decision: str
+    gain_basis: str | None
+    critical_semantic_loss_reduction: float | None
+    memory_quality_efficiency_gain: float | None
+    critical_loss_margin_lower: float | None
+    memory_quality_efficiency_margin_lower: float | None
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ComponentRevision:
+    name: str
+    revision: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name:
+            raise TypeError("component revision name must be a non-empty string")
+        if not isinstance(self.revision, str) or not self.revision:
+            raise TypeError("component revision must be a non-empty string")
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkRunMetadata:
+    started_at: str
+    duration_seconds: float
+    repository_commit: str | None
+    repository_dirty: bool | None
+    package_version: str
+    python_version: str
+    platform: str
+    command: tuple[str, ...]
+    tokenizer_id: str
+    model_id: str
+    schema_versions: tuple[ComponentRevision, ...]
+    baseline_revisions: tuple[ComponentRevision, ...]
+    model_service_cost_usd: float | None
+    failures: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        try:
+            started_at = datetime.fromisoformat(self.started_at)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("started_at must be an ISO-8601 timestamp") from exc
+        if started_at.utcoffset() is None:
+            raise ValueError("started_at must include a timezone")
+        if (
+            isinstance(self.duration_seconds, bool)
+            or not isinstance(self.duration_seconds, (int, float))
+            or not 0 <= float(self.duration_seconds) < float("inf")
+        ):
+            raise ValueError("duration_seconds must be finite and non-negative")
+        if self.repository_commit is not None and (
+            not isinstance(self.repository_commit, str)
+            or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", self.repository_commit) is None
+        ):
+            raise ValueError("repository_commit must be a lowercase Git object id or None")
+        if self.repository_dirty is not None and not isinstance(
+            self.repository_dirty,
+            bool,
+        ):
+            raise TypeError("repository_dirty must be a boolean or None")
+        for name in (
+            "package_version",
+            "python_version",
+            "platform",
+            "tokenizer_id",
+            "model_id",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise TypeError(f"{name} must be a non-empty string")
+        if not self.command or not all(
+            isinstance(part, str) and part for part in self.command
+        ):
+            raise TypeError("command must contain non-empty strings")
+        for name in ("schema_versions", "baseline_revisions"):
+            values = getattr(self, name)
+            if not isinstance(values, tuple) or not all(
+                isinstance(value, ComponentRevision) for value in values
+            ):
+                raise TypeError(f"{name} must contain ComponentRevision values")
+            component_names = [value.name for value in values]
+            if len(component_names) != len(set(component_names)):
+                raise ValueError(f"{name} contains duplicate component names")
+        if self.model_service_cost_usd is not None and (
+            isinstance(self.model_service_cost_usd, bool)
+            or not isinstance(self.model_service_cost_usd, (int, float))
+            or not 0 <= float(self.model_service_cost_usd) < float("inf")
+        ):
+            raise ValueError(
+                "model_service_cost_usd must be finite and non-negative or None"
+            )
+        if not isinstance(self.failures, tuple) or not all(
+            isinstance(failure, str) and failure for failure in self.failures
+        ):
+            raise TypeError("failures must contain non-empty strings")
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,6 +571,7 @@ class BenchmarkReport:
     dataset_sha256: str
     systems: tuple[AggregateMetrics, ...]
     certificate: GainCertificate
+    run_metadata: BenchmarkRunMetadata
 
     def to_dict(self, *, include_histories: bool = False) -> dict[str, object]:
         systems: list[dict[str, object]] = []
@@ -252,7 +580,8 @@ class BenchmarkReport:
             if include_histories:
                 encoded["per_history"] = [asdict(item) for item in result.per_history]
             systems.append(encoded)
-        return {
+        payload: dict[str, object] = {
+            "report_schema": REPORT_SCHEMA,
             "benchmark": self.benchmark,
             "corpus_schema": CORPUS_SCHEMA,
             "candidate_schema": CANDIDATE_SCHEMA,
@@ -260,7 +589,10 @@ class BenchmarkReport:
             "dataset_sha256": self.dataset_sha256,
             "systems": systems,
             "certificate": asdict(self.certificate),
+            "run_metadata": asdict(self.run_metadata),
         }
+        payload["report_sha256"] = _canonical_sha256(payload)
+        return payload
 
     def to_json(self, *, include_histories: bool = False) -> str:
         return json.dumps(
@@ -612,13 +944,29 @@ def corpus_document(
     cases: Sequence[HistoryCase],
     config: BenchmarkConfig,
     digest: str,
+    *,
+    producer: CorpusProducerMetadata | None = None,
 ) -> dict[str, object]:
     """Return the exact source corpus without evaluator-only gold atoms."""
 
-    return {
+    if producer is None:
+        repository_commit, repository_dirty = _repository_state()
+        producer = CorpusProducerMetadata(
+            created_at=datetime.now(UTC).isoformat(),
+            repository_commit=repository_commit,
+            repository_dirty=repository_dirty,
+            package_version=PACKAGE_VERSION,
+            python_version=platform.python_version(),
+            platform=platform.platform(),
+            command=("python-api:benchmarks.corpus_document",),
+        )
+    if not isinstance(producer, CorpusProducerMetadata):
+        raise TypeError("producer must be CorpusProducerMetadata")
+    document: dict[str, object] = {
         "schema": CORPUS_SCHEMA,
         "benchmark": BENCHMARK_VERSION,
         "dataset_sha256": digest,
+        "producer": producer.to_dict(),
         "config": asdict(config),
         "cases": [
             {
@@ -629,6 +977,19 @@ def corpus_document(
             for case in cases
         ],
     }
+    document["corpus_sha256"] = _canonical_sha256(document)
+    return document
+
+
+def _canonical_sha256(value: object) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _strict_object(value: object, context: str) -> dict[str, Any]:
@@ -658,6 +1019,255 @@ def _strict_int(value: object, context: str) -> int:
     return value
 
 
+def _decode_corpus_producer(
+    value: object,
+    *,
+    context: str,
+) -> CorpusProducerMetadata:
+    producer = _strict_object(value, context)
+    fields = {
+        "schema",
+        "created_at",
+        "repository_commit",
+        "repository_dirty",
+        "package_version",
+        "python_version",
+        "platform",
+        "command",
+        "tokenizer_id",
+        "model_id",
+        "model_service_cost_usd",
+    }
+    _strict_keys(
+        producer,
+        required=fields,
+        allowed=fields,
+        context=context,
+    )
+    if producer["schema"] != CORPUS_PRODUCER_SCHEMA:
+        raise ExternalBaselineError(
+            f"{context}.schema must be {CORPUS_PRODUCER_SCHEMA!r}"
+        )
+    command = producer["command"]
+    if not isinstance(command, list):
+        raise ExternalBaselineError(f"{context}.command must be an array")
+    try:
+        return CorpusProducerMetadata(
+            created_at=producer["created_at"],
+            repository_commit=producer["repository_commit"],
+            repository_dirty=producer["repository_dirty"],
+            package_version=producer["package_version"],
+            python_version=producer["python_version"],
+            platform=producer["platform"],
+            command=tuple(command),
+            tokenizer_id=producer["tokenizer_id"],
+            model_id=producer["model_id"],
+            model_service_cost_usd=producer["model_service_cost_usd"],
+        )
+    except (TypeError, ValueError) as exc:
+        raise ExternalBaselineError(f"{context} is invalid: {exc}") from exc
+
+
+def _decode_candidate_producer(
+    value: object,
+    *,
+    context: str,
+) -> CandidateProducerMetadata:
+    producer = _strict_object(value, context)
+    fields = {
+        "schema",
+        "adapter_revision",
+        "environment_id",
+        "model_id",
+        "model_context_length",
+        "tokenizer_id",
+        "inference_concurrency",
+        "retry_count",
+        "model_service_cost_usd",
+    }
+    _strict_keys(
+        producer,
+        required=fields,
+        allowed=fields,
+        context=context,
+    )
+    if producer["schema"] != CANDIDATE_PRODUCER_SCHEMA:
+        raise ExternalBaselineError(
+            f"{context}.schema must be {CANDIDATE_PRODUCER_SCHEMA!r}"
+        )
+    try:
+        return CandidateProducerMetadata(
+            adapter_revision=producer["adapter_revision"],
+            environment_id=producer["environment_id"],
+            model_id=producer["model_id"],
+            model_context_length=producer["model_context_length"],
+            tokenizer_id=producer["tokenizer_id"],
+            inference_concurrency=producer["inference_concurrency"],
+            retry_count=producer["retry_count"],
+            model_service_cost_usd=producer["model_service_cost_usd"],
+        )
+    except (TypeError, ValueError) as exc:
+        raise ExternalBaselineError(f"{context} is invalid: {exc}") from exc
+
+
+def decode_corpus_document(
+    payload: object,
+    *,
+    source_label: str = "<corpus>",
+) -> tuple[BenchmarkConfig, tuple[HistoryCase, ...], str]:
+    """Validate a gold-free corpus export for an external adapter."""
+
+    document = _strict_object(payload, source_label)
+    _strict_keys(
+        document,
+        required={
+            "schema",
+            "benchmark",
+            "dataset_sha256",
+            "corpus_sha256",
+            "producer",
+            "config",
+            "cases",
+        },
+        allowed={
+            "schema",
+            "benchmark",
+            "dataset_sha256",
+            "corpus_sha256",
+            "producer",
+            "config",
+            "cases",
+        },
+        context=source_label,
+    )
+    if document["schema"] != CORPUS_SCHEMA:
+        raise ExternalBaselineError(
+            f"{source_label} schema must be {CORPUS_SCHEMA!r}"
+        )
+    if document["benchmark"] != BENCHMARK_VERSION:
+        raise ExternalBaselineError(
+            f"{source_label} benchmark must be {BENCHMARK_VERSION!r}"
+        )
+    dataset_sha256 = document["dataset_sha256"]
+    corpus_sha256 = document["corpus_sha256"]
+    if (
+        not isinstance(dataset_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", dataset_sha256) is None
+    ):
+        raise ExternalBaselineError(
+            f"{source_label} dataset_sha256 must be lowercase SHA-256"
+        )
+    if (
+        not isinstance(corpus_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", corpus_sha256) is None
+    ):
+        raise ExternalBaselineError(
+            f"{source_label} corpus_sha256 must be lowercase SHA-256"
+        )
+    unsigned = dict(document)
+    unsigned.pop("corpus_sha256")
+    try:
+        actual_corpus_sha256 = _canonical_sha256(unsigned)
+    except (TypeError, ValueError) as exc:
+        raise ExternalBaselineError(
+            f"{source_label} is not canonical finite JSON"
+        ) from exc
+    if actual_corpus_sha256 != corpus_sha256:
+        raise ExternalBaselineError(f"{source_label} corpus_sha256 mismatch")
+    _decode_corpus_producer(
+        document["producer"],
+        context=f"{source_label}.producer",
+    )
+
+    raw_config = _strict_object(document["config"], f"{source_label}.config")
+    expected_config_keys = {
+        "histories",
+        "messages_per_history",
+        "noise_lines_per_message",
+        "token_budget",
+        "minimum_compression",
+        "seed",
+        "bootstrap_samples",
+        "bootstrap_lower_quantile",
+    }
+    _strict_keys(
+        raw_config,
+        required=expected_config_keys,
+        allowed=expected_config_keys,
+        context=f"{source_label}.config",
+    )
+    try:
+        config = BenchmarkConfig(**raw_config)
+    except (TypeError, ValueError) as exc:
+        raise ExternalBaselineError(
+            f"{source_label}.config is invalid: {exc}"
+        ) from exc
+
+    raw_cases = document["cases"]
+    if not isinstance(raw_cases, list):
+        raise ExternalBaselineError(f"{source_label}.cases must be an array")
+    cases: list[HistoryCase] = []
+    seen_case_ids: set[str] = set()
+    for index, raw_case in enumerate(raw_cases):
+        context = f"{source_label}.cases[{index}]"
+        case = _strict_object(raw_case, context)
+        _strict_keys(
+            case,
+            required={"case_id", "strata", "source_events"},
+            allowed={"case_id", "strata", "source_events"},
+            context=context,
+        )
+        case_id = case["case_id"]
+        if not isinstance(case_id, str) or not case_id:
+            raise ExternalBaselineError(f"{context}.case_id must be non-empty")
+        if case_id in seen_case_ids:
+            raise ExternalBaselineError(
+                f"{source_label} repeats case {case_id!r}"
+            )
+        seen_case_ids.add(case_id)
+        strata = case["strata"]
+        if (
+            not isinstance(strata, list)
+            or not all(isinstance(value, str) and value for value in strata)
+            or len(strata) != len(set(strata))
+        ):
+            raise ExternalBaselineError(
+                f"{context}.strata must be unique non-empty strings"
+            )
+        raw_sources = case["source_events"]
+        if not isinstance(raw_sources, list) or not raw_sources:
+            raise ExternalBaselineError(
+                f"{context}.source_events must be a non-empty array"
+            )
+        try:
+            sources = tuple(
+                SourceRecord.from_dict(value, default_sequence=source_index)
+                for source_index, value in enumerate(raw_sources)
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ExternalBaselineError(
+                f"{context}.source_events are invalid: {exc}"
+            ) from exc
+        if len({source.id for source in sources}) != len(sources):
+            raise ExternalBaselineError(f"{context} repeats a source id")
+        if len({source.sequence for source in sources}) != len(sources):
+            raise ExternalBaselineError(f"{context} repeats a source sequence")
+        cases.append(
+            HistoryCase(
+                id=case_id,
+                sources=tuple(sorted(sources, key=lambda source: source.sequence)),
+                gold_atoms=(),
+                strata=tuple(strata),
+            )
+        )
+    if len(cases) != config.histories:
+        raise ExternalBaselineError(
+            f"{source_label} contains {len(cases)} cases; config expects "
+            f"{config.histories}"
+        )
+    return config, tuple(cases), dataset_sha256
+
+
 def _canonical_external_render(
     system: str,
     rendered_text: str,
@@ -680,6 +1290,39 @@ def _canonical_external_render(
     return "\n".join(lines)
 
 
+def candidate_document(
+    *,
+    dataset_sha256: str,
+    system: str,
+    cases: Sequence[Mapping[str, object]],
+    producer: CandidateProducerMetadata,
+) -> dict[str, object]:
+    """Build a current candidate envelope and bind all fields with a self-digest."""
+
+    if (
+        not isinstance(dataset_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", dataset_sha256) is None
+    ):
+        raise ValueError("dataset_sha256 must be lowercase SHA-256")
+    if not isinstance(system, str) or _SYSTEM_RE.fullmatch(system) is None:
+        raise ValueError("system name is invalid")
+    if system in BUNDLED_SYSTEMS:
+        raise ValueError(f"system name {system!r} collides with a bundled system")
+    if isinstance(cases, (str, bytes)) or not isinstance(cases, Sequence):
+        raise TypeError("cases must be a sequence")
+    if not isinstance(producer, CandidateProducerMetadata):
+        raise TypeError("producer must be CandidateProducerMetadata")
+    document: dict[str, object] = {
+        "schema": CANDIDATE_SCHEMA,
+        "dataset_sha256": dataset_sha256,
+        "system": system,
+        "producer": producer.to_dict(),
+        "cases": [dict(case) for case in cases],
+    }
+    document["candidate_payload_sha256"] = _canonical_sha256(document)
+    return document
+
+
 def decode_external_candidate(
     payload: object,
     *,
@@ -687,17 +1330,78 @@ def decode_external_candidate(
     dataset_sha256: str,
     token_budget: int,
     source_label: str = "<memory>",
+    expected_producer: CandidateProducerMetadata | None = None,
+    allow_legacy_adapter: bool = False,
 ) -> tuple[str, dict[str, CandidateOutput]]:
     """Validate and decode one dataset-bound external candidate document."""
 
+    if expected_producer is not None and not isinstance(
+        expected_producer,
+        CandidateProducerMetadata,
+    ):
+        raise TypeError("expected_producer must be CandidateProducerMetadata or None")
+    if not isinstance(allow_legacy_adapter, bool):
+        raise TypeError("allow_legacy_adapter must be a boolean")
     document = _strict_object(payload, source_label)
-    _strict_keys(
-        document,
-        required={"schema", "dataset_sha256", "system", "cases"},
-        allowed={"schema", "dataset_sha256", "system", "cases"},
-        context=source_label,
-    )
-    if document["schema"] != CANDIDATE_SCHEMA:
+    schema = document.get("schema")
+    if "schema" not in document:
+        raise ExternalBaselineError(f"{source_label} is missing fields: schema")
+    if schema == CANDIDATE_SCHEMA:
+        fields = {
+            "schema",
+            "dataset_sha256",
+            "candidate_payload_sha256",
+            "system",
+            "producer",
+            "cases",
+        }
+        _strict_keys(
+            document,
+            required=fields,
+            allowed=fields,
+            context=source_label,
+        )
+        candidate_sha256 = document["candidate_payload_sha256"]
+        if (
+            not isinstance(candidate_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", candidate_sha256) is None
+        ):
+            raise ExternalBaselineError(
+                f"{source_label}.candidate_payload_sha256 must be lowercase SHA-256"
+            )
+        unsigned = dict(document)
+        unsigned.pop("candidate_payload_sha256")
+        try:
+            actual_candidate_sha256 = _canonical_sha256(unsigned)
+        except (TypeError, ValueError) as exc:
+            raise ExternalBaselineError(
+                f"{source_label} is not canonical finite JSON"
+            ) from exc
+        if actual_candidate_sha256 != candidate_sha256:
+            raise ExternalBaselineError(
+                f"{source_label}.candidate_payload_sha256 mismatch"
+            )
+        producer = _decode_candidate_producer(
+            document["producer"],
+            context=f"{source_label}.producer",
+        )
+        if expected_producer is not None and producer != expected_producer:
+            raise ExternalBaselineError(
+                f"{source_label}.producer does not match the registered runner identity"
+            )
+    elif schema == LEGACY_ADAPTER_CANDIDATE_SCHEMA and allow_legacy_adapter:
+        if expected_producer is None:
+            raise TypeError(
+                "legacy adapter decoding requires an expected producer identity"
+            )
+        fields = {"schema", "dataset_sha256", "system", "cases"}
+        _strict_keys(
+            document,
+            required=fields,
+            allowed=fields,
+            context=source_label,
+        )
+    else:
         raise ExternalBaselineError(
             f"{source_label} schema must be {CANDIDATE_SCHEMA!r}"
         )
@@ -817,21 +1521,67 @@ def decode_external_candidate(
     return system, decoded
 
 
+def _external_candidate_json_limits(max_candidate_bytes: int) -> StrictJsonLimits:
+    try:
+        return StrictJsonLimits(
+            max_bytes=max_candidate_bytes,
+            max_line_chars=min(max_candidate_bytes, 8 * 1024 * 1024),
+            max_depth=64,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ExternalBaselineError(f"invalid external candidate limits: {exc}") from exc
+
+
 def load_external_candidates(
     paths: Sequence[Path],
     *,
     cases: Sequence[HistoryCase],
     dataset_sha256: str,
     token_budget: int,
-) -> dict[str, dict[str, CandidateOutput]]:
+    max_candidate_bytes: int = DEFAULT_EXTERNAL_CANDIDATE_BYTES,
+    expected_file_evidence: Mapping[Path, tuple[int, str]] | None = None,
+) -> tuple[
+    dict[str, dict[str, CandidateOutput]],
+    dict[str, CandidateProducerMetadata],
+]:
+    input_limits = _external_candidate_json_limits(max_candidate_bytes)
+    expected_evidence = dict(expected_file_evidence or {})
+    for evidence_path, evidence in expected_evidence.items():
+        if not isinstance(evidence_path, Path):
+            raise ExternalBaselineError("candidate evidence keys must be Path values")
+        if (
+            not isinstance(evidence, tuple)
+            or len(evidence) != 2
+            or isinstance(evidence[0], bool)
+            or not isinstance(evidence[0], int)
+            or evidence[0] < 0
+            or not isinstance(evidence[1], str)
+            or re.fullmatch(r"[0-9a-f]{64}", evidence[1]) is None
+        ):
+            raise ExternalBaselineError(
+                f"candidate file evidence is invalid for {evidence_path}"
+            )
     systems: dict[str, dict[str, CandidateOutput]] = {}
+    producers: dict[str, CandidateProducerMetadata] = {}
     for path in paths:
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            document = load_strict_json_file(
+                path,
+                limits=input_limits,
+                label="external candidate",
+            )
+        except StrictJsonError as exc:
             raise ExternalBaselineError(f"cannot read external candidate {path}: {exc}") from exc
+        expected = expected_evidence.get(path)
+        if expected is not None and (
+            document.byte_count != expected[0]
+            or document.file_sha256 != expected[1]
+        ):
+            raise ExternalBaselineError(
+                f"external candidate {path} changed after manifest validation"
+            )
         system, outputs = decode_external_candidate(
-            payload,
+            document.value,
             cases=cases,
             dataset_sha256=dataset_sha256,
             token_budget=token_budget,
@@ -840,7 +1590,11 @@ def load_external_candidates(
         if system in systems:
             raise ExternalBaselineError(f"external system {system!r} was supplied more than once")
         systems[system] = outputs
-    return systems
+        producers[system] = _decode_candidate_producer(
+            document.value["producer"],
+            context=f"{path}.producer",
+        )
+    return systems, producers
 
 
 def _render_baseline(name: str, claims: Sequence[OutputClaim]) -> str:
@@ -1304,8 +2058,10 @@ def _aggregate(system: str, histories: Sequence[HistoryMetrics]) -> AggregateMet
     active_tokens = sum(item.active_tokens for item in histories)
     return AggregateMetrics(
         system=system,
-        critical_atom_recall=ratio("critical_recalled", "critical_total", empty=1.0),
-        exact_literal_recall=ratio("exact_recalled", "exact_total", empty=1.0),
+        # Claim-bearing comparison estimands are history-weighted so the point
+        # estimates and paired history bootstrap measure the same quantity.
+        critical_atom_recall=fmean(item.critical_atom_recall for item in histories),
+        exact_literal_recall=fmean(item.exact_literal_recall for item in histories),
         provenance_validity=ratio("valid_claims", "claim_total", empty=0.0),
         unresolved_to_fact_rate=ratio(
             "unresolved_promotions", "unresolved_total", empty=0.0
@@ -1327,6 +2083,9 @@ def _aggregate(system: str, histories: Sequence[HistoryMetrics]) -> AggregateMet
         budget_compliance_rate=fmean(float(item.budget_compliant) for item in histories),
         corpus_compression_ratio=source_tokens / max(1, active_tokens),
         quality_score=fmean(item.quality_score for item in histories),
+        memory_quality_efficiency=fmean(
+            item.quality_score / max(1, item.active_tokens) for item in histories
+        ),
         source_tokens=source_tokens,
         active_tokens=active_tokens,
         histories=len(histories),
@@ -1341,7 +2100,17 @@ def _paired_lower_bound(
     samples: int,
     seed: int,
     basis: str,
+    quantile: float,
 ) -> float:
+    if len(candidate.per_history) != len(baseline.per_history) or any(
+        left.case_id != right.case_id
+        for left, right in zip(
+            candidate.per_history,
+            baseline.per_history,
+            strict=False,
+        )
+    ):
+        raise ValueError("paired bootstrap requires identical ordered history ids")
     rng = random.Random(seed ^ 0x5EED_CE57)
     count = len(candidate.per_history)
     margins: list[float] = []
@@ -1355,7 +2124,7 @@ def _paired_lower_bound(
                 1.0 - baseline.per_history[index].critical_atom_recall for index in indices
             )
             margin = 0.5 * baseline_loss - candidate_loss
-        elif basis == "completion-efficiency":
+        elif basis == "memory-quality-efficiency":
             candidate_efficiency = fmean(
                 candidate.per_history[index].quality_score
                 / max(1, candidate.per_history[index].active_tokens)
@@ -1371,7 +2140,110 @@ def _paired_lower_bound(
             raise ValueError(f"unknown bootstrap basis: {basis}")
         margins.append(margin)
     margins.sort()
-    return margins[max(0, math.floor(0.025 * (len(margins) - 1)))]
+    return margins[max(0, math.floor(quantile * (len(margins) - 1)))]
+
+
+def _make_system_comparison(
+    config: BenchmarkConfig,
+    candidate: AggregateMetrics,
+    baseline: AggregateMetrics | None,
+    *,
+    system: str,
+    external: bool,
+    candidate_gate_reasons: Sequence[str] = (),
+    system_reasons: Sequence[str] = (),
+) -> SystemComparison:
+    if baseline is None:
+        return SystemComparison(
+            system=system,
+            external=external,
+            decision="invalid",
+            gain_basis=None,
+            critical_semantic_loss_reduction=None,
+            memory_quality_efficiency_gain=None,
+            critical_loss_margin_lower=None,
+            memory_quality_efficiency_margin_lower=None,
+            reasons=tuple(system_reasons)
+            or ("no valid candidate output was supplied for this registered system",),
+        )
+
+    candidate_loss = 1.0 - candidate.critical_atom_recall
+    baseline_loss = 1.0 - baseline.critical_atom_recall
+    loss_reduction = (
+        (baseline_loss - candidate_loss) / baseline_loss if baseline_loss > 0 else None
+    )
+    efficiency_gain = (
+        candidate.memory_quality_efficiency / baseline.memory_quality_efficiency - 1.0
+        if baseline.memory_quality_efficiency > 0
+        else None
+    )
+    loss_lower = _paired_lower_bound(
+        candidate,
+        baseline,
+        samples=config.bootstrap_samples,
+        seed=config.seed,
+        basis="critical-loss",
+        quantile=config.bootstrap_lower_quantile,
+    )
+    efficiency_lower = _paired_lower_bound(
+        candidate,
+        baseline,
+        samples=config.bootstrap_samples,
+        seed=config.seed,
+        basis="memory-quality-efficiency",
+        quantile=config.bootstrap_lower_quantile,
+    )
+    loss_qualifies = (
+        baseline_loss >= 0.01
+        and loss_reduction is not None
+        and loss_reduction >= 0.50
+        and loss_lower > 0.0
+    )
+    efficiency_qualifies = (
+        efficiency_gain is not None
+        and efficiency_gain >= 0.50
+        and efficiency_lower > 0.0
+    )
+    gain_basis = None
+    if loss_qualifies and efficiency_qualifies:
+        gain_basis = "critical-semantic-loss-reduction+memory-quality-efficiency"
+    elif loss_qualifies:
+        gain_basis = "critical-semantic-loss-reduction"
+    elif efficiency_qualifies:
+        gain_basis = "memory-quality-efficiency"
+
+    reasons = [*candidate_gate_reasons, *system_reasons]
+    if baseline.critical_atom_recall < 0.10:
+        reasons.append("baseline critical recall is degenerate")
+    if baseline.budget_compliance_rate != 1.0:
+        reasons.append("baseline exceeded the matched budget")
+    if reasons:
+        decision = "invalid"
+    elif gain_basis is not None:
+        decision = "win"
+    elif (
+        candidate.critical_atom_recall < baseline.critical_atom_recall
+        and candidate.memory_quality_efficiency
+        < baseline.memory_quality_efficiency
+    ):
+        decision = "loss"
+    else:
+        decision = "tie"
+    if decision in {"tie", "loss"}:
+        reasons.append(
+            "candidate did not establish a paired 50% gain on either registered basis"
+        )
+    return SystemComparison(
+        system=system,
+        external=external,
+        decision=decision,
+        gain_basis=gain_basis,
+        critical_semantic_loss_reduction=loss_reduction,
+        memory_quality_efficiency_gain=efficiency_gain,
+        critical_loss_margin_lower=loss_lower,
+        memory_quality_efficiency_margin_lower=efficiency_lower,
+        reasons=tuple(reasons),
+    )
 
 
 def _make_certificate(
@@ -1380,12 +2252,15 @@ def _make_certificate(
     cases: Sequence[HistoryCase],
     results: Sequence[AggregateMetrics],
     external_systems: Sequence[str] = (),
+    external_failures: Mapping[str, str] | None = None,
+    external_manifest_sha256: Mapping[str, str] | None = None,
+    external_protocol: ExternalProtocolEvidence | None = None,
 ) -> GainCertificate:
+    external_failures = dict(external_failures or {})
+    external_manifest_sha256 = dict(external_manifest_sha256 or {})
     by_name = {result.system: result for result in results}
     candidate = by_name["compiler"]
     baselines = [result for result in results if result.system != "compiler"]
-    # The semantic-loss claim must face the baseline with the best critical
-    # recall, even when that baseline fails another safety dimension.
     strongest = max(
         baselines,
         key=lambda result: (
@@ -1395,47 +2270,13 @@ def _make_certificate(
             result.system,
         ),
     )
-    candidate_loss = 1.0 - candidate.critical_atom_recall
-    baseline_loss = 1.0 - strongest.critical_atom_recall
-    loss_reduction = (
-        (baseline_loss - candidate_loss) / baseline_loss if baseline_loss > 0 else None
-    )
-    candidate_efficiency = candidate.quality_score / max(
-        1.0, candidate.active_tokens / candidate.histories
-    )
-    baseline_efficiency = strongest.quality_score / max(
-        1.0, strongest.active_tokens / strongest.histories
-    )
-    efficiency_gain = (
-        candidate_efficiency / baseline_efficiency - 1.0
-        if baseline_efficiency > 0
-        else None
-    )
-    loss_lower = _paired_lower_bound(
-        candidate,
-        strongest,
-        samples=config.bootstrap_samples,
-        seed=config.seed,
-        basis="critical-loss",
-    )
-    efficiency_lower = _paired_lower_bound(
-        candidate,
-        strongest,
-        samples=config.bootstrap_samples,
-        seed=config.seed,
-        basis="completion-efficiency",
-    )
     strata = Counter(stratum for case in cases for stratum in case.strata)
-    reasons: list[str] = []
+    candidate_gate_reasons: list[str] = []
     checks = (
         (config.histories >= 24, "at least 24 histories are required"),
         (
             all(strata[name] >= 24 for name in REQUIRED_STRATA),
             "every required adversarial stratum needs at least 24 histories",
-        ),
-        (
-            strongest.critical_atom_recall >= 0.10,
-            "the strongest baseline has degenerate critical recall",
         ),
         (candidate.critical_atom_recall >= 0.98, "critical atom recall is below 0.98"),
         (candidate.exact_literal_recall >= 0.99, "exact literal recall is below 0.99"),
@@ -1462,58 +2303,157 @@ def _make_certificate(
             candidate.corpus_compression_ratio >= config.minimum_compression,
             "candidate missed the compression floor",
         ),
-        (
-            all(result.budget_compliance_rate == 1.0 for result in results),
-            "a compared system exceeded the matched budget",
-        ),
     )
     for passed, reason in checks:
         if not passed:
-            reasons.append(reason)
-    loss_qualifies = (
-        baseline_loss >= 0.01
-        and loss_reduction is not None
-        and loss_reduction >= 0.50
-        and loss_lower > 0.0
-    )
-    efficiency_qualifies = (
-        efficiency_gain is not None
-        and efficiency_gain >= 0.50
-        and efficiency_lower > 0.0
-    )
-    if not (loss_qualifies or efficiency_qualifies):
-        reasons.append(
-            "neither critical semantic-loss reduction nor completion efficiency establishes "
-            "a paired 50% gain"
+            candidate_gate_reasons.append(reason)
+
+    external_names = tuple(sorted(set(external_systems)))
+    if (
+        len(external_names) != len(external_systems)
+        or any(
+            not isinstance(name, str)
+            or _SYSTEM_RE.fullmatch(name) is None
+            for name in external_names
         )
-    gain_basis = None
-    if loss_qualifies and efficiency_qualifies:
-        gain_basis = "critical-semantic-loss-reduction+completion-efficiency"
-    elif loss_qualifies:
-        gain_basis = "critical-semantic-loss-reduction"
-    elif efficiency_qualifies:
-        gain_basis = "completion-efficiency"
+    ):
+        raise ValueError(
+            "external systems must contain unique valid identifiers"
+        )
+    unexpected_external_evidence = (
+        set(external_failures) | set(external_manifest_sha256)
+    ) - set(external_names)
+    if unexpected_external_evidence:
+        raise ValueError(
+            "external evidence names are outside the comparison set"
+        )
+    if any(
+        not isinstance(reason, str) or not reason
+        for reason in external_failures.values()
+    ):
+        raise ValueError("external failure reasons must be non-empty strings")
+    if any(
+        not isinstance(value, str)
+        or re.fullmatch(r"[0-9a-f]{64}", value) is None
+        for value in external_manifest_sha256.values()
+    ):
+        raise ValueError("external manifest hashes must be lowercase SHA-256")
+    for name in external_names:
+        if name not in external_manifest_sha256:
+            external_failures.setdefault(
+                name,
+                "no validated external run manifest was supplied",
+            )
+    if external_names:
+        if external_protocol is None:
+            candidate_gate_reasons.append(
+                "frozen external comparison protocol evidence is missing"
+            )
+        elif external_protocol.registered_systems != external_names:
+            candidate_gate_reasons.append(
+                "external comparison set does not match the frozen protocol"
+            )
+        elif external_protocol.synthetic_dataset_sha256 != digest:
+            candidate_gate_reasons.append(
+                "benchmark dataset does not match the frozen external protocol"
+            )
+    elif external_protocol is not None:
+        candidate_gate_reasons.append(
+            "external protocol evidence was supplied without an external comparison"
+        )
+    comparison_names = sorted(
+        {result.system for result in baselines} | set(external_names)
+    )
+    comparisons = tuple(
+        _make_system_comparison(
+            config,
+            candidate,
+            by_name.get(name),
+            system=name,
+            external=name in external_names,
+            candidate_gate_reasons=candidate_gate_reasons,
+            system_reasons=(
+                (external_failures[name],)
+                if name in external_failures
+                else ()
+            ),
+        )
+        for name in comparison_names
+    )
+    comparison_by_name = {comparison.system: comparison for comparison in comparisons}
+    frontier = comparison_by_name[strongest.system]
+    external_comparisons = [
+        comparison for comparison in comparisons if comparison.external
+    ]
+    external_wins = sum(
+        comparison.decision == "win" for comparison in external_comparisons
+    )
+    external_required_wins = (
+        len(external_comparisons) // 2 + 1 if external_comparisons else 0
+    )
+    external_majority_passed = (
+        external_wins >= external_required_wins if external_comparisons else None
+    )
+
+    reasons = list(candidate_gate_reasons)
+    if external_comparisons:
+        if not external_majority_passed:
+            reasons.append(
+                "compiler did not win against a strict majority of the registered "
+                "external comparison set"
+            )
+        issued = not reasons
+        winning_bases = {
+            comparison.gain_basis
+            for comparison in external_comparisons
+            if comparison.decision == "win" and comparison.gain_basis is not None
+        }
+        gain_basis = "+".join(sorted(winning_bases)) or None
+        scope = "external-inclusive"
+    else:
+        if frontier.decision != "win":
+            reasons.extend(frontier.reasons)
+        issued = not reasons
+        gain_basis = frontier.gain_basis
+        scope = "local-bundled-only"
+
     evidence = {
         "benchmark": BENCHMARK_VERSION,
+        "config": asdict(config),
         "dataset": digest,
-        "scope": "external-inclusive" if external_systems else "local-bundled-only",
-        "compared_baselines": sorted(result.system for result in baselines),
+        "scope": scope,
         "candidate": candidate.summary_dict(),
-        "strongest_baseline": strongest.summary_dict(),
-        "critical_semantic_loss_reduction": loss_reduction,
-        "completion_efficiency_gain": efficiency_gain,
-        "critical_loss_margin_lower_95": loss_lower,
-        "completion_efficiency_margin_lower_95": efficiency_lower,
+        "systems": [
+            result.summary_dict()
+            for result in sorted(results, key=lambda value: value.system)
+        ],
+        "comparisons": [asdict(comparison) for comparison in comparisons],
+        "external_comparison_set": list(external_names),
+        "external_wins": external_wins,
+        "external_required_wins": external_required_wins,
+        "external_run_manifests": [
+            {
+                "system": name,
+                "manifest_sha256": external_manifest_sha256[name],
+                "failure_reason": external_failures.get(name),
+            }
+            for name in sorted(external_manifest_sha256)
+        ],
+        "external_protocol": (
+            asdict(external_protocol)
+            if external_protocol is not None
+            else None
+        ),
     }
     evidence_sha = hashlib.sha256(
         json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    issued = not reasons
-    scope = "external-inclusive" if external_systems else "local-bundled-only"
-    if issued and external_systems:
+    if issued and external_comparisons:
         claim = (
-            f"External-inclusive certificate: compiler clears a paired 50% frontier over "
-            f"{strongest.system} under matched budgets using {gain_basis}."
+            "External-inclusive certificate: compiler independently clears a paired "
+            f"50% gain against {external_wins}/{len(external_comparisons)} registered "
+            f"systems, exceeding the strict-majority threshold of "
+            f"{external_required_wins}."
         )
     elif issued:
         claim = (
@@ -1521,7 +2461,7 @@ def _make_certificate(
             f"{strongest.system} using {gain_basis}; no external state-of-the-art "
             "baseline was supplied."
         )
-    elif external_systems:
+    elif external_comparisons:
         claim = "No external-inclusive 50%-better claim is warranted by this run."
     else:
         claim = (
@@ -1535,42 +2475,537 @@ def _make_certificate(
         candidate_quality=candidate.quality_score,
         baseline_quality=strongest.quality_score,
         gain_basis=gain_basis,
-        critical_semantic_loss_reduction=loss_reduction,
-        completion_efficiency_gain=efficiency_gain,
-        critical_loss_margin_lower_95=loss_lower,
-        completion_efficiency_margin_lower_95=efficiency_lower,
+        critical_semantic_loss_reduction=frontier.critical_semantic_loss_reduction,
+        memory_quality_efficiency_gain=frontier.memory_quality_efficiency_gain,
+        critical_loss_margin_lower=frontier.critical_loss_margin_lower,
+        memory_quality_efficiency_margin_lower=(
+            frontier.memory_quality_efficiency_margin_lower
+        ),
+        bootstrap_lower_quantile=config.bootstrap_lower_quantile,
         evidence_sha256=evidence_sha,
         scope=scope,
-        compared_baselines=tuple(sorted(result.system for result in baselines)),
-        external_baselines=tuple(sorted(external_systems)),
+        compared_baselines=tuple(comparison_names),
+        external_baselines=external_names,
+        external_wins=external_wins,
+        external_required_wins=external_required_wins,
+        external_majority_passed=external_majority_passed,
+        external_manifests=tuple(
+            RunManifestEvidence(
+                system=name,
+                manifest_sha256=external_manifest_sha256[name],
+                failure_reason=external_failures.get(name),
+            )
+            for name in sorted(external_manifest_sha256)
+        ),
+        external_protocol=external_protocol,
+        comparisons=comparisons,
         reasons=tuple(reasons),
         claim=claim,
     )
+
+
+def _repository_state() -> tuple[str | None, bool | None]:
+    environment_commit = next(
+        (
+            value.strip().lower()
+            for name in ("CONTEXT_COMPILER_COMMIT", "GITHUB_SHA")
+            if (value := os.environ.get(name))
+            and re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", value.strip())
+        ),
+        None,
+    )
+    source_root = Path(__file__).resolve().parents[1]
+    repository_root = next(
+        (
+            candidate
+            for candidate in (Path.cwd().resolve(), source_root)
+            if (candidate / ".git").exists()
+        ),
+        None,
+    )
+    if repository_root is None:
+        return environment_commit, None
+
+    process_environment = os.environ.copy()
+    process_environment["GIT_OPTIONAL_LOCKS"] = "0"
+    try:
+        commit_result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=repository_root,
+            env=process_environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=2.0,
+        )
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain=v1", "--untracked-files=normal"],
+            cwd=repository_root,
+            env=process_environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=2.0,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return environment_commit, None
+
+    raw_commit = commit_result.stdout.strip().lower()
+    commit = (
+        raw_commit
+        if commit_result.returncode == 0
+        and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", raw_commit)
+        else environment_commit
+    )
+    dirty = (
+        bool(status_result.stdout.strip()) if status_result.returncode == 0 else None
+    )
+    return commit, dirty
+
+
+def _normalized_run_command(command: Sequence[str] | None) -> tuple[str, ...]:
+    if command is None:
+        return ("python-api:benchmarks.run_benchmark",)
+    if isinstance(command, (str, bytes)) or not command or not all(
+        isinstance(part, str) and part for part in command
+    ):
+        raise TypeError("command must be a non-empty sequence of non-empty strings")
+    return tuple(command)
 
 
 def run_benchmark(
     config: BenchmarkConfig | None = None,
     *,
     external_baseline_paths: Sequence[Path | str] = (),
+    external_manifest_paths: Sequence[Path | str] = (),
+    expected_external_systems: Sequence[str] = (),
+    external_protocol_path: Path | str | None = None,
     corpus_export_path: Path | str | None = None,
+    command: Sequence[str] | None = None,
+    max_external_candidate_bytes: int = DEFAULT_EXTERNAL_CANDIDATE_BYTES,
 ) -> BenchmarkReport:
+    started_at = datetime.now(UTC).isoformat()
+    started = time.monotonic()
+    run_command = _normalized_run_command(command)
+    _external_candidate_json_limits(max_external_candidate_bytes)
+    repository_commit, repository_dirty = _repository_state()
     config = config or BenchmarkConfig()
+    expected = tuple(expected_external_systems)
+    if len(expected) != len(set(expected)) or any(
+        not isinstance(name, str) or not _SYSTEM_RE.fullmatch(name) for name in expected
+    ):
+        raise ExternalBaselineError(
+            "expected external system names must be unique valid identifiers"
+        )
+    reserved = set(BUNDLED_SYSTEMS)
+    if reserved & set(expected):
+        raise ExternalBaselineError(
+            "expected external system names collide with built-ins"
+        )
+    external_requested = bool(
+        external_baseline_paths
+        or external_manifest_paths
+        or expected
+        or external_protocol_path is not None
+    )
+    if external_requested and external_protocol_path is None:
+        raise ExternalBaselineError(
+            "external comparison scoring requires a frozen external protocol"
+        )
+    external_protocol: ExternalProtocolEvidence | None = None
+    protocol_adapter_revisions: dict[str, str] = {}
+    protocol_environment_ids: dict[str, str] = {}
+    protocol_adapter_entrypoint_sha256s: dict[str, str] = {}
+    protocol_adapter_source_tree_sha256s: dict[str, str] = {}
+    protocol_adapter_runtime_executable_sha256s: dict[str, str] = {}
+    protocol_adapter_environment_sha256s: dict[str, str] = {}
+    protocol_adapter_command_sha256s: dict[str, str] = {}
+    protocol_execution_contract: Any | None = None
+    if external_protocol_path is not None:
+        from .external_protocol import ExternalProtocolError, load_external_protocol
+
+        try:
+            verified_protocol = load_external_protocol(
+                external_protocol_path,
+                require_frozen=True,
+            )
+        except (ExternalProtocolError, OSError, TypeError, ValueError) as exc:
+            raise ExternalBaselineError(
+                f"invalid external comparison protocol: {exc}"
+            ) from exc
+        if expected and tuple(sorted(expected)) != verified_protocol.registered_systems:
+            raise ExternalBaselineError(
+                "expected external systems do not match the frozen protocol"
+            )
+        if verified_protocol.synthetic_dataset_sha256 is None:
+            raise ExternalBaselineError(
+                "frozen external protocol lacks a synthetic dataset digest"
+            )
+        expected = verified_protocol.registered_systems
+        protocol_adapter_revisions = dict(verified_protocol.adapter_revisions)
+        protocol_environment_ids = dict(verified_protocol.environment_ids)
+        protocol_adapter_entrypoint_sha256s = dict(
+            verified_protocol.adapter_entrypoint_sha256s
+        )
+        protocol_adapter_source_tree_sha256s = dict(
+            verified_protocol.adapter_source_tree_sha256s
+        )
+        protocol_adapter_runtime_executable_sha256s = dict(
+            verified_protocol.adapter_runtime_executable_sha256s
+        )
+        protocol_adapter_environment_sha256s = dict(
+            verified_protocol.adapter_environment_sha256s
+        )
+        protocol_adapter_command_sha256s = dict(
+            verified_protocol.adapter_command_sha256s
+        )
+        protocol_execution_contract = verified_protocol.execution_contract
+        external_protocol = ExternalProtocolEvidence(
+            protocol_id=verified_protocol.protocol_id,
+            protocol_sha256=verified_protocol.protocol_sha256,
+            document_sha256=verified_protocol.document_sha256,
+            synthetic_dataset_sha256=(
+                verified_protocol.synthetic_dataset_sha256
+            ),
+            registered_systems=verified_protocol.registered_systems,
+        )
+    if reserved & set(expected):
+        raise ExternalBaselineError(
+            "external protocol system names collide with built-ins"
+        )
+    if protocol_execution_contract is not None:
+        if config.token_budget != protocol_execution_contract.active_token_budget:
+            raise ExternalBaselineError(
+                "benchmark token budget does not match the frozen external protocol"
+            )
+        if (
+            max_external_candidate_bytes
+            != protocol_execution_contract.max_candidate_bytes
+        ):
+            raise ExternalBaselineError(
+                "external candidate byte limit does not match the frozen protocol"
+            )
     cases = generate_histories(config)
     digest = dataset_digest(cases, config)
+    if (
+        external_protocol is not None
+        and digest != external_protocol.synthetic_dataset_sha256
+    ):
+        raise ExternalBaselineError(
+            "benchmark dataset does not match the frozen external protocol"
+        )
+    corpus_producer = CorpusProducerMetadata(
+        created_at=started_at,
+        repository_commit=repository_commit,
+        repository_dirty=repository_dirty,
+        package_version=PACKAGE_VERSION,
+        python_version=platform.python_version(),
+        platform=platform.platform(),
+        command=run_command,
+    )
     if corpus_export_path is not None:
         export_path = Path(corpus_export_path)
-        export_path.parent.mkdir(parents=True, exist_ok=True)
-        export_path.write_text(
-            json.dumps(corpus_document(cases, config, digest), indent=2, sort_keys=True)
+        atomic_write_text(
+            export_path,
+            json.dumps(
+                corpus_document(
+                    cases,
+                    config,
+                    digest,
+                    producer=corpus_producer,
+                ),
+                indent=2,
+                sort_keys=True,
+            )
             + "\n",
-            encoding="utf-8",
         )
-    external = load_external_candidates(
-        [Path(path) for path in external_baseline_paths],
+    manifest_candidate_paths: list[Path] = []
+    manifest_candidate_evidence: dict[Path, tuple[int, str]] = {}
+    external_failures: dict[str, str] = {}
+    external_manifest_sha256: dict[str, str] = {}
+    external_adapter_revisions: dict[str, str] = dict(
+        protocol_adapter_revisions
+    )
+    external_environment_ids: dict[str, str] = dict(
+        protocol_environment_ids
+    )
+    external_model_ids: dict[str, str] = {}
+    external_model_costs: dict[str, float] = {}
+    if external_manifest_paths:
+        from .external_runner import ExternalRunnerError, load_external_run_manifest
+
+        for manifest_path in external_manifest_paths:
+            try:
+                reference = load_external_run_manifest(
+                    manifest_path,
+                    expected_dataset_sha256=digest,
+                )
+            except ExternalRunnerError as exc:
+                raise ExternalBaselineError(
+                    f"invalid external run manifest {manifest_path}: {exc}"
+                ) from exc
+            if reference.system in external_manifest_sha256:
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} has multiple run manifests"
+                )
+            if reference.system not in expected:
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} is not registered "
+                    "by the frozen protocol"
+                )
+            if (
+                reference.adapter_revision
+                != protocol_adapter_revisions[reference.system]
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest adapter "
+                    "revision does not match the frozen protocol"
+                )
+            if (
+                reference.environment_id
+                != protocol_environment_ids[reference.system]
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "environment identity does not match the frozen protocol"
+                )
+            identity = reference.identity
+            expected_identity = protocol_execution_contract
+            if (
+                identity.model_id != expected_identity.model_id
+                or identity.model_context_length
+                != expected_identity.model_context_length
+                or identity.tokenizer_id != expected_identity.tokenizer_id
+                or identity.inference_concurrency
+                != expected_identity.inference_concurrency
+                or identity.retry_count != expected_identity.retry_count
+                or float(identity.model_service_cost_usd)
+                != expected_identity.model_service_cost_usd
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest model "
+                    "contract does not match the frozen protocol"
+                )
+            limits = reference.limits
+            if (
+                reference.isolation_mode
+                != expected_identity.isolation_mode
+                or float(limits.timeout_seconds)
+                != expected_identity.timeout_seconds
+                or float(limits.poll_interval_seconds)
+                != expected_identity.poll_interval_seconds
+                or limits.max_stdout_bytes
+                != expected_identity.max_stdout_bytes
+                or limits.max_stderr_bytes
+                != expected_identity.max_stderr_bytes
+                or limits.max_candidate_bytes
+                != expected_identity.max_candidate_bytes
+                or limits.max_memory_mb != expected_identity.max_memory_mb
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest limits "
+                    "do not match the frozen protocol"
+                )
+            dependency_lock = reference.dependency_lock
+            if (
+                dependency_lock.evidence_sha256
+                != protocol_environment_ids[reference.system].removeprefix(
+                    "sha256:"
+                )
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "dependency-lock evidence does not match the frozen protocol"
+                )
+            if (
+                reference.adapter_entrypoint.entrypoint_sha256
+                != protocol_adapter_entrypoint_sha256s[
+                    reference.system
+                ]
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "adapter entrypoint does not match the frozen protocol"
+                )
+            if (
+                reference.adapter_source.tree_sha256
+                != protocol_adapter_source_tree_sha256s[
+                    reference.system
+                ]
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "adapter source tree does not match the frozen protocol"
+                )
+            if (
+                reference.adapter_runtime.executable_sha256
+                != protocol_adapter_runtime_executable_sha256s[
+                    reference.system
+                ]
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "adapter runtime does not match the frozen protocol"
+                )
+            if (
+                reference.process_environment.environment_sha256
+                != protocol_adapter_environment_sha256s[
+                    reference.system
+                ]
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "adapter environment does not match the frozen protocol"
+                )
+            if (
+                reference.command_sha256
+                != protocol_adapter_command_sha256s[reference.system]
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "adapter command does not match the frozen protocol"
+                )
+            network_isolation = reference.network_isolation
+            if (
+                network_isolation.mode
+                != expected_identity.network_isolation_mode
+                or network_isolation.evidence_sha256
+                != expected_identity.network_isolation_evidence_sha256
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "network-isolation evidence does not match the frozen protocol"
+                )
+            inference_service = reference.inference_service
+            if (
+                inference_service.memory_metric
+                != expected_identity.inference_service_memory_metric
+                or inference_service.executable_sha256
+                != expected_identity.inference_service_executable_sha256
+                or inference_service.max_memory_mb
+                != expected_identity.max_inference_service_memory_mb
+            ):
+                raise ExternalBaselineError(
+                    f"external system {reference.system!r} run manifest "
+                    "inference-service accounting does not match the frozen protocol"
+                )
+            external_manifest_sha256[reference.system] = reference.manifest_sha256
+            external_model_ids[reference.system] = reference.model_id
+            external_model_costs[reference.system] = reference.model_service_cost_usd
+            if reference.candidate_path is not None:
+                manifest_candidate_paths.append(reference.candidate_path)
+                if (
+                    reference.candidate_bytes is None
+                    or reference.candidate_sha256 is None
+                ):
+                    raise ExternalBaselineError(
+                        f"external system {reference.system!r} lacks candidate file evidence"
+                    )
+                manifest_candidate_evidence[reference.candidate_path] = (
+                    reference.candidate_bytes,
+                    reference.candidate_sha256,
+                )
+            if reference.failure_reason is not None:
+                external_failures[reference.system] = reference.failure_reason
+    for name in expected:
+        if name not in external_manifest_sha256:
+            external_failures[name] = "no validated external run manifest was supplied"
+
+    external, external_candidate_producers = load_external_candidates(
+        [
+            *[Path(path) for path in external_baseline_paths],
+            *manifest_candidate_paths,
+        ],
         cases=cases,
         dataset_sha256=digest,
         token_budget=config.token_budget,
+        max_candidate_bytes=max_external_candidate_bytes,
+        expected_file_evidence=manifest_candidate_evidence,
     )
+    for system, producer in external_candidate_producers.items():
+        if system not in expected:
+            raise ExternalBaselineError(
+                f"external system {system!r} is not registered by the frozen protocol"
+            )
+        recorded_revision = external_adapter_revisions.get(system)
+        if (
+            recorded_revision is not None
+            and recorded_revision != producer.adapter_revision
+        ):
+            raise ExternalBaselineError(
+                f"external system {system!r} candidate producer revision "
+                "does not match the frozen protocol or run manifest"
+            )
+        recorded_environment = external_environment_ids.get(system)
+        if (
+            recorded_environment is not None
+            and recorded_environment != producer.environment_id
+        ):
+            raise ExternalBaselineError(
+                f"external system {system!r} candidate producer environment "
+                "identity does not match the frozen protocol or run manifest"
+            )
+        expected_identity = protocol_execution_contract
+        if (
+            expected_identity is not None
+            and (
+                producer.model_id != expected_identity.model_id
+                or producer.model_context_length
+                != expected_identity.model_context_length
+                or producer.tokenizer_id != expected_identity.tokenizer_id
+                or producer.inference_concurrency
+                != expected_identity.inference_concurrency
+                or producer.retry_count != expected_identity.retry_count
+                or float(producer.model_service_cost_usd)
+                != expected_identity.model_service_cost_usd
+            )
+        ):
+            raise ExternalBaselineError(
+                f"external system {system!r} candidate producer model "
+                "contract does not match the frozen protocol"
+            )
+        recorded_model = external_model_ids.get(system)
+        if recorded_model is not None and recorded_model != producer.model_id:
+            raise ExternalBaselineError(
+                f"external system {system!r} candidate producer model "
+                "does not match its run manifest"
+            )
+        recorded_cost = external_model_costs.get(system)
+        if (
+            recorded_cost is not None
+            and float(recorded_cost) != float(producer.model_service_cost_usd)
+        ):
+            raise ExternalBaselineError(
+                f"external system {system!r} candidate producer cost "
+                "does not match its run manifest"
+            )
+        external_adapter_revisions.setdefault(
+            system,
+            producer.adapter_revision,
+        )
+        external_environment_ids.setdefault(
+            system,
+            producer.environment_id,
+        )
+        external_model_ids.setdefault(system, producer.model_id)
+        external_model_costs.setdefault(
+            system,
+            float(producer.model_service_cost_usd),
+        )
+    unexpected = (
+        (set(external) | set(external_manifest_sha256)) - set(expected)
+        if expected
+        else set()
+    )
+    if unexpected:
+        raise ExternalBaselineError(
+            "external outputs were not preregistered: " + ", ".join(sorted(unexpected))
+        )
+    external_comparison_set = tuple(sorted(expected))
     runners: dict[str, Callable[[Sequence[SourceRecord]], CandidateOutput]] = {
         "compiler": lambda sources: _compiler_output(sources, config),
         "head": lambda sources: _truncate_baseline(
@@ -1595,9 +3030,90 @@ def run_benchmark(
         digest,
         cases,
         aggregates,
-        external_systems=tuple(sorted(external)),
+        external_systems=external_comparison_set,
+        external_failures=external_failures,
+        external_manifest_sha256=external_manifest_sha256,
+        external_protocol=external_protocol,
     )
-    return BenchmarkReport(BENCHMARK_VERSION, config, digest, tuple(aggregates), certificate)
+    local_revision = repository_commit or f"package:{PACKAGE_VERSION}"
+    baseline_revisions = tuple(
+        [
+            *(
+                ComponentRevision(name=system, revision=local_revision)
+                for system in BUNDLED_SYSTEMS
+            ),
+            *(
+                ComponentRevision(
+                    name=system,
+                    revision=external_adapter_revisions.get(system, "unrecorded"),
+                )
+                for system in sorted(expected)
+            ),
+        ]
+    )
+    if not expected:
+        model_id = "deterministic-no-model"
+        model_service_cost_usd: float | None = 0.0
+    elif set(expected) <= set(external_model_ids) & set(external_model_costs):
+        unique_model_ids = set(external_model_ids.values())
+        model_id = (
+            next(iter(unique_model_ids))
+            if len(unique_model_ids) == 1
+            else "multiple-external-models"
+        )
+        recorded_costs = [external_model_costs[name] for name in expected]
+        if any(
+            isinstance(cost, bool)
+            or not isinstance(cost, (int, float))
+            or not 0 <= float(cost) < float("inf")
+            for cost in recorded_costs
+        ):
+            raise ExternalBaselineError("external model cost accounting is invalid")
+        model_service_cost_usd = float(sum(recorded_costs))
+    else:
+        model_id = "unrecorded"
+        model_service_cost_usd = None
+    failures = tuple(
+        dict.fromkeys(
+            [
+                *(
+                    f"{name}: {external_failures[name]}"
+                    for name in sorted(external_failures)
+                ),
+                *certificate.reasons,
+            ]
+        )
+    )
+    run_metadata = BenchmarkRunMetadata(
+        started_at=started_at,
+        duration_seconds=round(time.monotonic() - started, 6),
+        repository_commit=repository_commit,
+        repository_dirty=repository_dirty,
+        package_version=PACKAGE_VERSION,
+        python_version=platform.python_version(),
+        platform=platform.platform(),
+        command=run_command,
+        tokenizer_id=TOKENIZER_ID,
+        model_id=model_id,
+        schema_versions=(
+            ComponentRevision("report", REPORT_SCHEMA),
+            ComponentRevision("corpus", CORPUS_SCHEMA),
+            ComponentRevision("candidate", CANDIDATE_SCHEMA),
+            ComponentRevision("corpus_producer", CORPUS_PRODUCER_SCHEMA),
+            ComponentRevision("candidate_producer", CANDIDATE_PRODUCER_SCHEMA),
+        ),
+        baseline_revisions=baseline_revisions,
+        model_service_cost_usd=model_service_cost_usd,
+        failures=failures,
+    )
+    return BenchmarkReport(
+        BENCHMARK_VERSION,
+        config,
+        digest,
+        tuple(aggregates),
+        certificate,
+        run_metadata,
+    )
 
 
 def run_interchange_self_test() -> dict[str, object]:
@@ -1615,10 +3131,66 @@ def run_interchange_self_test() -> dict[str, object]:
     digest = dataset_digest(cases, config)
     if digest != dataset_digest(repeat, config):
         raise AssertionError("dataset generation is not deterministic")
-    corpus = corpus_document(cases, config, digest)
+    corpus_producer = CorpusProducerMetadata(
+        created_at="2026-01-01T00:00:00+00:00",
+        repository_commit=None,
+        repository_dirty=None,
+        package_version=PACKAGE_VERSION,
+        python_version=platform.python_version(),
+        platform=platform.platform(),
+        command=("python", "-m", "benchmarks", "--self-test"),
+    )
+    corpus = corpus_document(
+        cases,
+        config,
+        digest,
+        producer=corpus_producer,
+    )
+    decoded_config, decoded_cases, decoded_digest = decode_corpus_document(
+        corpus,
+        source_label="<roundtrip-corpus>",
+    )
+    if (
+        decoded_config != config
+        or decoded_digest != digest
+        or [case.id for case in decoded_cases] != [case.id for case in cases]
+    ):
+        raise AssertionError("corpus round-trip changed benchmark identity")
     for case_value in corpus["cases"]:
         if set(case_value) != {"case_id", "strata", "source_events"}:
             raise AssertionError("corpus export leaked evaluator-only fields")
+    tampered_corpus = json.loads(json.dumps(corpus))
+    tampered_corpus["cases"][0]["source_events"][0]["content"] += "tampered"
+    try:
+        decode_corpus_document(
+            tampered_corpus,
+            source_label="<tampered-corpus>",
+        )
+    except ExternalBaselineError:
+        pass
+    else:
+        raise AssertionError("tampered corpus passed its export digest")
+    alternate_corpus = corpus_document(
+        cases,
+        config,
+        digest,
+        producer=CorpusProducerMetadata(
+            created_at="2026-01-02T00:00:00+00:00",
+            repository_commit=None,
+            repository_dirty=None,
+            package_version=PACKAGE_VERSION,
+            python_version=platform.python_version(),
+            platform=platform.platform(),
+            command=("python", "-m", "benchmarks", "--self-test"),
+        ),
+    )
+    if (
+        alternate_corpus["dataset_sha256"] != corpus["dataset_sha256"]
+        or alternate_corpus["corpus_sha256"] == corpus["corpus_sha256"]
+    ):
+        raise AssertionError(
+            "producer metadata must change corpus evidence, not dataset identity"
+        )
 
     payload_cases: list[dict[str, object]] = []
     for case in cases:
@@ -1637,12 +3209,22 @@ def run_interchange_self_test() -> dict[str, object]:
                 ],
             }
         )
-    payload: dict[str, object] = {
-        "schema": CANDIDATE_SCHEMA,
-        "dataset_sha256": digest,
-        "system": "roundtrip-self-test",
-        "cases": payload_cases,
-    }
+    candidate_producer = CandidateProducerMetadata(
+        adapter_revision="self-test-adapter",
+        environment_id="self-test-environment",
+        model_id="deterministic-self-test",
+        model_context_length=0,
+        tokenizer_id=TOKENIZER_ID,
+        inference_concurrency=1,
+        retry_count=0,
+        model_service_cost_usd=0.0,
+    )
+    payload = candidate_document(
+        dataset_sha256=digest,
+        system="roundtrip-self-test",
+        cases=payload_cases,
+        producer=candidate_producer,
+    )
     serialized = json.dumps(payload, sort_keys=True)
     system, decoded = decode_external_candidate(
         json.loads(serialized),
@@ -1660,9 +3242,14 @@ def run_interchange_self_test() -> dict[str, object]:
     bad_hash["dataset_sha256"] = "0" * 64
     missing_case = dict(payload)
     missing_case["cases"] = payload_cases[:-1]
+    missing_case.pop("candidate_payload_sha256")
+    missing_case["candidate_payload_sha256"] = _canonical_sha256(missing_case)
+    mismatched_producer = json.loads(json.dumps(payload))
+    mismatched_producer["producer"]["adapter_revision"] = "tampered"
     for bad_payload, budget in (
         (bad_hash, config.token_budget),
         (missing_case, config.token_budget),
+        (mismatched_producer, config.token_budget),
         (payload, 1),
     ):
         try:
@@ -1679,8 +3266,12 @@ def run_interchange_self_test() -> dict[str, object]:
     return {
         "passed": True,
         "dataset_sha256": digest,
+        "corpus_sha256": corpus["corpus_sha256"],
         "cases": len(cases),
         "schema": CANDIDATE_SCHEMA,
+        "corpus_schema": CORPUS_SCHEMA,
+        "candidate_producer_schema": CANDIDATE_PRODUCER_SCHEMA,
+        "corpus_producer_schema": CORPUS_PRODUCER_SCHEMA,
     }
 
 
@@ -1711,16 +3302,44 @@ def _summary(report: BenchmarkReport) -> str:
             f"dataset_sha256: {report.dataset_sha256}",
             f"certificate_scope: {report.certificate.scope}",
             f"compared_baselines: {', '.join(report.certificate.compared_baselines)}",
+            (
+                "bootstrap_lower_quantile: "
+                f"{report.certificate.bootstrap_lower_quantile:.3f}"
+            ),
             f"certificate: {'ISSUED' if report.certificate.issued else 'NOT ISSUED'}",
             report.certificate.claim,
         )
     )
+    if report.certificate.comparisons:
+        rows.append("per-system decisions:")
+        rows.extend(
+            f"- {comparison.system}: {comparison.decision}"
+            + (
+                f" ({comparison.gain_basis})"
+                if comparison.gain_basis is not None
+                else ""
+            )
+            + (
+                f" - {'; '.join(comparison.reasons)}"
+                if comparison.reasons
+                else ""
+            )
+            for comparison in report.certificate.comparisons
+        )
     if report.certificate.reasons:
         rows.extend(f"- {reason}" for reason in report.certificate.reasons)
     return "\n".join(rows)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from .report_verifier import (
+        DEFAULT_BENCHMARK_REPORT_LIMITS,
+        BenchmarkReportError,
+        BenchmarkReportLimits,
+        load_benchmark_report,
+    )
+
+    effective_argv = list(sys.argv[1:] if argv is None else argv)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--histories", type=int, default=32)
     parser.add_argument("--messages", type=int, default=72)
@@ -1729,6 +3348,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--minimum-compression", type=float, default=5.0)
     parser.add_argument("--seed", type=int, default=56_056)
     parser.add_argument("--bootstrap-samples", type=int, default=2_000)
+    parser.add_argument("--bootstrap-lower-quantile", type=float, default=0.025)
     parser.add_argument("--json-out", type=Path)
     parser.add_argument(
         "--export-corpus",
@@ -1742,13 +3362,98 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=[],
         help="score a dataset-bound external candidate JSON file; repeatable",
     )
+    parser.add_argument(
+        "--max-external-candidate-bytes",
+        type=int,
+        default=DEFAULT_EXTERNAL_CANDIDATE_BYTES,
+        help="maximum size accepted for each imported external candidate",
+    )
+    parser.add_argument(
+        "--external-run-manifest",
+        type=Path,
+        action="append",
+        default=[],
+        help=(
+            "load a bounded-run manifest; valid candidates are scored and failed "
+            "runs remain registered invalid non-wins"
+        ),
+    )
+    parser.add_argument(
+        "--expected-external-system",
+        action="append",
+        default=[],
+        help=(
+            "assert a system registered by --external-protocol; repeatable, "
+            "and the complete set must match the frozen protocol"
+        ),
+    )
+    parser.add_argument(
+        "--external-protocol",
+        type=Path,
+        help=(
+            "strictly verify and bind a frozen external-comparison protocol; "
+            "required for every external-inclusive run"
+        ),
+    )
     parser.add_argument("--include-histories", action="store_true")
     parser.add_argument(
         "--self-test",
         action="store_true",
         help="run deterministic corpus/candidate interchange checks and exit",
     )
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "--verify-report",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "strictly verify a saved current-schema JSON report or the retained "
+            "local v0.1 report and exit"
+        ),
+    )
+    parser.add_argument(
+        "--max-report-bytes",
+        type=int,
+        default=DEFAULT_BENCHMARK_REPORT_LIMITS.max_input_bytes,
+        help="maximum input size accepted by --verify-report",
+    )
+    args = parser.parse_args(effective_argv)
+    if args.verify_report is not None:
+        generation_options = (
+            args.self_test
+            or args.histories != 32
+            or args.messages != 72
+            or args.noise_lines != 8
+            or args.token_budget != 900
+            or args.minimum_compression != 5.0
+            or args.seed != 56_056
+            or args.bootstrap_samples != 2_000
+            or args.bootstrap_lower_quantile != 0.025
+            or args.json_out is not None
+            or args.export_corpus is not None
+            or bool(args.external_baseline)
+            or args.max_external_candidate_bytes != DEFAULT_EXTERNAL_CANDIDATE_BYTES
+            or bool(args.external_run_manifest)
+            or bool(args.expected_external_system)
+            or args.external_protocol is not None
+            or args.include_histories
+        )
+        if generation_options:
+            parser.error("--verify-report cannot be combined with benchmark generation options")
+        try:
+            limits = BenchmarkReportLimits(max_input_bytes=args.max_report_bytes)
+            verified = load_benchmark_report(args.verify_report, limits=limits)
+        except (BenchmarkReportError, OSError, TypeError, ValueError) as exc:
+            parser.error(str(exc))
+        print(
+            json.dumps(
+                {"verified": True, **verified.to_dict()},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.max_report_bytes != DEFAULT_BENCHMARK_REPORT_LIMITS.max_input_bytes:
+        parser.error("--max-report-bytes requires --verify-report")
     if args.self_test:
         print(json.dumps(run_interchange_self_test(), indent=2, sort_keys=True))
         return 0
@@ -1760,21 +3465,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         minimum_compression=args.minimum_compression,
         seed=args.seed,
         bootstrap_samples=args.bootstrap_samples,
+        bootstrap_lower_quantile=args.bootstrap_lower_quantile,
     )
     try:
         report = run_benchmark(
             config,
             external_baseline_paths=args.external_baseline,
+            external_manifest_paths=args.external_run_manifest,
+            expected_external_systems=args.expected_external_system,
+            external_protocol_path=args.external_protocol,
             corpus_export_path=args.export_corpus,
+            command=(sys.executable, "-m", "benchmarks", *effective_argv),
+            max_external_candidate_bytes=args.max_external_candidate_bytes,
         )
     except (ExternalBaselineError, OSError) as exc:
         parser.error(str(exc))
     print(_summary(report))
     if args.json_out:
-        args.json_out.parent.mkdir(parents=True, exist_ok=True)
-        args.json_out.write_text(
+        atomic_write_text(
+            args.json_out,
             report.to_json(include_histories=args.include_histories) + "\n",
-            encoding="utf-8",
         )
     return 0 if report.certificate.issued else 2
 

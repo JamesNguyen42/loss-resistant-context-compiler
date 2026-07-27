@@ -1,0 +1,28 @@
+{
+  "schema": "lrcbench-external-execution-blocker-0.1",
+  "system": "acon",
+  "repository": "https://github.com/microsoft/acon",
+  "revision": "d63f9ae18959dc7215ff62899c94c5e8c56847ae",
+  "attempted_command": [
+    ".venv/Scripts/python.exe",
+    "benchmarks/adapters/acon_diagnostic/adapter.py",
+    "preflight"
+  ],
+  "attempted_at_host_runtime": "Python 3.12.13",
+  "status": "blocked-before-external-runner",
+  "runner_invoked": false,
+  "candidate_created": false,
+  "manifest_created": false,
+  "result_blind": true,
+  "comparative_output_generated": false,
+  "blockers": [
+    "missing --acon-source-root",
+    "adapter runtime must be exactly Python 3.11",
+    "missing --dependency-lock",
+    "missing --network-isolation-evidence",
+    "missing positive --inference-service-pid",
+    "missing --max-inference-service-memory-mb",
+    "missing --lms-executable"
+  ],
+  "disposition": "Do not invoke the external runner until every blocker is resolved and retained as evidence; do not score this preflight."
+}

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/lossless-context-compiler/source-archive-entry.schema.json",
+  "title": "Context compiler source archive entry",
+  "description": "One canonical line in a ctxc SourceArchive. Runtime verification additionally recomputes the source hashes, preceding-entry link, and entry_sha256.",
+  "type": "object",
+  "required": [
+    "schema",
+    "position",
+    "previous_entry_sha256",
+    "source",
+    "entry_sha256"
+  ],
+  "properties": {
+    "schema": {"const": "ctxc-source-archive-entry-0.1"},
+    "position": {"type": "integer", "minimum": 0},
+    "previous_entry_sha256": {"$ref": "#/$defs/sha256"},
+    "source": {"$ref": "#/$defs/canonicalSourceRecord"},
+    "entry_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "canonicalSourceRecord": {
+      "type": "object",
+      "required": [
+        "id",
+        "sequence",
+        "role",
+        "content",
+        "timestamp",
+        "metadata",
+        "content_sha256",
+        "record_sha256"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "sequence": {"type": "integer", "minimum": 0},
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "\\S"
+        },
+        "content": {"type": "string"},
+        "timestamp": {"type": ["string", "null"], "maxLength": 256},
+        "metadata": {"type": "object"},
+        "content_sha256": {"$ref": "#/$defs/sha256"},
+        "record_sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

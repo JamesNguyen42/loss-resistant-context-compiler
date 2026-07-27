@@ -1,0 +1,18 @@
+include CHANGELOG.md
+include CONTRIBUTING.md
+include SECURITY.md
+include LICENSE
+include README.md
+include SUPPORT.md
+include TODO.md
+include _ctxc_build_backend.py
+include pyproject.toml
+
+recursive-include benchmarks *.json *.md *.py
+recursive-include conformance *.jsonl *.py
+recursive-include docs *.json *.md
+recursive-include examples *.jsonl
+recursive-include schemas *.json
+recursive-include scripts *.py
+recursive-include src *.py
+recursive-include tests *.py

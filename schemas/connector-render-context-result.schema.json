@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loss-resistant-context-compiler/connector-render-context-result.schema.json",
+  "title": "Connector render_context result",
+  "type": "object",
+  "required": ["context", "rendered_memory_sha256", "token_accounting"],
+  "properties": {
+    "context": {"type": "string"},
+    "rendered_memory_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$", "minLength": 64, "maxLength": 64
+    },
+    "token_accounting": {
+      "$ref": "context-bundle.schema.json#/$defs/tokenAccounting"
+    }
+  },
+  "additionalProperties": false
+}

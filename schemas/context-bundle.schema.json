@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loss-resistant-context-compiler/context-bundle.schema.json",
+  "title": "LocalAI connector ContextBundle",
+  "type": "object",
+  "required": [
+    "schema",
+    "protocol_version",
+    "artifact",
+    "trusted_memory",
+    "bindings",
+    "certificate",
+    "token_accounting",
+    "bundle_sha256"
+  ],
+  "properties": {
+    "schema": {"const": "localai-context-bundle-0.1"},
+    "protocol_version": {"const": "0.1"},
+    "artifact": {"$ref": "compiled-memory.schema.json"},
+    "trusted_memory": {"$ref": "#/$defs/trustedMemory"},
+    "bindings": {"$ref": "#/$defs/bindings"},
+    "certificate": {"$ref": "#/$defs/certificate"},
+    "token_accounting": {"$ref": "#/$defs/tokenAccounting"},
+    "bundle_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$", "minLength": 64, "maxLength": 64},
+    "memoryItems": {
+      "type": "array",
+      "maxItems": 200000,
+      "items": {"$ref": "compiled-memory.schema.json#/$defs/memoryItem"}
+    },
+    "trustedMemory": {
+      "type": "object",
+      "required": [
+        "active_goals",
+        "constraints",
+        "user_corrections",
+        "decisions",
+        "confirmed_facts",
+        "unresolved_questions",
+        "exact_errors",
+        "exact_references",
+        "source_spans",
+        "source_hashes",
+        "omitted_or_overflowed_protected_items"
+      ],
+      "properties": {
+        "active_goals": {"$ref": "#/$defs/memoryItems"},
+        "constraints": {"$ref": "#/$defs/memoryItems"},
+        "user_corrections": {"$ref": "#/$defs/memoryItems"},
+        "decisions": {"$ref": "#/$defs/memoryItems"},
+        "confirmed_facts": {"$ref": "#/$defs/memoryItems"},
+        "unresolved_questions": {"$ref": "#/$defs/memoryItems"},
+        "exact_errors": {"$ref": "#/$defs/memoryItems"},
+        "exact_references": {"$ref": "#/$defs/memoryItems"},
+        "source_spans": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {"$ref": "compiled-memory.schema.json#/$defs/provenance"}
+        },
+        "source_hashes": {
+          "type": "array",
+          "maxItems": 100000,
+          "items": {
+            "type": "object",
+            "required": ["source_id", "sequence", "content_sha256", "record_sha256"],
+            "properties": {
+              "source_id": {"type": "string", "minLength": 1, "maxLength": 1024},
+              "sequence": {"type": "integer", "minimum": 0},
+              "content_sha256": {"$ref": "#/$defs/sha256"},
+              "record_sha256": {"$ref": "#/$defs/sha256"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "omitted_or_overflowed_protected_items": {
+          "type": "array",
+          "maxItems": 200000,
+          "items": {
+            "type": "object",
+            "required": ["reason", "item", "overflow_tokens"],
+            "properties": {
+              "reason": {"enum": ["omitted", "protected_budget_overflow"]},
+              "item": {"$ref": "compiled-memory.schema.json#/$defs/memoryItem"},
+              "overflow_tokens": {"type": "integer", "minimum": 0}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "compilationPolicy": {
+      "type": "object",
+      "required": [
+        "token_budget",
+        "minimum_compression_ratio",
+        "fail_on_budget_overflow",
+        "include_superseded",
+        "include_discarded",
+        "verify",
+        "recover_missed_protected",
+        "fail_on_primary_extractor_error",
+        "chars_per_token"
+      ],
+      "properties": {
+        "token_budget": {"type": "integer", "minimum": 1},
+        "minimum_compression_ratio": {"type": "number", "minimum": 1},
+        "fail_on_budget_overflow": {"type": "boolean"},
+        "include_superseded": {"type": "boolean"},
+        "include_discarded": {"type": "boolean"},
+        "verify": {"const": true},
+        "recover_missed_protected": {"type": "boolean"},
+        "fail_on_primary_extractor_error": {"type": "boolean"},
+        "chars_per_token": {"type": "number", "exclusiveMinimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "object",
+      "required": [
+        "session_id",
+        "source_digest",
+        "source_count",
+        "archive_chain_head_sha256",
+        "archive_head_verified",
+        "compiler_policy",
+        "compiler_policy_sha256",
+        "tokenizer_identity",
+        "token_accounting",
+        "token_accounting_exact",
+        "rendered_memory_sha256",
+        "artifact_sha256"
+      ],
+      "properties": {
+        "session_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "source_digest": {"$ref": "#/$defs/sha256"},
+        "source_count": {"type": "integer", "minimum": 0},
+        "archive_chain_head_sha256": {
+          "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+        },
+        "archive_head_verified": {"type": "boolean"},
+        "compiler_policy": {"$ref": "#/$defs/compilationPolicy"},
+        "compiler_policy_sha256": {"$ref": "#/$defs/sha256"},
+        "tokenizer_identity": {"type": "string", "minLength": 1, "maxLength": 256},
+        "token_accounting": {"enum": ["exact", "estimated"]},
+        "token_accounting_exact": {"type": "boolean"},
+        "rendered_memory_sha256": {"$ref": "#/$defs/sha256"},
+        "artifact_sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "certificate": {
+      "type": "object",
+      "required": [
+        "issued",
+        "claim",
+        "scope",
+        "detected_protected_commitments",
+        "retained_detected_protected_commitments",
+        "semantic_completeness_claimed"
+      ],
+      "properties": {
+        "issued": {"type": "boolean"},
+        "claim": {
+          "enum": ["all detected protected commitments retained", null]
+        },
+        "scope": {"const": "detector-scoped protected commitments"},
+        "detected_protected_commitments": {"type": "integer", "minimum": 0},
+        "retained_detected_protected_commitments": {"type": "integer", "minimum": 0},
+        "semantic_completeness_claimed": {"const": false}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"issued": {"const": true}}, "required": ["issued"]},
+          "then": {
+            "properties": {
+              "claim": {"const": "all detected protected commitments retained"}
+            }
+          },
+          "else": {"properties": {"claim": {"type": "null"}}}
+        }
+      ]
+    },
+    "tokenAccounting": {
+      "type": "object",
+      "required": [
+        "mode",
+        "exact",
+        "tokenizer_identity",
+        "source_tokens",
+        "rendered_tokens",
+        "field_name_compatibility_note"
+      ],
+      "properties": {
+        "mode": {"enum": ["exact", "estimated"]},
+        "exact": {"type": "boolean"},
+        "tokenizer_identity": {"type": "string", "minLength": 1, "maxLength": 256},
+        "source_tokens": {"type": "integer", "minimum": 0},
+        "rendered_tokens": {"type": "integer", "minimum": 0},
+        "field_name_compatibility_note": {
+          "const": "compiled artifact schema 1.0 retains *_tokens_estimate field names even when an exact in-process counter supplied the values"
+        }
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {"mode": {"const": "exact"}, "exact": {"const": true}},
+          "required": ["mode", "exact"]
+        },
+        {
+          "properties": {
+            "mode": {"const": "estimated"},
+            "exact": {"const": false},
+            "tokenizer_identity": {"const": "character-estimate-v1"}
+          },
+          "required": ["mode", "exact", "tokenizer_identity"]
+        }
+      ]
+    }
+  }
+}

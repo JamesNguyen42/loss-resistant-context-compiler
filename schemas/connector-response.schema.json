@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loss-resistant-context-compiler/connector-response.schema.json",
+  "title": "Context compiler connector response envelope",
+  "type": "object",
+  "required": ["schema", "request_id", "operation", "ok", "result", "error"],
+  "properties": {
+    "schema": {"const": "ctxc-connector-response-0.1"},
+    "request_id": {},
+    "operation": {},
+    "ok": {"type": "boolean"},
+    "result": {},
+    "error": {
+      "anyOf": [
+        {"$ref": "#/$defs/error"},
+        {"type": "null"}
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {"properties": {"ok": {"const": true}}, "required": ["ok"]},
+      "then": {
+        "properties": {
+          "request_id": {"$ref": "#/$defs/requestId"}
+        }
+      }
+    }
+  ],
+  "oneOf": [
+    {
+      "properties": {
+        "ok": {"const": false},
+        "result": {"type": "null"},
+        "error": {"$ref": "#/$defs/error"}
+      }
+    },
+    {
+      "properties": {
+        "ok": {"const": true},
+        "operation": {"const": "capabilities"},
+        "result": {"$ref": "connector-capabilities-result.schema.json"},
+        "error": {"type": "null"}
+      }
+    },
+    {
+      "properties": {
+        "ok": {"const": true},
+        "operation": {"const": "ingest_source_events"},
+        "result": {"$ref": "connector-ingest-source-events-result.schema.json"},
+        "error": {"type": "null"}
+      }
+    },
+    {
+      "properties": {
+        "ok": {"const": true},
+        "operation": {"const": "compile_memory"},
+        "result": {"$ref": "connector-compile-memory-result.schema.json"},
+        "error": {"type": "null"}
+      }
+    },
+    {
+      "properties": {
+        "ok": {"const": true},
+        "operation": {"const": "render_context"},
+        "result": {"$ref": "connector-render-context-result.schema.json"},
+        "error": {"type": "null"}
+      }
+    },
+    {
+      "properties": {
+        "ok": {"const": true},
+        "operation": {"const": "verify_memory"},
+        "result": {"$ref": "connector-verify-memory-result.schema.json"},
+        "error": {"type": "null"}
+      }
+    },
+    {
+      "properties": {
+        "ok": {"const": true},
+        "operation": {"const": "inspect_memory"},
+        "result": {"$ref": "connector-inspect-memory-result.schema.json"},
+        "error": {"type": "null"}
+      }
+    }
+  ],
+  "$defs": {
+    "requestId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "error": {
+      "type": "object",
+      "required": ["category", "code", "message", "retryable", "details"],
+      "properties": {
+        "category": {
+          "enum": [
+            "resource_limit",
+            "state",
+            "timeout",
+            "invalid_request",
+            "integrity",
+            "runtime"
+          ]
+        },
+        "code": {"type": "string", "minLength": 1},
+        "message": {"type": "string"},
+        "retryable": {"type": "boolean"},
+        "details": {
+          "type": "object",
+          "required": ["exception_type"],
+          "properties": {
+            "exception_type": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

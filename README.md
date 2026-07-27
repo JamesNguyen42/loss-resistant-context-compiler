@@ -25,16 +25,24 @@ meaning can be compressed without loss.
 | Area | Current state |
 | --- | --- |
 | Release | Alpha research implementation, package version `0.1.0` |
+| Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
-| Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts |
-| Regression suite | 102 tests; CI runs Python 3.11, 3.12, and 3.13 |
+| Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts, optional LocalAI connector |
+| Regression suite | Complete Ubuntu suite on Python 3.11–3.13; Windows/macOS Python 3.13 release/filesystem smoke |
+| Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |
-| Named external comparisons | Not run |
+| Novel English diagnostic | 64 local cases; 85.37% precision and 87.5% recall |
+| Exact local Qwen phrase evaluation | 64 calls; 5% model-only recall, 96.92% candidate rejection, 87.5% final recall |
+| Post-hoc Qwen offset ablation | 0 calls; 63.16% literal-only precision, 60% recall, and 2 final verification failures; non-claim-bearing |
+| Held-out paired Qwen result | 128 sequential calls; literal mode raised model-only recall from 17.5% to 92.5%, but reduced precision from 100% to 74% and caused 4 final verification failures |
+| External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
+| Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
+| Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
 | Production readiness | Not production-ready |
-| Confirmed fail-closed blockers | Four P0 paths documented below |
+| Confirmed fail-closed blockers | The four identified in-process P0 paths are closed |
 
 The local benchmark result is meaningful evidence that the current design can
 beat simple truncation and extraction policies on its own adversarial corpus.
@@ -106,39 +114,124 @@ The repository currently includes:
   progress, and background context;
 - immutable source records with content and canonical-record SHA-256 digests;
 - exact character-offset provenance with quote hashes;
+- fixed-seed generative coverage for arbitrary control/Unicode source ids,
+  character-vs-byte offsets, all Python line boundaries, whitespace, and
+  coordinated clause boundaries;
 - a deterministic rule extractor and an optional provider-neutral
   `ModelExtractor`;
+- an opt-in `LiteralModelExtractor` that derives character offsets only from a
+  unique exact source literal and never trusts model-supplied coordinates;
 - an independent deterministic recovery pass for rule-recognized content;
 - conservative correction, revocation, conflict, and unresolved-state
   resolution;
 - budget-aware selection that never silently drops protected items;
-- verification and independent artifact replay, subject to the confirmed P0
-  gaps below;
-- a portable JSON artifact, compact prompt renderer, and three JSON Schemas;
-- an append-only local source archive with integrity checks and locking;
-- the `ctxc compile`, `verify`, `inspect`, and `archive` commands;
-- LRCBench, external-candidate import/export, paired bootstrap gates, and
-  auditable JSON reports;
-- cross-version CI, linting, wheel/schema checks, and 102 regression tests.
+- sealed compiled snapshots with recursive immutability, an integrity digest,
+  verification, and independent artifact replay;
+- versioned compilation telemetry for item flow, protected-budget pressure,
+  recovery, conflicts, verification outcomes, and elapsed compile time, with
+  deterministic fields checked again during artifact replay;
+- non-replaceable built-in deterministic recovery and protected-item
+  certification passes;
+- strict bounded model-output parsing with duplicate-key and non-finite-number
+  rejection, deterministic provider-failure fallback, and an opt-in strict
+  provider-failure policy;
+- shared default-on source and compiled-artifact limits for UTF-8 input bytes,
+  physical line length, JSON depth, canonical size, schema collections, and
+  fixed source-id/role/timestamp ceilings that bound derived-field
+  amplification;
+- fail-closed compilation expansion limits for each extractor's item,
+  rejection, canonical-byte, and auxiliary output; combined candidates,
+  resolved items, provenance spans, and shared comparison/render work;
+- shared strict regular-file loading for benchmark reports, corpora, external
+  candidates, and run manifests, with byte/line/depth limits plus duplicate-key
+  and non-finite-number rejection;
+- versioned corpus and candidate producer records that are bound by envelope
+  self-digests while remaining outside the frozen benchmark dataset identity;
+- reusable same-directory atomic file replacement for CLI outputs, archive
+  commits, benchmark reports, corpus exports, and runner manifests, plus opt-in
+  versioned JSON error diagnostics with stable resource, I/O, input, integrity,
+  timeout, and policy categories;
+- opt-in `ctxc-event-0.1` JSONL completion events that bind the corresponding
+  artifact envelope and expose extraction rejections/failures, recovery,
+  verification, compression, and compilation telemetry without changing
+  default stderr;
+- an opt-in whole-compile deadline that runs materialized inputs in an isolated
+  POSIX process group or Windows Job Object, signals the owned POSIX group or
+  terminates the Windows Job on timeout, and reconstructs successful output
+  from bounded strict JSON;
+- a portable JSON artifact, compact prompt renderer, and 25 installed JSON Schemas;
+- an optional standard-library LocalAI connector with six framework-neutral
+  operations, a strict versioned JSONL process boundary, immutable
+  `SourceEvent` mapping, self-hashed `ContextBundle` output, and deterministic
+  checkpoints;
+- seventeen packaged connector schemas, six-operation golden JSONL, 66
+  intentional negative vectors, and a standalone conformance runner that proves
+  in-process and stdio semantic equivalence;
+- a machine-readable artifact reader/writer registry with an explicit
+  no-silent-migration policy;
+- a fail-closed JSON inspector plus a bounded terminal item view with escaped
+  control/format characters, provenance coordinates, status, conflicts, and
+  active-selection state;
+- a logically append-only local source archive with canonical entry hash
+  chaining, optional externally retained head checks, exclusive locking,
+  legacy migration, and bounded old-or-new atomic commits;
+- the `ctxc compile`, `verify`, `inspect`, `diff`, `schema`, `redact`,
+  `archive`, `trust`, and optional `connector --stdio` commands;
+- LRCBench, external-candidate import/export, history-weighted paired bootstrap
+  gates, per-system decisions, and self-hashed JSON reports with producer/run
+  metadata;
+- gold-free corpus self-digests plus a bounded, non-interpolating external
+  runner with sequential per-case processes, inherited POSIX per-process
+  memory limits, Windows per-process/aggregate Job limits, and valid or failed
+  manifests that feed per-system certificate decisions;
+- result-blind ACON and AMA-Agent compatibility records plus a pinned ACON
+  diagnostic adapter whose first bounded run is retained as a failed,
+  non-scoreable manifest;
+- an API-free, single-inference adapter for the exact local
+  `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
+- a fixed-digest, versioned CI compile-performance gate with latency-growth and
+  traced-Python-memory ceilings;
+- six strict natural-history evidence schemas and seven self-hashed fixtures for
+  corpus, independent annotations, adjudication, grouped splits, gold-free
+  export, and reports; these fixtures do not constitute a natural cohort;
+- a frozen, self-hashed 64-case novel-English precision/recall diagnostic with
+  exact deterministic replay;
+- a sequential captured-output harness for the exact local Qwen Q4 model that
+  binds every ModelExtractor prompt/output, separates strict model-only
+  acceptance from deterministic recovery, records rejection/latency/zero-cost
+  evidence, and replays saved outputs without model access;
+- a model-free, self-hashed post-hoc ablation that discards only captured
+  model offsets, retains candidate text and cited source ids, replays the
+  result through `LiteralModelExtractor`, and labels the target prompt as
+  unevaluated;
+- a pre-result paired evaluator and disjoint self-hashed 64-case corpus that
+  counterbalance coordinate/unique-literal prompt order, require a clean
+  revision, retain failures without retry, reserve an exclusive report
+  destination, and now bind the complete 128-call exact-Qwen result;
+- public, bounded domain-label and strict extractor-composition hooks that do
+  not accept caller-supplied regexes or replace built-in recovery;
+- optional fixed-detector content secret redaction with preserved offsets,
+  recomputed source hashes, bounded scans, strict replay, and a self-hashed
+  audit report that contains neither original content secrets nor their hashes;
+- cross-version CI, linting, wheel/schema checks, and regression tests.
 
 ## In development
 
 The next phase is mainly evidence, generalization, and integration rather than
 adding more claims to the README:
 
-- seal verified memory against post-verification mutation;
-- make the built-in protected-item certification pass non-replaceable;
-- fall back to deterministic extraction with an explicit warning when a model
-  provider fails;
-- prevent superseded state from entering a prompt labeled verified, or isolate
-  it in an explicitly non-executable audit view;
-- run matched external systems through the existing candidate interchange;
-- add held-out natural coding-agent histories with independent annotations;
+- resolve the retained external adapter blockers, freeze the comparison set, and
+  run matched systems through the existing candidate interchange;
+- collect and independently annotate held-out natural coding-agent histories
+  under the implemented consent, license, privacy, adjudication, split, and
+  no-label-leakage contracts;
 - measure end-to-end task completion on public long-horizon suites;
 - test the optional model extractor across providers and novel phrasing;
-- add exact provider tokenizers and framework adapters;
-- support efficient incremental compilation for live agent loops;
-- harden resource limits, secrets handling, storage authenticity, and
+- add named provider tokenizers and production framework-specific adapters;
+- optimize incremental connector compilation beyond its current
+  correctness-first full-prefix recompilation;
+- continue hardening generic-provider transport deadlines, metadata/PII
+  handling, encryption guidance, signed publication/key handling, and
   observability;
 - obtain independent reproduction before making a state-of-the-art claim.
 
@@ -146,31 +239,28 @@ The ordered engineering backlog is in [TODO.md](TODO.md). The current design
 state, base revision, non-negotiable decisions, code map, and restart procedure
 for a new chat are in [docs/HANDOFF.md](docs/HANDOFF.md).
 
-### Confirmed P0 safety gaps
+### Closed P0 safety paths
 
-Four in-process paths are known to violate the intended fail-closed contract
-and must be fixed before a production release:
+The four identified in-process fail-closed defects now have regression-tested
+controls:
 
-1. `CompiledMemory` and `MemoryItem` are mutable after verification. Changing
-   an item can change `to_prompt()` output while the old report still says
-   `passed: true`.
-2. A caller can replace both the primary and `safety_extractor` with empty
-   extractors. The current verifier then derives an empty protected obligation
-   and can certify an empty prompt even when the source contains a constraint.
-3. A primary model extractor exception occurs before the deterministic safety
-   pass. A provider timeout therefore propagates instead of producing verified
-   deterministic fallback memory with a degradation warning.
-4. `include_superseded=True` can select obsolete state into a prompt while both
-   compile-time and independent artifact verification still pass.
+1. verified `CompiledMemory` snapshots and their items are recursively sealed;
+   prompt and artifact rendering recheck a canonical snapshot digest;
+2. built-in deterministic recovery and protected-item certification execute
+   independently of caller-supplied extractors and cannot be replaced;
+3. primary extractor failures and wholly unusable outputs fall back to
+   deterministic recovery with explicit verification warnings, while
+   `fail_on_primary_extractor_error=True` provides strict behavior;
+4. selecting superseded state is audit-only and makes verification fail, so it
+   cannot enter a prompt labeled verified.
 
-The benchmark also has two claim-level blockers: it issues one certificate
-against a single strongest baseline rather than computing strict-majority
-per-system wins, and its aggregate and bootstrap efficiency/loss calculations
-need one preregistered, consistent estimand before external publication.
-
-These defects are recorded as the first items in [TODO.md](TODO.md), including
-their reproduction cases. They do not invalidate the recorded deterministic
-local run, but they prevent a general safety or external-superiority claim.
+LRCBench also now uses one history-weighted memory estimand for point estimates
+and paired bootstrap bounds, records per-system decisions, and applies a strict
+majority rule to a frozen external comparison set. Any external scoring now
+requires a verified self-hashed protocol whose system set, adapter revisions,
+and synthetic dataset digest match the run. No external candidate has been
+scored and no collected natural-history task outcome exists, so the
+external-superiority claim remains unestablished.
 
 ## Intended use
 
@@ -216,9 +306,8 @@ and SHA-256 digest.
 
 ## Current guarantees
 
-At compilation time, for inputs the extractors recognize and compiled objects
-that have not subsequently been mutated, the current implementation enforces
-these structural properties:
+At compilation time, for inputs the extractors recognize, the current
+implementation enforces these structural properties:
 
 - every memory item has source provenance;
 - goals, constraints, user corrections, unresolved questions, exact errors,
@@ -229,16 +318,26 @@ these structural properties:
 - independent constraint commitments in labeled sections, bullets, sentences,
   conjunctions, and semicolon-separated clauses are atomized before temporal
   resolution, so correcting one does not retire its neighboring constraints;
+- the conservative grammar recognizes tested indirect preservation
+  requirements including “the database stays PostgreSQL” and “leave the
+  authentication flow alone” as constraints;
 - model-produced ordinary claims must equal a complete atomic source span;
   model paraphrases and truncated clauses are rejected;
 - exact items must equal every cited source literal;
 - recognized diagnostics retain their complete literal line, and recognized
   references retain full POSIX/Windows paths plus line ranges, GitHub line
   anchors, or pytest node ids;
+- a deterministic 222-case extraction grammar corpus crosses section labels,
+  bullet forms, conjunctions, negated limits, numbers, units, path locators,
+  diagnostics, and correction forms while checking exact source spans;
 - uncertain source text cannot silently validate as a confirmed fact;
 - tool output cannot assert goals, constraints, corrections, decisions,
   unresolved state, or confirmed facts; a tool fact is accepted only when the
   host sets `metadata.trusted_for_state` to the JSON boolean `true`;
+- at the optional connector boundary, assistant, tool, and function events are
+  historical-only unless the host supplies authenticated authority metadata;
+  event metadata cannot self-promote them, and authenticated tool state remains
+  restricted to the existing confirmed-fact path;
 - explicit corrections retain the old item as superseded state;
 - explicit revocations retire the matched old commitment without inventing
   replacement state;
@@ -248,16 +347,35 @@ these structural properties:
   metadata; quote, source-set, and artifact digests make changes visible when
   checked against an independently trusted source set;
 - source metadata is deep-copied, restricted to finite canonical JSON values,
-  and recursively immutable after `SourceRecord` construction.
+  and recursively immutable after `SourceRecord` construction;
+- opaque source ids, roles, and timestamps retain arbitrary Unicode and
+  control characters but are capped at 1,024, 128, and 256 characters
+  respectively across source, provenance, model, archive, artifact, and
+  redaction contracts;
+- the final compiled ledger, verification report, statistics, selection, and
+  compiler metadata are recursively sealed, and prompt/artifact rendering
+  rechecks a canonical snapshot digest.
 
 These are implementation invariants, not a proof of semantic completeness.
 The rule extractor is deliberately conservative and heuristic. Upstream roles
-must be authenticated, archives must be protected by the host, and secrets
-must be removed before ingestion. See [Threat model](docs/THREAT_MODEL.md).
+must be authenticated and archives must be protected by the host. The optional
+preprocessor covers only recognized content secrets; metadata, ids, timestamps,
+personal data, and unknown formats remain the caller's responsibility. See
+[Content secret redaction](docs/REDACTION.md) and
+[Threat model](docs/THREAT_MODEL.md).
 
 ## Install
 
 Python 3.11 or newer is required. The runtime uses only the standard library.
+The stable distribution name is `loss-resistant-context-compiler`; no package
+index release is currently claimed.
+
+The optional LocalAI connector is included in that standard-library core. It
+does not require or import `localai-contracts` or any sibling LocalAI project.
+If a host already has contract objects, the in-process adapter accepts them
+structurally through a mapping, dataclass, `model_dump()`, `to_dict()`, or
+`dict()`; the plain versioned JSON protocol is the portable process-boundary
+contract.
 
 ```console
 python -m pip install -e .
@@ -269,7 +387,28 @@ For development tools:
 python -m pip install -e ".[dev]"
 ```
 
+Early editable installs may still carry the old development distribution
+metadata `lossless-context-compiler`. It is not an alias or upgrade target;
+remove it before reinstalling the current project. The Python import and
+`ctxc` command have not changed. See [Support](SUPPORT.md).
+
 ## CLI quick start
+
+Optionally create length-preserving redacted source records before any model
+extractor sees the history:
+
+```console
+ctxc redact history.jsonl -o redacted-history.jsonl \
+  --report redaction-report.json
+```
+
+The command never overwrites its input. It masks common credential forms in
+content only, writes fresh source hashes, and emits a strict self-hashed audit
+map without copying or hashing the original content secrets. Source ids,
+roles, timestamps, and metadata remain unchanged. Retain the redacted history
+for artifact verification. See [Content secret redaction](docs/REDACTION.md)
+for detector coverage, limits, false-positive/false-negative risk, and the
+non-transactional two-file boundary.
 
 Compile the included small JSONL history to a typed prompt:
 
@@ -284,7 +423,78 @@ and inspect its headline metrics:
 ctxc compile examples/auth_timeout.jsonl -o compiled-memory.json
 ctxc verify compiled-memory.json examples/auth_timeout.jsonl
 ctxc inspect compiled-memory.json
+ctxc inspect compiled-memory.json --format text --show-items
 ```
+
+JSON remains the default inspection format. The terminal view bounds displayed
+items, per-item provenance/state links, and raw string length through
+`--max-display-items`, `--max-display-links`, and `--max-text-chars`. It
+JSON-quotes untrusted strings and visibly escapes terminal controls, Unicode
+format controls, and line/paragraph separators. Printable confusable Unicode
+is not normalized, so the original JSON artifact remains the authoritative
+audit input. JSON item details serialize non-ASCII characters as JSON escapes
+without changing their decoded values; the same safe serialization applies to
+summary strings. Python callers can use
+`summarize_artifact()` or `render_artifact_text()` directly; JSON summaries
+identify their contract as `ctxc-artifact-inspection-0.1`.
+
+Compare two integrity-checked artifact envelopes without requiring their source
+histories:
+
+```console
+ctxc diff before.json after.json -o artifact-diff.json
+ctxc diff before.json after.json --summary-only
+```
+
+The deterministic `ctxc-artifact-diff-0.1` report identifies payload additions,
+removals, same-id field changes, active-selection changes, verification,
+compression, and metric changes. It binds itself with `diff_sha256`.
+Per-item details preserve item text and compact provenance coordinates while
+hashing rather than copying arbitrary item metadata. If either input is
+active-only, the report marks `ledger_comparison_complete: false` and warns
+that payload changes do not prove complete-ledger changes; selection changes
+remain exact.
+
+Query the exact artifact reader/writer support window before an upgrade or
+deployment:
+
+```console
+ctxc schema
+ctxc schema --artifact-version 1.0
+ctxc schema --artifact-version 2.0
+```
+
+The versioned `ctxc-artifact-schema-compatibility-0.1` response reports only
+artifact schema `1.0` as readable and writable. A query for an unknown
+well-formed version succeeds with `status: "unsupported"`; malformed version
+syntax is an input error. The package never silently migrates artifacts.
+See [Schema compatibility](docs/SCHEMA_COMPATIBILITY.md) for the preservation
+and trusted-source-replay requirements imposed on any future migration.
+
+To place the complete compile pipeline inside an isolated, cancellable worker
+boundary:
+
+```console
+ctxc compile examples/auth_timeout.jsonl -o compiled-memory.json \
+  --compile-timeout-seconds 60
+```
+
+Successful and completed nonzero outcomes can emit one compact JSONL event on
+stderr while the normal artifact or prompt stays on stdout or at `-o`:
+
+```console
+ctxc compile examples/auth_timeout.jsonl -o compiled-memory.json \
+  --event-format jsonl
+```
+
+For JSON output, the opt-in `ctxc-event-0.1` record includes the exact emitted
+artifact digest and ledger mode. For prompt output it binds the corresponding
+complete audit envelope. It also carries the exit outcome, extraction
+rejection/failure counts, recovery contributions, a verification summary, the
+compression report, and versioned compile metrics. Default
+`--event-format none` preserves silent success stderr. A verification-failed
+prompt request may emit a completion event followed by its ordinary error
+diagnostic; each remains one JSON line when JSON error format is also enabled.
 
 Use an append-only local cold archive while keeping only compiled state active:
 
@@ -294,24 +504,200 @@ ctxc archive verify .context-archive
 ctxc compile examples/auth_timeout.jsonl --archive .context-archive --format prompt
 ```
 
+Archive writes are logical appends but physical transactions: while holding an
+exclusive OS advisory lock, `SourceArchive` validates and serializes the
+complete bounded history into a same-directory temporary file, flushes and
+`fsync`s it, then atomically replaces `events.jsonl`. Readers therefore observe
+either the previous complete archive or the next complete archive, never a
+partially appended JSONL tail. The `.append.lock` marker intentionally persists;
+ownership is the kernel lock, not file existence, and descriptor close or
+process death releases it. The marker itself must remain one regular hard link;
+aliases are refused before locking. The tradeoff is O(archive size) work and
+temporary disk space per append, and the filesystem must implement local
+advisory locks and atomic replacement correctly.
+
+Archive reads refuse a symlink, hard-linked file, directory, FIFO, device, or
+other non-regular `events.jsonl`. They open without following links where the
+OS supports it, compare the pre-open and open file identities, and retry a
+bounded number of times if an atomic replacement lands between those checks.
+This keeps a hostile special file from turning verification into an unbounded
+read or redirecting it to an aliased file. The shared ancestor guard also
+rejects linked/reparse parents, pins the exact parent on POSIX, and rechecks the
+full chain before accepting the read. It does not protect against a filesystem
+administrator who can replace state outside those checks.
+
+Each new-format line is a canonical `ctxc-source-archive-entry-0.1` envelope
+whose SHA-256 binds its position, preceding entry hash, and complete canonical
+source record. `archive append` and `archive verify` return the current
+`chain_head_sha256`. Retain that head outside the archive, then supply it as a
+precondition on the next operation:
+
+```console
+ctxc archive verify .context-archive --expected-chain-head HEAD
+ctxc archive append .context-archive next.jsonl --expected-chain-head HEAD
+ctxc compile next.jsonl --archive .context-archive \
+  --archive-expected-chain-head HEAD
+ctxc verify compiled-memory.json --archive .context-archive \
+  --archive-expected-chain-head HEAD
+```
+
+The append response contains the replacement head to retain for the following
+operation. A valid older prefix passes standalone structural verification, but
+fails when checked against a later externally retained head. Raw legacy source
+JSONL remains readable; the first non-idempotent append upgrades the complete
+file atomically. Artifact replay can consume the archive directory directly
+through `ctxc verify ARTIFACT --archive ARCHIVE`; the expected-head option
+checks the anchor before any source record enters replay. The chain is an
+integrity and stale-state check, not a signature, trusted timestamp, or
+filesystem access control. Anyone able to rewrite the archive can recompute it,
+so rollback detection depends on keeping the expected head in a separately
+protected location.
+
+Create a detached manifest when the artifact, source digest, and optional
+archive head need one externally anchored bundle identity:
+
+```console
+ctxc trust create compiled-memory.json examples/auth_timeout.jsonl \
+  -o trust-manifest.json
+ctxc trust verify trust-manifest.json compiled-memory.json \
+  examples/auth_timeout.jsonl \
+  --expected-manifest-sha256 MANIFEST_SHA256
+```
+
+`trust create` accepts only a complete artifact that passes independent replay.
+It binds the artifact digest, exact source-set digest/count, complete-ledger
+status, and either the verified archive chain head or `null`. Retain the
+manifest's `manifest_sha256` outside the storage boundary holding the manifest,
+artifact, and sources; verification requires that separately retained value.
+For archive-backed sources, use `--archive ARCHIVE` and optionally require
+`--archive-expected-chain-head HEAD` on both trust commands. A self-hash copied
+beside the bundle is not an external anchor, and this feature is not a digital
+signature or key-management system. See
+[Detached trust manifests](docs/TRUST_MANIFESTS.md).
+
 `ctxc compile` also accepts `-` for stdin. Inputs may be a JSON list, an object
 containing `sources`, `events`, or `messages`, or JSONL. Each record accepts
 `id`, `sequence`, `role`, `content`, `timestamp`, and `metadata`.
+Source JSON uses strict decoding: duplicate object keys, non-standard
+NaN/infinity constants, overflowed non-finite floats, and excessive nesting
+are rejected.
+
+Source ingestion is bounded by default across `compile`, `verify`, `redact`,
+and archive commands:
+
+| Boundary | Default | CLI override |
+| --- | ---: | --- |
+| Serialized source or archive input | 64 MiB | `--max-source-bytes` |
+| Source records | 100,000 | `--max-source-records` |
+| One physical JSON/JSONL line | 1,048,576 characters | `--max-source-line-chars` |
+| One canonical source record | 4 MiB | `--max-source-record-bytes` |
+| All canonical source records | 64 MiB | `--max-total-source-bytes` |
+| JSON container nesting | 128 levels | `--max-source-json-depth` |
+| Source id | 1,024 characters | fixed structural invariant |
+| Source role | 128 characters | fixed structural invariant |
+| Source timestamp | 256 characters | fixed structural invariant |
+
+The first six configurable limits are available through `SourceLimits` for the
+Python API. The final three are exported as `MAX_SOURCE_ID_CHARS`,
+`MAX_SOURCE_ROLE_CHARS`, and `MAX_SOURCE_TIMESTAMP_CHARS` and apply to every
+`SourceRecord`; increasing a byte limit does not bypass them. These are hard
+ingestion boundaries, not a promise that total process memory equals the byte
+caps; Python objects, compiler state, and caller-controlled extractors have
+additional overhead.
+
+Serialized source and compiled-artifact paths must resolve directly to stable
+regular files. Path loaders reject symlinks and special files, reject linked
+or reparse-point ancestors, freeze every ancestor's file identity, use
+descriptor-relative access inside the exact parent on POSIX, compare
+pre-open/open identity, retry a bounded atomic replacement race, and recheck
+both content metadata and the ancestor chain after the bounded read. They use
+no-follow and nonblocking-open flags where available.
+Gzip bytes are rejected as invalid UTF-8 and are never decompressed. Direct
+text streams remain the caller's trust boundary.
+
+Compilation itself has a separate default-on expansion contract. Crossing one
+of these limits aborts; protected items are never truncated to make the job
+fit:
+
+| Boundary | Default | CLI override |
+| --- | ---: | --- |
+| Items from one extractor | 10,000 | `--max-extractor-items` |
+| Rejections from one extractor | 10,000 | `--max-extractor-rejections` |
+| Canonical item bytes from one extractor | 64 MiB | `--max-extractor-bytes` |
+| Rejection/metadata bytes from one extractor | 16 MiB | `--max-extractor-auxiliary-bytes` |
+| Candidates retained across all passes | 30,000 | `--max-total-candidate-items` |
+| Items after recovery/resolution | 20,000 | `--max-resolved-items` |
+| Provenance spans during compilation | 100,000 | `--max-compilation-provenance-spans` |
+| Item comparison/render work units | 5,000,000 | `--max-compilation-item-work` |
+
+`CompilationLimits` exposes the same values to `ContextCompiler`. Built-in
+rule extraction checks its item ceiling incrementally. Caller-supplied
+extractors are trusted code and can consume resources before returning, but
+their returned shape is bounded before recovery, resolution, selection, or
+verification. Item-work accounting covers protected recovery, correction and
+unresolved resolution, conflict-pair search, selection rendering, and the
+quadratic independent-verification paths.
+
+`ctxc verify`, `ctxc inspect`, and `ctxc diff` also decode compiled artifacts
+strictly and bound each input independently:
+
+| Boundary | Default | CLI override |
+| --- | ---: | --- |
+| Serialized artifact input | 128 MiB | `--max-artifact-bytes` |
+| One physical artifact line | 8,388,608 characters | `--max-artifact-line-chars` |
+| Decoded compact artifact JSON | 128 MiB | `--max-artifact-canonical-bytes` |
+| JSON container nesting | 128 levels | `--max-artifact-json-depth` |
+| Memory items / selected ids | 200,000 each | `--max-artifact-items`, `--max-artifact-selected-items` |
+| Provenance spans | 1,000,000 | `--max-artifact-provenance-spans` |
+| Embedded verification issues | 100,000 | `--max-artifact-verification-issues` |
+
+`ArtifactLimits` exposes the same boundaries to `load_artifact()`,
+`load_artifact_path()`, and `verify_artifact_dict()`. Duplicate keys,
+non-standard or overflowed non-finite numbers, and excessive depth fail before
+artifact shape or cryptographic replay work begins.
+
+`ctxc inspect` additionally requires a supported, structurally valid envelope,
+valid item/selection references, and a matching canonical `artifact_sha256`
+before reporting health. The exported `validate_artifact_envelope()` function
+provides the same source-independent check to Python callers. It detects stale
+or malformed envelopes; it is not authenticity or semantic verification, which
+still requires trusted sources and `verify_artifact_dict()`.
+
+`diff_artifacts()` and `ctxc diff` apply that envelope check to both inputs
+before comparing them. A self-consistent diff remains an artifact-derived view,
+not proof that either input is authentic or true.
+
+`artifact_schema_registry()` and `artifact_schema_support(version)` expose the
+same compatibility policy as `ctxc schema`. The only current reader/writer
+version is `1.0`; `compiler_metadata.metrics` and
+`compiler_metadata.compilation_limits` are the two documented optional
+additive fields within that version. Unknown artifact versions are never
+inferred or silently migrated.
 
 The default JSON output contains the complete typed ledger and is the format to
 retain for audit. It carries `artifact_sha256`, which `ctxc verify`
 recomputes over the canonical artifact payload before checking its contents.
 Independent verification also rebuilds the canonical prompt and compression
 report, reruns the invariant verifier, and compares the embedded verification
-report with that replay. A self-hash is an integrity check, not a signature;
-an attacker who can rewrite both an artifact and its expected trust anchors is
-outside this guarantee.
+report with that replay. New artifacts include optional
+`compilation-metrics-0.1` telemetry under `compiler_metadata.metrics`;
+`ctxc inspect` surfaces it, and replay reconciles every field derivable from
+the sources and typed ledger. Schema-1.0 artifacts created before this addition
+remain valid without metrics or recorded compilation limits. New artifacts
+record the exact `CompilationLimits` used; replay validates their shape and
+item/provenance ceilings, but the self-reported values are not proof of host
+resource enforcement. Primary-extractor volume and elapsed time are measured
+evidence and can only be shape-checked during replay. A self-hash is an
+integrity check, not a signature; an attacker who can rewrite both an artifact
+and its expected trust anchors is outside this guarantee.
+`ctxc trust create` standardizes a detached bundle binding, and
+`ctxc trust verify` refuses to pass without the externally supplied manifest
+digest. It does not remove that external-anchor trust boundary.
 `--active-only` intentionally omits unselected ledger entries for compact
-transport. It emits only selected items; selected superseded items remain
-possible when the diagnostic `--include-superseded` option is also set. Its
-artifact is marked `ledger_complete: false`;
+transport. Its artifact is marked `ledger_complete: false`;
 independent `ctxc verify` rejects it with `incomplete_ledger` because omitted
-protected coverage cannot receive a full certificate.
+protected coverage cannot support the detector-scoped protected-retention
+claim.
 
 Important compile options:
 
@@ -319,20 +705,219 @@ Important compile options:
 - `--minimum-compression R`: target source/active ratio, default `5.0`;
 - `--strict-budget`: fail instead of reporting a protected-item overflow;
 - `--require-target`: return a failure status if the compression target misses;
-- `--include-superseded`: include superseded items in active selection;
-  diagnostic-only until the verified-stale-state P0 issue is fixed;
+- `--include-superseded`: include superseded items for diagnosis; verification
+  deliberately fails and verified prompt rendering is refused;
 - `--no-recovery`: disable the independent full deterministic recovery pass;
 - `--format json|prompt`: choose the output representation;
-- `--active-only`: emit a compact, intentionally incomplete non-audit ledger.
+- `--active-only`: emit a compact, intentionally incomplete non-audit ledger;
+- `--error-format text|json`: keep human-readable runtime errors (default) or
+  emit one compact `ctxc-diagnostic-0.1` JSON object to stderr.
 
 Exit status is `0` on success, `2` for invalid input or policy errors, `3` for
 a failed verification, and `4` when `--require-target` is set and the requested
 compression ratio is not achieved.
 
+Every `-o/--output` file and archive commit uses the same restrictive
+same-directory atomic writer: the complete payload is flushed and `fsync`ed,
+then installed with `os.replace()`. Existing regular-file permissions are
+preserved. A failure before replacement leaves the prior destination unchanged
+and removes the temporary file; linked/reparse ancestors and non-regular
+destinations are refused. POSIX creation, replacement, cleanup, and directory
+`fsync` are relative to a pinned parent descriptor. Other hosts revalidate the
+complete ancestor chain before and after installation. Stdout behavior is
+unchanged.
+
+With `--error-format json`, runtime failures have stable top-level fields:
+`schema`, `command`, `category`, `code`, `exit_code`, `exception_type`, and
+`message`. Argument-parser usage errors remain argparse text, while failed
+verification reports and compiled artifacts continue to carry their detailed
+issue/rejection data in normal command output. An unsafe or changed ancestor
+chain is reported as `io` / `unsafe_path_boundary`.
+
+## Optional LocalAI connector
+
+`LocalAIConnector` exposes six operations over the existing compiler:
+`capabilities`, `ingest_source_events`, `compile_memory`, `render_context`,
+`verify_memory`, and `inspect_memory`. It is framework-neutral and uses only
+the standard library plus this package. No sibling repository is imported, and
+`localai-contracts` is not required. Hosts may pass compatible Python objects
+in-process, but plain versioned JSON is the stable cross-process
+contract.
+
+Run the sequential JSON Lines service with:
+
+```console
+ctxc connector --stdio
+```
+
+Each nonblank input line must be exactly one
+`ctxc-connector-request-0.1` object with the four fields `schema`,
+`request_id`, `operation`, and `payload`. Each output line is exactly one
+`ctxc-connector-response-0.1` object with `schema`, `request_id`, `operation`,
+`ok`, `result`, and `error`; exactly one of `result` and `error` is non-null.
+Operation payloads also reject unknown fields. Duplicate JSON keys,
+NaN/infinity, excessive depth, and request lines above the configured byte
+limit fail closed. A protocol error produces an error response and the service
+continues with the next line.
+
+For example, these two physical input lines query capabilities and compile one
+event:
+
+```jsonl
+{"schema":"ctxc-connector-request-0.1","request_id":"cap-1","operation":"capabilities","payload":{}}
+{"schema":"ctxc-connector-request-0.1","request_id":"compile-1","operation":"compile_memory","payload":{"events":[{"schema":"localai-source-event-0.1","id":"event-0","sequence":0,"role":"user","content":"constraint: The database stays PostgreSQL."}]}}
+```
+
+The compile response returns a self-hashed
+`localai-context-bundle-0.1` plus a self-hashed
+`ctxc-incremental-checkpoint-0.1`. Send the bundle to `render_context`,
+`inspect_memory`, or `verify_memory`; supply the checkpoint or another
+independently trusted source set when verifying after a process restart.
+Sessions otherwise last only for the lifetime of the stdio process.
+`inspect_memory` is a source-independent integrity/summary view, not a
+substitute for `verify_memory` against trusted sources.
+
+The 17 connector schemas under `schemas/` cover request/response, the connector
+`SourceEvent`, `ContextBundle`, checkpoint, and payload/result pairs for all six
+operations. Run `python conformance/run_connector_conformance.py` to validate
+the schema graph, six golden state transitions, 66 negative vectors, and exact
+in-process/stdio equivalence. JSON Schema validation is structural; the runtime
+remains authoritative for provenance, artifact replay, authority, and digest
+semantics.
+
+The same flow is available directly in Python:
+
+```python
+from context_compiler import LocalAIConnector, SourceEvent
+
+connector = LocalAIConnector()
+ingested = connector.ingest_source_events(
+    [
+        SourceEvent(
+            id="event-0",
+            sequence=0,
+            role="user",
+            content="constraint: Leave the authentication flow alone.",
+        )
+    ]
+)
+bundle = connector.compile_memory(session_id=ingested["session_id"])
+context = connector.render_context(bundle)
+report = connector.verify_memory(bundle, checkpoint=ingested["checkpoint"])
+assert report["passed"]
+```
+
+`SourceEvent` mapping validates any supplied content and record hashes before
+adding connector-owned metadata, then creates a fresh immutable
+`SourceRecord`. Ids and sequences remain collision-checked; role, redaction,
+source provenance, and original-record-hash evidence are preserved rather than
+reinterpreted. Redaction and host-provenance descriptors are carried as
+metadata, not accepted as proof or allowed to bypass content hashes and exact
+compiler provenance. Assistant, tool, and function events are untrusted
+historical data by default. Only host-supplied
+`authority.authenticated: true` can enable the core assistant authority paths,
+and tool state additionally requires `authority.trusted_for_state: true`; even
+then it is limited to confirmed facts. A `trusted_for_state` key inside event
+metadata cannot authenticate itself. Regular `ContextCompiler` callers that do
+not use the connector keep their existing role behavior. The process
+supervising stdin is the stdio trust boundary: it must restrict who can submit
+`authority.authenticated: true`. Neither JSON, a bundle self-hash, nor a
+checkpoint self-hash authenticates that authority assertion.
+
+The same connector authority normalization applies when sources arrive through
+events, checkpoints, direct source records, or a configured archive; changing
+the entry path cannot promote unauthenticated history. For retry-safe ingestion,
+hosts should reuse an explicit event id and sequence. If both are omitted, the
+next default sequence advances and the retried content is a new source record.
+A checkpoint, explicit record set, or archive can also preserve an authority
+marker previously admitted by the host. Treat those bytes as protected
+host-boundary state, not as untrusted bearer credentials: their self-hashes do
+not authenticate who asserted the marker.
+
+`ContextBundle.trusted_memory` contains:
+
+- active goals, constraints, user corrections, decisions, confirmed facts,
+  unresolved questions, exact errors, and exact references;
+- the exact source spans and source content/record hashes supporting those
+  categories;
+- every detected protected item omitted from selection or retained beyond the
+  requested budget as explicit
+  `omitted_or_overflowed_protected_items`.
+
+The bundle binds the source digest and count, optional source-archive chain
+head and its verification status, compiler policy and policy digest, tokenizer
+identity and accounting mode, rendered-memory digest, and compiled-artifact
+digest. Its own SHA-256 detects modification but is not a signature. An archive
+head is rollback evidence only when the host verifies or independently retains
+it.
+
+Without a counter adapter, connector accounting is explicitly
+`mode: "estimated"`, `exact: false`, with tokenizer identity
+`character-estimate-v1`. It cannot be relabeled as exact during verification.
+An embedding host can supply the exact model tokenizer in-process:
+
+```python
+from context_compiler import ExactTokenCounterAdapter, LocalAIConnector
+
+# `model_tokenizer` is the host's exact tokenizer instance.
+exact_counter = ExactTokenCounterAdapter(
+    identity="vendor/model-tokenizer@revision",
+    count_tokens=lambda text: len(model_tokenizer.encode(text)),
+)
+connector = LocalAIConnector(token_counter=exact_counter)
+```
+
+Exact replay requires the same adapter and identity. Artifact schema `1.0`
+retains its historical `*_tokens_estimate` field names even when those values
+came from the exact adapter; the bundle's `mode` and `exact` fields are the
+truthful accounting claim. The standalone `ctxc connector --stdio` command has
+no callback injection option and therefore reports estimated accounting. An
+embedded `serve_stdio(connector=...)` process can use an in-process adapter.
+Connector counts cover the compiler source text and rendered typed-memory
+context, not host-added chat framing, tool schemas, or later prompt material.
+Rendering, inspection, and replay of a bundle that claims exact accounting
+require the matching in-process adapter; the claim cannot be consumed as exact
+through an unconfigured stdio process.
+
+`IncrementalCompiler` appends immutable events, reuses the same sealed result
+for an unchanged source digest on ordinary no-deadline calls, and emits a
+checkpoint that binds the complete source prefix, source digest/count, session
+id, and archive-head state. Resume reconstructs that exact prefix and delegates
+to ordinary batch compilation, so the resulting ledger, selection,
+verification, and prompt keep batch semantics. This is correctness-first
+checkpointing, not yet an incremental performance engine: after any accepted
+change it recompiles and reparses the complete source prefix. Checkpoint
+self-hashes detect changes; they do not authenticate the checkpoint or attest
+that its archive head was verified.
+
+Stdio sessions are sequential and in-memory. When a `SourceArchive` is
+configured, one connector session owns that archive; do not multiplex the same
+connector/archive instance across sessions. The connector verifies and binds
+the retained head for that owner. On resume,
+`archive_head_verified` is re-established from the actual configured archive,
+never trusted merely because checkpoint JSON says it was verified.
+
+An issued connector certificate says exactly
+`all detected protected commitments retained`. It is scoped to commitments
+recognized by the current detectors. It does not claim semantic completeness,
+that every natural-language requirement was detected, or that a self-hashed
+bundle authenticates its producer.
+
 ## Python API
 
 ```python
-from context_compiler import CompilationPolicy, ContextCompiler, SourceRecord
+from context_compiler import (
+    CompilationLimits,
+    CompilationPolicy,
+    ContextCompiler,
+    SourceLimits,
+    SourceRecord,
+    artifact_schema_support,
+    create_trust_manifest,
+    diff_artifacts,
+    validate_artifact_envelope,
+    verify_trust_manifest,
+)
 
 sources = [
     SourceRecord.create(
@@ -348,25 +933,65 @@ sources = [
 ]
 
 compiler = ContextCompiler(
-    policy=CompilationPolicy(token_budget=800, minimum_compression_ratio=5.0)
+    policy=CompilationPolicy(token_budget=800, minimum_compression_ratio=5.0),
+    source_limits=SourceLimits(max_records=10_000, max_input_bytes=16 * 1024 * 1024),
+    compilation_limits=CompilationLimits(max_extractor_items=5_000),
 )
 memory = compiler.compile(sources)
+artifact = memory.to_dict()
+validate_artifact_envelope(artifact)
+assert artifact_schema_support(memory.schema_version)["readable"]
 
 if not memory.verification.passed:
     raise RuntimeError(memory.verification.to_dict())
 
 print(memory.to_prompt())
+
+manifest = create_trust_manifest(artifact, sources)
+anchor = manifest["manifest_sha256"]  # retain outside the bundle's storage boundary
+assert verify_trust_manifest(
+    manifest,
+    artifact,
+    sources,
+    expected_manifest_sha256=anchor,
+)["passed"]
 ```
+
+`diff_artifacts(before, after, include_item_details=False)` returns the same
+self-hashed summary used by `ctxc diff --summary-only`.
+Passing `expected_manifest_sha256=None` to `verify_trust_manifest()` always
+produces a failed, explicitly unanchored report.
+
+Pass `timeout_seconds` to execute the entire compiler pipeline in a dedicated
+process tree:
+
+```python
+memory = compiler.compile(sources, timeout_seconds=60)
+```
+
+Deadline mode requires `sources` to be a materialized list or tuple and the
+compiler configuration to be serializable. It copies that job into the worker,
+so extractor mutation cannot change the caller's source objects. On timeout it
+signals the worker's owned POSIX process group or terminates its Windows Job; on
+success it accepts only a bounded strict-JSON artifact, validates its shape and
+self-digest, and rebuilds a sealed snapshot. This is a cancellation and
+state-isolation boundary, not a filesystem, network, or hostile-code sandbox.
+Compiler configuration crosses the local boundary with pickle and must
+therefore already be trusted. An extractor that deliberately escapes its POSIX
+process group is outside the guarantee, and Linux group-signal success does not
+prove that every member accepted the signal.
 
 For exact provider token accounting, give the compiler a stable counter name
 and give independent artifact verification the same callback and name:
 
 ```python
+from context_compiler import ArtifactLimits
 from context_compiler.io import verify_artifact_dict
 
 def count_words(text: str) -> int:
     return len(text.split())
 
+artifact_limits = ArtifactLimits(max_items=50_000)
 compiler = ContextCompiler(
     token_counter=count_words,
     token_counter_id="words-v1",
@@ -377,6 +1002,7 @@ checked = verify_artifact_dict(
     sources,
     token_counter=count_words,
     token_counter_id="words-v1",
+    artifact_limits=artifact_limits,
 )
 assert checked["passed"]
 ```
@@ -393,11 +1019,80 @@ that can return the documented JSON envelope. This adapter is deliberately
 extractive: each ordinary candidate must equal a complete atomic cited span,
 and exact candidates must equal every cited span. It does not accept model
 paraphrases. Invalid kinds, roles, tags, and spans are rejected before they
-enter memory. After the completion callable returns, the full deterministic
-rule recovery pass runs by default, and protected-only candidates define the
-independent coverage certificate. Provider exceptions currently propagate
-before fallback; this is a confirmed P0 gap. The callable and any data it sends
-remain the integrator’s security and privacy responsibility.
+enter memory. The built-in deterministic recovery and protected-item
+certification passes run independently of the provider. Provider exceptions,
+invalid envelopes, oversized responses, and wholly unusable candidate sets
+produce deterministic fallback memory plus an explicit warning by default.
+Set `CompilationPolicy(fail_on_primary_extractor_error=True)` when provider
+failure must abort instead. `ModelExtractor` bounds response size and candidate
+count, rejects duplicate JSON keys and non-standard or overflowed non-finite
+numbers, and validates exact object fields. An outer compile deadline can
+terminate the owned Windows Job or members that remain in the owned POSIX
+process group, but custom completion adapters should still enforce a shorter
+transport-level deadline so provider failure can return deterministic fallback
+memory instead of aborting the complete run.
+The callable and any data it sends remain the integrator’s security and privacy
+responsibility.
+
+`LiteralModelExtractor(complete)` is a separate, stricter response mode for
+models that copy source text more reliably than they calculate Python
+character offsets. Its schema accepts exact `text` plus unique `source_ids`,
+forbids model-supplied provenance coordinates, and derives a span only when the
+literal occurs exactly once in every cited immutable source. It performs no
+normalization, fuzzy matching, or paraphrase recovery; it retains all ordinary
+authority, uncertainty, atomicity, and exactness checks and additionally
+requires atomic literals for exact errors and references. An aggregate
+locator-work limit bounds substring scanning. The original `ModelExtractor`
+contract and frozen prompt replay remain unchanged. See
+[Unique-literal model extraction](docs/LITERAL_MODEL_EXTRACTION.md).
+
+For domain vocabulary, use `DomainLabelExtractor` rather than widening the
+global phrase regexes. It maps up to 256 exact ASCII labels to `MemoryKind`
+values, preserves exact spans, enforces the same role-authority policy, and
+supports inline or section/bullet forms. `CompositeExtractor` combines multiple
+uniquely named packs and fails loudly on an invalid component result; built-in
+recovery still runs independently. See
+[Extending extraction](docs/EXTENDING_EXTRACTION.md) for the contract, replay
+boundary, and deployment checklist.
+
+For programmatic preprocessing, `redact_sources()` accepts immutable source
+records plus a `RedactionPolicy`. `verify_redaction_result()` deterministically
+reruns the same fixed detectors against independently supplied originals, and
+`verify_redaction_report_hash()` validates the report's nested shape, counts,
+ordering, policy, and self-hash. Masking preserves character offsets and
+physical line boundaries, so compiled provenance binds the redacted source
+text exactly. It is not encryption, general PII detection, or deletion of the
+original input.
+
+For the exact locally installed Qwen build approved for this repository, the
+API-free LM Studio CLI adapter verifies the model identity, Q4 quantization,
+loaded state, and a single inference slot before every call:
+
+```python
+from context_compiler import ContextCompiler, LmsQwenCompletion, ModelExtractor
+
+complete = LmsQwenCompletion(
+    r"C:\path\to\.lmstudio\bin\lms.exe",
+    timeout_seconds=120,
+)
+compiler = ContextCompiler(
+    extractor=ModelExtractor(
+        complete,
+        model_id=complete.model_id,
+        max_response_chars=1_000_000,
+        max_candidates=10_000,
+    )
+)
+```
+
+The adapter disables catalog fetching and does not use an HTTP model API.
+It accepts only one JSON object after an optional bounded exact-model loading
+prefix and rejects ambiguous or trailing stdout. Its POSIX leader remains
+waitable while the owned process group is signaled, and is reaped only after
+that cleanup attempt; Windows uses a Job Object. LM Studio passes the prompt as
+a process argument, so run content redaction before using it and separately
+minimize metadata. See
+[Local Qwen integration](docs/LOCAL_QWEN.md).
 
 `CompilationPolicy(verify=False)` is an explicitly unsafe diagnostic mode. It
 returns a failed report with `verification_not_performed`; normal
@@ -411,11 +1106,11 @@ Run the complete regression and static checks:
 
 ```console
 python -m pytest -q
-python -m ruff check src tests benchmarks
-python -m compileall -q src benchmarks tests
+python -m ruff check src tests benchmarks scripts conformance _ctxc_build_backend.py
+python -m compileall -q src benchmarks tests scripts conformance _ctxc_build_backend.py
 ```
 
-Build the wheel and verify the three packaged schemas:
+Build the wheel and verify the 25 packaged schemas:
 
 ```console
 python -c "
@@ -428,8 +1123,9 @@ with tempfile.TemporaryDirectory() as directory:
     )
     wheels = list(pathlib.Path(directory).glob('*.whl'))
     assert len(wheels) == 1, wheels
+    assert wheels[0].name.startswith('loss_resistant_context_compiler-')
     names = zipfile.ZipFile(wheels[0]).namelist()
-    assert sum(name.endswith('.schema.json') for name in names) == 3
+    assert sum(name.endswith('.schema.json') for name in names) == 25
 "
 ```
 
@@ -445,11 +1141,164 @@ gold-free corpus for a separately run system:
 ```console
 python -m benchmarks --self-test
 python -m benchmarks --histories 24 --export-corpus lrcbench-corpus.json
+python -m benchmarks --verify-report lrcbench-24.json
+python -m benchmarks.external_protocol --verify benchmarks/protocols/external-comparison-v1.json
+python conformance/run_connector_conformance.py
+python -m benchmarks.natural_history
+python -m pytest -q tests/test_external_compatibility.py
+python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
+python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json
 ```
 
-External outputs can be imported with repeatable `--external-baseline`
-options. See [Benchmarking](docs/BENCHMARKING.md) for the strict schema and
-claim scope.
+Benchmark JSON reports and corpus exports use the same flushed, `fsync`ed
+same-directory replacement as CLI artifacts. External-run manifests use an
+exclusive atomic install: a competing file created after the initial check is
+preserved and the manifest commit fails instead of overwriting it.
+
+New JSON reports carry `report_schema: lrcbench-report-0.2`,
+`report_sha256`, and `run_metadata` containing the producer commit and dirty
+state, package and interchange versions, exact command, UTC start time,
+duration, Python/platform, tokenizer/model identity, baseline revisions,
+model-service cost, and failures. The certificate `evidence_sha256` remains the
+deterministic metric digest; `report_sha256` additionally binds the
+run-specific envelope. Schema `0.2` adds frozen external-protocol evidence.
+The verifier retains local-only `0.1` support so the dated committed report
+continues to replay; legacy external-inclusive reports are rejected.
+
+The `ctxc-performance-gate-0.1` CI profile compiles fixed 128- and 256-event
+item-dense histories three times after a warmup. It fails on a median above
+2 or 8 seconds respectively, growth above 8x when the source count doubles,
+or more than 64 MiB of Python allocations observed by `tracemalloc` during
+the largest compile. A 1 ms denominator floor keeps sub-resolution first
+samples from producing meaningless growth ratios. The warmup and measured
+prefixes are bound by committed per-size SHA-256 values, and the JSON result is
+self-hashed. These deliberately generous ceilings are regression tripwires for
+the GitHub Python 3.11 job, not production latency, RSS, or million-event
+scalability claims.
+
+`--verify-report` strictly decodes a bounded regular UTF-8 file, rejects
+duplicate keys, non-finite numbers, excessive depth/size, and unknown fields,
+regenerates the deterministic dataset id, recomputes both digests, validates
+run metadata and comparison accounting, and reconciles raw history counts with
+their recorded rates when `--include-histories` evidence is present. Its
+success means a current document, or the retained local-only `0.1` document, is
+internally consistent; self-hashes are not signatures and do not authenticate
+who produced it. A structurally valid report with a non-issued certificate
+still verifies successfully.
+
+External outputs can be imported directly with repeatable
+`--external-baseline` for diagnostics, but every external run requires
+`--external-protocol` and the protocol must be frozen. A counted registered
+comparison also requires a validated `--external-run-manifest`; otherwise it
+is an invalid non-win. The protocol's registered set is authoritative, and
+repeatable `--expected-external-system` assertions, when supplied, must match
+that complete set. Missing or failed systems remain non-wins. See
+[Benchmarking](docs/BENCHMARKING.md) for the strict schema and claim scope.
+`python -m benchmarks.external_runner` supplies a non-interpolating adapter
+wrapper with timeout/output limits, inherited per-process virtual-address-space
+limits on POSIX, and per-process plus aggregate Job limits on Windows. Adapter
+argv is always retained as a literal argument vector and is never
+shell-interpreted. Subprocess creation uses `shell=False`; on macOS the launch
+argv names the fixed runner-owned shell supervisor described below. POSIX
+`RLIMIT_AS` is neither physical RSS/footprint accounting nor one aggregate
+process-tree ceiling, and a usable finite value depends on the host and
+runtime's existing mappings. On macOS, a fixed runner-owned `/bin/sh -p`
+script starts with an empty environment and sets the requested `RLIMIT_AS`
+soft and hard values in 1024-byte units before Python starts. Here `-p` selects
+the shell's privileged mode; it grants no privilege. The script is runner-owned
+and its control fields are runner-generated. It forwards the isolated no-site
+(`-I -S`) verifier and adapter command only as quoted positional arguments
+without evaluating adapter
+text. The runner passes a bounded canonical encoding of the exact adapter
+environment through an anonymous, unlinked regular-file descriptor, together
+with its byte count and SHA-256 digest. Before bounds and hashing on Darwin, the
+runner reserves `__CF_USER_TEXT_ENCODING` as `0x{uid:X}:0:0`; a conflicting
+caller value fails closed. The counted, hashed entry prevents CoreFoundation's
+default-text-encoding initializer from replacing that environment entry with a
+host/home-derived value after `execve`. Evidence covers the
+exact mapping passed to `execve`, not later mutations by arbitrary runtime code.
+The verifier first requires the exact inherited `RLIMIT_AS`. It then validates
+the descriptor, file, and expected
+size; reads, scrubs, truncates, and closes the handoff; validates the retained
+in-memory length, SHA-256, and protocol; applies byte-exact `RLIMIT_FSIZE`;
+canonically decodes the environment; and uses `execve` with the literal adapter
+argv. A pre-shell launch failure or shell, pre-verifier, or inexact-`RLIMIT_AS`
+exit closes the anonymous unlinked descriptor through process/context teardown
+but does not guarantee a scrub. Completed scrubbing reduces residual retention
+but is not a cryptographic-erasure claim. An exact-limit claim is made only
+after all verifier checks succeed; any mismatch or setup failure is retained
+rather than substituting another ceiling. Preflight and `Popen`
+failures are blocking runner errors. A post-`Popen` launcher failure is
+retained in a failed, non-scoreable manifest. On macOS, a configured limit with
+`process_succeeded: false` conservatively records
+`memory_limit_enforced: false` because the parent has no authenticated signal
+that the verifier completed; this may underreport enforcement but cannot
+upgrade the retained failure. A configured limit with
+`process_succeeded: true` requires `memory_limit_enforced: true`. The current
+external protocol is still draft and blocked; these controls establish no production or
+superiority claim. Stream byte counts and hashes come from runner-retained
+descriptors, not
+reopened paths. At or below a stream cap they cover the full observed stream;
+above it they retain a `cap + 1` prefix witness while the descriptor-size
+observation still forces a failed limit outcome. The snapshot does not chase
+later growth. The default mode executes every case sequentially in a fresh
+process, records a hashed per-case audit trail, and merges only fully validated
+outputs.
+Manifest replay reconstructs every
+one-case corpus from the retained parent, verifies its exact canonical and file
+digests, and requires executed cases to be the ordered parent-corpus prefix
+with runner-owned temporary paths. For a complete run, it also rebuilds each
+one-case candidate envelope from the matching raw merged case and registered
+producer, then checks that semantic payload digest against the per-case audit.
+Whole-corpus mode is diagnostic-only.
+Current claim-eligible runner manifests retain the dependency lock, adapter
+entrypoint, and a bounded recursive inventory of its immutable source root, and
+identify the environment as `sha256:<dependency-lock-sha256>`. Reload rehashes
+the lock and every inventoried regular file, requires the entrypoint to be an
+exact tree record and appear in the recorded command, hashes the resolved
+runtime executable, and verifies a path-independent command contract. Each
+per-case invocation must normalize to that same contract, while claim runs use
+the source root as their working directory. Adapter children receive a bounded
+platform-startup allowlist instead of the full host environment. Extra
+variables require repeatable `--pass-environment NAME`; values are represented
+only by a canonical environment digest, while names remain auditable and
+sensitive-looking names invalidate claim metadata. On macOS that exact mapping,
+not the shell supervisor's empty environment, is the canonical anonymous-FD
+payload verified immediately before `execve`. Scoring requires those
+bytes, the immutable adapter revision, the
+entrypoint/source-tree/runtime/environment/command digests, exact
+model/context/tokenizer/retry contract, and all retained runner
+limits—including the 20 ms enforcement polling cadence—to match the frozen
+protocol. Claim controls also require a bounded retained host/container
+network-isolation artifact whose digest matches the protocol. A pre-existing
+local inference service is accounted separately: the runner captures its PID
+creation identity and executable digest, samples Windows working set or
+Linux/macOS RSS at the same 20 ms cadence, records sample count and peak bytes,
+and invalidates the adapter run if the service disappears, restarts, changes
+executable, or crosses its ceiling. macOS uses `libproc` and rechecks creation
+identity around each executable/RSS observation. Scoring requires the memory
+metric, executable digest, and service ceiling to match the frozen protocol.
+The wrapper does not itself create a filesystem or network sandbox, does not
+contain or terminate the inference service, and can miss a memory spike between
+samples. The source inventory does not bind imports outside its root or prove
+which files were loaded. The runtime digest covers argument zero, not every
+shared library or interpreter support file. The runner also cannot prove that
+the adapter used the designated PID or automatically include separate helper
+processes. Service sampling is supported on Windows, Linux, and macOS; a
+configured service contract fails preflight elsewhere.
+It accepts the legacy producerless adapter payload only at that bounded runner
+boundary, then emits the current self-hashed candidate envelope with the
+registered adapter/model identity. Direct candidate imports require the current
+producer-bearing schema.
+
+The committed compatibility records pin ACON and AMA-Agent source revisions and
+license bytes without generating or inspecting comparative output. The ACON
+diagnostic was routed once through the existing runner against a one-case
+gold-free corpus. It exited before external execution because the exact source
+checkout, Python 3.11 environment, dependency lock, enforced network evidence,
+inference-service accounting, and LM Studio executable were absent. The
+self-hashed manifest retains that failure with no candidate and is not benchmark
+evidence.
 
 LRCBench requires exact gold-atom offsets for credited provenance. A candidate
 cannot cite a broad enclosing source span to obtain recall credit for a smaller
@@ -462,18 +1311,66 @@ contract, and malformed CLI/configuration failures can use a different nonzero
 status. A failed certificate is a valid evaluation result, not necessarily a
 harness error.
 
-Current local snapshot (2026-07-23): all 102 tests pass, and the recorded default
-32-history LRCBench certificate is `ISSUED` with scope
+Current local benchmark snapshot (2026-07-24): the recorded default 32-history
+LRCBench certificate is `ISSUED` with scope
 `local-bundled-only`. Dataset SHA-256
-`9dd650433b9d1a018951a7a4745ba31907f6314965e44aee01ea9ecca24389ae`
+`421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761`
 produced 100% compiler critical recall, exact recall, provenance validity,
 semantic-support accuracy, authority accuracy, and history-perfect rate; 0%
 stale-claim and unresolved-to-fact rates; and 32.60x corpus compression. The
-strongest bundled extractive baseline recorded 88.1% critical recall, 83.6%
-exact recall, 100% provenance and semantic-support validity, 0% authority
-accuracy, a 100% stale-claim rate, 0% perfect histories, and 30.13x
+bundled extractive baseline recorded 88.2% history-weighted critical recall,
+83.6% exact recall, 100% provenance and semantic-support validity, 0%
+authority accuracy, a 100% stale-claim rate, 0% perfect histories, and 30.13x
 compression. The reviewed JSON evidence is
 [docs/results/lrcbench-local.json](docs/results/lrcbench-local.json).
+
+The separate frozen 64-case novel-English diagnostic recorded 35 true
+positives, 6 false positives, and 5 false negatives: 85.3659% micro precision,
+87.5% micro recall, 86.4198% F1, and 55/64 exact-match cases, with no compiler
+verification failures. It is locally authored diagnostic evidence, not an
+independent or production-representative corpus. See
+[the method and mismatch audit](docs/PHRASE_EVALUATION.md) and the
+[self-hashed report](docs/results/novel-english-phrases-v1.json).
+
+The pre-registered exact-local-Qwen run then made 64 sequential calls against
+that corpus. Qwen emitted 65 decoded candidates across all 64 cases; the
+strict exact-span validator accepted 2 and rejected 63 (96.9231%). Accepted
+model-only output had 100% precision but only 5% recall. Deterministic recovery
+added 33 expected atoms missed by the model, raising final recall by 82.5
+percentage points to 87.5%; final precision was 85.3659%, and all compiler
+verifications passed. Median call latency was 1.968 seconds and model-service
+cost was USD 0.00. Because every negative case elicited a candidate, the
+accepted-layer 100% negative accuracy reflects validator rejection rather than
+model restraint. See the [frozen protocol and result audit](docs/QWEN_PHRASE_EVALUATION.md)
+and [replayable captured-output report](docs/results/qwen-novel-english-phrases-v1.json).
+
+An explicitly post-hoc, model-free ablation then replayed those same 65 saved
+candidates after discarding only their integer `start`/`end` values and
+retaining candidate text plus cited source ids. Unique-literal validation
+accepted 38 candidates and rejected 27. Literal-only output recorded 24 TP,
+14 FP, and 16 FN: 63.1579% precision, 60% recall, and 61.5385% F1. Recovery
+raised final recall to 100%, but final precision was only 66.6667% and two
+compiles failed verification because model-labeled confirmed facts lacked
+confirmation evidence. The run made zero model calls and did not evaluate the
+new prompt, so it isolates offset arithmetic but is not claim-bearing evidence
+for `LiteralModelExtractor`. See the
+[method boundary](docs/QWEN_PHRASE_EVALUATION.md#post-hoc-unique-literal-offset-ablation)
+and [self-hashed replay](docs/results/qwen-literal-offset-ablation-v1.json).
+
+A separate pre-result protocol froze a disjoint 64-case corpus before a paired
+comparison of coordinate and unique-literal prompts. The retained run made all
+128 strictly sequential calls with counterbalanced order, one draw per mode,
+and no retries. Coordinate output recorded 7 TP, 0 FP, and 33 FN before
+recovery (100% precision, 17.5% recall, 29.7872% F1); literal output recorded
+37 TP, 13 FP, and 3 FN (74% precision, 92.5% recall, 82.2222% F1). After
+deterministic recovery, literal mode improved F1 over coordinate mode by only
+6.4974 points, reduced precision by 12.0638 points, and caused four independent
+confirmation-evidence verification failures. One coordinate response also
+retains LM Studio loading-spinner stdout contamination as an `invalid_json`
+failure. This is evidence of a recall/safety tradeoff, not a blanket model or
+product win. See the
+[held-out paired protocol and result](docs/QWEN_PAIRED_EVALUATION.md) and
+[self-hashed report](docs/results/qwen-heldout-paired-extractors-v1.json).
 
 These local generated results are **not an external-system comparison** and do
 not establish the requested 50% advantage over most related technology. Rerun
@@ -482,16 +1379,43 @@ the commands above for the current revision and environment.
 ## Documentation
 
 - [TODO and development roadmap](TODO.md)
+- [Changelog and release notes](CHANGELOG.md)
+- [Runtime, platform, format, and installation support](SUPPORT.md)
+- [Release and semantic-versioning policy](docs/RELEASE_POLICY.md)
+- [Release candidate checklist](docs/RELEASE_CHECKLIST.md)
+- [Supply-chain groundwork](docs/SUPPLY_CHAIN.md)
 - [Next-chat handoff and current project state](docs/HANDOFF.md)
 - [Architecture and invariants](docs/ARCHITECTURE.md)
+- [Extending extraction with domain packs](docs/EXTENDING_EXTRACTION.md)
 - [Benchmark design and the exact 50% bar](docs/BENCHMARKING.md)
+- [Natural-history evidence contracts](docs/NATURAL_HISTORY_EVIDENCE.md)
+- [Result-blind external compatibility records](benchmarks/compatibility/README.md)
+- [Novel English phrase diagnostic](docs/PHRASE_EVALUATION.md)
+- [Exact local Qwen phrase-evaluation protocol](docs/QWEN_PHRASE_EVALUATION.md)
+- [Post-hoc Qwen literal-offset ablation evidence](docs/results/qwen-literal-offset-ablation-v1.json)
+- [Held-out paired Qwen extractor-evaluation protocol](docs/QWEN_PAIRED_EVALUATION.md)
+- [Held-out paired Qwen captured-output evidence](docs/results/qwen-heldout-paired-extractors-v1.json)
+- [Unique-literal model extraction](docs/LITERAL_MODEL_EXTRACTION.md)
 - [Threat model](docs/THREAT_MODEL.md)
+- [Detached externally anchored trust manifests](docs/TRUST_MANIFESTS.md)
+- [Compiled-artifact schema compatibility](docs/SCHEMA_COMPATIBILITY.md)
 - [Related work](docs/RELATED_WORK.md)
+- [Exact local Qwen integration](docs/LOCAL_QWEN.md)
 - [LRCBench harness notes](benchmarks/README.md)
+- [Draft external comparison protocol](benchmarks/protocols/external-comparison-v1.md)
+- [Machine-verifiable external protocol](benchmarks/protocols/external-comparison-v1.json)
 - JSON Schemas:
   [source event](schemas/source-event.schema.json),
-  [model extraction](schemas/model-extraction.schema.json), and
-  [compiled memory](schemas/compiled-memory.schema.json)
+  [model extraction](schemas/model-extraction.schema.json),
+  [unique-literal model extraction](schemas/model-extraction-literal.schema.json),
+  [compiled memory](schemas/compiled-memory.schema.json),
+  [redaction report](schemas/redaction-report.schema.json),
+  [source archive entry](schemas/source-archive-entry.schema.json),
+  [source archive command report](schemas/source-archive-report.schema.json),
+  and [detached trust manifest](schemas/trust-manifest.schema.json);
+- [Connector request schema](schemas/connector-request.schema.json),
+  [golden transcripts](conformance/fixtures/golden-success.jsonl), and
+  [standalone conformance runner](conformance/run_connector_conformance.py)
 
 ## License
 

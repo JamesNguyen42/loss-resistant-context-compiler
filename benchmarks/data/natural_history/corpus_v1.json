@@ -1,0 +1,139 @@
+{
+  "collection_accounting": {
+    "attempted_history_count": 3,
+    "exclusions": [],
+    "included_history_ids": [
+      "fixture-public-api",
+      "fixture-consented-cache",
+      "fixture-synthetic-release"
+    ],
+    "intake_manifest_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "corpus_sha256": "8cc18cb3aad82b634af12367a5e560ef45f35ce0aa0fcebdbf84cbdc9a8e033a",
+  "evidence_state": {
+    "frozen_for_evaluation": false,
+    "kind": "contract-fixture",
+    "natural_history_claimed": false,
+    "semantic_completeness_claimed": false
+  },
+  "histories": [
+    {
+      "id": "fixture-public-api",
+      "origin": {
+        "consent_evidence_sha256": null,
+        "consent_state": "not-required-public",
+        "kind": "public",
+        "license_evidence_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "license_spdx": "MIT",
+        "license_state": "verified-compatible"
+      },
+      "privacy_review": {
+        "content_secret_review": "completed",
+        "evidence_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "personal_data_review": "completed",
+        "publication_scope": "repository",
+        "reviewed_at_utc": "2026-07-24T20:00:00Z",
+        "reviewer_id": "privacy-reviewer-a",
+        "state": "approved"
+      },
+      "repository_id": "fixture-repository-alpha",
+      "sources": [
+        {
+          "content": "Constraint: Keep the public API stable.",
+          "id": "fixture-public-api-s0",
+          "role": "user",
+          "sequence": 0,
+          "timestamp": "2026-07-24T18:00:00Z"
+        },
+        {
+          "content": "AssertionError: expected 200, got 503",
+          "id": "fixture-public-api-s1",
+          "role": "tool",
+          "sequence": 1,
+          "timestamp": "2026-07-24T18:01:00Z"
+        }
+      ],
+      "task_group_id": "fixture-task-group-auth",
+      "task_id": "fixture-task-auth-001"
+    },
+    {
+      "id": "fixture-consented-cache",
+      "origin": {
+        "consent_evidence_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "consent_state": "documented",
+        "kind": "explicit-consent",
+        "license_evidence_sha256": null,
+        "license_spdx": null,
+        "license_state": "authorized-by-consent"
+      },
+      "privacy_review": {
+        "content_secret_review": "completed",
+        "evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "personal_data_review": "completed",
+        "publication_scope": "repository",
+        "reviewed_at_utc": "2026-07-24T20:01:00Z",
+        "reviewer_id": "privacy-reviewer-b",
+        "state": "approved"
+      },
+      "repository_id": "fixture-repository-beta",
+      "sources": [
+        {
+          "content": "Goal: Complete the cache migration.",
+          "id": "fixture-consented-cache-s0",
+          "role": "user",
+          "sequence": 0,
+          "timestamp": "2026-07-24T18:10:00Z"
+        },
+        {
+          "content": "Whether legacy keys require a compatibility shim remains unresolved.",
+          "id": "fixture-consented-cache-s1",
+          "role": "assistant",
+          "sequence": 1,
+          "timestamp": "2026-07-24T18:11:00Z"
+        }
+      ],
+      "task_group_id": "fixture-task-group-cache",
+      "task_id": "fixture-task-cache-001"
+    },
+    {
+      "id": "fixture-synthetic-release",
+      "origin": {
+        "consent_evidence_sha256": null,
+        "consent_state": "not-applicable-synthetic",
+        "kind": "synthetic",
+        "license_evidence_sha256": null,
+        "license_spdx": null,
+        "license_state": "not-applicable-synthetic"
+      },
+      "privacy_review": {
+        "content_secret_review": "completed",
+        "evidence_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "personal_data_review": "completed",
+        "publication_scope": "repository",
+        "reviewed_at_utc": "2026-07-24T20:02:00Z",
+        "reviewer_id": "privacy-reviewer-c",
+        "state": "approved"
+      },
+      "repository_id": "fixture-repository-gamma",
+      "sources": [
+        {
+          "content": "Constraint: Do not publish the release artifact.",
+          "id": "fixture-synthetic-release-s0",
+          "role": "developer",
+          "sequence": 0,
+          "timestamp": "2026-07-24T18:20:00Z"
+        },
+        {
+          "content": "tests/test_release.py::test_no_publish",
+          "id": "fixture-synthetic-release-s1",
+          "role": "tool",
+          "sequence": 1,
+          "timestamp": "2026-07-24T18:21:00Z"
+        }
+      ],
+      "task_group_id": "fixture-task-group-release",
+      "task_id": "fixture-task-release-001"
+    }
+  ],
+  "schema": "ctxc-natural-history-corpus-0.1"
+}

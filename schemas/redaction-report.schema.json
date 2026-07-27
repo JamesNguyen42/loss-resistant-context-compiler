@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/lossless-context-compiler/redaction-report.schema.json",
+  "title": "Context compiler content-secret redaction report",
+  "type": "object",
+  "required": [
+    "schema",
+    "scope",
+    "policy",
+    "source_count",
+    "sources_changed",
+    "finding_count",
+    "detector_counts",
+    "redacted_source_digest",
+    "findings",
+    "report_sha256"
+  ],
+  "properties": {
+    "schema": {"const": "ctxc-redaction-report-0.1"},
+    "scope": {
+      "type": "object",
+      "required": [
+        "content_redacted",
+        "metadata_redacted",
+        "source_ids_redacted",
+        "timestamps_redacted",
+        "length_preserving",
+        "line_boundaries_preserved",
+        "original_content_secret_text_included",
+        "original_content_secret_hashes_included"
+      ],
+      "properties": {
+        "content_redacted": {"const": true},
+        "metadata_redacted": {"const": false},
+        "source_ids_redacted": {"const": false},
+        "timestamps_redacted": {"const": false},
+        "length_preserving": {"const": true},
+        "line_boundaries_preserved": {"const": true},
+        "original_content_secret_text_included": {"const": false},
+        "original_content_secret_hashes_included": {"const": false}
+      },
+      "additionalProperties": false
+    },
+    "policy": {
+      "type": "object",
+      "required": [
+        "enabled_detectors",
+        "mask_character",
+        "max_sources",
+        "max_findings_per_source",
+        "max_total_findings",
+        "max_source_chars",
+        "max_total_chars"
+      ],
+      "properties": {
+        "enabled_detectors": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "pem_private_key",
+              "openai_style_key",
+              "github_token",
+              "aws_access_key_id",
+              "jwt",
+              "bearer_token",
+              "basic_authorization",
+              "url_userinfo",
+              "credential_assignment"
+            ]
+          }
+        },
+        "mask_character": {"enum": ["*", "#", "█", "■"]},
+        "max_sources": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_findings_per_source": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_total_findings": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_source_chars": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_total_chars": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "source_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sources_changed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "finding_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "detector_counts": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "pem_private_key",
+          "openai_style_key",
+          "github_token",
+          "aws_access_key_id",
+          "jwt",
+          "bearer_token",
+          "basic_authorization",
+          "url_userinfo",
+          "credential_assignment"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "redacted_source_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "source_sequence",
+          "source_id",
+          "start",
+          "end",
+          "detector",
+          "redacted_characters",
+          "line_boundaries_preserved"
+        ],
+        "properties": {
+          "source_sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "detector": {
+            "enum": [
+              "pem_private_key",
+              "openai_style_key",
+              "github_token",
+              "aws_access_key_id",
+              "jwt",
+              "bearer_token",
+              "basic_authorization",
+              "url_userinfo",
+              "credential_assignment"
+            ]
+          },
+          "redacted_characters": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "line_boundaries_preserved": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "report_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "additionalProperties": false
+}

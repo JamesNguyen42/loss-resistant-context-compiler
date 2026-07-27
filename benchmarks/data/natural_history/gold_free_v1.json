@@ -1,0 +1,78 @@
+{
+  "corpus_sha256": "8cc18cb3aad82b634af12367a5e560ef45f35ce0aa0fcebdbf84cbdc9a8e033a",
+  "export_scope": "all-splits",
+  "gold_free_sha256": "6d912a2984227cc1d15d00b4977ab536c7733b174479ec9ce76bf831554a7206",
+  "histories": [
+    {
+      "history_id": "fixture-public-api",
+      "repository_id": "fixture-repository-alpha",
+      "sources": [
+        {
+          "content": "Constraint: Keep the public API stable.",
+          "id": "fixture-public-api-s0",
+          "role": "user",
+          "sequence": 0,
+          "timestamp": "2026-07-24T18:00:00Z"
+        },
+        {
+          "content": "AssertionError: expected 200, got 503",
+          "id": "fixture-public-api-s1",
+          "role": "tool",
+          "sequence": 1,
+          "timestamp": "2026-07-24T18:01:00Z"
+        }
+      ],
+      "split": "train",
+      "task_group_id": "fixture-task-group-auth",
+      "task_id": "fixture-task-auth-001"
+    },
+    {
+      "history_id": "fixture-consented-cache",
+      "repository_id": "fixture-repository-beta",
+      "sources": [
+        {
+          "content": "Goal: Complete the cache migration.",
+          "id": "fixture-consented-cache-s0",
+          "role": "user",
+          "sequence": 0,
+          "timestamp": "2026-07-24T18:10:00Z"
+        },
+        {
+          "content": "Whether legacy keys require a compatibility shim remains unresolved.",
+          "id": "fixture-consented-cache-s1",
+          "role": "assistant",
+          "sequence": 1,
+          "timestamp": "2026-07-24T18:11:00Z"
+        }
+      ],
+      "split": "development",
+      "task_group_id": "fixture-task-group-cache",
+      "task_id": "fixture-task-cache-001"
+    },
+    {
+      "history_id": "fixture-synthetic-release",
+      "repository_id": "fixture-repository-gamma",
+      "sources": [
+        {
+          "content": "Constraint: Do not publish the release artifact.",
+          "id": "fixture-synthetic-release-s0",
+          "role": "developer",
+          "sequence": 0,
+          "timestamp": "2026-07-24T18:20:00Z"
+        },
+        {
+          "content": "tests/test_release.py::test_no_publish",
+          "id": "fixture-synthetic-release-s1",
+          "role": "tool",
+          "sequence": 1,
+          "timestamp": "2026-07-24T18:21:00Z"
+        }
+      ],
+      "split": "test",
+      "task_group_id": "fixture-task-group-release",
+      "task_id": "fixture-task-release-001"
+    }
+  ],
+  "schema": "ctxc-natural-history-gold-free-0.1",
+  "split_sha256": "7d39c5989a1a85607f3cb175ae9b7f56bc7d1271739d9bd127ca9376c5fd3c1c"
+}
