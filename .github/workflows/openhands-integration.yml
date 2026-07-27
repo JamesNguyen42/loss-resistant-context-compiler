@@ -94,12 +94,60 @@ jobs:
           python -m pip install --no-build-isolation --no-deps -e integrations/openhands
           python -c "import importlib.metadata as m; missing=[]; names=('openhands-ai','openhands-sdk','openhands-tools','openhands-agent-server'); [missing.append(name) for name in names if not any(d.metadata['Name'].casefold()==name for d in m.distributions())]; assert sorted(missing)==sorted(names), missing"
 
+      - name: Qualify an unlinked test temp directory
+        run: |
+          $ciTemp = Join-Path $env:RUNNER_TEMP "ctxc-openhands-${{ matrix.python-version }}"
+          $env:CTXC_CI_TEMP = $ciTemp
+          python -c "import os; from pathlib import Path; from ctxc_openhands.storage import _reject_link_or_reparse_chain as reject; parent=Path(os.environ['RUNNER_TEMP']); reject(parent, label='CI temporary directory'); assert parent.is_dir(), f'CI temporary directory is not a directory: {parent}'; child=Path(os.environ['CTXC_CI_TEMP']); reject(child, label='CI test temp directory'); assert not child.exists(), f'CI test temp directory already exists: {child}'; child.mkdir(mode=0o700); reject(child, label='CI test temp directory'); assert child.is_dir()"
+          Add-Content -Encoding utf8NoBOM -LiteralPath $env:GITHUB_ENV -Value "TMPDIR=$ciTemp"
+          Add-Content -Encoding utf8NoBOM -LiteralPath $env:GITHUB_ENV -Value "TMP=$ciTemp"
+          Add-Content -Encoding utf8NoBOM -LiteralPath $env:GITHUB_ENV -Value "TEMP=$ciTemp"
+
       - name: Verify ordinary imports remain isolated from OpenHands
         run: |
           python -c "import importlib.metadata as m, importlib.util, sys; from packaging.markers import default_environment; from packaging.requirements import Requirement; env=default_environment(); env['extra']=''; requirements=[Requirement(value) for value in (m.requires('loss-resistant-context-compiler') or [])]; assert not [requirement for requirement in requirements if requirement.marker is None or requirement.marker.evaluate(env)], requirements; import context_compiler; assert not any(n == 'openhands' or n.startswith('openhands.') for n in sys.modules); import ctxc_openhands; assert not any(n == 'openhands' or n.startswith('openhands.') for n in sys.modules); assert importlib.util.find_spec('openhands') is None"
 
-      - name: Run isolated tests
-        run: python -m pytest -o addopts= integrations/openhands/tests -q
+      - name: Prove selection and run ordinary isolated tests
+        run: |
+          $retained = & python -m pytest -o addopts= `
+            integrations/openhands/tests `
+            --collect-only -q -m "retained_evidence"
+          if ($LASTEXITCODE -ne 0) {
+            throw "retained-evidence collection failed with exit code $LASTEXITCODE"
+          }
+          $retainedNodes = @($retained | Where-Object { $_ -match "::test_" })
+          if (
+            $retainedNodes.Count -ne 1 -or
+            $retainedNodes[0] -notmatch "::test_1024_schedule_real_wal_campaign_and_abrupt_process_crashes$"
+          ) {
+            throw "unexpected retained-evidence selection: $($retainedNodes -join ', ')"
+          }
+          $ordinary = & python -m pytest -o addopts= `
+            integrations/openhands/tests `
+            --collect-only -q -m "not retained_evidence"
+          if ($LASTEXITCODE -ne 0) {
+            throw "ordinary collection failed with exit code $LASTEXITCODE"
+          }
+          $ordinaryNodes = @($ordinary | Where-Object { $_ -match "::test_" })
+          if (
+            $ordinaryNodes -match
+              "::test_1024_schedule_real_wal_campaign_and_abrupt_process_crashes$"
+          ) {
+            throw "mission-size campaign remained in the ordinary selection"
+          }
+          $requiredCrashPrimitives = @(
+            "test_schedule_generation_is_reproducible_bounded_and_self_hashed",
+            "test_append_crash_before_commit_exposes_no_partial_event",
+            "test_commit_crash_is_recoverable_without_visibility",
+            "test_campaign_rejects_simulated_reparse_database_cross_platform"
+          )
+          foreach ($name in $requiredCrashPrimitives) {
+            if (-not ($ordinaryNodes -match $name)) {
+              throw "fast crash primitive missing from ordinary selection: $name"
+            }
+          }
+          python -m pytest -o addopts= integrations/openhands/tests -q `
+            -m "not retained_evidence"
 
       - name: Run Ruff and compileall
         run: |

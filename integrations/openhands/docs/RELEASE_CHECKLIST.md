@@ -162,7 +162,10 @@ must continue to install and run without OpenHands.
 
 - [ ] Linux, Windows, and macOS pass on Python 3.12.
 - [ ] Linux, Windows, and macOS pass on Python 3.13.
-- [ ] The full isolated test suite passes in every matrix lane.
+- [ ] The ordinary isolated suite, including bounded crash primitives, passes
+      in every automatic matrix lane.
+- [ ] The exact mission-size test is present in the `retained_evidence`
+      selection and absent from the ordinary selection in every matrix lane.
 - [ ] Ruff passes for integration source, tests, and CI scripts.
 - [ ] `compileall` passes for integration source, tests, and CI scripts.
 - [ ] The root core CI remains green on Python 3.11–3.13.
@@ -170,7 +173,11 @@ must continue to install and run without OpenHands.
 
 The required isolated workflow is
 `.github/workflows/openhands-integration.yml`. Its matrix must not install or
-import a live OpenHands dependency.
+import a live OpenHands dependency. Automatic lanes must qualify an unlinked
+descendant of `RUNNER_TEMP` before exporting Python temporary-directory
+variables. The 10,000/100 soak and 1,024-schedule campaign are a separate
+manual/default-off retained-evidence gate; they must never be selected by an
+ordinary push or pull-request package lane.
 
 ## 9. Build and clean-install gates
 
@@ -255,8 +262,12 @@ retention.
 
 Record each unresolved gate; do not delete this section when it is non-empty.
 
-- Hosted qualification: the six Linux/Windows/macOS Python 3.12/3.13 package
-  lanes and the hosted retained-evidence job are pending.
+- Hosted qualification: the first push/pull-request package-matrix copies
+  remain failed results. Every platform exposed the stale symlink-error test
+  contract, and macOS also exposed its `/var` temporary-root alias when the
+  ordinary lane selected the mission-size campaign. The exact test-selection,
+  symlink-contract, and `RUNNER_TEMP` fixes require replacement green lanes.
+  The manual/default-off hosted retained-evidence job remains pending.
 - Evidence retention: the passing post-freeze scenario, soak, and campaign are
   local temporary evidence until the hosted artifact upload succeeds.
 - Live OpenHands execution: blocked by `hash-pinned-wheelhouse-absent`. The

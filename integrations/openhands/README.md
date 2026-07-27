@@ -233,6 +233,12 @@ six passing abrupt-process cases. These files remain temporary local evidence
 until the hosted retained-evidence artifact succeeds; this is not a live
 OpenHands or cross-platform release result.
 
+The mission-size pytest case is marked `retained_evidence` and is excluded from
+the automatic package matrix. Each ordinary lane proves that exact selection,
+uses a path-guard-qualified descendant of `RUNNER_TEMP`, and keeps the bounded
+crash primitives. The 10,000/100 soak and 1,024-schedule campaign run only in
+the manual/default-off retained-evidence job.
+
 Candidate wheels repeated byte-identically, but the raw Setuptools sdists did
 not because generated gzip/member timestamps varied. Clean wheel/sdist
 installation passed at separate paths, but the build-tool wheelhouse was

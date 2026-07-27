@@ -51,6 +51,9 @@ ctxc_openhands = ["data/*.json"]
 addopts = "-q"
 testpaths = ["tests"]
 pythonpath = ["src", "../../src"]
+markers = [
+  "retained_evidence: mission-size retained evidence; manual-only and excluded from ordinary CI",
+]
 
 [tool.ruff]
 line-length = 100

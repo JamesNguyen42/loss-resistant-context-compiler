@@ -1167,9 +1167,17 @@ lower quantile before results are observed.
 
 ### OpenHands draft alpha
 
-- The six hosted package lanes (Linux, Windows, and macOS on Python 3.12 and
-  3.13) and the hosted retained-evidence job have not run for this candidate.
-  Local validation is not cross-platform release qualification.
+- The first hosted package-matrix copies for the push and pull-request events
+  remain failed results. Every platform exposed a stale symlink-error
+  expectation; macOS also exposed its `/var` temporary-root alias when the
+  ordinary matrix mistakenly selected the mission-size campaign. The focused
+  follow-up marks that exact test `retained_evidence`, proves it is excluded
+  from ordinary lanes, qualifies an unlinked `RUNNER_TEMP` descendant, and
+  leaves the fail-closed path guard unchanged. Replacement hosted results are
+  still required.
+- The hosted retained-evidence job is manual/default-off and has not run for
+  this candidate. Local validation is not cross-platform release
+  qualification.
 - The passing post-freeze scenario, soak, and campaign currently exist only in
   a temporary local evidence root. They are not durably retained until the
   hosted artifact upload succeeds.

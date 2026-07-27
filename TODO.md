@@ -666,6 +666,12 @@ evidence of sublinear compilation.
   retain the passing evidence pair as a hosted artifact. Do not describe the
   candidate as cross-platform validated while any required lane is pending or
   red, and do not call temporary local evidence durable retention.
+  The first push/pull-request package lanes remain retained failures: every
+  platform exposed a stale symlink-error expectation, and macOS additionally
+  exposed its `/var` temporary-root alias during the mission-size campaign.
+  The ordinary matrix now excludes the explicit `retained_evidence` test,
+  qualifies an unlinked `RUNNER_TEMP` descendant, and retains fast crash
+  primitives; replacement hosted results are still required.
 - [x] Pin and review one exact OpenHands identity and implement its closed
   top-level event, authority, atomicity, callback, recovery, and offline fake
   runtime contracts without importing OpenHands through the core package.

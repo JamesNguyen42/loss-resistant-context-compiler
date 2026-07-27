@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 import ctxc_openhands.crash_campaign as crash_campaign
+import ctxc_openhands.storage as storage
 from ctxc_openhands.cli import main
 from ctxc_openhands.crash_campaign import (
     CRASH_CAMPAIGN_REPORT_SCHEMA,
@@ -189,6 +190,7 @@ def test_strict_campaign_producer_argv_parser_and_preflight(
     assert not database.exists()
 
 
+@pytest.mark.retained_evidence
 def test_1024_schedule_real_wal_campaign_and_abrupt_process_crashes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -475,10 +477,44 @@ def test_campaign_refuses_a_preexisting_symlink_database(tmp_path: Path) -> None
     except OSError as exc:
         pytest.skip(f"symlink creation is unavailable: {exc}")
 
-    with pytest.raises(FileExistsError, match="already exists"):
+    with pytest.raises(
+        ValueError,
+        match=r"^SQLite store path must not be a symbolic link or reparse point$",
+    ):
         run_crash_concurrency_campaign(database)
     assert database.is_symlink()
     assert target.read_bytes() == b"target must remain unchanged"
+    for suffix in ("-wal", "-shm", "-journal"):
+        assert not Path(f"{database}{suffix}").exists()
+
+
+def test_campaign_rejects_simulated_reparse_database_cross_platform(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "simulated-reparse.sqlite3"
+    original = b"simulated reparse evidence must remain unchanged"
+    database.write_bytes(original)
+    real_is_link_or_reparse = storage._is_link_or_reparse
+
+    def simulated_link_or_reparse(path: Path) -> bool:
+        if path == database:
+            return True
+        return real_is_link_or_reparse(path)
+
+    monkeypatch.setattr(
+        storage,
+        "_is_link_or_reparse",
+        simulated_link_or_reparse,
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"^SQLite store path must not be a symbolic link or reparse point$",
+    ):
+        run_crash_concurrency_campaign(database)
+    assert database.read_bytes() == original
+    for suffix in ("-wal", "-shm", "-journal"):
+        assert not Path(f"{database}{suffix}").exists()
 
 
 def test_campaign_cli_parses_hex_seed_and_refuses_a_short_run(
