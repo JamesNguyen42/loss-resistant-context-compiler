@@ -1,0 +1,9 @@
+**
+!src/
+!src/**
+!integrations/
+!integrations/openhands/
+!integrations/openhands/src/
+!integrations/openhands/src/**
+!integrations/openhands/compatibility/
+!integrations/openhands/compatibility/**

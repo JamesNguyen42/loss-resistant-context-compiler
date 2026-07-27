@@ -1,0 +1,13 @@
+include LICENSE
+include README.md
+include requirements-live.lock
+recursive-include compatibility *.json *.md
+include docs/EVENT_AUTHORITY_MAP.md
+include docs/RELEASE_CHECKLIST.md
+include docs/RUNBOOK.md
+include docs/UPSTREAM_RFC.md
+include demo/Dockerfile
+include demo/Dockerfile.dockerignore
+include demo/README.md
+recursive-include src/ctxc_openhands/data *.json
+global-exclude __pycache__ *.py[cod]

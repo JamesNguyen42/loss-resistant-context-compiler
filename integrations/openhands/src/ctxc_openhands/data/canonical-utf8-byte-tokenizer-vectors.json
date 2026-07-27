@@ -1,0 +1,60 @@
+{
+  "schema": "ctxc-openhands-tokenizer-vectors-0.1",
+  "kind": "ctxc.openhands.tokenizer-vector-set",
+  "identity": "ctxc-openhands/offline-canonical-utf8-byte@1",
+  "exact_scope": "offline-fake-runtime-canonical-utf8-only",
+  "accounting_mode": "exact",
+  "claim_boundaries": {
+    "offline_fake_runtime_only": true,
+    "real_model_tokenizer": false,
+    "provider_wire_exactness": false,
+    "semantic_completeness": false
+  },
+  "vectors": [
+    {
+      "text": "",
+      "expected_tokens": 0
+    },
+    {
+      "text": "a",
+      "expected_tokens": 1
+    },
+    {
+      "text": "ASCII request",
+      "expected_tokens": 13
+    },
+    {
+      "text": "\n",
+      "expected_tokens": 1
+    },
+    {
+      "text": "\u00e9",
+      "expected_tokens": 2
+    },
+    {
+      "text": "\u6f22\u5b57",
+      "expected_tokens": 6
+    },
+    {
+      "text": "\ud83d\ude42",
+      "expected_tokens": 4
+    },
+    {
+      "text": "{\"a\":1}",
+      "expected_tokens": 7
+    },
+    {
+      "text": "e\u0301",
+      "expected_tokens": 3
+    },
+    {
+      "text": "\u0000",
+      "expected_tokens": 1
+    }
+  ],
+  "vector_sha256": "4f1e5ddd10cee5efd61632c3c030e4a24752e14ecc19f3376fb53fc5685e9a10",
+  "integrity": {
+    "payload_canonicalization": "UTF-8 JSON, sorted keys, separators comma/colon, ensure_ascii=false, integrity omitted",
+    "payload_sha256": "583e9abb86005fc1901b0c965ec12155964af54dfdc39f583228e2feefa93b60"
+  }
+}

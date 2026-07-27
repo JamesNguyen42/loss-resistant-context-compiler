@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=77", "wheel>=0.41"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ctxc-openhands"
+version = "0.1.0a1"
+description = "Fail-closed OpenHands integration for the loss-resistant context compiler"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "JamesNguyen42" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = ["loss-resistant-context-compiler==0.1.0"]
+
+[project.optional-dependencies]
+live = [
+  "openhands-ai==1.8.0",
+  "openhands-sdk==1.27.0",
+  "openhands-tools==1.27.0",
+  "openhands-agent-server==1.27.0",
+]
+dev = [
+  "build>=1.2",
+  "pytest>=8.0",
+  "ruff>=0.6",
+  "setuptools>=77",
+  "wheel>=0.41",
+]
+
+[project.scripts]
+ctxc-openhands = "ctxc_openhands.cli:main"
+
+[project.urls]
+Repository = "https://github.com/JamesNguyen42/loss-resistant-context-compiler"
+Issues = "https://github.com/JamesNguyen42/loss-resistant-context-compiler/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+[tool.setuptools.package-data]
+ctxc_openhands = ["data/*.json"]
+
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["src", "../../src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

@@ -1,0 +1,14 @@
+# Direct live-artifact hash evidence for the exact reviewed releases.
+# This is intentionally NOT a complete transitive dependency lock or wheelhouse.
+# Keep the live gate blocked until every dependency artifact is pinned and present
+# offline; do not install this file as evidence of a successful live environment.
+--only-binary=:all:
+
+openhands-ai==1.8.0 \
+    --hash=sha256:f389eb993659d5f8da7f4f47724311678aaca075d5e4233b2e34b23f7c895aec
+openhands-sdk==1.27.0 \
+    --hash=sha256:6a0fb0c664017757d25ab299c3581d400d7f9ce7a3ea3ad8b8f6ef00100ae7a8
+openhands-tools==1.27.0 \
+    --hash=sha256:593a9e56aeb9175fed25985748f0048e1a69db4a906cb923e9cd6bda4ff738dc
+openhands-agent-server==1.27.0 \
+    --hash=sha256:a15511e58b8032459a1a1cac0c9851eaa22fe48e291d6ba482da02700b656d47
