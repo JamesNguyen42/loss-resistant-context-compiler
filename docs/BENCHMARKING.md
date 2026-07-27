@@ -367,14 +367,22 @@ Do not treat hashing as secret storage: low-entropy values may be guessable, so
 credentials should never be passed to an offline claim run.
 
 `--max-memory-mb` applies an inherited per-process `RLIMIT_AS` ceiling on POSIX.
-It is not an aggregate POSIX process-tree ceiling: each descendant inherits the
-same individual limit. Windows instead uses a Job Object assigned before
-process resume with both per-process and aggregate job limits. On macOS, a
-supervisory Python process starts with isolated and no-site flags (`-I -S`),
-applies the inherited address-space and file-size limits, and then replaces
-itself with the exact adapter command. This prevents user or system site
-startup code from running before the limits, avoids unsafe `preexec_fn`
-execution, and does not change the retained adapter command contract. The
+That resource limits virtual address space, not physical RSS or process
+footprint, and it is not an aggregate process-tree ceiling: each descendant
+inherits the same individual limit. A usable finite ceiling is sensitive to the
+host and runtime's existing virtual mappings, including mappings present before
+adapter code starts. Windows instead uses a Job Object assigned before process
+resume with both per-process and aggregate job limits. On macOS, a supervisory
+Python process starts with isolated and no-site flags (`-I -S`), sets the
+requested `RLIMIT_AS` and `RLIMIT_FSIZE` soft and hard values exactly, and then
+replaces itself with the exact adapter command. An inherited soft value may be
+raised only when the inherited hard value permits the request; otherwise the
+launcher fails rather than substituting a different, evidence-inexact ceiling.
+This prevents user or system site startup code from running before the limits,
+avoids unsafe `preexec_fn` execution, and does not change the retained adapter
+command contract. Preflight and `Popen` failures are blocking runner errors.
+After `Popen` succeeds, a launcher `setrlimit` or `exec` failure is retained in
+a failed, non-scoreable manifest, and per-case mode launches no later case. The
 POSIX monitor observes leader exit without reaping (`waitid(..., WNOWAIT)`),
 signals the process group while that leader still anchors its numeric group ID,
 and only then reaps it. After the final macOS group signal, a bounded stable
@@ -394,6 +402,7 @@ polling cadence. macOS uses `libproc` and rechecks the PID creation time around
 each executable/RSS sample. The adapter run fails if the service disappears,
 restarts, changes executable, or exceeds the ceiling; the runner does not
 terminate or contain that service, and polling can miss between-sample spikes.
+This is not a verified macOS jetsam or physical-footprint provider.
 It also cannot prove that the adapter used the designated PID or automatically
 include separate helper processes. Configured service accounting is supported
 on Windows, Linux, and macOS and fails preflight elsewhere. The wrapper is not
@@ -536,8 +545,8 @@ license evidence for ACON, FoldAgent, and AMA-Agent, plus the unresolved MemIR
 artifact. Nine explicit blockers cover final candidate decisions/adapters,
 dependency locks, adapter memory, inference-service accounting, the natural
 cohort, two downstream suites, and frozen downstream samples. The draft
-therefore cannot serve as a preregistration yet. Verify its internal state
-without claiming readiness:
+therefore cannot serve as a preregistration or support a production claim yet.
+Verify its internal state without claiming readiness:
 
 ```console
 python -m benchmarks.external_protocol \

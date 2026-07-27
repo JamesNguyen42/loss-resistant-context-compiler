@@ -1034,22 +1034,30 @@ lower quantile before results are observed.
   isolation. It now binds and revalidates an externally created host firewall,
   container, or network-namespace policy artifact, but that retained file does
   not prove the host enforced it. POSIX `RLIMIT_AS` applies the same inherited
-  per-process ceiling to the adapter and each descendant, not one aggregate
-  process-tree limit; Windows Job Objects enforce per-process and aggregate job
-  ceilings. Neither contains a pre-existing inference service. The runner now
+  per-process virtual-address-space ceiling to the adapter and each descendant;
+  it is neither physical RSS/footprint accounting nor one aggregate process-tree
+  limit, and a usable finite value is host/runtime-map sensitive. Windows Job
+  Objects enforce per-process and aggregate job ceilings. Neither contains a
+  pre-existing inference service. The runner now
   identifies that service by PID creation token plus executable digest and
   samples Windows working set or Linux/macOS RSS. macOS applies its inherited
   `RLIMIT_AS`/`RLIMIT_FSIZE` limits in an isolated no-site (`-I -S`) exec
   wrapper before user or system site startup code can run, instead of using
-  `preexec_fn`. Its unreaped leader anchors process-group cleanup; Darwin
+  `preexec_fn`. The wrapper sets both requested soft and hard values exactly;
+  it may raise an inherited soft value only through the inherited hard value
+  and fails closed if setup or `exec` cannot complete. Preflight and `Popen`
+  failures remain blocking runner errors; after `Popen`, launcher `setrlimit`
+  or `exec` failure is retained in a failed, non-scoreable case manifest and no
+  later case launches. Its unreaped leader anchors process-group cleanup; Darwin
   permission-denied cleanup is accepted only after stable bounded `libproc`
   snapshots prove all members are zombies. Cleanup/proof failure after process
   start is retained as a failed manifest, and per-case execution stops before
   the next case. `libproc` service sampling separately rechecks process creation
-  identity; the runner still cannot contain the service, prove the adapter used
+  identity; this is not a verified jetsam or physical-footprint provider. The
+  runner still cannot contain the service, prove the adapter used
   that PID, include separate helper processes, or observe a spike that begins
   and ends between 20 ms polls. The draft protocol still needs to freeze the
-  service binary, metric, and ceiling.
+  service binary, metric, and ceiling and supports no production claim.
 
 ## Safe host-side compaction transaction
 

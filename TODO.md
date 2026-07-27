@@ -334,17 +334,23 @@ Acceptance:
   manifest. POSIX children that deliberately leave the group remain outside
   this boundary.
 - [x] Add sequential per-case isolation and cross-platform adapter memory
-  enforcement. POSIX applies an inherited `RLIMIT_AS` ceiling independently to
-  each process; it is not an aggregate tree bound. Windows creates the process
-  suspended, assigns and verifies a Job Object with per-process and aggregate
-  memory limits, then resumes it.
+  enforcement. POSIX applies an inherited `RLIMIT_AS` virtual-address-space
+  ceiling independently to each process; it is neither physical RSS/footprint
+  accounting nor an aggregate tree bound. On Darwin the launcher sets the
+  requested `RLIMIT_AS`/`RLIMIT_FSIZE` soft and hard values exactly or fails,
+  and may raise an inherited soft value only through its inherited hard value.
+  A usable finite ceiling is host/runtime-map sensitive. Preflight and `Popen`
+  failures remain blocking; after `Popen`, launcher failure stays retained and
+  non-scoreable. Windows creates the process suspended, assigns and verifies a
+  Job Object with per-process and aggregate memory limits, then resumes it.
 - [x] Account separately for a pre-existing inference service outside the
   adapter process tree. The runner binds PID creation identity and executable
   digest, samples Windows working set or Linux/macOS RSS at the fixed polling
   cadence, records peak/sample evidence, and fails the adapter on restart,
   disappearance, executable change, or ceiling breach. This is monitoring,
-  not containment, and the draft protocol still must freeze the executable,
-  metric, and ceiling before claim-bearing runs.
+  not containment or a verified macOS jetsam/physical-footprint provider, and
+  the draft protocol still must freeze the executable, metric, and ceiling
+  before claim-bearing runs.
 - [x] Require claim-bearing manifests to retain a bounded host firewall,
   container, or network-namespace policy artifact; hash it before execution,
   detect mutation, revalidate it on import, and match it to the frozen

@@ -916,13 +916,20 @@ directory. It passes a bounded platform-startup environment rather than the
 full host environment, retains names but only hashes values, rejects
 credential-like names from claim metadata, and freezes the resulting
 environment digest per system. On macOS, the resource-limit supervisor starts
-with Python's isolated and no-site flags (`-I -S`), applies inherited
-per-process limits, and execs the exact retained adapter command before user or
-system site startup code can run. It also binds a pre-existing service's PID
+with Python's isolated and no-site flags (`-I -S`), sets the requested
+`RLIMIT_AS` and `RLIMIT_FSIZE` soft and hard values exactly, and execs the exact
+retained adapter command before user or system site startup code can run. It
+may raise an inherited soft value only through the inherited hard value and
+fails closed if setup or `exec` cannot complete. Preflight and `Popen` failures
+are blocking; a post-`Popen` launcher failure is retained in a failed,
+non-scoreable manifest. `RLIMIT_AS` is a per-process virtual-address-space
+bound, not physical RSS/footprint or an aggregate-tree bound; a usable finite
+value is host/runtime-map sensitive. It also binds a pre-existing service's PID
 creation identity and
 executable digest and records sampled Windows working set or Linux/macOS RSS
 plus its ceiling. macOS uses `libproc` and rechecks the creation identity
-around each executable/RSS observation. External scoring additionally compares
+around each executable/RSS observation; this is not a verified jetsam or
+physical-footprint provider. External scoring additionally compares
 all of those fields, the
 lock/entrypoint/source-tree/runtime/process-environment/command/network-evidence
 digests, service metric/executable digest/ceiling, and retained runner limits,

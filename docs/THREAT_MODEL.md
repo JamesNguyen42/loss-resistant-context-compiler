@@ -317,23 +317,31 @@ The default external runner gives every case a fresh sequential process and
 records its exact adapter command and outcome. It retains each valid one-case
 candidate's semantic self-digest and, on complete-run reload, reconstructs
 that envelope from the matching raw merged case and registered producer. POSIX
-`RLIMIT_AS` applies one inherited address-space ceiling to each adapter process
-and descendant; it is not an aggregate tree bound. Windows processes are
+`RLIMIT_AS` applies one inherited virtual-address-space ceiling to each adapter
+process and descendant; it is not physical RSS/footprint accounting or an
+aggregate tree bound. A usable finite ceiling depends on the host and runtime's
+existing virtual mappings. Windows processes are
 assigned while suspended to a Job Object with per-process and aggregate memory
 limits and are verified in the job before adapter code resumes. macOS applies
 `RLIMIT_AS` and `RLIMIT_FSIZE` in a supervisory Python process started with
-isolated and no-site flags (`-I -S`). It immediately replaces itself with the
-exact adapter command before user or system site startup code can run, avoiding
-`preexec_fn` failures while preserving inherited limits and process-group
-ownership. The supervisory interpreter and inline launcher argv are
-runner-owned implementation details and are not separately retained or hashed.
+isolated and no-site flags (`-I -S`). It sets the requested soft and hard values
+exactly; an inherited soft limit can be raised only through the inherited hard
+limit. If either exact limit or the subsequent `exec` cannot be applied, the
+launcher fails instead of substituting a different, evidence-inexact ceiling.
+It otherwise replaces itself with the exact adapter command before user or
+system site startup code can run, avoiding `preexec_fn` failures while
+preserving inherited limits and process-group ownership. The supervisory
+interpreter and inline launcher argv are runner-owned implementation details
+and are not separately retained or hashed.
 POSIX exit observation retains the waitable leader as the group-ID
 identity anchor until owned process-group cleanup completes. Darwin accepts
 permission denial only after stable bounded process-group snapshots prove all
 anchored members are zombies; otherwise the started run is retained as
-non-scoreable and per-case mode launches no later case. Preflight and
-process-start failures remain blocking runner errors. These controls limit
-cross-case contamination and resource
+non-scoreable and per-case mode launches no later case. Preflight and `Popen`
+failures remain blocking runner errors. After `Popen` succeeds, launcher
+`setrlimit` or `exec` failure is retained in a failed, non-scoreable case
+manifest and no later case launches. These controls limit cross-case
+contamination and resource
 exhaustion, but they are not a filesystem sandbox and do not establish network
 isolation.
 The stdout, stderr, and candidate-file byte caps are polling-enforced at an
@@ -357,7 +365,8 @@ adapter if identity changes, sampling becomes unavailable, or the ceiling is
 exceeded. macOS `libproc` sampling rechecks PID creation time around the
 executable and RSS observations. This measured peak is a sampled upper
 observation, not proof that no shorter memory spike occurred, that the adapter
-used the designated PID, or that separate helper processes were included.
+used the designated PID, or that separate helper processes were included. It is
+not a verified jetsam or physical-footprint provider.
 Claim protocols must freeze the service executable digest, metric, and ceiling
 or establish stronger external containment.
 

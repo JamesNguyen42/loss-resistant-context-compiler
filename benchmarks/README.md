@@ -310,11 +310,18 @@ incomplete, and external scoring matches the environment digest frozen for
 that system. Value hashes can still be guessed when values have low entropy, so
 this mechanism is reproducibility evidence, not secret storage.
 
-`--max-memory-mb` applies an inherited per-process `RLIMIT_AS` ceiling on POSIX;
-it is not an aggregate tree limit. Windows uses a Job Object, assigned before
-adapter code resumes, with per-process and aggregate limits. On macOS an
-isolated no-site (`-I -S`) exec launcher applies the address-space and file-size
-limits before the exact adapter command loads site startup code. POSIX cleanup
+`--max-memory-mb` applies an inherited per-process `RLIMIT_AS` ceiling on POSIX.
+It limits virtual address space, not physical RSS/footprint, and is not an
+aggregate tree limit; a usable finite value is host/runtime-map sensitive.
+Windows uses a Job Object, assigned before adapter code resumes, with
+per-process and aggregate limits. On macOS an isolated no-site (`-I -S`) exec
+launcher sets the requested `RLIMIT_AS` and `RLIMIT_FSIZE` soft and hard values
+exactly before the adapter command loads site startup code. It may raise an
+inherited soft value only through the inherited hard value and fails instead of
+substituting a different ceiling. Preflight and `Popen` failures are blocking
+runner errors. After `Popen` succeeds, launcher `setrlimit` or `exec` failure is
+retained in a failed, non-scoreable case manifest, and no later case launches.
+POSIX cleanup
 keeps the leader waitable while the group ID is in use. After the final macOS
 group signal, a bounded stable `libproc` snapshot must prove every remaining
 member is a zombie; this is also the only condition under which `EPERM` is
@@ -328,7 +335,8 @@ creation identity around each `libproc` path/RSS observation. A restart,
 disappearance, executable change, or ceiling breach invalidates the adapter
 without terminating the service. Sampling is not containment and can miss a
 spike between polls; it does not prove the adapter used that PID or
-automatically include separate helper processes. Configured service accounting
+automatically include separate helper processes, and it is not a verified
+jetsam or physical-footprint provider. Configured service accounting
 is supported on Windows, Linux, and macOS and fails preflight elsewhere. The
 wrapper does not establish a filesystem or network sandbox, so execute only
 reviewed adapter code in an appropriately isolated environment. Claim-bearing
@@ -498,4 +506,5 @@ The dated inclusion, failure, estimand, and freeze rules are in the
 its [strict machine-readable companion](protocols/external-comparison-v1.json).
 The draft records four screened candidates and nine explicit blockers. It
 remains non-claim-bearing until every blocker is resolved and the strict
-verifier accepts it with `--require-frozen`.
+verifier accepts it with `--require-frozen`; it currently supports no
+production claim.

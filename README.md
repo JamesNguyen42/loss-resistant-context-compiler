@@ -1195,12 +1195,20 @@ repeatable `--expected-external-system` assertions, when supplied, must match
 that complete set. Missing or failed systems remain non-wins. See
 [Benchmarking](docs/BENCHMARKING.md) for the strict schema and claim scope.
 `python -m benchmarks.external_runner` supplies a shell-free adapter wrapper
-with timeout/output limits, inherited per-process address-space limits on
-POSIX, and per-process plus aggregate Job limits on Windows. POSIX descendants
-each inherit the individual limit; it is not one aggregate process-tree
-ceiling. On macOS, an isolated no-site (`-I -S`) exec launcher applies the
-limits before the exact adapter command can load user or system site startup
-code. Stream byte counts and hashes come from runner-retained descriptors, not
+with timeout/output limits, inherited per-process virtual-address-space limits
+on POSIX, and per-process plus aggregate Job limits on Windows. POSIX
+`RLIMIT_AS` is neither physical RSS/footprint accounting nor one aggregate
+process-tree ceiling, and a usable finite value depends on the host and
+runtime's existing mappings. On macOS, an isolated no-site (`-I -S`) exec
+launcher sets the requested `RLIMIT_AS` and `RLIMIT_FSIZE` soft and hard values
+exactly before the adapter command can load site startup code. It can raise an
+inherited soft value only through the inherited hard value and fails instead
+of substituting another ceiling. Preflight and `Popen` failures are blocking
+runner errors. After `Popen` succeeds, a launcher `setrlimit` or `exec` failure
+is retained in a failed, non-scoreable manifest, and per-case mode launches no
+later case. The current external protocol is still draft and blocked; these
+controls establish no production or superiority claim. Stream byte counts and
+hashes come from runner-retained descriptors, not
 reopened paths. At or below a stream cap they cover the full observed stream;
 above it they retain a `cap + 1` prefix witness while the descriptor-size
 observation still forces a failed limit outcome. The snapshot does not chase
