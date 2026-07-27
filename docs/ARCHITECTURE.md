@@ -946,7 +946,11 @@ non-scoreable manifest. On Darwin, a configured limit with
 `memory_limit_enforced: false` because the parent has no authenticated
 verifier-completion signal; this may underreport enforcement but cannot upgrade
 the retained failure. A configured limit with `process_succeeded: true`
-requires `memory_limit_enforced: true`. `RLIMIT_AS` is a
+requires `memory_limit_enforced: true`. After a successful POSIX `SIGTERM`,
+Darwin may deny the liveness probe before `waitid(..., WNOWAIT)` exposes the
+leader's exit. The monitor reobserves only that still-owned unreaped leader
+through the existing grace deadline; `EPERM` is never accepted without the
+unchanged stable all-zombie proof. `RLIMIT_AS` is a
 per-process virtual-address-space
 bound, not physical RSS/footprint or an aggregate-tree bound; a usable finite
 value is host/runtime-map sensitive. It also binds a pre-existing service's PID

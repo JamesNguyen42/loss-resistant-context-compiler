@@ -3597,10 +3597,14 @@ def test_darwin_limit_launcher_rechecks_memory_and_sets_exact_file_limit(
     }
     applied: list[tuple[int, tuple[int, int]]] = []
     executed: list[tuple[str, list[str], dict[str, str]]] = []
-    expected_environment = {
-        "CTXC_EMPTY": "",
-        "CTXC_ENV": "exact=\nSnowman: \u2603\tvalue",
-    }
+    expected_environment, _environment_evidence = (
+        external_runner_module._prepare_process_environment(
+            {
+                "CTXC_EMPTY": "",
+                "CTXC_ENV": "exact=\nSnowman: \u2603\tvalue",
+            }
+        )
+    )
     handoff, handoff_stream = _install_fake_darwin_environment_handoff(
         monkeypatch,
         expected_environment,
@@ -4134,7 +4138,13 @@ def test_darwin_limit_launcher_rejects_file_hard_limit_clamping(
         fake_resource.RLIMIT_FSIZE: (1, file_bytes - 1),
     }
     executed: list[str] = []
-    handoff, _handoff_stream = _install_fake_darwin_environment_handoff(monkeypatch, {})
+    environment, _environment_evidence = (
+        external_runner_module._prepare_process_environment({})
+    )
+    handoff, _handoff_stream = _install_fake_darwin_environment_handoff(
+        monkeypatch,
+        environment,
+    )
 
     def getrlimit(resource_name: int) -> tuple[int, int]:
         return limits[resource_name]
@@ -4203,7 +4213,13 @@ def test_darwin_limit_launcher_rejects_limit_application_failure_before_exec(
         fake_resource.RLIMIT_FSIZE: (1, -1),
     }
     executed: list[str] = []
-    handoff, _handoff_stream = _install_fake_darwin_environment_handoff(monkeypatch, {})
+    environment, _environment_evidence = (
+        external_runner_module._prepare_process_environment({})
+    )
+    handoff, _handoff_stream = _install_fake_darwin_environment_handoff(
+        monkeypatch,
+        environment,
+    )
 
     def getrlimit(resource_name: int) -> tuple[int, int]:
         return limits[resource_name]
@@ -4348,6 +4364,9 @@ def test_darwin_prelimit_is_exact_and_preserves_literal_adapter_argv(
 )
 def test_darwin_prelimit_failure_cannot_exec_adapter(tmp_path: Path) -> None:
     marker = tmp_path / "adapter-executed"
+    environment, _environment_evidence = (
+        external_runner_module._prepare_process_environment({})
+    )
     with external_runner_module._adapter_process_launch_context(
         [
             sys.executable,
@@ -4363,7 +4382,7 @@ def test_darwin_prelimit_failure_cannot_exec_adapter(tmp_path: Path) -> None:
             max_candidate_bytes=1_024,
             max_memory_mb=1,
         ),
-        environment={},
+        environment=environment,
         directory=tmp_path,
     ) as (
         launch_command,
@@ -4542,8 +4561,9 @@ def test_darwin_group_eperm_after_term_requires_proof_without_reaping(
 def test_darwin_post_sigterm_probe_eperm_reobserves_before_proof(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    events: list[tuple[str, int | str]] = []
-    observations = iter((False, False, True))
+    events: list[tuple[str, float | int | str]] = []
+    observations = iter((False, False, False, True))
+    clock_tick = [0]
 
     class RacingProcess:
         pid = 42
@@ -4566,6 +4586,15 @@ def test_darwin_post_sigterm_probe_eperm_reobserves_before_proof(
             )
         assert requested_signal == signal.SIGTERM
 
+    def monotonic() -> float:
+        return (0.0, 0.01, 0.02)[clock_tick[0]]
+
+    def sleep(seconds: float) -> None:
+        assert 0 < seconds <= 0.01
+        events.append(("sleep", seconds))
+        assert clock_tick[0] < 2
+        clock_tick[0] += 1
+
     def prove(
         process_group_id: int,
         *,
@@ -4579,6 +4608,13 @@ def test_darwin_post_sigterm_probe_eperm_reobserves_before_proof(
         events.append(("proof", "all-zombie"))
 
     monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "_PROCESS_GROUP_GRACE_SECONDS",
+        0.02,
+    )
+    monkeypatch.setattr(external_runner_module.time, "monotonic", monotonic)
+    monkeypatch.setattr(external_runner_module.time, "sleep", sleep)
     monkeypatch.setattr(
         external_runner_module.os,
         "killpg",
@@ -4607,6 +4643,8 @@ def test_darwin_post_sigterm_probe_eperm_reobserves_before_proof(
         ("observe", process.pid),
         ("killpg", 0),
         ("observe", process.pid),
+        ("sleep", 0.01),
+        ("observe", process.pid),
         ("proof", "all-zombie"),
     ]
 
@@ -4614,8 +4652,8 @@ def test_darwin_post_sigterm_probe_eperm_reobserves_before_proof(
 def test_darwin_post_sigterm_probe_eperm_rejects_fresh_live_leader(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    events: list[tuple[str, int]] = []
-    observations = iter((False, False, False))
+    events: list[tuple[str, float | int]] = []
+    clock_tick = [0]
 
     class LiveProcess:
         pid = 43
@@ -4626,7 +4664,7 @@ def test_darwin_post_sigterm_probe_eperm_rejects_fresh_live_leader(
     def exited_without_reaping(observed_process: object) -> bool:
         assert observed_process is process
         events.append(("observe", process.pid))
-        return next(observations)
+        return False
 
     def killpg(process_group_id: int, requested_signal: int) -> None:
         assert process_group_id == process.pid
@@ -4638,10 +4676,26 @@ def test_darwin_post_sigterm_probe_eperm_rejects_fresh_live_leader(
             )
         assert requested_signal == signal.SIGTERM
 
+    def monotonic() -> float:
+        return (0.0, 0.01, 0.02)[clock_tick[0]]
+
+    def sleep(seconds: float) -> None:
+        assert 0 < seconds <= 0.01
+        events.append(("sleep", seconds))
+        assert clock_tick[0] < 2
+        clock_tick[0] += 1
+
     def fail_proof(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("a freshly observed live leader must reject proof")
 
     monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "_PROCESS_GROUP_GRACE_SECONDS",
+        0.02,
+    )
+    monkeypatch.setattr(external_runner_module.time, "monotonic", monotonic)
+    monkeypatch.setattr(external_runner_module.time, "sleep", sleep)
     monkeypatch.setattr(
         external_runner_module.os,
         "killpg",
@@ -4674,6 +4728,9 @@ def test_darwin_post_sigterm_probe_eperm_rejects_fresh_live_leader(
         ("observe", process.pid),
         ("killpg", 0),
         ("observe", process.pid),
+        ("sleep", 0.01),
+        ("observe", process.pid),
+        ("sleep", 0.01),
     ]
 
 

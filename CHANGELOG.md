@@ -27,6 +27,10 @@ versioning and release rules in
   owned process-group signaling completes, and required either group
   disappearance or bounded stable all-zombie proof after final macOS
   `SIGKILL` before the leader is reaped.
+- Bounded the Darwin transition in which a successfully delivered `SIGTERM` is
+  followed by an `EPERM` liveness probe: only the still-owned unreaped leader
+  is reobserved through the existing grace deadline, and stable all-zombie
+  proof remains mandatory.
 - Added an isolated no-site macOS resource-limit launcher, stable `libproc`
   inference-service identity/RSS accounting, and retained non-scoreable
   manifests for post-start external process-group cleanup failures.

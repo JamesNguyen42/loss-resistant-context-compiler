@@ -356,6 +356,10 @@ Acceptance:
   no authenticated verifier-completion signal; this can underreport enforcement
   but cannot upgrade the retained failure. A configured limit with
   `process_succeeded: true` requires `memory_limit_enforced: true`.
+  The unreaped leader anchors cleanup. After a successful `SIGTERM`, a Darwin
+  `EPERM` liveness probe permits only bounded reobservation of that leader
+  through the existing grace deadline, and stable all-zombie proof remains
+  required.
   Windows creates the process suspended, assigns and verifies a Job Object with
   per-process and aggregate memory limits, then resumes it.
 - [x] Account separately for a pre-existing inference service outside the

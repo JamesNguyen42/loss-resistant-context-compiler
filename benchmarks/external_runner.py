@@ -3201,7 +3201,7 @@ def _terminate_posix_process_group(
             "could not terminate the adapter process group"
         ) from exc
     deadline = time.monotonic() + _PROCESS_GROUP_GRACE_SECONDS
-    while time.monotonic() < deadline:
+    while True:
         direct_process_exited = (
             process is not None
             and _posix_process_exited_without_reaping(process)
@@ -3216,10 +3216,23 @@ def _terminate_posix_process_group(
                 and sys.platform == "darwin"
                 and process is not None
             ):
-                if not direct_process_exited:
+                # XNU may report EPERM immediately after a successful SIGTERM
+                # while WNOWAIT still observes the owned leader as running.
+                # Wait only through the already-bounded grace interval, then
+                # require both the anchored exit observation and full stable
+                # all-zombie proof. EPERM alone never establishes cleanup.
+                while not direct_process_exited:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
                     direct_process_exited = _posix_process_exited_without_reaping(
                         process
                     )
+                    if not direct_process_exited:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            break
+                        time.sleep(min(0.01, remaining))
                 if direct_process_exited:
                     prove_darwin_process_group_all_zombies(
                         process_group_id,
@@ -3240,7 +3253,10 @@ def _terminate_posix_process_group(
             # SIGKILL removes any descendant that ignored SIGTERM. The caller
             # may reap the leader only after this final group signal.
             break
-        time.sleep(0.01)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(0.01, remaining))
     termination_signal_delivered = True
     try:
         os.killpg(process_group_id, _POSIX_SIGKILL)

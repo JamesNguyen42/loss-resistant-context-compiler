@@ -354,8 +354,11 @@ script digest. Individual run manifests do not independently bind those
 details; the system-shell binary and implementation, supervisory interpreter,
 and supporting runtime files remain unhashed.
 POSIX exit observation retains the waitable leader as the group-ID
-identity anchor until owned process-group cleanup completes. Darwin accepts
-permission denial only after stable bounded process-group snapshots prove all
+identity anchor until owned process-group cleanup completes. After a successful
+`SIGTERM`, a Darwin permission-denied liveness probe permits only bounded
+reobservation of that still-owned unreaped leader through the existing grace
+deadline. Permission denial is accepted only after stable bounded process-group
+snapshots prove all
 anchored members are zombies; otherwise the started run is retained as
 non-scoreable and per-case mode launches no later case. Preflight and `Popen`
 failures remain blocking runner errors. A post-`Popen` launcher failure is

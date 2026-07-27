@@ -1070,11 +1070,13 @@ lower quantile before results are observed.
   verifier-completion signal; this may underreport enforcement but cannot
   upgrade the retained failure. A configured limit with
   `process_succeeded: true` requires `memory_limit_enforced: true`. Its unreaped
-  leader anchors process-group cleanup; Darwin
-  permission-denied cleanup is accepted only after stable bounded `libproc`
-  snapshots prove all members are zombies. Cleanup/proof failure after process
-  start is retained as a failed manifest, and per-case execution stops before
-  the next case. `libproc` service sampling separately rechecks process creation
+  leader anchors process-group cleanup. After a successful `SIGTERM`, a Darwin
+  permission-denied liveness probe triggers bounded reobservation only of that
+  leader through the existing grace deadline; cleanup is accepted only after
+  stable bounded `libproc` snapshots prove all members are zombies.
+  Cleanup/proof failure after process start is retained as a failed manifest,
+  and per-case execution stops before the next case. `libproc` service sampling
+  separately rechecks process creation
   identity; this is not a verified jetsam or physical-footprint provider. The
   runner still cannot contain the service, prove the adapter used
   that PID, include separate helper processes, or observe a spike that begins

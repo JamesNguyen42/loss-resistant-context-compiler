@@ -877,11 +877,24 @@ def terminate_anchored_posix_process_group(
             return
         except PermissionError as exc:
             if exc.errno == errno.EPERM and sys.platform == "darwin":
-                if not direct_process_exited:
+                # XNU can stop finding a signalable group member before
+                # waitid(WNOWAIT) exposes the leader's completed exit. A
+                # successful SIGTERM permits a bounded re-observation of only
+                # the still-owned leader, but EPERM itself never proves group
+                # cleanup.
+                while not direct_process_exited:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
                     direct_process_exited = posix_process_exited_without_reaping(
                         process,
                         error_type=error_type,
                     )
+                    if not direct_process_exited:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            break
+                        time.sleep(min(0.01, remaining))
                 if direct_process_exited:
                     prove_darwin_process_group_all_zombies(
                         process.pid,

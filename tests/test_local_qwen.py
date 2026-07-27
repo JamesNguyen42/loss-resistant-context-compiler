@@ -834,11 +834,14 @@ def test_darwin_initial_sigterm_eperm_reobserves_and_proves_exited_leader(
     ]
 
 
+@pytest.mark.parametrize("proof_rejects", [False, True])
 def test_darwin_post_sigterm_probe_eperm_reobserves_before_proof(
     monkeypatch: pytest.MonkeyPatch,
+    proof_rejects: bool,
 ) -> None:
     events: list[tuple[str, int]] = []
-    observations = iter((False, False, True))
+    observations = iter((False, False, False, True))
+    sleeps: list[float] = []
 
     class RacingLeader:
         pid = 4331
@@ -872,6 +875,8 @@ def test_darwin_post_sigterm_probe_eperm_reobserves_before_proof(
         assert error_type is LocalQwenError
         assert termination_signal_delivered is True
         events.append(("proof", process_group_id))
+        if proof_rejects:
+            raise error_type("Darwin proof rejected a live group member")
 
     leader = RacingLeader()
     monkeypatch.setattr(process_tree.sys, "platform", "darwin")
@@ -886,11 +891,19 @@ def test_darwin_post_sigterm_probe_eperm_reobserves_before_proof(
         "prove_darwin_process_group_all_zombies",
         prove_group,
     )
+    monkeypatch.setattr(process_tree.time, "sleep", sleeps.append)
 
-    process_tree.terminate_anchored_posix_process_group(  # type: ignore[arg-type]
-        leader,
-        error_type=LocalQwenError,
-    )
+    if proof_rejects:
+        with pytest.raises(LocalQwenError, match="proof rejected"):
+            process_tree.terminate_anchored_posix_process_group(  # type: ignore[arg-type]
+                leader,
+                error_type=LocalQwenError,
+            )
+    else:
+        process_tree.terminate_anchored_posix_process_group(  # type: ignore[arg-type]
+            leader,
+            error_type=LocalQwenError,
+        )
 
     assert events == [
         ("observe", RacingLeader.pid),
@@ -898,8 +911,83 @@ def test_darwin_post_sigterm_probe_eperm_reobserves_before_proof(
         ("observe", RacingLeader.pid),
         ("signal", 0),
         ("observe", RacingLeader.pid),
+        ("observe", RacingLeader.pid),
         ("proof", RacingLeader.pid),
     ]
+    assert sleeps == [0.01]
+
+
+def test_darwin_post_sigterm_probe_eperm_bounds_live_leader_reobservation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int]] = []
+    monotonic_values = iter((10.0, 10.1, 10.2, 10.5))
+    sleeps: list[float] = []
+
+    class LiveLeader:
+        pid = 4332
+        returncode = None
+
+    leader = LiveLeader()
+
+    def observe(
+        process: object,
+        *,
+        error_type: type[RuntimeError],
+    ) -> bool:
+        assert process is leader
+        assert error_type is LocalQwenError
+        events.append(("observe", LiveLeader.pid))
+        return False
+
+    def signal_group(process_group_id: int, requested_signal: int) -> None:
+        assert process_group_id == LiveLeader.pid
+        events.append(("signal", requested_signal))
+        if requested_signal == 0:
+            raise PermissionError(errno.EPERM, "Darwin unsignalable live group")
+        assert requested_signal == signal.SIGTERM
+
+    def reject_proof(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError(
+            "EPERM with a persistently live leader must not prove cleanup"
+        )
+
+    monkeypatch.setattr(process_tree.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        process_tree,
+        "posix_process_exited_without_reaping",
+        observe,
+    )
+    monkeypatch.setattr(process_tree.os, "killpg", signal_group, raising=False)
+    monkeypatch.setattr(
+        process_tree.time,
+        "monotonic",
+        lambda: next(monotonic_values),
+    )
+    monkeypatch.setattr(process_tree.time, "sleep", sleeps.append)
+    monkeypatch.setattr(
+        process_tree,
+        "prove_darwin_process_group_all_zombies",
+        reject_proof,
+    )
+
+    with pytest.raises(
+        LocalQwenError,
+        match="could not verify the owned POSIX process group after SIGTERM",
+    ):
+        process_tree.terminate_anchored_posix_process_group(  # type: ignore[arg-type]
+            leader,
+            error_type=LocalQwenError,
+        )
+
+    assert events == [
+        ("observe", LiveLeader.pid),
+        ("signal", signal.SIGTERM),
+        ("observe", LiveLeader.pid),
+        ("signal", 0),
+        ("observe", LiveLeader.pid),
+    ]
+    assert sleeps == [0.01]
 
 
 @pytest.mark.parametrize("final_signal_denied", [False, True])

@@ -410,9 +410,12 @@ the retained failure. A configured limit with `process_succeeded: true`
 requires `memory_limit_enforced: true`. The POSIX monitor
 observes leader exit without reaping (`waitid(..., WNOWAIT)`),
 signals the process group while that leader still anchors its numeric group ID,
-and only then reaps it. After the final macOS group signal, a bounded stable
+and only then reaps it. After a successful `SIGTERM`, Darwin may return `EPERM`
+before WNOWAIT exposes the leader's exit; the monitor reobserves only that
+still-owned leader through the same bounded grace deadline. After the final
+macOS group signal, a bounded stable
 `libproc` member snapshot must prove that every remaining member is a zombie;
-this is also the only condition under which `EPERM` is accepted. A live,
+this remains the only condition under which `EPERM` is accepted. A live,
 inaccessible, raced, or uninspectable member fails the run closed. A POSIX
 process that deliberately leaves the owned group remains outside this cleanup
 boundary, so unreviewed adapters still require external isolation. Once
