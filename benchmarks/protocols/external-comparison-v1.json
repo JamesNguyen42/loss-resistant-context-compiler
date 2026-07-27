@@ -1,5 +1,5 @@
 {
-  "schema": "lrcbench-external-protocol-0.9",
+  "schema": "lrcbench-external-protocol-0.10",
   "protocol_id": "external-comparison-v1",
   "status": "draft",
   "created_at": "2026-07-24T00:00:00+00:00",
@@ -7,7 +7,7 @@
   "freeze_repository_commit": null,
   "protocol_document": {
     "path": "external-comparison-v1.md",
-    "file_sha256": "b1027fc69caf70c55eef1f16c97e1184febf0ac7711134853e4bb0590ba80558"
+    "file_sha256": "4c7d0f02ba96aa4bba41ba212bc199cf88255184cdbc314506b096ddbd8519e9"
   },
   "comparison_candidates": [
     {
@@ -165,7 +165,10 @@
     "inference_service_memory_metric": null,
     "inference_service_executable_sha256": null,
     "max_inference_service_memory_mb": null,
-    "shell_invocation": false,
+    "adapter_shell_interpretation": false,
+    "darwin_prelimit_shell_prefix": ["/bin/sh", "-p", "-c"],
+    "darwin_prelimit_launcher_protocol": "ctxc-darwin-prelimit-v1",
+    "darwin_prelimit_launcher_sha256": "db3647ef188ef005cc6c0157acd3d63597f1bc9e5570b9a106e615088ca77ecc",
     "overwrite_existing_outputs": false,
     "failure_policy": "registered-failures-are-non-wins",
     "offline_execution": true
@@ -208,5 +211,5 @@
       "description": "Select and pin a materially different public tool-use or research task suite."
     }
   ],
-  "protocol_sha256": "3f1d3ab4d4505161bc11077e6564031156c9cae6c92374305e0b2d2a677b9ffa"
+  "protocol_sha256": "a7ee7a92221728be2988b63c8678d4d88936bc65c97e4ced745d770eafefa08d"
 }

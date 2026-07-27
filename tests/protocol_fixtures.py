@@ -218,7 +218,12 @@ def write_frozen_external_protocol(
             "max_inference_service_memory_mb": (
                 max_inference_service_memory_mb
             ),
-            "shell_invocation": False,
+            "adapter_shell_interpretation": False,
+            "darwin_prelimit_shell_prefix": ["/bin/sh", "-p", "-c"],
+            "darwin_prelimit_launcher_protocol": "ctxc-darwin-prelimit-v1",
+            "darwin_prelimit_launcher_sha256": (
+                "db3647ef188ef005cc6c0157acd3d63597f1bc9e5570b9a106e615088ca77ecc"
+            ),
             "overwrite_existing_outputs": False,
             "failure_policy": "registered-failures-are-non-wins",
             "offline_execution": True,

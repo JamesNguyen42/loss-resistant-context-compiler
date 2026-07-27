@@ -180,10 +180,10 @@ The repository currently includes:
 - LRCBench, external-candidate import/export, history-weighted paired bootstrap
   gates, per-system decisions, and self-hashed JSON reports with producer/run
   metadata;
-- gold-free corpus self-digests plus a bounded, shell-free external runner with
-  sequential per-case processes, inherited POSIX per-process memory limits,
-  Windows per-process/aggregate Job limits, and valid or failed manifests that
-  feed per-system certificate decisions;
+- gold-free corpus self-digests plus a bounded, non-interpolating external
+  runner with sequential per-case processes, inherited POSIX per-process
+  memory limits, Windows per-process/aggregate Job limits, and valid or failed
+  manifests that feed per-system certificate decisions;
 - result-blind ACON and AMA-Agent compatibility records plus a pinned ACON
   diagnostic adapter whose first bounded run is retained as a failed,
   non-scoreable manifest;
@@ -1194,21 +1194,44 @@ is an invalid non-win. The protocol's registered set is authoritative, and
 repeatable `--expected-external-system` assertions, when supplied, must match
 that complete set. Missing or failed systems remain non-wins. See
 [Benchmarking](docs/BENCHMARKING.md) for the strict schema and claim scope.
-`python -m benchmarks.external_runner` supplies a shell-free adapter wrapper
-with timeout/output limits, inherited per-process virtual-address-space limits
-on POSIX, and per-process plus aggregate Job limits on Windows. POSIX
+`python -m benchmarks.external_runner` supplies a non-interpolating adapter
+wrapper with timeout/output limits, inherited per-process virtual-address-space
+limits on POSIX, and per-process plus aggregate Job limits on Windows. Adapter
+argv is always retained as a literal argument vector and is never
+shell-interpreted. Subprocess creation uses `shell=False`; on macOS the launch
+argv names the fixed runner-owned shell supervisor described below. POSIX
 `RLIMIT_AS` is neither physical RSS/footprint accounting nor one aggregate
 process-tree ceiling, and a usable finite value depends on the host and
-runtime's existing mappings. On macOS, an isolated no-site (`-I -S`) exec
-launcher sets the requested `RLIMIT_AS` and `RLIMIT_FSIZE` soft and hard values
-exactly before the adapter command can load site startup code. It can raise an
-inherited soft value only through the inherited hard value and fails instead
-of substituting another ceiling. Preflight and `Popen` failures are blocking
-runner errors. After `Popen` succeeds, a launcher `setrlimit` or `exec` failure
-is retained in a failed, non-scoreable manifest, and per-case mode launches no
-later case. The current external protocol is still draft and blocked; these
-controls establish no production or superiority claim. Stream byte counts and
-hashes come from runner-retained descriptors, not
+runtime's existing mappings. On macOS, a fixed runner-owned `/bin/sh -p`
+script starts with an empty environment and sets the requested `RLIMIT_AS`
+soft and hard values in 1024-byte units before Python starts. Here `-p` selects
+the shell's privileged mode; it grants no privilege. The script is runner-owned
+and its control fields are runner-generated. It forwards the isolated no-site
+(`-I -S`) verifier and adapter command only as quoted positional arguments
+without evaluating adapter
+text. The runner passes a bounded canonical encoding of the exact adapter
+environment through an anonymous, unlinked regular-file descriptor, together
+with its byte count and SHA-256 digest. The verifier first requires the exact
+inherited `RLIMIT_AS`. It then validates the descriptor, file, and expected
+size; reads, scrubs, truncates, and closes the handoff; validates the retained
+in-memory length, SHA-256, and protocol; applies byte-exact `RLIMIT_FSIZE`;
+canonically decodes the environment; and uses `execve` with the literal adapter
+argv. A pre-shell launch failure or shell, pre-verifier, or inexact-`RLIMIT_AS`
+exit closes the anonymous unlinked descriptor through process/context teardown
+but does not guarantee a scrub. Completed scrubbing reduces residual retention
+but is not a cryptographic-erasure claim. An exact-limit claim is made only
+after all verifier checks succeed; any mismatch or setup failure is retained
+rather than substituting another ceiling. Preflight and `Popen`
+failures are blocking runner errors. A post-`Popen` launcher failure is
+retained in a failed, non-scoreable manifest. On macOS, a configured limit with
+`process_succeeded: false` conservatively records
+`memory_limit_enforced: false` because the parent has no authenticated signal
+that the verifier completed; this may underreport enforcement but cannot
+upgrade the retained failure. A configured limit with
+`process_succeeded: true` requires `memory_limit_enforced: true`. The current
+external protocol is still draft and blocked; these controls establish no production or
+superiority claim. Stream byte counts and hashes come from runner-retained
+descriptors, not
 reopened paths. At or below a stream cap they cover the full observed stream;
 above it they retain a `cap + 1` prefix witness while the descriptor-size
 observation still forces a failed limit outcome. The snapshot does not chase
@@ -1233,7 +1256,9 @@ the source root as their working directory. Adapter children receive a bounded
 platform-startup allowlist instead of the full host environment. Extra
 variables require repeatable `--pass-environment NAME`; values are represented
 only by a canonical environment digest, while names remain auditable and
-sensitive-looking names invalidate claim metadata. Scoring requires those
+sensitive-looking names invalidate claim metadata. On macOS that exact mapping,
+not the shell supervisor's empty environment, is the canonical anonymous-FD
+payload verified immediately before `execve`. Scoring requires those
 bytes, the immutable adapter revision, the
 entrypoint/source-tree/runtime/environment/command digests, exact
 model/context/tokenizer/retry contract, and all retained runner

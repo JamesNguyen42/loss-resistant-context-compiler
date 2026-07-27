@@ -227,7 +227,7 @@ Direct `--external-baseline` imports default to 20 MB per candidate; override
 that explicit boundary with `--max-external-candidate-bytes` when a frozen
 protocol requires a different limit.
 
-Run an adapter through the standard shell-free bounded process wrapper:
+Run an adapter through the standard bounded, non-interpolating process wrapper:
 
 ```powershell
 python -m benchmarks.external_runner `
@@ -260,7 +260,9 @@ python -m benchmarks.external_runner `
   -- ADAPTER_COMMAND {corpus} {candidate} {system} {case_id}
 ```
 
-Placeholders are replaced as individual arguments without invoking a shell.
+Placeholders are replaced as individual arguments without shell interpretation.
+On macOS only, the resulting literal argv passes through the fixed runner-owned
+shell pre-limiter described below.
 Per-case mode is the default: it creates a one-case gold-free corpus, starts a
 fresh bounded adapter process for that case, validates the one-case candidate,
 and repeats sequentially before merging the complete output. The manifest
@@ -314,13 +316,32 @@ this mechanism is reproducibility evidence, not secret storage.
 It limits virtual address space, not physical RSS/footprint, and is not an
 aggregate tree limit; a usable finite value is host/runtime-map sensitive.
 Windows uses a Job Object, assigned before adapter code resumes, with
-per-process and aggregate limits. On macOS an isolated no-site (`-I -S`) exec
-launcher sets the requested `RLIMIT_AS` and `RLIMIT_FSIZE` soft and hard values
-exactly before the adapter command loads site startup code. It may raise an
-inherited soft value only through the inherited hard value and fails instead of
+per-process and aggregate limits. On macOS a fixed runner-owned `/bin/sh -p`
+script starts with an empty environment and sets the requested `RLIMIT_AS`
+soft and hard values in 1024-byte units. Here `-p` selects privileged shell
+mode and grants no privilege. The script is runner-owned and its control fields
+are runner-generated. It passes the isolated no-site (`-I -S`) verifier plus
+adapter argv only as quoted positional arguments; adapter text is never
+shell-interpreted. A bounded
+canonical encoding of the exact adapter environment travels through an
+anonymous, unlinked regular-file descriptor with its byte count and SHA-256
+digest. The verifier first confirms exact inherited `RLIMIT_AS`; validates the
+descriptor, file, and expected size; reads, scrubs, truncates, and closes the
+handoff; validates the retained in-memory length, SHA-256, and protocol; applies
+byte-exact `RLIMIT_FSIZE`; canonically decodes the environment; and calls
+`execve` with literal adapter argv. A pre-shell launch failure or shell,
+pre-verifier, or inexact-`RLIMIT_AS` exit closes the anonymous unlinked descriptor
+through process/context teardown without guaranteeing a scrub. Completed
+scrubbing is not a cryptographic-erasure guarantee. Exact-limit status requires
+all verifier checks to succeed; failure or mismatch is retained instead of
 substituting a different ceiling. Preflight and `Popen` failures are blocking
-runner errors. After `Popen` succeeds, launcher `setrlimit` or `exec` failure is
-retained in a failed, non-scoreable case manifest, and no later case launches.
+runner errors. A post-`Popen` launcher failure is retained in a failed,
+non-scoreable case manifest. On Darwin, a configured limit with
+`process_succeeded: false` conservatively records
+`memory_limit_enforced: false` because the parent has no authenticated
+verifier-completion signal; this may underreport enforcement but cannot upgrade
+the retained failure. A configured limit with `process_succeeded: true`
+requires `memory_limit_enforced: true`.
 POSIX cleanup
 keeps the leader waitable while the group ID is in use. After the final macOS
 group signal, a bounded stable `libproc` snapshot must prove every remaining

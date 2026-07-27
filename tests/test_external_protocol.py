@@ -165,7 +165,12 @@ def _protocol(
             "max_inference_service_memory_mb": (
                 32_768 if frozen else None
             ),
-            "shell_invocation": False,
+            "adapter_shell_interpretation": False,
+            "darwin_prelimit_shell_prefix": ["/bin/sh", "-p", "-c"],
+            "darwin_prelimit_launcher_protocol": "ctxc-darwin-prelimit-v1",
+            "darwin_prelimit_launcher_sha256": (
+                "db3647ef188ef005cc6c0157acd3d63597f1bc9e5570b9a106e615088ca77ecc"
+            ),
             "overwrite_existing_outputs": False,
             "failure_policy": "registered-failures-are-non-wins",
             "offline_execution": True,
@@ -200,7 +205,7 @@ def test_committed_draft_is_verified_but_not_claim_ready() -> None:
     verified = load_external_protocol(DEFAULT_EXTERNAL_PROTOCOL)
 
     assert verified.protocol_sha256 == (
-        "3f1d3ab4d4505161bc11077e6564031156c9cae6c92374305e0b2d2a677b9ffa"
+        "a7ee7a92221728be2988b63c8678d4d88936bc65c97e4ced745d770eafefa08d"
     )
     assert verified.status == "draft"
     assert verified.claim_ready is False
@@ -297,6 +302,12 @@ def test_complete_frozen_protocol_is_claim_ready(tmp_path: Path) -> None:
         "max_stderr_bytes": 1_000_000,
         "max_candidate_bytes": 20_000_000,
         "max_memory_mb": 8_192,
+        "adapter_shell_interpretation": False,
+        "darwin_prelimit_shell_prefix": ["/bin/sh", "-p", "-c"],
+        "darwin_prelimit_launcher_protocol": "ctxc-darwin-prelimit-v1",
+        "darwin_prelimit_launcher_sha256": (
+            "db3647ef188ef005cc6c0157acd3d63597f1bc9e5570b9a106e615088ca77ecc"
+        ),
     }
     assert verified.blocker_ids == ()
 
@@ -466,6 +477,34 @@ def test_frozen_protocol_fails_closed_on_unresolved_controls(
                 poll_interval_seconds=0.01
             ),
             "poll_interval_seconds",
+        ),
+        (
+            "adapter shell interpretation enabled",
+            lambda value: value["runner"].update(
+                adapter_shell_interpretation=True
+            ),
+            "adapter_shell_interpretation",
+        ),
+        (
+            "changed Darwin prelimit shell",
+            lambda value: value["runner"].update(
+                darwin_prelimit_shell_prefix=["/bin/sh", "-c"]
+            ),
+            "darwin_prelimit_shell_prefix",
+        ),
+        (
+            "changed Darwin prelimit protocol",
+            lambda value: value["runner"].update(
+                darwin_prelimit_launcher_protocol="ctxc-darwin-prelimit-v2"
+            ),
+            "darwin_prelimit_launcher_protocol",
+        ),
+        (
+            "changed Darwin prelimit script digest",
+            lambda value: value["runner"].update(
+                darwin_prelimit_launcher_sha256=_sha("f")
+            ),
+            "darwin_prelimit_launcher_sha256",
         ),
     )
     for _label, mutate, error in mutations:

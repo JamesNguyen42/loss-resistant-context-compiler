@@ -38,7 +38,7 @@ class _FakeDarwinLibproc:
         process_group_id: int,
         snapshots: list[tuple[int, ...]],
         *,
-        statuses: dict[int, int] | None = None,
+        statuses: dict[int, int | tuple[int, ...]] | None = None,
         effective_uids: dict[int, int] | None = None,
         reported_pids: dict[int, int] | None = None,
         reported_pgids: dict[int, int] | None = None,
@@ -46,7 +46,11 @@ class _FakeDarwinLibproc:
         forced_list_count: int | None = None,
         list_errno: int = 0,
         start_identities: dict[int, tuple[tuple[int, int], ...]] | None = None,
-        info_failures: dict[int, tuple[tuple[int, int], ...]] | None = None,
+        info_failures: dict[
+            int,
+            tuple[tuple[int, int] | None, ...],
+        ]
+        | None = None,
     ) -> None:
         self.process_group_id = process_group_id
         self.snapshots = snapshots
@@ -98,9 +102,11 @@ class _FakeDarwinLibproc:
         self.info_calls.append(process_id)
         failures = self.info_failures.get(process_id, ())
         if process_call_index < len(failures):
-            returned_size, error = failures[process_call_index]
-            ctypes.set_errno(error)
-            return returned_size
+            failure = failures[process_call_index]
+            if failure is not None:
+                returned_size, error = failure
+                ctypes.set_errno(error)
+                return returned_size
         ctypes.set_errno(0)
         process_info = process_info_pointer._obj
         process_info.pbi_pid = self.reported_pids.get(process_id, process_id)
@@ -108,10 +114,16 @@ class _FakeDarwinLibproc:
             process_id,
             self.process_group_id,
         )
-        process_info.pbi_status = self.statuses.get(
+        requested_status = self.statuses.get(
             process_id,
             process_tree._DARWIN_PROCESS_STATUS_ZOMBIE,
         )
+        if isinstance(requested_status, tuple):
+            if process_call_index >= len(requested_status):
+                raise AssertionError("unexpected additional process status sample")
+            process_info.pbi_status = requested_status[process_call_index]
+        else:
+            process_info.pbi_status = requested_status
         process_info.pbi_uid = self.effective_uids.get(process_id, 501)
         start_identities = self.start_identities.get(process_id)
         if start_identities is None:
@@ -338,12 +350,257 @@ def test_darwin_all_zombie_proof_rejects_a_live_changed_euid_member(
         effective_uids={member_pid: 0},
     )
     _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+    monkeypatch.setattr(
+        process_tree.time,
+        "sleep",
+        lambda _seconds: pytest.fail("a denied signal must not enable retry"),
+    )
 
     with pytest.raises(process_tree.ProcessTreeError, match=f"live PID {member_pid}"):
         process_tree.prove_darwin_process_group_all_zombies(
             leader_pid,
             expected_leader_pid=leader_pid,
+            termination_signal_delivered=False,
         )
+
+    assert fake_libproc.list_calls == 1
+
+
+def test_darwin_all_zombie_proof_retries_a_delivered_signal_transition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4412
+    member_pid = 4413
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [
+            (leader_pid, member_pid),
+            (leader_pid, member_pid),
+            (leader_pid, member_pid),
+        ],
+        statuses={
+            member_pid: (
+                2,
+                process_tree._DARWIN_PROCESS_STATUS_ZOMBIE,
+                process_tree._DARWIN_PROCESS_STATUS_ZOMBIE,
+            ),
+        },
+    )
+    sleeps: list[float] = []
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+    monkeypatch.setattr(process_tree.time, "sleep", sleeps.append)
+
+    process_tree.prove_darwin_process_group_all_zombies(
+        leader_pid,
+        expected_leader_pid=leader_pid,
+        termination_signal_delivered=True,
+    )
+
+    assert fake_libproc.list_calls == 3
+    assert sleeps == [process_tree._DARWIN_SIGNAL_TRANSITION_POLL_SECONDS]
+
+
+def test_darwin_all_zombie_proof_rechecks_an_omitted_live_signal_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4418
+    member_pid = 4419
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [
+            (leader_pid, member_pid),
+            (leader_pid,),
+        ],
+        statuses={member_pid: (2, 2)},
+    )
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+    monkeypatch.setattr(process_tree.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(
+        process_tree.ProcessTreeError,
+        match=rf"enumeration omitted live PID {member_pid}",
+    ):
+        process_tree.prove_darwin_process_group_all_zombies(
+            leader_pid,
+            expected_leader_pid=leader_pid,
+            termination_signal_delivered=True,
+        )
+
+    assert fake_libproc.info_calls == [
+        leader_pid,
+        member_pid,
+        leader_pid,
+        member_pid,
+    ]
+
+
+def test_darwin_all_zombie_proof_accepts_an_omitted_target_only_after_zombie_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4421
+    member_pid = 4422
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [
+            (leader_pid, member_pid),
+            (leader_pid,),
+            (leader_pid,),
+        ],
+        statuses={
+            member_pid: (
+                2,
+                process_tree._DARWIN_PROCESS_STATUS_ZOMBIE,
+            ),
+        },
+    )
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+    monkeypatch.setattr(process_tree.time, "sleep", lambda _seconds: None)
+
+    process_tree.prove_darwin_process_group_all_zombies(
+        leader_pid,
+        expected_leader_pid=leader_pid,
+        termination_signal_delivered=True,
+    )
+
+    assert fake_libproc.list_calls == 3
+    assert fake_libproc.info_calls == [
+        leader_pid,
+        member_pid,
+        leader_pid,
+        member_pid,
+        leader_pid,
+    ]
+
+
+def test_darwin_all_zombie_proof_bounds_a_persistently_live_signal_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4414
+    member_pid = 4415
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [(leader_pid, member_pid) for _ in range(process_tree._DARWIN_SIGNAL_TRANSITION_ATTEMPTS)],
+        statuses={member_pid: 2},
+    )
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+    monkeypatch.setattr(process_tree.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(
+        process_tree.ProcessTreeError,
+        match=rf"still contains live PID {member_pid}",
+    ):
+        process_tree.prove_darwin_process_group_all_zombies(
+            leader_pid,
+            expected_leader_pid=leader_pid,
+            termination_signal_delivered=True,
+        )
+
+    assert fake_libproc.list_calls == process_tree._DARWIN_SIGNAL_TRANSITION_ATTEMPTS
+
+
+def test_darwin_all_zombie_proof_rejects_zombie_to_live_reversal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4416
+    member_pid = 4417
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [
+            (leader_pid, member_pid),
+            (leader_pid, member_pid),
+        ],
+        statuses={
+            member_pid: (
+                process_tree._DARWIN_PROCESS_STATUS_ZOMBIE,
+                2,
+            ),
+        },
+    )
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+
+    with pytest.raises(
+        process_tree.ProcessTreeError,
+        match="changed from zombie to live",
+    ):
+        process_tree.prove_darwin_process_group_all_zombies(
+            leader_pid,
+            expected_leader_pid=leader_pid,
+            termination_signal_delivered=True,
+        )
+
+    assert fake_libproc.list_calls == 2
+
+
+def test_darwin_all_zombie_proof_rejects_identity_change_during_live_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4423
+    member_pid = 4424
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [
+            (leader_pid, member_pid),
+            (leader_pid, member_pid),
+        ],
+        statuses={member_pid: 2},
+        start_identities={
+            member_pid: (
+                (1_004_423, 4_423),
+                (1_004_424, 4_423),
+            ),
+        },
+    )
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+    monkeypatch.setattr(process_tree.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(
+        process_tree.ProcessTreeError,
+        match="identity changed during inspection",
+    ):
+        process_tree.prove_darwin_process_group_all_zombies(
+            leader_pid,
+            expected_leader_pid=leader_pid,
+            termination_signal_delivered=True,
+        )
+
+    assert fake_libproc.list_calls == 2
+
+
+def test_darwin_all_zombie_proof_rejects_reappearance_during_live_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4425
+    member_pid = 4426
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [
+            (leader_pid, member_pid),
+            (leader_pid, member_pid),
+            (leader_pid, member_pid),
+        ],
+        statuses={member_pid: 2},
+        info_failures={
+            member_pid: (
+                None,
+                (0, errno.ESRCH),
+                None,
+            ),
+        },
+    )
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+    monkeypatch.setattr(process_tree.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(
+        process_tree.ProcessTreeError,
+        match="vanished Darwin process-group member reappeared",
+    ):
+        process_tree.prove_darwin_process_group_all_zombies(
+            leader_pid,
+            expected_leader_pid=leader_pid,
+            termination_signal_delivered=True,
+        )
+
+    assert fake_libproc.list_calls == 3
 
 
 @pytest.mark.parametrize(
@@ -366,6 +623,7 @@ def test_darwin_all_zombie_proof_rejects_inaccessible_or_incomplete_records(
         process_tree.prove_darwin_process_group_all_zombies(
             leader_pid,
             expected_leader_pid=leader_pid,
+            termination_signal_delivered=True,
         )
 
 
@@ -384,6 +642,7 @@ def test_darwin_all_zombie_proof_rejects_a_truncated_enumeration(
         process_tree.prove_darwin_process_group_all_zombies(
             leader_pid,
             expected_leader_pid=leader_pid,
+            termination_signal_delivered=True,
         )
 
 
@@ -545,6 +804,7 @@ def test_darwin_all_zombie_proof_rejects_a_vanished_pid_reappearing(
         process_tree.prove_darwin_process_group_all_zombies(
             leader_pid,
             expected_leader_pid=leader_pid,
+            termination_signal_delivered=True,
         )
 
     assert fake_libproc.list_calls == 2
@@ -613,6 +873,7 @@ def test_darwin_all_zombie_proof_rejects_survivor_pid_reuse_after_shrink(
         process_tree.prove_darwin_process_group_all_zombies(
             leader_pid,
             expected_leader_pid=leader_pid,
+            termination_signal_delivered=True,
         )
 
     assert fake_libproc.list_calls == 2
@@ -901,7 +1162,7 @@ def test_compile_group_cleanup_stops_after_darwin_zombie_probe_eperm(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events: list[tuple[str, int]] = []
-    proofs: list[tuple[int, int]] = []
+    proofs: list[tuple[int, int, bool]] = []
 
     class ExitedLeader:
         pid = 4313
@@ -923,6 +1184,22 @@ def test_compile_group_cleanup_stops_after_darwin_zombie_probe_eperm(
         if requested_signal == 0:
             raise PermissionError(errno.EPERM, "Darwin all-zombie process group")
 
+    def record_proof(
+        process_group_id: int,
+        *,
+        expected_leader_pid: int,
+        error_type: type[RuntimeError],
+        termination_signal_delivered: bool,
+    ) -> None:
+        assert error_type is CompilationIsolationError
+        proofs.append(
+            (
+                process_group_id,
+                expected_leader_pid,
+                termination_signal_delivered,
+            )
+        )
+
     monkeypatch.setattr(
         isolation.os,
         "killpg",
@@ -933,9 +1210,7 @@ def test_compile_group_cleanup_stops_after_darwin_zombie_probe_eperm(
     monkeypatch.setattr(
         isolation,
         "prove_darwin_process_group_all_zombies",
-        lambda process_group_id, *, expected_leader_pid, error_type: proofs.append(
-            (process_group_id, expected_leader_pid)
-        ),
+        record_proof,
     )
 
     isolation._finalize_posix_compile_process(  # type: ignore[arg-type]
@@ -948,7 +1223,7 @@ def test_compile_group_cleanup_stops_after_darwin_zombie_probe_eperm(
         ("signal", 0),
         ("wait", 4313),
     ]
-    assert proofs == [(4313, 4313)]
+    assert proofs == [(4313, 4313, True)]
 
 
 def test_darwin_final_sigkill_eperm_rejection_does_not_reap_before_proof(
@@ -976,8 +1251,10 @@ def test_darwin_final_sigkill_eperm_rejection_does_not_reap_before_proof(
         *,
         expected_leader_pid: int,
         error_type: type[RuntimeError],
+        termination_signal_delivered: bool,
     ) -> None:
         assert process_group_id == expected_leader_pid == 4319
+        assert termination_signal_delivered is False
         raise error_type("anchored Darwin process group still contains live PID 4320")
 
     monkeypatch.setattr(isolation.os, "killpg", deny_signal, raising=False)
@@ -1027,8 +1304,10 @@ def test_darwin_successful_sigkill_rejects_a_live_unsignalable_survivor(
         *,
         expected_leader_pid: int,
         error_type: type[RuntimeError],
+        termination_signal_delivered: bool,
     ) -> None:
         assert process_group_id == expected_leader_pid == 4321
+        assert termination_signal_delivered is True
         raise error_type("anchored Darwin process group still contains live PID 4322")
 
     monkeypatch.setattr(
@@ -1053,6 +1332,62 @@ def test_darwin_successful_sigkill_rejects_a_live_unsignalable_survivor(
     assert events == [
         ("signal", getattr(signal, "SIGKILL", 9)),
         ("signal", 0),
+    ]
+
+
+def test_darwin_denied_liveness_probe_retains_a_delivered_term_transition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int]] = []
+    monotonic_values = iter((10.0, 11.0, 12.0))
+    sigkill = getattr(signal, "SIGKILL", 9)
+
+    class Leader:
+        pid = 4326
+
+    def signal_group(
+        process_group_id: int,
+        requested_signal: int,
+    ) -> None:
+        assert process_group_id == Leader.pid
+        events.append(("signal", requested_signal))
+        if requested_signal in {sigkill, 0}:
+            raise PermissionError(errno.EPERM, "Darwin transition")
+
+    def prove_group(
+        process_group_id: int,
+        *,
+        expected_leader_pid: int,
+        error_type: type[RuntimeError],
+        termination_signal_delivered: bool,
+    ) -> None:
+        assert process_group_id == expected_leader_pid == Leader.pid
+        assert error_type is CompilationIsolationError
+        assert termination_signal_delivered is True
+        events.append(("proof", process_group_id))
+
+    monkeypatch.setattr(isolation.sys, "platform", "darwin")
+    monkeypatch.setattr(isolation.os, "killpg", signal_group, raising=False)
+    monkeypatch.setattr(
+        isolation.time,
+        "monotonic",
+        lambda: next(monotonic_values),
+    )
+    monkeypatch.setattr(
+        isolation,
+        "prove_darwin_process_group_all_zombies",
+        prove_group,
+    )
+
+    isolation._terminate_compile_posix_process_tree(  # type: ignore[arg-type]
+        Leader(),
+        leader_exited=False,
+    )
+
+    assert events == [
+        ("signal", getattr(signal, "SIGTERM", 15)),
+        ("signal", 0),
+        ("proof", Leader.pid),
     ]
 
 

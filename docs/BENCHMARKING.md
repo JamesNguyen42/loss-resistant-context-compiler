@@ -314,7 +314,9 @@ python -m benchmarks.external_runner \
   -- ADAPTER_COMMAND {corpus} {candidate} {system} {case_id}
 ```
 
-It never invokes a shell or overwrites an existing output. The manifest uses an
+It never shell-interprets adapter argv and never overwrites an existing output.
+On macOS only, it invokes the fixed runner-owned shell pre-limiter described
+below. The manifest uses an
 exclusive atomic install, so another file created during the run wins rather
 than being overwritten at commit time. The default `per-case` mode runs cases
 sequentially in fresh processes, gives each process a one-case gold-free corpus,
@@ -372,18 +374,35 @@ footprint, and it is not an aggregate process-tree ceiling: each descendant
 inherits the same individual limit. A usable finite ceiling is sensitive to the
 host and runtime's existing virtual mappings, including mappings present before
 adapter code starts. Windows instead uses a Job Object assigned before process
-resume with both per-process and aggregate job limits. On macOS, a supervisory
-Python process starts with isolated and no-site flags (`-I -S`), sets the
-requested `RLIMIT_AS` and `RLIMIT_FSIZE` soft and hard values exactly, and then
-replaces itself with the exact adapter command. An inherited soft value may be
-raised only when the inherited hard value permits the request; otherwise the
-launcher fails rather than substituting a different, evidence-inexact ceiling.
-This prevents user or system site startup code from running before the limits,
-avoids unsafe `preexec_fn` execution, and does not change the retained adapter
-command contract. Preflight and `Popen` failures are blocking runner errors.
-After `Popen` succeeds, a launcher `setrlimit` or `exec` failure is retained in
-a failed, non-scoreable manifest, and per-case mode launches no later case. The
-POSIX monitor observes leader exit without reaping (`waitid(..., WNOWAIT)`),
+resume with both per-process and aggregate job limits. On macOS, a fixed
+runner-owned `/bin/sh -p` script starts with an empty environment and sets the
+requested `RLIMIT_AS` soft and hard values in 1024-byte units before Python
+starts. Here `-p` selects privileged shell mode and grants no privilege. The
+script is runner-owned and its control fields are runner-generated. It passes
+the isolated no-site (`-I -S`) verifier and adapter argv only through quoted
+positional arguments;
+adapter text is never evaluated by the shell. A bounded canonical encoding of
+the exact adapter environment travels through an anonymous, unlinked
+regular-file descriptor with its expected byte count and SHA-256 digest. The
+verifier first requires exact inherited `RLIMIT_AS`; validates the descriptor,
+file, and expected size; reads, scrubs, truncates, and closes the handoff;
+validates the retained in-memory length, SHA-256, and protocol; applies
+byte-exact `RLIMIT_FSIZE`; canonically decodes the environment; and calls
+`execve` with exact adapter argv. A pre-shell launch failure or shell,
+pre-verifier, or inexact-`RLIMIT_AS` exit closes the anonymous unlinked descriptor
+through process/context teardown without guaranteeing a scrub. Completed
+scrubbing is a retention-reduction step, not a cryptographic-erasure guarantee.
+Exact-limit status requires verifier success; a mismatch cannot be replaced by
+a different ceiling. This avoids unsafe `preexec_fn` execution and preserves
+the retained adapter command contract. Preflight and `Popen` failures are
+blocking runner errors. A post-`Popen` launcher failure is retained in a failed,
+non-scoreable manifest. On Darwin, a configured limit with
+`process_succeeded: false` conservatively records
+`memory_limit_enforced: false` because the parent has no authenticated
+verifier-completion signal; this may underreport enforcement but cannot upgrade
+the retained failure. A configured limit with `process_succeeded: true`
+requires `memory_limit_enforced: true`. The POSIX monitor
+observes leader exit without reaping (`waitid(..., WNOWAIT)`),
 signals the process group while that leader still anchors its numeric group ID,
 and only then reaps it. After the final macOS group signal, a bounded stable
 `libproc` member snapshot must prove that every remaining member is a zombie;

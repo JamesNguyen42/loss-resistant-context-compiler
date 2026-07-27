@@ -863,8 +863,10 @@ def test_darwin_final_sigkill_requires_proof_and_rejects_a_live_survivor(
         *,
         expected_leader_pid: int,
         error_type: type[RuntimeError],
+        termination_signal_delivered: bool,
     ) -> None:
         assert process_group_id == expected_leader_pid == 4314
+        assert termination_signal_delivered is (not final_signal_denied)
         events.append(("proof", process_group_id))
         raise error_type("anchored Darwin process group still contains live PID 4315")
 
@@ -892,6 +894,82 @@ def test_darwin_final_sigkill_requires_proof_and_rejects_a_live_survivor(
         ("signal", getattr(signal, "SIGKILL", 9)),
         ("signal", 0),
         ("proof", 4314),
+    ]
+
+
+def test_darwin_denied_final_sigkill_retains_successful_sigterm_transition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int]] = []
+    observations = iter((None, object()))
+    liveness_probes = 0
+
+    class ExitingLeader:
+        pid = 4319
+        returncode = None
+
+    def waitid(_id_type: int, process_id: int, _options: int) -> object | None:
+        events.append(("waitid", process_id))
+        return next(observations)
+
+    def signal_group(process_group_id: int, requested_signal: int) -> None:
+        nonlocal liveness_probes
+        assert process_group_id == ExitingLeader.pid
+        events.append(("signal", requested_signal))
+        if requested_signal == 0:
+            liveness_probes += 1
+            if liveness_probes == 2:
+                raise PermissionError(
+                    errno.EPERM,
+                    "Darwin zombie-only process group",
+                )
+            return
+        if requested_signal == getattr(signal, "SIGKILL", 9):
+            raise PermissionError(
+                errno.EPERM,
+                "Darwin zombie-only process group",
+            )
+        assert requested_signal == signal.SIGTERM
+
+    def reject_live_member(
+        process_group_id: int,
+        *,
+        expected_leader_pid: int,
+        error_type: type[RuntimeError],
+        termination_signal_delivered: bool,
+    ) -> None:
+        assert process_group_id == expected_leader_pid == ExitingLeader.pid
+        assert termination_signal_delivered is True
+        events.append(("proof", process_group_id))
+        raise error_type("anchored Darwin process group still contains live PID 4320")
+
+    monkeypatch.setattr(process_tree.sys, "platform", "darwin")
+    monkeypatch.setattr(process_tree.os, "P_PID", 1, raising=False)
+    monkeypatch.setattr(process_tree.os, "WEXITED", 2, raising=False)
+    monkeypatch.setattr(process_tree.os, "WNOHANG", 4, raising=False)
+    monkeypatch.setattr(process_tree.os, "WNOWAIT", 8, raising=False)
+    monkeypatch.setattr(process_tree.os, "waitid", waitid, raising=False)
+    monkeypatch.setattr(process_tree.os, "killpg", signal_group, raising=False)
+    monkeypatch.setattr(
+        process_tree,
+        "prove_darwin_process_group_all_zombies",
+        reject_live_member,
+    )
+
+    with pytest.raises(LocalQwenError, match="live PID 4320"):
+        process_tree.terminate_anchored_posix_process_group(  # type: ignore[arg-type]
+            ExitingLeader(),
+            error_type=LocalQwenError,
+        )
+
+    assert events == [
+        ("waitid", ExitingLeader.pid),
+        ("signal", signal.SIGTERM),
+        ("waitid", ExitingLeader.pid),
+        ("signal", 0),
+        ("signal", getattr(signal, "SIGKILL", 9)),
+        ("signal", 0),
+        ("proof", ExitingLeader.pid),
     ]
 
 

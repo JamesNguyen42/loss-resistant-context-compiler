@@ -78,10 +78,10 @@ raw evidence when completing benchmark work.
 - [x] Add a separate fail-closed `LiteralModelExtractor` that derives offsets
   only from a unique exact source literal, caps aggregate search work, and
   leaves the original coordinate-bearing contract unchanged.
-- [x] Add a shell-free bounded external-adapter runner with sequential per-case
-  processes, inherited POSIX per-process memory limits, Windows per-process
-  and aggregate Job limits, full candidate validation, and self-hashed run
-  manifests.
+- [x] Add a bounded, non-interpolating external-adapter runner with sequential
+  per-case processes, inherited POSIX per-process memory limits, Windows
+  per-process and aggregate Job limits, full candidate validation, and
+  self-hashed run manifests.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
 - [x] Maintain unit and connector-contract coverage, including standalone
   operation without sibling dependencies; CI covers Python 3.11, 3.12, and
@@ -328,21 +328,36 @@ Acceptance:
 
 ### P0-E2 Build reproducible external-system adapters
 
-- [x] Add a shell-free whole-adapter subprocess runner with time, stdout,
-  stderr, and candidate limits, overwrite refusal, owned POSIX process-group
-  or Windows Job termination, candidate validation, and a self-hashed
-  manifest. POSIX children that deliberately leave the group remain outside
-  this boundary.
+- [x] Add a non-interpolating whole-adapter subprocess runner with time,
+  stdout, stderr, and candidate limits, overwrite refusal, owned POSIX
+  process-group or Windows Job termination, candidate validation, and a
+  self-hashed manifest. Adapter commands stay literal argument vectors. POSIX
+  children that deliberately leave the group remain outside this boundary.
 - [x] Add sequential per-case isolation and cross-platform adapter memory
   enforcement. POSIX applies an inherited `RLIMIT_AS` virtual-address-space
   ceiling independently to each process; it is neither physical RSS/footprint
-  accounting nor an aggregate tree bound. On Darwin the launcher sets the
-  requested `RLIMIT_AS`/`RLIMIT_FSIZE` soft and hard values exactly or fails,
-  and may raise an inherited soft value only through its inherited hard value.
-  A usable finite ceiling is host/runtime-map sensitive. Preflight and `Popen`
+  accounting nor an aggregate tree bound. On Darwin a fixed runner-owned
+  `/bin/sh -p` pre-limiter (privileged mode, with no privilege grant) starts
+  with an empty environment and forwards only quoted positional arguments.
+  A bounded canonical anonymous-FD handoff carries the exact adapter
+  environment with byte-count and SHA-256 verification. The isolated verifier
+  first confirms exact inherited `RLIMIT_AS`; validates the descriptor, file,
+  and expected size; reads, scrubs, truncates, and closes the handoff; validates
+  the retained in-memory length, SHA-256, and protocol; applies byte-exact
+  `RLIMIT_FSIZE`; canonically decodes; and calls `execve` with literal adapter
+  argv. A pre-shell launch failure or shell, pre-verifier, or inexact-`RLIMIT_AS` exit
+  closes the anonymous unlinked descriptor through process/context teardown
+  without guaranteeing a scrub. Completed scrubbing is not cryptographic
+  erasure. Exact-limit status requires verifier success; any mismatch fails. A
+  usable finite ceiling is host/runtime-map sensitive. Preflight and `Popen`
   failures remain blocking; after `Popen`, launcher failure stays retained and
-  non-scoreable. Windows creates the process suspended, assigns and verifies a
-  Job Object with per-process and aggregate memory limits, then resumes it.
+  non-scoreable. On Darwin, a configured limit with `process_succeeded: false`
+  conservatively records `memory_limit_enforced: false` because the parent has
+  no authenticated verifier-completion signal; this can underreport enforcement
+  but cannot upgrade the retained failure. A configured limit with
+  `process_succeeded: true` requires `memory_limit_enforced: true`.
+  Windows creates the process suspended, assigns and verifies a Job Object with
+  per-process and aggregate memory limits, then resumes it.
 - [x] Account separately for a pre-existing inference service outside the
   adapter process tree. The runner binds PID creation identity and executable
   digest, samples Windows working set or Linux/macOS RSS at the fixed polling

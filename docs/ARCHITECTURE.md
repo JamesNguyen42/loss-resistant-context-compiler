@@ -915,14 +915,33 @@ every per-case invocation. Claim execution uses the source root as the working
 directory. It passes a bounded platform-startup environment rather than the
 full host environment, retains names but only hashes values, rejects
 credential-like names from claim metadata, and freezes the resulting
-environment digest per system. On macOS, the resource-limit supervisor starts
-with Python's isolated and no-site flags (`-I -S`), sets the requested
-`RLIMIT_AS` and `RLIMIT_FSIZE` soft and hard values exactly, and execs the exact
-retained adapter command before user or system site startup code can run. It
-may raise an inherited soft value only through the inherited hard value and
-fails closed if setup or `exec` cannot complete. Preflight and `Popen` failures
-are blocking; a post-`Popen` launcher failure is retained in a failed,
-non-scoreable manifest. `RLIMIT_AS` is a per-process virtual-address-space
+environment digest per system. On macOS, a fixed runner-owned `/bin/sh -p`
+supervisor starts with an empty environment and sets the requested `RLIMIT_AS`
+soft and hard values in 1024-byte units before Python starts. Here `-p`
+selects privileged shell mode and grants no privilege. Its script is
+runner-owned and its control fields are runner-generated. It forwards the
+isolated no-site (`-I -S`) verifier plus adapter argv only as quoted positional
+arguments without shell interpretation.
+The exact adapter environment is a bounded canonical payload passed through an
+anonymous, unlinked regular-file descriptor with its expected byte count and
+SHA-256 digest. The verifier first rejects any inexact inherited `RLIMIT_AS`;
+validates the descriptor, file, and expected size; reads, scrubs, truncates,
+and closes the handoff; validates the retained in-memory length, SHA-256, and
+protocol; applies byte-exact `RLIMIT_FSIZE`; canonically decodes the
+environment; and calls `execve` with literal retained adapter argv. A pre-shell
+launch failure or shell, pre-verifier, or inexact-`RLIMIT_AS` exit closes the
+anonymous unlinked descriptor through process/context teardown without
+guaranteeing a scrub. Completed scrubbing reduces retention but makes no
+cryptographic-erasure claim. Exact-limit status begins only after the verifier
+succeeds. Setup or `execve` failure remains fail-closed. Preflight and `Popen`
+failures are blocking; a post-`Popen` launcher failure is retained in a failed,
+non-scoreable manifest. On Darwin, a configured limit with
+`process_succeeded: false` conservatively records
+`memory_limit_enforced: false` because the parent has no authenticated
+verifier-completion signal; this may underreport enforcement but cannot upgrade
+the retained failure. A configured limit with `process_succeeded: true`
+requires `memory_limit_enforced: true`. `RLIMIT_AS` is a
+per-process virtual-address-space
 bound, not physical RSS/footprint or an aggregate-tree bound; a usable finite
 value is host/runtime-map sensitive. It also binds a pre-existing service's PID
 creation identity and

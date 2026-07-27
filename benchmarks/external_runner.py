@@ -1,4 +1,4 @@
-"""Resource-bounded, shell-free runner for LRCBench external adapters."""
+"""Resource-bounded, non-interpolating runner for LRCBench external adapters."""
 
 from __future__ import annotations
 
@@ -139,11 +139,72 @@ _MANIFEST_JSON_LIMITS = StrictJsonLimits(
     max_line_chars=1_000_000,
     max_depth=64,
 )
+_DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL = b"ctxc-darwin-environment-v1\x00"
+_DARWIN_ENVIRONMENT_HANDOFF_MAX_BYTES = (
+    len(_DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL)
+    + _PROCESS_ENVIRONMENT_MAX_TOTAL_BYTES
+    + (2 * _PROCESS_ENVIRONMENT_MAX_VARIABLES)
+)
+_DARWIN_PRELIMIT_LAUNCHER_PROTOCOL = "ctxc-darwin-prelimit-v1"
+_DARWIN_PRELIMIT_LAUNCHER = """\
+if [ "$#" -lt 3 ] || [ "$0" != "ctxc-darwin-prelimit-v1" ] || [ "$2" != "--" ]; then
+    printf '%s\n' 'invalid Darwin pre-limit launcher contract' >&2
+    exit 125
+fi
+case "$1" in
+    ''|*[!0-9]*)
+        printf '%s\n' 'invalid Darwin RLIMIT_AS value' >&2
+        exit 125
+        ;;
+esac
+if ! ulimit -S -H -v "$1"; then
+    printf '%s\n' 'could not apply exact Darwin RLIMIT_AS limit' >&2
+    exit 125
+fi
+shift 2
+exec "$@"
+"""
 _DARWIN_LIMIT_LAUNCHER_PROTOCOL = "ctxc-darwin-limit-v1"
 _DARWIN_LIMIT_LAUNCHER = """\
+import hashlib
 import os
 import resource
+import stat
 import sys
+
+
+ENVIRONMENT_PROTOCOL = b"ctxc-darwin-environment-v1\\x00"
+ENVIRONMENT_MAX_BYTES = 4_002_075
+ENVIRONMENT_MAX_VARIABLES = 1_024
+ENVIRONMENT_MAX_NAME_BYTES = 4_096
+ENVIRONMENT_MAX_VALUE_BYTES = 1_000_000
+ENVIRONMENT_MAX_TOTAL_BYTES = 4_000_000
+
+
+def reject(message):
+    raise SystemExit(message)
+
+
+def decimal(raw, label):
+    if (
+        not raw
+        or len(raw) > 19
+        or any(character not in "0123456789" for character in raw)
+    ):
+        reject(f"invalid Darwin {label} value")
+    value = int(raw)
+    if value > 9_223_372_036_854_775_807:
+        reject(f"invalid Darwin {label} value")
+    return value
+
+
+def require_exact(resource_name, resource_label, requested):
+    observed = resource.getrlimit(resource_name)
+    if observed != (requested, requested):
+        raise SystemExit(
+            f"inherited {resource_label} limit is not exact: "
+            f"{observed[0]}/{observed[1]} != {requested}/{requested}"
+        )
 
 
 def bound(resource_name, resource_label, requested):
@@ -161,15 +222,116 @@ def bound(resource_name, resource_label, requested):
         ) from exc
 
 
+def consume_environment_payload(fd, expected_size, expected_sha256):
+    if fd < 3 or fd > 2_147_483_647:
+        reject("invalid Darwin environment handoff descriptor")
+    if not len(ENVIRONMENT_PROTOCOL) <= expected_size <= ENVIRONMENT_MAX_BYTES:
+        reject("invalid Darwin environment handoff size")
+    if (
+        len(expected_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in expected_sha256)
+    ):
+        reject("invalid Darwin environment handoff digest")
+    try:
+        information = os.fstat(fd)
+        if (
+            not stat.S_ISREG(information.st_mode)
+            or information.st_nlink != 0
+            or information.st_size != expected_size
+        ):
+            reject("invalid Darwin environment handoff file")
+        with os.fdopen(fd, "r+b", closefd=True) as stream:
+            stream.seek(0)
+            payload = stream.read(expected_size + 1)
+            stream.seek(0)
+            zero_block = b"\\x00" * 65_536
+            remaining = information.st_size
+            while remaining:
+                chunk = zero_block[: min(remaining, len(zero_block))]
+                if stream.write(chunk) != len(chunk):
+                    reject("could not scrub Darwin environment handoff")
+                remaining -= len(chunk)
+            stream.truncate(0)
+            stream.flush()
+    except (OSError, OverflowError, ValueError) as exc:
+        raise SystemExit(
+            "could not consume Darwin environment handoff: "
+            f"{type(exc).__name__}"
+        ) from exc
+    if len(payload) != expected_size:
+        reject("Darwin environment handoff length mismatch")
+    if hashlib.sha256(payload).hexdigest() != expected_sha256:
+        reject("Darwin environment handoff digest mismatch")
+    if not payload.startswith(ENVIRONMENT_PROTOCOL):
+        reject("Darwin environment handoff protocol mismatch")
+    return payload
+
+
+def decode_environment(payload):
+    body = payload[len(ENVIRONMENT_PROTOCOL) :]
+    if not body:
+        return {}
+    if not body.endswith(b"\\x00"):
+        reject("Darwin environment handoff is not canonical")
+    records = body[:-1].split(b"\\x00")
+    if not records or len(records) > ENVIRONMENT_MAX_VARIABLES:
+        reject("Darwin environment handoff has invalid record count")
+    environment = {}
+    previous_name = None
+    aggregate_bytes = 0
+    first_characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
+    remaining_characters = first_characters + "0123456789"
+    for record in records:
+        if not record or b"=" not in record:
+            reject("Darwin environment handoff record is invalid")
+        encoded_name, encoded_value = record.split(b"=", 1)
+        if (
+            not encoded_name
+            or len(encoded_name) > ENVIRONMENT_MAX_NAME_BYTES
+            or len(encoded_value) > ENVIRONMENT_MAX_VALUE_BYTES
+        ):
+            reject("Darwin environment handoff record exceeds its limit")
+        aggregate_bytes += len(encoded_name) + len(encoded_value)
+        if aggregate_bytes > ENVIRONMENT_MAX_TOTAL_BYTES:
+            reject("Darwin environment handoff exceeds its aggregate limit")
+        try:
+            name = encoded_name.decode("ascii")
+            value = encoded_value.decode("utf-8")
+        except UnicodeError as exc:
+            raise SystemExit(
+                "Darwin environment handoff encoding is invalid"
+            ) from exc
+        if (
+            name[0] not in first_characters
+            or any(character not in remaining_characters for character in name[1:])
+            or (previous_name is not None and name <= previous_name)
+        ):
+            reject("Darwin environment handoff names are not canonical")
+        environment[name] = value
+        previous_name = name
+    return environment
+
+
 if (
-    len(sys.argv) < 6
+    len(sys.argv) < 9
     or sys.argv[1] != "ctxc-darwin-limit-v1"
-    or sys.argv[4] != "--"
+    or sys.argv[7] != "--"
+    or not os.path.isabs(sys.argv[8])
 ):
     raise SystemExit("invalid Darwin limit-launcher contract")
-bound(resource.RLIMIT_AS, "RLIMIT_AS", int(sys.argv[2]))
-bound(resource.RLIMIT_FSIZE, "RLIMIT_FSIZE", int(sys.argv[3]))
-os.execvpe(sys.argv[5], sys.argv[5:], os.environ)
+memory_bytes = decimal(sys.argv[2], "RLIMIT_AS")
+file_bytes = decimal(sys.argv[3], "RLIMIT_FSIZE")
+environment_fd = decimal(sys.argv[4], "environment handoff descriptor")
+environment_size = decimal(sys.argv[5], "environment size")
+require_exact(resource.RLIMIT_AS, "RLIMIT_AS", memory_bytes)
+environment_payload = consume_environment_payload(
+    environment_fd,
+    environment_size,
+    sys.argv[6],
+)
+bound(resource.RLIMIT_FSIZE, "RLIMIT_FSIZE", file_bytes)
+adapter_environment = decode_environment(environment_payload)
+os.execve(sys.argv[8], sys.argv[8:], adapter_environment)
 """
 
 
@@ -342,6 +504,18 @@ class RunnerLimits:
                 raise TypeError(f"{name} must be numeric")
             if not 0 < float(value) < float("inf"):
                 raise ValueError(f"{name} must be positive and finite")
+
+
+def _memory_limit_attested(
+    limits: RunnerLimits,
+    *,
+    process_succeeded: bool,
+) -> bool:
+    """Report only memory limits whose platform-specific setup is attested."""
+
+    return limits.max_memory_mb is not None and (
+        sys.platform != "darwin" or process_succeeded
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -818,6 +992,69 @@ def _prepare_process_environment(
         encoded_bytes=encoded_bytes,
     )
     return process_environment, evidence
+
+
+def _encode_darwin_process_environment(
+    environment: Mapping[str, str],
+) -> bytes:
+    normalized_environment, _evidence = _prepare_process_environment(environment)
+    if tuple(normalized_environment.items()) != tuple(environment.items()):
+        raise ExternalRunnerError("Darwin adapter environment handoff must be canonical")
+    payload = bytearray(_DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL)
+    for name, value in normalized_environment.items():
+        payload.extend(name.encode("ascii"))
+        payload.extend(b"=")
+        payload.extend(value.encode("utf-8"))
+        payload.extend(b"\x00")
+    if len(payload) > _DARWIN_ENVIRONMENT_HANDOFF_MAX_BYTES:
+        raise ExternalRunnerError("Darwin adapter environment handoff exceeds its byte limit")
+    return bytes(payload)
+
+
+def _open_darwin_environment_handoff(directory: Path) -> BinaryIO:
+    try:
+        return tempfile.TemporaryFile(
+            mode="w+b",
+            prefix=".lrcbench-env-",
+            dir=directory,
+        )
+    except OSError as exc:
+        raise ExternalRunnerError("could not create the Darwin environment handoff") from exc
+
+
+@contextmanager
+def _darwin_environment_handoff(
+    environment: Mapping[str, str],
+    *,
+    directory: Path,
+) -> Iterator[tuple[int, int, str]]:
+    payload = _encode_darwin_process_environment(environment)
+    with _open_darwin_environment_handoff(directory) as stream:
+        try:
+            if stream.write(payload) != len(payload):
+                raise ExternalRunnerError("could not write the exact Darwin environment handoff")
+            stream.flush()
+            descriptor = stream.fileno()
+            information = os.fstat(descriptor)
+            if (
+                descriptor < 3
+                or not stat.S_ISREG(information.st_mode)
+                or information.st_nlink != 0
+                or information.st_size != len(payload)
+            ):
+                raise ExternalRunnerError(
+                    "Darwin environment handoff is not an exact anonymous file"
+                )
+            stream.seek(0)
+        except ExternalRunnerError:
+            raise
+        except OSError as exc:
+            raise ExternalRunnerError("could not prepare the Darwin environment handoff") from exc
+        yield (
+            descriptor,
+            len(payload),
+            hashlib.sha256(payload).hexdigest(),
+        )
 
 
 def capture_process_environment_evidence(
@@ -2825,6 +3062,7 @@ def _verify_darwin_process_group_after_sigkill(
     process_group_id: int,
     *,
     process: subprocess.Popen[bytes] | None,
+    termination_signal_delivered: bool,
 ) -> None:
     if process is None:
         raise ExternalRunnerError(
@@ -2854,6 +3092,7 @@ def _verify_darwin_process_group_after_sigkill(
         process_group_id,
         expected_leader_pid=process.pid,
         error_type=ExternalRunnerError,
+        termination_signal_delivered=termination_signal_delivered,
     )
 
 
@@ -2871,8 +3110,10 @@ def _terminate_posix_process_group(
         and _posix_process_exited_without_reaping(process)
     )
     if direct_process_exited:
+        termination_signal_delivered = False
         try:
             os.killpg(process_group_id, _POSIX_SIGKILL)
+            termination_signal_delivered = True
         except ProcessLookupError:
             return
         except PermissionError as exc:
@@ -2888,6 +3129,7 @@ def _terminate_posix_process_group(
             _verify_darwin_process_group_after_sigkill(
                 process_group_id,
                 process=process,
+                termination_signal_delivered=termination_signal_delivered,
             )
         return
     try:
@@ -2941,6 +3183,7 @@ def _terminate_posix_process_group(
                     process_group_id,
                     expected_leader_pid=process.pid,
                     error_type=ExternalRunnerError,
+                    termination_signal_delivered=True,
                 )
                 return
             raise ExternalRunnerError(
@@ -2956,6 +3199,7 @@ def _terminate_posix_process_group(
             # may reap the leader only after this final group signal.
             break
         time.sleep(0.01)
+    termination_signal_delivered = True
     try:
         os.killpg(process_group_id, _POSIX_SIGKILL)
     except ProcessLookupError:
@@ -2973,6 +3217,7 @@ def _terminate_posix_process_group(
         _verify_darwin_process_group_after_sigkill(
             process_group_id,
             process=process,
+            termination_signal_delivered=termination_signal_delivered,
         )
 
 
@@ -3105,9 +3350,30 @@ def _posix_limit_setup(limits: RunnerLimits):
 def _adapter_process_launch(
     command: Sequence[str],
     limits: RunnerLimits,
+    *,
+    darwin_environment_handoff: tuple[int, int, str] | None = None,
 ) -> tuple[list[str], Any]:
     if sys.platform != "darwin" or limits.max_memory_mb is None:
+        if darwin_environment_handoff is not None:
+            raise ExternalRunnerError("Darwin environment handoff is invalid on this launch path")
         return list(command), _posix_limit_setup(limits)
+    if not command or not PurePosixPath(command[0]).is_absolute():
+        raise ExternalRunnerError("Darwin adapter executable must be absolute")
+    if darwin_environment_handoff is None:
+        raise ExternalRunnerError("Darwin environment handoff is required")
+    environment_fd, environment_size, environment_sha256 = darwin_environment_handoff
+    if (
+        isinstance(environment_fd, bool)
+        or not isinstance(environment_fd, int)
+        or environment_fd < 3
+        or isinstance(environment_size, bool)
+        or not isinstance(environment_size, int)
+        or not len(_DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL)
+        <= environment_size
+        <= _DARWIN_ENVIRONMENT_HANDOFF_MAX_BYTES
+        or not _is_sha256(environment_sha256)
+    ):
+        raise ExternalRunnerError("Darwin environment handoff is invalid")
     memory_bytes = limits.max_memory_mb * 1024 * 1024
     file_bytes = max(
         limits.max_stdout_bytes,
@@ -3116,6 +3382,13 @@ def _adapter_process_launch(
     )
     return (
         [
+            "/bin/sh",
+            "-p",
+            "-c",
+            _DARWIN_PRELIMIT_LAUNCHER,
+            _DARWIN_PRELIMIT_LAUNCHER_PROTOCOL,
+            str(limits.max_memory_mb * 1024),
+            "--",
             sys.executable,
             "-I",
             "-S",
@@ -3124,11 +3397,43 @@ def _adapter_process_launch(
             _DARWIN_LIMIT_LAUNCHER_PROTOCOL,
             str(memory_bytes),
             str(file_bytes),
+            str(environment_fd),
+            str(environment_size),
+            environment_sha256,
             "--",
             *command,
         ],
         None,
     )
+
+
+@contextmanager
+def _adapter_process_launch_context(
+    command: Sequence[str],
+    limits: RunnerLimits,
+    *,
+    environment: Mapping[str, str],
+    directory: Path,
+) -> Iterator[tuple[list[str], Any, dict[str, str], tuple[int, ...]]]:
+    if sys.platform == "darwin" and limits.max_memory_mb is not None:
+        with _darwin_environment_handoff(
+            environment,
+            directory=directory,
+        ) as handoff:
+            launch_command, preexec_fn = _adapter_process_launch(
+                command,
+                limits,
+                darwin_environment_handoff=handoff,
+            )
+            yield (
+                launch_command,
+                preexec_fn,
+                {},
+                (handoff[0],),
+            )
+        return
+    launch_command, preexec_fn = _adapter_process_launch(command, limits)
+    yield launch_command, preexec_fn, dict(environment), ()
 
 
 def _uses_windows_process_control() -> bool:
@@ -3478,7 +3783,16 @@ def load_external_run_manifest(
         decoded_limits = RunnerLimits(**limits_payload)
     except (TypeError, ValueError) as exc:
         raise ExternalRunnerError(f"run manifest limits are invalid: {exc}") from exc
-    if payload["memory_limit_enforced"] != (decoded_limits.max_memory_mb is not None):
+    if (
+        payload["memory_limit_enforced"]
+        and decoded_limits.max_memory_mb is None
+    ):
+        raise ExternalRunnerError("run manifest memory-limit flag is inconsistent")
+    if (
+        payload["process_succeeded"]
+        and decoded_limits.max_memory_mb is not None
+        and not payload["memory_limit_enforced"]
+    ):
         raise ExternalRunnerError("run manifest memory-limit flag is inconsistent")
     try:
         identity_payload = payload["identity"]
@@ -4154,10 +4468,6 @@ def run_external_command(
         ) as temporary_directory:
             stdout_path = temporary_directory / "stdout.bin"
             stderr_path = temporary_directory / "stderr.bin"
-            launch_command, preexec_fn = _adapter_process_launch(
-                resolved_command,
-                limits,
-            )
             with (
                 stdout_path.open("xb") as stdout,
                 stdout_path.open("rb") as stdout_reader,
@@ -4166,19 +4476,34 @@ def run_external_command(
             ):
                 try:
                     try:
-                        process = subprocess.Popen(
+                        with _adapter_process_launch_context(
+                            resolved_command,
+                            limits,
+                            environment=process_environment,
+                            directory=temporary_directory,
+                        ) as (
                             launch_command,
-                            cwd=cwd,
-                            env=process_environment,
-                            stdin=subprocess.DEVNULL,
-                            stdout=stdout,
-                            stderr=stderr,
-                            shell=False,
-                            close_fds=True,
-                            start_new_session=not windows_process_control,
-                            creationflags=creation_flags,
-                            preexec_fn=preexec_fn,
-                        )
+                            preexec_fn,
+                            launch_environment,
+                            pass_fds,
+                        ):
+                            popen_options: dict[str, Any] = {}
+                            if pass_fds:
+                                popen_options["pass_fds"] = pass_fds
+                            process = subprocess.Popen(
+                                launch_command,
+                                cwd=cwd,
+                                env=launch_environment,
+                                stdin=subprocess.DEVNULL,
+                                stdout=stdout,
+                                stderr=stderr,
+                                shell=False,
+                                close_fds=True,
+                                start_new_session=not windows_process_control,
+                                creationflags=creation_flags,
+                                preexec_fn=preexec_fn,
+                                **popen_options,
+                            )
                     except (OSError, subprocess.SubprocessError) as exc:
                         raise ExternalRunnerError(
                             f"could not start adapter process: {type(exc).__name__}"
@@ -4544,7 +4869,10 @@ def run_external_command(
             inference_accounting,
             2,
         ),
-        memory_limit_enforced=limits.max_memory_mb is not None,
+        memory_limit_enforced=_memory_limit_attested(
+            limits,
+            process_succeeded=process_succeeded,
+        ),
         python_version=platform.python_version(),
         platform=platform.platform(),
     )
@@ -5044,7 +5372,10 @@ def run_external_cases(
             inference_accounting,
             2 * len(cases),
         ),
-        memory_limit_enforced=limits.max_memory_mb is not None,
+        memory_limit_enforced=_memory_limit_attested(
+            limits,
+            process_succeeded=process_succeeded,
+        ),
         python_version=platform.python_version(),
         platform=platform.platform(),
     )
@@ -5147,7 +5478,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         nargs=argparse.REMAINDER,
         help=(
             "adapter command after --; {corpus}, {candidate}, {system}, and "
-            "{case_id} are replaced without invoking a shell"
+            "{case_id} are replaced as literal argv fields without shell interpretation"
         ),
     )
     args = parser.parse_args(argv)

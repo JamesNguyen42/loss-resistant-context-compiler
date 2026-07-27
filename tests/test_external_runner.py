@@ -74,6 +74,32 @@ _FUNCTIONAL_ADAPTER_MEMORY_MB = (
 )
 
 
+@pytest.mark.parametrize(
+    ("platform_name", "max_memory_mb", "process_succeeded", "expected"),
+    (
+        ("linux", None, False, False),
+        ("darwin", None, True, False),
+        ("linux", 256, False, True),
+        ("win32", 256, False, True),
+        ("darwin", 256, False, False),
+        ("darwin", 256, True, True),
+    ),
+)
+def test_memory_limit_attestation_is_conservative_on_darwin_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    platform_name: str,
+    max_memory_mb: int | None,
+    process_succeeded: bool,
+    expected: bool,
+) -> None:
+    monkeypatch.setattr(external_runner_module.sys, "platform", platform_name)
+
+    assert external_runner_module._memory_limit_attested(
+        RunnerLimits(max_memory_mb=max_memory_mb),
+        process_succeeded=process_succeeded,
+    ) is expected
+
+
 def corpus_producer(
     *,
     created_at: str = "2026-01-01T00:00:00+00:00",
@@ -1570,7 +1596,7 @@ def test_per_case_candidate_mutation_before_aggregation_is_rejected(
         )
 
 
-def test_per_case_runner_executes_without_a_shell_and_validates_candidate(
+def test_per_case_runner_avoids_adapter_shell_interpretation_and_validates_candidate(
     tmp_path,
 ) -> None:
     corpus_path = tmp_path / "corpus.json"
@@ -1629,6 +1655,73 @@ def test_per_case_runner_executes_without_a_shell_and_validates_candidate(
         allow_nan=False,
     )
     assert manifest_sha == hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def test_external_command_environment_evidence_matches_adapter_observation(
+    tmp_path: Path,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    write_corpus(corpus_path)
+    candidate_path = tmp_path / "candidate.json"
+    observed_environment_path = tmp_path / "observed-environment.json"
+    source_root = tmp_path / "environment-adapter-source"
+    source_root.mkdir()
+    entrypoint = source_root / "environment-adapter.py"
+    program = (
+        "import json,os,sys;"
+        "corpus=json.load(open(sys.argv[1],encoding='utf-8'));"
+        "json.dump(dict(os.environ),"
+        "open(sys.argv[4],'w',encoding='utf-8'),sort_keys=True);"
+        "payload={'schema':'lrcbench-candidate-output-0.1',"
+        "'dataset_sha256':corpus['dataset_sha256'],'system':sys.argv[3],"
+        "'cases':[{'case_id':case['case_id'],'rendered_text':'','claims':[]}"
+        " for case in corpus['cases']]};"
+        "json.dump(payload,open(sys.argv[2],'w',encoding='utf-8'))"
+    )
+    entrypoint.write_text(program, encoding="utf-8")
+    command = [
+        sys.executable,
+        str(entrypoint),
+        "{corpus}",
+        "{candidate}",
+        "{system}",
+        str(observed_environment_path),
+    ]
+    environment = external_runner_module._default_process_environment()
+    environment["CTXC_ENVIRONMENT_PROBE"] = "literal=one\nSnowman: \u2603"
+    environment["LC_CTYPE"] = "UTF-8"
+    expected_environment, _expected_evidence = (
+        external_runner_module._prepare_process_environment(environment)
+    )
+
+    manifest = run_external_command(
+        command,
+        system="environment-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
+        adapter_entrypoint=capture_adapter_entrypoint_evidence(entrypoint),
+        adapter_source=capture_adapter_source_evidence(source_root),
+        environment=environment,
+    )
+
+    observed_environment = json.loads(
+        observed_environment_path.read_text(encoding="utf-8")
+    )
+    assert manifest.process_succeeded
+    assert manifest.candidate_valid
+    assert observed_environment == expected_environment
+    assert manifest.process_environment == capture_process_environment_evidence(
+        observed_environment
+    )
+    assert manifest.process_environment == capture_process_environment_evidence(
+        expected_environment
+    )
+    assert "SHLVL" not in observed_environment
+    assert "_" not in observed_environment
 
 
 def test_cli_defaults_to_claim_eligible_per_case_mode(
@@ -2648,6 +2741,81 @@ def test_manifest_tampering_is_rejected_before_candidate_scoring(tmp_path) -> No
         )
 
 
+def test_manifest_memory_limit_attestation_relations_fail_closed(tmp_path: Path) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    _config, document = write_corpus(corpus_path)
+    candidate_path = tmp_path / "candidate.json"
+    runtime = getattr(sys, "_base_executable", sys.executable)
+    failed = run_external_command(
+        [runtime, "-c", "raise SystemExit(7)"],
+        system="failed-memory-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(
+            timeout_seconds=5,
+            max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
+        ),
+    ).to_dict()
+    assert not failed["process_succeeded"]
+
+    def write_rehashed(name: str, payload: dict) -> Path:
+        path = tmp_path / name
+        payload.pop("manifest_sha256", None)
+        payload["manifest_sha256"] = _canonical_sha256(payload)
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return path
+
+    conservative_failure = json.loads(json.dumps(failed))
+    conservative_failure["memory_limit_enforced"] = False
+    conservative_path = write_rehashed(
+        "conservative-failure-manifest.json",
+        conservative_failure,
+    )
+
+    reference = load_external_run_manifest(
+        conservative_path,
+        expected_dataset_sha256=document["dataset_sha256"],
+    )
+    assert reference.failure_reason == "nonzero_exit"
+
+    unattested_success = json.loads(json.dumps(conservative_failure))
+    unattested_success.update(
+        {
+            "exit_code": 0,
+            "process_succeeded": True,
+            "termination_reason": None,
+        }
+    )
+    unattested_success_path = write_rehashed(
+        "unattested-success-manifest.json",
+        unattested_success,
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="memory-limit flag is inconsistent",
+    ):
+        load_external_run_manifest(
+            unattested_success_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
+    unconfigured_claim = json.loads(json.dumps(conservative_failure))
+    unconfigured_claim["limits"]["max_memory_mb"] = None
+    unconfigured_claim["memory_limit_enforced"] = True
+    unconfigured_claim_path = write_rehashed(
+        "unconfigured-memory-claim-manifest.json",
+        unconfigured_claim,
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="memory-limit flag is inconsistent",
+    ):
+        load_external_run_manifest(
+            unconfigured_claim_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
+
 def test_rehashed_inconsistent_case_audit_record_is_rejected(tmp_path) -> None:
     corpus_path = tmp_path / "corpus.json"
     _config, document = write_corpus(corpus_path, histories=2)
@@ -2819,7 +2987,113 @@ def test_runner_timeout_is_a_retained_nonwin_and_releases_process(tmp_path) -> N
     assert manifest.termination_reason == "timeout"
 
 
-def test_darwin_memory_limit_uses_exec_launcher_without_preexec(
+class _FakeDarwinEnvironmentFile:
+    def __init__(self, payload: bytes) -> None:
+        self.data = bytearray(payload)
+        self.position = 0
+        self.closed = False
+
+    def __enter__(self) -> _FakeDarwinEnvironmentFile:
+        return self
+
+    def __exit__(
+        self,
+        _exception_type: object,
+        _exception: object,
+        _traceback: object,
+    ) -> None:
+        self.closed = True
+
+    def seek(self, offset: int) -> int:
+        self.position = offset
+        return offset
+
+    def read(self, size: int = -1) -> bytes:
+        end = (
+            len(self.data)
+            if size < 0
+            else min(
+                len(self.data),
+                self.position + size,
+            )
+        )
+        result = bytes(self.data[self.position : end])
+        self.position = end
+        return result
+
+    def write(self, value: bytes) -> int:
+        end = self.position + len(value)
+        if end > len(self.data):
+            self.data.extend(b"\x00" * (end - len(self.data)))
+        self.data[self.position : end] = value
+        self.position = end
+        return len(value)
+
+    def truncate(self, size: int = 0) -> int:
+        del self.data[size:]
+        if self.position > size:
+            self.position = size
+        return size
+
+    def flush(self) -> None:
+        return None
+
+
+def _install_fake_darwin_environment_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+    environment: dict[str, str],
+    *,
+    payload: bytes | None = None,
+    expected_sha256: str | None = None,
+    link_count: int = 0,
+    reported_size: int | None = None,
+) -> tuple[tuple[int, int, str], _FakeDarwinEnvironmentFile]:
+    handoff_payload = (
+        external_runner_module._encode_darwin_process_environment(environment)
+        if payload is None
+        else payload
+    )
+    descriptor = 17
+    stream = _FakeDarwinEnvironmentFile(handoff_payload)
+    handoff_link_count = link_count
+    handoff_reported_size = (
+        len(handoff_payload) if reported_size is None else reported_size
+    )
+
+    class FileInformation:
+        st_mode = 0o100600
+        st_nlink = handoff_link_count
+        st_size = handoff_reported_size
+
+    def fstat(requested_descriptor: int) -> object:
+        if requested_descriptor != descriptor or stream.closed:
+            raise OSError(errno.EBADF, "closed test descriptor")
+        return FileInformation()
+
+    def fdopen(
+        requested_descriptor: int,
+        mode: str,
+        *,
+        closefd: bool,
+    ) -> _FakeDarwinEnvironmentFile:
+        assert requested_descriptor == descriptor
+        assert mode == "r+b"
+        assert closefd is True
+        return stream
+
+    monkeypatch.setattr(external_runner_module.os, "fstat", fstat)
+    monkeypatch.setattr(external_runner_module.os, "fdopen", fdopen)
+    return (
+        (
+            descriptor,
+            len(handoff_payload),
+            expected_sha256 or hashlib.sha256(handoff_payload).hexdigest(),
+        ),
+        stream,
+    )
+
+
+def test_darwin_memory_limit_uses_privileged_prelimit_without_preexec(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(external_runner_module.os, "name", "posix")
@@ -2837,14 +3111,29 @@ def test_darwin_memory_limit_uses_exec_launcher_without_preexec(
         external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
     ]
     original_command = list(command)
+    handoff = (
+        17,
+        len(external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL),
+        "a" * 64,
+    )
 
     launch_command, preexec_fn = external_runner_module._adapter_process_launch(
         command,
         limits,
+        darwin_environment_handoff=handoff,
     )
 
     assert preexec_fn is None
-    assert launch_command[:6] == [
+    assert launch_command[:7] == [
+        "/bin/sh",
+        "-p",
+        "-c",
+        external_runner_module._DARWIN_PRELIMIT_LAUNCHER,
+        external_runner_module._DARWIN_PRELIMIT_LAUNCHER_PROTOCOL,
+        str(256 * 1024),
+        "--",
+    ]
+    assert launch_command[7:13] == [
         sys.executable,
         "-I",
         "-S",
@@ -2852,13 +3141,31 @@ def test_darwin_memory_limit_uses_exec_launcher_without_preexec(
         external_runner_module._DARWIN_LIMIT_LAUNCHER,
         external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
     ]
-    assert launch_command[6:9] == [
+    assert launch_command[13:19] == [
         str(256 * 1024 * 1024),
         "303",
+        "17",
+        str(len(external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL)),
+        "a" * 64,
         "--",
     ]
-    assert launch_command[9:] == original_command
+    assert launch_command[19:] == original_command
     assert command == original_command
+    assert 'ulimit -S -H -v "$1"' in external_runner_module._DARWIN_PRELIMIT_LAUNCHER
+    assert 'exec "$@"' in external_runner_module._DARWIN_PRELIMIT_LAUNCHER
+    assert (
+        f'"{external_runner_module._DARWIN_PRELIMIT_LAUNCHER_PROTOCOL}"'
+        in external_runner_module._DARWIN_PRELIMIT_LAUNCHER
+    )
+    assert (
+        'ENVIRONMENT_PROTOCOL = b"ctxc-darwin-environment-v1\\x00"'
+        in external_runner_module._DARWIN_LIMIT_LAUNCHER
+    )
+    assert (
+        "ENVIRONMENT_MAX_BYTES = "
+        f"{external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_MAX_BYTES:_}"
+        in external_runner_module._DARWIN_LIMIT_LAUNCHER
+    )
     assert (
         f'"{external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL}"'
         in external_runner_module._DARWIN_LIMIT_LAUNCHER
@@ -2866,7 +3173,67 @@ def test_darwin_memory_limit_uses_exec_launcher_without_preexec(
     assert external_runner_module._posix_limit_setup(limits) is None
 
 
-def test_darwin_limit_launcher_raises_soft_limits_to_exact_ceilings(
+def test_darwin_launch_context_uses_empty_supervisor_environment_and_closes_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    environment = {
+        "CTXC_EMPTY": "",
+        "CTXC_ENV": "literal=value",
+    }
+    handoff = (
+        17,
+        len(external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL),
+        "a" * 64,
+    )
+    lifecycle: list[str] = []
+
+    class FakeHandoffContext:
+        def __enter__(self) -> tuple[int, int, str]:
+            lifecycle.append("entered")
+            return handoff
+
+        def __exit__(
+            self,
+            _exception_type: object,
+            _exception: object,
+            _traceback: object,
+        ) -> None:
+            lifecycle.append("closed")
+
+    def handoff_factory(
+        requested_environment: dict[str, str],
+        *,
+        directory: Path,
+    ) -> FakeHandoffContext:
+        assert requested_environment == environment
+        assert directory == tmp_path
+        return FakeHandoffContext()
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "_darwin_environment_handoff",
+        handoff_factory,
+    )
+
+    with external_runner_module._adapter_process_launch_context(
+        ["/usr/bin/runtime", "adapter.py"],
+        RunnerLimits(max_memory_mb=256),
+        environment=environment,
+        directory=tmp_path,
+    ) as (launch_command, preexec_fn, launch_environment, pass_fds):
+        assert lifecycle == ["entered"]
+        assert preexec_fn is None
+        assert launch_environment == {}
+        assert pass_fds == (17,)
+        assert launch_command[-2:] == ["/usr/bin/runtime", "adapter.py"]
+
+    assert lifecycle == ["entered", "closed"]
+    assert environment == {"CTXC_EMPTY": "", "CTXC_ENV": "literal=value"}
+
+
+def test_darwin_limit_launcher_rechecks_memory_and_sets_exact_file_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     memory_bytes = 32_768 * 1024 * 1024
@@ -2876,11 +3243,19 @@ def test_darwin_limit_launcher_raises_soft_limits_to_exact_ceilings(
     fake_resource.RLIMIT_FSIZE = 2  # type: ignore[attr-defined]
     fake_resource.RLIM_INFINITY = -1  # type: ignore[attr-defined]
     limits = {
-        fake_resource.RLIMIT_AS: (256 * 1024 * 1024, -1),
+        fake_resource.RLIMIT_AS: (memory_bytes, memory_bytes),
         fake_resource.RLIMIT_FSIZE: (101, 1_024),
     }
     applied: list[tuple[int, tuple[int, int]]] = []
     executed: list[tuple[str, list[str], dict[str, str]]] = []
+    expected_environment = {
+        "CTXC_EMPTY": "",
+        "CTXC_ENV": "exact=\nSnowman: \u2603\tvalue",
+    }
+    handoff, handoff_stream = _install_fake_darwin_environment_handoff(
+        monkeypatch,
+        expected_environment,
+    )
 
     def getrlimit(resource_name: int) -> tuple[int, int]:
         return limits[resource_name]
@@ -2890,18 +3265,22 @@ def test_darwin_limit_launcher_raises_soft_limits_to_exact_ceilings(
         requested: tuple[int, int],
     ) -> None:
         applied.append((resource_name, requested))
+        if resource_name == fake_resource.RLIMIT_FSIZE:
+            assert handoff_stream.closed
+            assert handoff_stream.data == b""
 
-    def execvpe(
+    def execve(
         executable: str,
         argv: list[str],
         environment: dict[str, str],
     ) -> None:
+        assert handoff_stream.closed
         executed.append((executable, argv, environment))
 
     fake_resource.getrlimit = getrlimit  # type: ignore[attr-defined]
     fake_resource.setrlimit = setrlimit  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "resource", fake_resource)
-    monkeypatch.setattr(external_runner_module.os, "execvpe", execvpe)
+    monkeypatch.setattr(external_runner_module.os, "execve", execve)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -2910,6 +3289,9 @@ def test_darwin_limit_launcher_raises_soft_limits_to_exact_ceilings(
             external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
             str(memory_bytes),
             str(file_bytes),
+            str(handoff[0]),
+            str(handoff[1]),
+            handoff[2],
             "--",
             "/usr/bin/runtime",
             "adapter.py",
@@ -2919,38 +3301,186 @@ def test_darwin_limit_launcher_raises_soft_limits_to_exact_ceilings(
     exec(external_runner_module._DARWIN_LIMIT_LAUNCHER, {})
 
     assert applied == [
-        (fake_resource.RLIMIT_AS, (memory_bytes, memory_bytes)),
         (fake_resource.RLIMIT_FSIZE, (file_bytes, file_bytes)),
     ]
     assert executed == [
         (
             "/usr/bin/runtime",
             ["/usr/bin/runtime", "adapter.py"],
-            external_runner_module.os.environ,
+            expected_environment,
         )
     ]
+    assert handoff_stream.data == b""
 
 
 @pytest.mark.parametrize(
-    ("memory_hard", "file_hard", "resource_label", "hard", "requested"),
+    (
+        "payload",
+        "digest_override",
+        "link_count",
+        "reported_size",
+        "message",
+        "consumed",
+    ),
     [
-        (
-            32_768 * 1024 * 1024 - 1,
-            -1,
-            "RLIMIT_AS",
-            32_768 * 1024 * 1024 - 1,
-            32_768 * 1024 * 1024,
+        pytest.param(
+            external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL
+            + b"CTXC_B=2\x00CTXC_A=1\x00",
+            None,
+            0,
+            None,
+            "Darwin environment handoff names are not canonical",
+            True,
+            id="out-of-order",
         ),
-        (-1, 302, "RLIMIT_FSIZE", 302, 303),
+        pytest.param(
+            external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL
+            + b"CTXC_A=1\x00CTXC_A=2\x00",
+            None,
+            0,
+            None,
+            "Darwin environment handoff names are not canonical",
+            True,
+            id="duplicate",
+        ),
+        pytest.param(
+            external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL + b"CTXC_A=1\x00",
+            "0" * 64,
+            0,
+            None,
+            "Darwin environment handoff digest mismatch",
+            True,
+            id="wrong-digest",
+        ),
+        pytest.param(
+            external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL + b"CTXC_A=1\x00",
+            None,
+            1,
+            None,
+            "invalid Darwin environment handoff file",
+            False,
+            id="linked-file",
+        ),
+        pytest.param(
+            b"ctxc-darwin-environment-v0\x00CTXC_A=1\x00",
+            None,
+            0,
+            None,
+            "Darwin environment handoff protocol mismatch",
+            True,
+            id="wrong-protocol",
+        ),
+        pytest.param(
+            external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL
+            + b"CTXC_A=1",
+            None,
+            0,
+            None,
+            "Darwin environment handoff is not canonical",
+            True,
+            id="missing-terminal-nul",
+        ),
+        pytest.param(
+            external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL
+            + b"CTXC_A=\xff\x00",
+            None,
+            0,
+            None,
+            "Darwin environment handoff encoding is invalid",
+            True,
+            id="invalid-utf8",
+        ),
+        pytest.param(
+            external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL
+            + b"1CTXC=value\x00",
+            None,
+            0,
+            None,
+            "Darwin environment handoff names are not canonical",
+            True,
+            id="invalid-name",
+        ),
+        pytest.param(
+            external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL
+            + b"CTXC_A\x00",
+            None,
+            0,
+            None,
+            "Darwin environment handoff record is invalid",
+            True,
+            id="missing-equals",
+        ),
+        pytest.param(
+            external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL
+            + b"".join(
+                f"A{index:04d}=x\x00".encode("ascii")
+                for index in range(1_025)
+            ),
+            None,
+            0,
+            None,
+            "Darwin environment handoff has invalid record count",
+            True,
+            id="too-many-records",
+        ),
+        pytest.param(
+            external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL
+            + (b"A" * 4_097)
+            + b"=x\x00",
+            None,
+            0,
+            None,
+            "Darwin environment handoff record exceeds its limit",
+            True,
+            id="oversized-name",
+        ),
+        pytest.param(
+            external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL
+            + b"CTXC_A="
+            + (b"x" * 1_000_001)
+            + b"\x00",
+            None,
+            0,
+            None,
+            "Darwin environment handoff record exceeds its limit",
+            True,
+            id="oversized-value",
+        ),
+        pytest.param(
+            external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL
+            + b"".join(
+                name + b"=" + (b"x" * 1_000_000) + b"\x00"
+                for name in (b"A", b"B", b"C", b"D")
+            ),
+            None,
+            0,
+            None,
+            "Darwin environment handoff exceeds its aggregate limit",
+            True,
+            id="oversized-aggregate",
+        ),
+        pytest.param(
+            external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL
+            + b"CTXC_A=1\x00",
+            None,
+            0,
+            len(external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL)
+            + len(b"CTXC_A=1\x00")
+            + 1,
+            "invalid Darwin environment handoff file",
+            False,
+            id="fstat-size-mismatch",
+        ),
     ],
 )
-def test_darwin_limit_launcher_rejects_unrecorded_hard_limit_clamping(
+def test_darwin_limit_launcher_rejects_untrusted_environment_payload(
     monkeypatch: pytest.MonkeyPatch,
-    memory_hard: int,
-    file_hard: int,
-    resource_label: str,
-    hard: int,
-    requested: int,
+    payload: bytes,
+    digest_override: str | None,
+    link_count: int,
+    reported_size: int | None,
+    message: str,
+    consumed: bool,
 ) -> None:
     memory_bytes = 32_768 * 1024 * 1024
     file_bytes = 303
@@ -2959,8 +3489,236 @@ def test_darwin_limit_launcher_rejects_unrecorded_hard_limit_clamping(
     fake_resource.RLIMIT_FSIZE = 2  # type: ignore[attr-defined]
     fake_resource.RLIM_INFINITY = -1  # type: ignore[attr-defined]
     limits = {
-        fake_resource.RLIMIT_AS: (1, memory_hard),
-        fake_resource.RLIMIT_FSIZE: (1, file_hard),
+        fake_resource.RLIMIT_AS: (memory_bytes, memory_bytes),
+        fake_resource.RLIMIT_FSIZE: (1, 1_024),
+    }
+    executed: list[str] = []
+    handoff, handoff_stream = _install_fake_darwin_environment_handoff(
+        monkeypatch,
+        {},
+        payload=payload,
+        expected_sha256=digest_override,
+        link_count=link_count,
+        reported_size=reported_size,
+    )
+
+    def getrlimit(resource_name: int) -> tuple[int, int]:
+        return limits[resource_name]
+
+    def setrlimit(
+        _resource_name: int,
+        _requested: tuple[int, int],
+    ) -> None:
+        return None
+
+    def execve(
+        executable: str,
+        _argv: list[str],
+        _environment: dict[str, str],
+    ) -> None:
+        executed.append(executable)
+
+    fake_resource.getrlimit = getrlimit  # type: ignore[attr-defined]
+    fake_resource.setrlimit = setrlimit  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "resource", fake_resource)
+    monkeypatch.setattr(external_runner_module.os, "execve", execve)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "darwin-limit-launcher",
+            external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
+            str(memory_bytes),
+            str(file_bytes),
+            str(handoff[0]),
+            str(handoff[1]),
+            handoff[2],
+            "--",
+            "/usr/bin/runtime",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match=message):
+        exec(external_runner_module._DARWIN_LIMIT_LAUNCHER, {})
+
+    assert not executed
+    assert handoff_stream.closed is consumed
+    if consumed:
+        assert handoff_stream.data == b""
+    else:
+        assert handoff_stream.data == payload
+
+
+@pytest.mark.parametrize(
+    "raw_size",
+    [
+        str(len(external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL) - 1),
+        str(external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_MAX_BYTES + 1),
+    ],
+    ids=["below-protocol", "above-maximum"],
+)
+def test_darwin_limit_launcher_rejects_environment_size_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_size: str,
+) -> None:
+    memory_bytes = 1
+    fake_resource = ModuleType("resource")
+    fake_resource.RLIMIT_AS = 1  # type: ignore[attr-defined]
+    fake_resource.RLIMIT_FSIZE = 2  # type: ignore[attr-defined]
+    fake_resource.RLIM_INFINITY = -1  # type: ignore[attr-defined]
+
+    def getrlimit(_resource_name: int) -> tuple[int, int]:
+        return (memory_bytes, memory_bytes)
+
+    def fail_after_size_validation(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("invalid size must fail before file access or limit changes")
+
+    fake_resource.getrlimit = getrlimit  # type: ignore[attr-defined]
+    fake_resource.setrlimit = fail_after_size_validation  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "resource", fake_resource)
+    monkeypatch.setattr(external_runner_module.os, "fstat", fail_after_size_validation)
+    monkeypatch.setattr(external_runner_module.os, "execve", fail_after_size_validation)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "darwin-limit-launcher",
+            external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
+            str(memory_bytes),
+            "1",
+            "17",
+            raw_size,
+            "0" * 64,
+            "--",
+            "/usr/bin/runtime",
+        ],
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match="invalid Darwin environment handoff size",
+    ):
+        exec(external_runner_module._DARWIN_LIMIT_LAUNCHER, {})
+
+
+def test_darwin_limit_launcher_retains_environment_consume_io_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    memory_bytes = 1
+    fake_resource = ModuleType("resource")
+    fake_resource.RLIMIT_AS = 1  # type: ignore[attr-defined]
+    fake_resource.RLIMIT_FSIZE = 2  # type: ignore[attr-defined]
+    fake_resource.RLIM_INFINITY = -1  # type: ignore[attr-defined]
+
+    def getrlimit(_resource_name: int) -> tuple[int, int]:
+        return (memory_bytes, memory_bytes)
+
+    def fail_fstat(_descriptor: int) -> object:
+        raise OSError(errno.EIO, "injected handoff read failure")
+
+    def fail_after_consume(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("consume failure must precede file limit and exec")
+
+    fake_resource.getrlimit = getrlimit  # type: ignore[attr-defined]
+    fake_resource.setrlimit = fail_after_consume  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "resource", fake_resource)
+    monkeypatch.setattr(external_runner_module.os, "fstat", fail_fstat)
+    monkeypatch.setattr(external_runner_module.os, "execve", fail_after_consume)
+    payload = external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "darwin-limit-launcher",
+            external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
+            str(memory_bytes),
+            "1",
+            "17",
+            str(len(payload)),
+            hashlib.sha256(payload).hexdigest(),
+            "--",
+            "/usr/bin/runtime",
+        ],
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match="could not consume Darwin environment handoff: OSError",
+    ):
+        exec(external_runner_module._DARWIN_LIMIT_LAUNCHER, {})
+
+
+@pytest.mark.parametrize(
+    "raw_descriptor",
+    ["9" * 20, str(2_147_483_648)],
+    ids=["oversized-decimal", "outside-descriptor-range"],
+)
+def test_darwin_limit_launcher_rejects_invalid_descriptor_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_descriptor: str,
+) -> None:
+    memory_bytes = 1
+    fake_resource = ModuleType("resource")
+    fake_resource.RLIMIT_AS = 1  # type: ignore[attr-defined]
+    fake_resource.RLIMIT_FSIZE = 2  # type: ignore[attr-defined]
+    fake_resource.RLIM_INFINITY = -1  # type: ignore[attr-defined]
+
+    def getrlimit(_resource_name: int) -> tuple[int, int]:
+        return (memory_bytes, memory_bytes)
+
+    def setrlimit(
+        _resource_name: int,
+        _requested: tuple[int, int],
+    ) -> None:
+        raise AssertionError("invalid descriptor must fail before setrlimit")
+
+    fake_resource.getrlimit = getrlimit  # type: ignore[attr-defined]
+    fake_resource.setrlimit = setrlimit  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "resource", fake_resource)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "darwin-limit-launcher",
+            external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
+            str(memory_bytes),
+            "1",
+            raw_descriptor,
+            str(len(external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL)),
+            "0" * 64,
+            "--",
+            "/usr/bin/runtime",
+        ],
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match="invalid Darwin environment handoff descriptor",
+    ):
+        exec(external_runner_module._DARWIN_LIMIT_LAUNCHER, {})
+
+
+@pytest.mark.parametrize(
+    "observed_memory_limit",
+    [
+        (32_768 * 1024 * 1024 - 1, 32_768 * 1024 * 1024),
+        (32_768 * 1024 * 1024, 32_768 * 1024 * 1024 + 1),
+        (1, -1),
+    ],
+)
+def test_darwin_limit_launcher_rejects_inexact_prelimited_memory(
+    monkeypatch: pytest.MonkeyPatch,
+    observed_memory_limit: tuple[int, int],
+) -> None:
+    memory_bytes = 32_768 * 1024 * 1024
+    file_bytes = 303
+    fake_resource = ModuleType("resource")
+    fake_resource.RLIMIT_AS = 1  # type: ignore[attr-defined]
+    fake_resource.RLIMIT_FSIZE = 2  # type: ignore[attr-defined]
+    fake_resource.RLIM_INFINITY = -1  # type: ignore[attr-defined]
+    limits = {
+        fake_resource.RLIMIT_AS: observed_memory_limit,
+        fake_resource.RLIMIT_FSIZE: (1, -1),
     }
     executed: list[str] = []
 
@@ -2973,7 +3731,7 @@ def test_darwin_limit_launcher_rejects_unrecorded_hard_limit_clamping(
     ) -> None:
         return None
 
-    def execvpe(
+    def execve(
         executable: str,
         _argv: list[str],
         _environment: dict[str, str],
@@ -2983,7 +3741,7 @@ def test_darwin_limit_launcher_rejects_unrecorded_hard_limit_clamping(
     fake_resource.getrlimit = getrlimit  # type: ignore[attr-defined]
     fake_resource.setrlimit = setrlimit  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "resource", fake_resource)
-    monkeypatch.setattr(external_runner_module.os, "execvpe", execvpe)
+    monkeypatch.setattr(external_runner_module.os, "execve", execve)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -2992,6 +3750,9 @@ def test_darwin_limit_launcher_rejects_unrecorded_hard_limit_clamping(
             external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
             str(memory_bytes),
             str(file_bytes),
+            "17",
+            str(len(external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL)),
+            "a" * 64,
             "--",
             "/usr/bin/runtime",
         ],
@@ -3000,8 +3761,73 @@ def test_darwin_limit_launcher_rejects_unrecorded_hard_limit_clamping(
     with pytest.raises(
         SystemExit,
         match=(
-            rf"inherited hard {resource_label} limit {hard} "
-            rf"is below requested {requested}"
+            r"inherited RLIMIT_AS limit is not exact: "
+            rf"{observed_memory_limit[0]}/{observed_memory_limit[1]} != "
+            rf"{memory_bytes}/{memory_bytes}"
+        ),
+    ):
+        exec(external_runner_module._DARWIN_LIMIT_LAUNCHER, {})
+
+    assert not executed
+
+
+def test_darwin_limit_launcher_rejects_file_hard_limit_clamping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    memory_bytes = 32_768 * 1024 * 1024
+    file_bytes = 303
+    fake_resource = ModuleType("resource")
+    fake_resource.RLIMIT_AS = 1  # type: ignore[attr-defined]
+    fake_resource.RLIMIT_FSIZE = 2  # type: ignore[attr-defined]
+    fake_resource.RLIM_INFINITY = -1  # type: ignore[attr-defined]
+    limits = {
+        fake_resource.RLIMIT_AS: (memory_bytes, memory_bytes),
+        fake_resource.RLIMIT_FSIZE: (1, file_bytes - 1),
+    }
+    executed: list[str] = []
+    handoff, _handoff_stream = _install_fake_darwin_environment_handoff(monkeypatch, {})
+
+    def getrlimit(resource_name: int) -> tuple[int, int]:
+        return limits[resource_name]
+
+    def setrlimit(
+        _resource_name: int,
+        _requested: tuple[int, int],
+    ) -> None:
+        return None
+
+    def execve(
+        executable: str,
+        _argv: list[str],
+        _environment: dict[str, str],
+    ) -> None:
+        executed.append(executable)
+
+    fake_resource.getrlimit = getrlimit  # type: ignore[attr-defined]
+    fake_resource.setrlimit = setrlimit  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "resource", fake_resource)
+    monkeypatch.setattr(external_runner_module.os, "execve", execve)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "darwin-limit-launcher",
+            external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
+            str(memory_bytes),
+            str(file_bytes),
+            str(handoff[0]),
+            str(handoff[1]),
+            handoff[2],
+            "--",
+            "/usr/bin/runtime",
+        ],
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match=(
+            rf"inherited hard RLIMIT_FSIZE limit {file_bytes - 1} "
+            rf"is below requested {file_bytes}"
         ),
     ):
         exec(external_runner_module._DARWIN_LIMIT_LAUNCHER, {})
@@ -3010,20 +3836,11 @@ def test_darwin_limit_launcher_rejects_unrecorded_hard_limit_clamping(
 
 
 @pytest.mark.parametrize(
-    ("failing_resource", "resource_label"),
-    [
-        (1, "RLIMIT_AS"),
-        (2, "RLIMIT_FSIZE"),
-    ],
-)
-@pytest.mark.parametrize(
     "exception_type",
     [OSError, OverflowError, ValueError],
 )
 def test_darwin_limit_launcher_rejects_limit_application_failure_before_exec(
     monkeypatch: pytest.MonkeyPatch,
-    failing_resource: int,
-    resource_label: str,
     exception_type: type[Exception],
 ) -> None:
     memory_bytes = 32_768 * 1024 * 1024
@@ -3033,10 +3850,11 @@ def test_darwin_limit_launcher_rejects_limit_application_failure_before_exec(
     fake_resource.RLIMIT_FSIZE = 2  # type: ignore[attr-defined]
     fake_resource.RLIM_INFINITY = -1  # type: ignore[attr-defined]
     limits = {
-        fake_resource.RLIMIT_AS: (1, -1),
+        fake_resource.RLIMIT_AS: (memory_bytes, memory_bytes),
         fake_resource.RLIMIT_FSIZE: (1, -1),
     }
     executed: list[str] = []
+    handoff, _handoff_stream = _install_fake_darwin_environment_handoff(monkeypatch, {})
 
     def getrlimit(resource_name: int) -> tuple[int, int]:
         return limits[resource_name]
@@ -3045,10 +3863,10 @@ def test_darwin_limit_launcher_rejects_limit_application_failure_before_exec(
         resource_name: int,
         _requested: tuple[int, int],
     ) -> None:
-        if resource_name == failing_resource:
+        if resource_name == fake_resource.RLIMIT_FSIZE:
             raise exception_type("injected limit-application failure")
 
-    def execvpe(
+    def execve(
         executable: str,
         _argv: list[str],
         _environment: dict[str, str],
@@ -3058,7 +3876,7 @@ def test_darwin_limit_launcher_rejects_limit_application_failure_before_exec(
     fake_resource.getrlimit = getrlimit  # type: ignore[attr-defined]
     fake_resource.setrlimit = setrlimit  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "resource", fake_resource)
-    monkeypatch.setattr(external_runner_module.os, "execvpe", execvpe)
+    monkeypatch.setattr(external_runner_module.os, "execve", execve)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -3067,6 +3885,9 @@ def test_darwin_limit_launcher_rejects_limit_application_failure_before_exec(
             external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
             str(memory_bytes),
             str(file_bytes),
+            str(handoff[0]),
+            str(handoff[1]),
+            handoff[2],
             "--",
             "/usr/bin/runtime",
         ],
@@ -3075,13 +3896,183 @@ def test_darwin_limit_launcher_rejects_limit_application_failure_before_exec(
     with pytest.raises(
         SystemExit,
         match=(
-            rf"could not apply exact {resource_label} limit: "
+            r"could not apply exact RLIMIT_FSIZE limit: "
             rf"{exception_type.__name__}"
         ),
     ):
         exec(external_runner_module._DARWIN_LIMIT_LAUNCHER, {})
 
     assert not executed
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="requires the hosted macOS /bin/sh and RLIMIT_AS implementation",
+)
+def test_darwin_prelimit_is_exact_and_preserves_literal_adapter_argv(
+    tmp_path: Path,
+) -> None:
+    startup_file = tmp_path / "hostile-startup.sh"
+    startup_file.write_text("exit 91\n", encoding="utf-8")
+    literal_arguments = (
+        "; printf injected >&2; exit 92",
+        "$(printf injected >&2)",
+        "*?[literal]",
+    )
+    environment = {
+        "BASHOPTS": "extdebug",
+        "BASH_ENV": str(startup_file),
+        "ENV": str(startup_file),
+        "IFS": "/",
+        "LC_CTYPE": "UTF-8",
+        "SHELLOPTS": "xtrace",
+    }
+    program = (
+        "import json,os,resource,sys;"
+        "print(json.dumps({'limit':resource.getrlimit(resource.RLIMIT_AS),"
+        "'argv':sys.argv[1:],'environment':dict(os.environ)},sort_keys=True))"
+    )
+    limits = RunnerLimits(
+        max_stdout_bytes=1_048_576,
+        max_stderr_bytes=1_048_576,
+        max_candidate_bytes=1_048_576,
+        max_memory_mb=32_768,
+    )
+    with external_runner_module._adapter_process_launch_context(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            program,
+            *literal_arguments,
+        ],
+        limits,
+        environment=environment,
+        directory=tmp_path,
+    ) as (
+        launch_command,
+        preexec_fn,
+        launch_environment,
+        pass_fds,
+    ):
+        completed = subprocess.run(
+            launch_command,
+            cwd=tmp_path,
+            env=launch_environment,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=False,
+            timeout=10,
+            pass_fds=pass_fds,
+        )
+        assert launch_environment == {}
+        assert len(pass_fds) == 1
+
+    assert preexec_fn is None
+    assert completed.returncode == 0, completed.stderr.decode(
+        "utf-8",
+        errors="replace",
+    )
+    assert completed.stderr == b""
+    payload = json.loads(completed.stdout)
+    memory_bytes = 32_768 * 1024 * 1024
+    assert payload == {
+        "limit": [memory_bytes, memory_bytes],
+        "argv": list(literal_arguments),
+        "environment": environment,
+    }
+    assert "SHLVL" not in payload["environment"]
+    assert "_" not in payload["environment"]
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="requires Darwin to reject a limit below the current VM map",
+)
+def test_darwin_prelimit_failure_cannot_exec_adapter(tmp_path: Path) -> None:
+    marker = tmp_path / "adapter-executed"
+    with external_runner_module._adapter_process_launch_context(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            "from pathlib import Path; Path(__import__('sys').argv[1]).touch()",
+            str(marker),
+        ],
+        RunnerLimits(
+            max_stdout_bytes=1_024,
+            max_stderr_bytes=1_024,
+            max_candidate_bytes=1_024,
+            max_memory_mb=1,
+        ),
+        environment={},
+        directory=tmp_path,
+    ) as (
+        launch_command,
+        preexec_fn,
+        launch_environment,
+        pass_fds,
+    ):
+        completed = subprocess.run(
+            launch_command,
+            cwd=tmp_path,
+            env=launch_environment,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=False,
+            timeout=10,
+            pass_fds=pass_fds,
+        )
+        assert launch_environment == {}
+        assert len(pass_fds) == 1
+
+    assert preexec_fn is None
+    assert completed.returncode == 125
+    assert b"could not apply exact Darwin RLIMIT_AS limit" in completed.stderr
+    assert not marker.exists()
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="requires Darwin to reject a limit below the current VM map",
+)
+def test_darwin_failed_prelimit_manifest_does_not_attest_memory_limit(
+    tmp_path: Path,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    write_corpus(corpus_path)
+    candidate_path = tmp_path / "candidate.json"
+    marker = tmp_path / "adapter-executed"
+    manifest = run_external_command(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            "from pathlib import Path; Path(__import__('sys').argv[1]).touch()",
+            str(marker),
+        ],
+        system="darwin-prelimit-failure",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(
+            timeout_seconds=10,
+            max_stdout_bytes=1_024,
+            max_stderr_bytes=1_024,
+            max_candidate_bytes=1_024,
+            max_memory_mb=1,
+        ),
+    )
+
+    assert manifest.exit_code == 125
+    assert manifest.termination_reason == "nonzero_exit"
+    assert not manifest.process_succeeded
+    assert not manifest.memory_limit_enforced
+    assert not manifest.ready_for_scoring
+    assert not candidate_path.exists()
+    assert not marker.exists()
 
 
 def test_posix_group_eperm_liveness_probe_fails_closed(
@@ -3153,9 +4144,11 @@ def test_darwin_group_eperm_after_term_requires_proof_without_reaping(
         *,
         expected_leader_pid: int,
         error_type: type[RuntimeError],
+        termination_signal_delivered: bool,
     ) -> None:
         assert process_group_id == expected_leader_pid == process.pid
         assert error_type is ExternalRunnerError
+        assert termination_signal_delivered is True
         events.append(("proof", "all-zombie"))
 
     monkeypatch.setattr(
@@ -3187,6 +4180,87 @@ def test_darwin_group_eperm_after_term_requires_proof_without_reaping(
         ("waitid", process.pid),
         ("killpg", 0),
         ("proof", "all-zombie"),
+    ]
+
+
+def test_darwin_denied_final_sigkill_retains_successful_sigterm_transition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int | str]] = []
+    observations = iter((False, True))
+    liveness_probes = 0
+
+    class ExitingProcess:
+        pid = 44
+        returncode: int | None = None
+
+        def wait(self, *, timeout: int) -> int:
+            raise AssertionError("failed proof must not reap the leader")
+
+    process = ExitingProcess()
+
+    def exited_without_reaping(_process: object) -> bool:
+        events.append(("waitid", process.pid))
+        return next(observations)
+
+    def killpg(_process_group_id: int, requested_signal: int) -> None:
+        nonlocal liveness_probes
+        events.append(("killpg", requested_signal))
+        if requested_signal == 0:
+            liveness_probes += 1
+            if liveness_probes == 2:
+                raise PermissionError(
+                    errno.EPERM,
+                    "injected Darwin zombie-only group",
+                )
+            return
+        if requested_signal == external_runner_module._POSIX_SIGKILL:
+            raise PermissionError(
+                errno.EPERM,
+                "injected Darwin zombie-only group",
+            )
+        assert requested_signal == signal.SIGTERM
+
+    def reject_live_member(
+        process_group_id: int,
+        *,
+        expected_leader_pid: int,
+        error_type: type[RuntimeError],
+        termination_signal_delivered: bool,
+    ) -> None:
+        assert process_group_id == expected_leader_pid == process.pid
+        assert error_type is ExternalRunnerError
+        assert termination_signal_delivered is True
+        events.append(("proof", "live-survivor"))
+        raise error_type("anchored Darwin process group still contains live PID 45")
+
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(external_runner_module.os, "killpg", killpg, raising=False)
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        exited_without_reaping,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "prove_darwin_process_group_all_zombies",
+        reject_live_member,
+    )
+
+    with pytest.raises(ExternalRunnerError, match="live PID 45"):
+        external_runner_module._terminate_posix_process_group(
+            process.pid,
+            process=process,  # type: ignore[arg-type]
+        )
+
+    assert events == [
+        ("waitid", process.pid),
+        ("killpg", signal.SIGTERM),
+        ("waitid", process.pid),
+        ("killpg", 0),
+        ("killpg", external_runner_module._POSIX_SIGKILL),
+        ("killpg", 0),
+        ("proof", "live-survivor"),
     ]
 
 
@@ -3222,9 +4296,11 @@ def test_darwin_exited_leader_kill_eperm_requires_proof_without_reaping(
         *,
         expected_leader_pid: int,
         error_type: type[RuntimeError],
+        termination_signal_delivered: bool,
     ) -> None:
         assert process_group_id == expected_leader_pid == process.pid
         assert error_type is ExternalRunnerError
+        assert termination_signal_delivered is False
         events.append(("proof", "all-zombie"))
 
     monkeypatch.setattr(
@@ -3283,8 +4359,10 @@ def test_darwin_successful_sigkill_rejects_live_unsignalable_survivor(
         *,
         expected_leader_pid: int,
         error_type: type[RuntimeError],
+        termination_signal_delivered: bool,
     ) -> None:
         assert process_group_id == expected_leader_pid == 43
+        assert termination_signal_delivered is True
         events.append(("proof", "live-survivor"))
         raise error_type(
             "anchored Darwin process group still contains live PID 44"

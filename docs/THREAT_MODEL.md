@@ -68,7 +68,7 @@ to verify it, hashes cannot recover the original truth.
 | Common content-secret disclosure | Optional preprocessing uses nine fixed lexical detectors, length/line-boundary-preserving masks, recomputed record hashes, explicit limits, deterministic replay, and a strict self-hashed coordinate report that omits original content-secret text and hashes | Detection is heuristic; false positives and false negatives remain. Original input enters process memory first. Metadata, ids, timestamps, PII, unknown formats, report coordinates, storage, logs, and previous artifacts are outside the redaction scope |
 | Secret disclosure after redaction | Compiling the redacted source set prevents recognized content secrets from entering its items, prompt, or artifact; replay binds the exact redacted records | Source metadata and identity fields remain in record hashes and may themselves be sensitive; external providers, process arguments, archives, diffs, benchmark evidence, or host logs can still expose anything not redacted before those boundaries |
 | Natural-history consent, license, privacy, annotation, or split failure | Versioned bounded contracts require explicit origin/license/consent/privacy states, exact spans, two independent annotators, complete adjudication, full attempted/included/excluded accounting, repository/task-group-disjoint splits, and label-free exports | The committed records are synthetic contract fixtures. Self-hashes do not authenticate consent or reviewers, detect every private field, prove annotation quality, or establish that a natural cohort exists; real data requires independent review before commit or evaluation |
-| External benchmark adapter escape | The standard runner avoids a shell, isolates cases, limits time/output, applies inherited per-process memory limits on POSIX and per-process/aggregate Job limits on Windows, signals its owned POSIX process group or terminates the Windows Job, validates candidates, hashes a manifest, binds retained dependency-lock, command-referenced adapter-entrypoint, bounded link-free source tree, resolved runtime executable, portable per-case command contract, and external network-policy artifacts, and separately samples a stable pre-existing service identity and memory | It does not establish a filesystem or network sandbox or prove the retained policy was enforced; reviewed code and an isolated host/container remain necessary. A POSIX descendant can leave the owned group. Linux group-signal success does not prove that every member accepted the signal; macOS fails cleanup on a live, inaccessible, raced, or uninspectable remaining member. POSIX descendants each receive the individual address-space limit, not one aggregate tree ceiling. The source tree does not bind imports outside its root or prove which files were loaded. The runtime digest does not bind shared libraries or interpreter support files. Service sampling does not contain or terminate that process and can miss between-poll spikes |
+| External benchmark adapter escape | The standard runner never shell-interprets adapter argv, isolates cases, limits time/output, applies inherited per-process memory limits on POSIX and per-process/aggregate Job limits on Windows, signals its owned POSIX process group or terminates the Windows Job, validates candidates, hashes a manifest, binds retained dependency-lock, command-referenced adapter-entrypoint, bounded link-free source tree, resolved runtime executable, portable per-case command contract, and external network-policy artifacts, and separately samples a stable pre-existing service identity and memory. macOS uses one fixed runner-owned `/bin/sh -p` script with an empty environment; `-p` grants no privilege. Limits and adapter argv remain quoted positional arguments, while a bounded canonical anonymous-FD payload carries the exact adapter environment to the verifier | It does not establish a filesystem or network sandbox or prove the retained policy was enforced; reviewed code and an isolated host/container remain necessary. A POSIX descendant can leave the owned group. Linux group-signal success does not prove that every member accepted the signal; macOS fails cleanup on a live, inaccessible, raced, or uninspectable remaining member. POSIX descendants each receive the individual address-space limit, not one aggregate tree ceiling. Exact-limit status exists only after verifier success. After exact inherited `RLIMIT_AS` verification, the environment FD is checked, read, scrubbed, truncated, and closed; in-memory length, SHA-256, and protocol validation precede exact `RLIMIT_FSIZE`, canonical decode, and `execve`. A pre-shell launch failure or shell, pre-verifier, or inexact-`RLIMIT_AS` exit closes the anonymous unlinked FD through process/context teardown without guaranteeing a scrub; completed scrubbing is not cryptographic erasure. The fixed macOS `/bin/sh` implementation and supervisory interpreter are runner-owned platform machinery and are not separately hashed in the manifest. The source tree does not bind imports outside its root or prove which files were loaded. The runtime digest does not bind shared libraries or interpreter support files. Service sampling does not contain or terminate that process and can miss between-poll spikes |
 | External comparison protocol drift or cherry-picking | A strict self-hashed manifest binds the dated document, screened candidates, registered set, immutable revisions, exact model/resources, frozen datasets/statistics, runner policy, and explicit blockers; external scoring requires a frozen manifest plus exact dataset and adapter matches. Per-case replay reconstructs the ordered one-case corpus inputs from the retained parent | The current artifact is still a draft. Self-hashes are not timestamps, signatures, or proof of result-blind decisions; an independently anchored freeze and reproduction remain necessary |
 
 ## Authority model
@@ -258,7 +258,7 @@ self-consistent report can also compute new self-hashes. Trusted publication
 still requires an external signature or independently anchored digest.
 
 External scoring additionally requires a strict frozen
-`lrcbench-external-protocol-0.9` manifest. The manifest self-hash binds its
+`lrcbench-external-protocol-0.10` manifest. The manifest self-hash binds its
 Markdown document digest, comparison decisions and immutable revisions,
 adapter/dependency evidence, adapter entrypoint, source-tree, runtime, bounded
 process-environment, and portable command-contract digests, exact local-Qwen
@@ -322,26 +322,43 @@ process and descendant; it is not physical RSS/footprint accounting or an
 aggregate tree bound. A usable finite ceiling depends on the host and runtime's
 existing virtual mappings. Windows processes are
 assigned while suspended to a Job Object with per-process and aggregate memory
-limits and are verified in the job before adapter code resumes. macOS applies
-`RLIMIT_AS` and `RLIMIT_FSIZE` in a supervisory Python process started with
-isolated and no-site flags (`-I -S`). It sets the requested soft and hard values
-exactly; an inherited soft limit can be raised only through the inherited hard
-limit. If either exact limit or the subsequent `exec` cannot be applied, the
-launcher fails instead of substituting a different, evidence-inexact ceiling.
-It otherwise replaces itself with the exact adapter command before user or
-system site startup code can run, avoiding `preexec_fn` failures while
-preserving inherited limits and process-group ownership. The supervisory
-interpreter and inline launcher argv are runner-owned implementation details
-and are not separately retained or hashed.
+limits and are verified in the job before adapter code resumes. macOS first
+uses a fixed runner-owned `/bin/sh -p` script with an empty environment to set
+the requested `RLIMIT_AS` soft and hard values in 1024-byte units before Python
+starts. The `-p` flag selects privileged shell mode and grants no privilege.
+The script forwards only quoted positional arguments to an isolated no-site
+(`-I -S`) verifier; it never shell-interprets adapter text.
+A bounded canonical encoding of the exact adapter environment is passed through
+an anonymous, unlinked regular-file descriptor with its expected byte count and
+SHA-256 digest. The verifier first requires exact inherited `RLIMIT_AS`;
+validates the descriptor, file, and expected size; reads, scrubs, truncates,
+and closes the handoff; validates the retained in-memory length, SHA-256, and
+protocol; applies byte-exact `RLIMIT_FSIZE`; canonically decodes the
+environment; and calls `execve` with literal adapter argv. A pre-shell launch
+failure or shell, pre-verifier, or inexact-`RLIMIT_AS` exit closes the anonymous
+unlinked descriptor through process/context teardown without guaranteeing a
+scrub. Completed scrubbing reduces residual retention but does not establish
+cryptographic erasure. Exact-limit status requires verifier success. If setup
+or `execve` fails, the launcher fails instead of substituting a different,
+evidence-inexact ceiling. This avoids `preexec_fn` while preserving inherited
+limits and process-group ownership. Protocol
+`lrcbench-external-protocol-0.10` binds the fixed shell prefix, launcher
+protocol identifier, and exact inline-launcher
+script digest. Individual run manifests do not independently bind those
+details; the system-shell binary and implementation, supervisory interpreter,
+and supporting runtime files remain unhashed.
 POSIX exit observation retains the waitable leader as the group-ID
 identity anchor until owned process-group cleanup completes. Darwin accepts
 permission denial only after stable bounded process-group snapshots prove all
 anchored members are zombies; otherwise the started run is retained as
 non-scoreable and per-case mode launches no later case. Preflight and `Popen`
-failures remain blocking runner errors. After `Popen` succeeds, launcher
-`setrlimit` or `exec` failure is retained in a failed, non-scoreable case
-manifest and no later case launches. These controls limit cross-case
-contamination and resource
+failures remain blocking runner errors. A post-`Popen` launcher failure is
+retained in a failed, non-scoreable case manifest. On Darwin, a configured
+limit with `process_succeeded: false` conservatively records
+`memory_limit_enforced: false` because the parent has no authenticated
+verifier-completion signal; this may underreport enforcement but cannot upgrade
+the retained failure. A configured limit with `process_succeeded: true`
+requires `memory_limit_enforced: true`. These controls limit cross-case contamination and resource
 exhaustion, but they are not a filesystem sandbox and do not establish network
 isolation.
 The stdout, stderr, and candidate-file byte caps are polling-enforced at an

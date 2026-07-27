@@ -83,11 +83,15 @@ def _resolved_temporary_root() -> Path:
 
 def _force_compile_process_group(
     process: subprocess.Popen[Any],
+    *,
+    prior_termination_signal_delivered: bool = False,
 ) -> None:
     """Escalate one still-owned POSIX group without hiding permission failures."""
 
+    termination_signal_delivered = prior_termination_signal_delivered
     try:
         os.killpg(process.pid, _POSIX_SIGKILL)
+        termination_signal_delivered = True
     except ProcessLookupError:
         return
     except PermissionError as exc:
@@ -132,6 +136,7 @@ def _force_compile_process_group(
         process.pid,
         expected_leader_pid=process.pid,
         error_type=CompilationIsolationError,
+        termination_signal_delivered=termination_signal_delivered,
     )
 
 
@@ -243,6 +248,7 @@ def _terminate_compile_posix_process_tree(
                 process.pid,
                 expected_leader_pid=process.pid,
                 error_type=CompilationIsolationError,
+                termination_signal_delivered=True,
             )
             return
         except OSError as exc:
@@ -254,7 +260,10 @@ def _terminate_compile_posix_process_tree(
         if remaining <= 0:
             break
         time.sleep(min(0.01, remaining))
-    _force_compile_process_group(process)
+    _force_compile_process_group(
+        process,
+        prior_termination_signal_delivered=True,
+    )
 
 
 def _reap_compile_process(process: subprocess.Popen[Any]) -> None:

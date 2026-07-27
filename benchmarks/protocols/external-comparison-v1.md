@@ -199,7 +199,7 @@ Export the gold-free corpus:
 python -m benchmarks --histories 32 --export-corpus lrcbench-corpus.json
 ```
 
-Run each adapter through the shell-free bounded runner:
+Run each adapter through the bounded, non-interpolating runner:
 
 ```console
 python -m benchmarks.external_runner \
@@ -232,8 +232,10 @@ python -m benchmarks.external_runner \
   -- ADAPTER_COMMAND {corpus} {candidate} {system} {case_id}
 ```
 
-The runner refuses existing output paths, does not invoke a shell, monitors
-time and output sizes, rejects corpus modification during execution, hashes
+The runner refuses existing output paths and never shell-interprets adapter
+argv. On macOS only, it invokes the fixed runner-owned `/bin/sh -p` pre-limiter
+described below; `-p` selects privileged mode and grants no privilege. The
+runner monitors time and output sizes, rejects corpus modification, and hashes
 stdout/stderr/candidate evidence, validates the candidate interchange, and
 emits a self-hashed manifest. It hashes the dependency lock, a
 command-referenced adapter entrypoint, and every regular file in a bounded
@@ -243,7 +245,33 @@ binds a path-independent command contract. Every exact per-case invocation
 must normalize to that contract, and claim runs use the source root as their
 working directory. Every case runs sequentially in a fresh process against a
 one-case gold-free corpus; a failure is retained without allowing partial
-merged output. POSIX enforces `--max-memory-mb` with `RLIMIT_AS`. Windows
+merged output. POSIX applies `--max-memory-mb` with `RLIMIT_AS`; exact-limit
+status on macOS requires the isolated verifier to confirm the requested value.
+The fixed shell starts with an empty environment and forwards only quoted
+positional arguments. `runner.adapter_shell_interpretation=false` records that
+adapter argv and text are never shell-interpreted.
+`runner.darwin_prelimit_shell_prefix=["/bin/sh","-p","-c"]`,
+`runner.darwin_prelimit_launcher_protocol="ctxc-darwin-prelimit-v1"`, and
+the `runner.darwin_prelimit_launcher_sha256` value
+`db3647ef188ef005cc6c0157acd3d63597f1bc9e5570b9a106e615088ca77ecc`
+bind the fixed runner-owned macOS supervisor prefix, contract identifier, and
+exact script bytes. A bounded canonical encoding of
+the exact adapter environment is passed through an anonymous, unlinked
+regular-file descriptor with its byte count and SHA-256 digest. The verifier
+first confirms exact inherited `RLIMIT_AS`; validates the descriptor, file, and
+expected size; reads, scrubs, truncates, and closes the handoff; validates the
+retained in-memory length, SHA-256, and protocol; applies byte-exact
+`RLIMIT_FSIZE`; canonically decodes the environment; and calls `execve` with
+literal adapter argv. A pre-shell launch failure or shell, pre-verifier, or
+inexact-`RLIMIT_AS` exit closes the anonymous unlinked descriptor through
+process/context teardown without guaranteeing a scrub. Completed scrubbing
+reduces retention but does not establish cryptographic erasure. A setup
+mismatch is a retained failure; no different limit is substituted. On Darwin,
+a configured limit with `process_succeeded: false` conservatively records
+`memory_limit_enforced: false` because the parent has no authenticated
+verifier-completion signal; this may underreport enforcement but cannot upgrade
+the retained failure. A configured limit with `process_succeeded: true`
+requires `memory_limit_enforced: true`. Windows
 creates the process suspended, assigns and verifies a Job Object with
 per-process and aggregate limits, and only then resumes adapter code.
 

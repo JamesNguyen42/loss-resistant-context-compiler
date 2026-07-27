@@ -303,7 +303,7 @@ and measured duration.
 | `benchmarks/json_io.py` | Shared bounded regular-file hashing and strict JSON decoding for benchmark evidence |
 | `benchmarks/report_verifier.py` | Bounded strict saved-report verification and deterministic replay |
 | `benchmarks/external_protocol.py` | Strict self-hashed external-protocol validation and claim-readiness gate |
-| `benchmarks/external_runner.py` | Shell-free adapter process limits, validation, and self-hashed run manifests |
+| `benchmarks/external_runner.py` | Non-interpreting adapter launch, process limits, validation, and self-hashed run manifests |
 | `benchmarks/natural_history.py` | Bounded corpus/annotation/adjudication/split/gold-free/report contract validation |
 | `benchmarks/compatibility/` | Result-blind pinned system screens and retained ACON blocker/failure evidence |
 | `conformance/` | Dependency-free connector schema/golden/negative validation and in-process/stdio equivalence |
@@ -501,7 +501,7 @@ reusable numeric group ID; Windows uses a Job Object. See
 | Corpus producer schema | `lrcbench-corpus-producer-0.1` |
 | Candidate producer schema | `lrcbench-candidate-producer-0.1` |
 | External runner manifest | `lrcbench-external-run-manifest-0.13` |
-| External comparison protocol | `lrcbench-external-protocol-0.9` |
+| External comparison protocol | `lrcbench-external-protocol-0.10` |
 | Connector request/response | `ctxc-connector-request-0.1` / `ctxc-connector-response-0.1` |
 | Connector source/bundle/checkpoint | `localai-source-event-0.1` / `localai-context-bundle-0.1` / `ctxc-incremental-checkpoint-0.1` |
 | Natural-history evidence family | `ctxc-natural-history-*-0.1` contracts; synthetic fixtures only |
@@ -803,7 +803,7 @@ audited. Any selected superseded item independently fails verification as
   inference-service identity/peak-memory evidence; incomplete controls are a
   per-system non-win.
 - External scoring requires a strict frozen
-  `lrcbench-external-protocol-0.9` manifest. The protocol's set is authoritative,
+  `lrcbench-external-protocol-0.10` manifest. The protocol's set is authoritative,
   and the benchmark rejects a draft, dataset mismatch, unregistered system, or
   adapter, dependency-environment, model, tokenizer, retry, network-evidence,
   or runner-limit mismatch before scoring. Current runner schema
@@ -1040,15 +1040,31 @@ lower quantile before results are observed.
   Objects enforce per-process and aggregate job ceilings. Neither contains a
   pre-existing inference service. The runner now
   identifies that service by PID creation token plus executable digest and
-  samples Windows working set or Linux/macOS RSS. macOS applies its inherited
-  `RLIMIT_AS`/`RLIMIT_FSIZE` limits in an isolated no-site (`-I -S`) exec
-  wrapper before user or system site startup code can run, instead of using
-  `preexec_fn`. The wrapper sets both requested soft and hard values exactly;
-  it may raise an inherited soft value only through the inherited hard value
-  and fails closed if setup or `exec` cannot complete. Preflight and `Popen`
-  failures remain blocking runner errors; after `Popen`, launcher `setrlimit`
-  or `exec` failure is retained in a failed, non-scoreable case manifest and no
-  later case launches. Its unreaped leader anchors process-group cleanup; Darwin
+  samples Windows working set or Linux/macOS RSS. macOS uses a fixed
+  runner-owned `/bin/sh -p` pre-limiter, started with an empty environment, to
+  set requested `RLIMIT_AS` soft/hard values before Python starts. The `-p`
+  flag selects privileged shell mode and grants no privilege. Limit fields and
+  adapter argv remain quoted positional parameters and are never
+  shell-interpreted. A bounded canonical anonymous-FD payload carries the exact
+  adapter environment with byte-count and SHA-256 verification. The isolated
+  no-site (`-I -S`) verifier first requires exact inherited `RLIMIT_AS`;
+  validates the descriptor, file, and expected size; reads, scrubs, truncates,
+  and closes the handoff; validates the retained in-memory length, SHA-256, and
+  protocol; applies byte-exact `RLIMIT_FSIZE`; canonically decodes the
+  environment; and uses `execve` with literal adapter argv. A pre-shell launch
+  failure or shell, pre-verifier, or inexact-`RLIMIT_AS` exit closes the anonymous
+  unlinked descriptor through process/context teardown without guaranteeing a
+  scrub. Completed scrubbing makes no cryptographic-erasure claim. `preexec_fn`
+  is not used, and exact-limit status requires verifier success. Any mismatch
+  or setup/`execve` failure remains fail-closed. Preflight and `Popen` failures
+  remain blocking runner errors; a post-`Popen` launcher failure is retained in
+  a failed, non-scoreable case manifest. On Darwin, a configured limit with
+  `process_succeeded: false` conservatively records
+  `memory_limit_enforced: false` because the parent has no authenticated
+  verifier-completion signal; this may underreport enforcement but cannot
+  upgrade the retained failure. A configured limit with
+  `process_succeeded: true` requires `memory_limit_enforced: true`. Its unreaped
+  leader anchors process-group cleanup; Darwin
   permission-denied cleanup is accepted only after stable bounded `libproc`
   snapshots prove all members are zombies. Cleanup/proof failure after process
   start is retained as a failed manifest, and per-case execution stops before

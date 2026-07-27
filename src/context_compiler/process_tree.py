@@ -20,6 +20,8 @@ _DARWIN_PROC_PIDTBSDINFO_INCLUDE_ZOMBIES = 1
 _DARWIN_PROC_BSD_INFO_SIZE = 136
 _DARWIN_PROCESS_STATUS_ZOMBIE = 5
 _DARWIN_PROCESS_GROUP_STABILITY_ATTEMPTS = 8
+_DARWIN_SIGNAL_TRANSITION_ATTEMPTS = 64
+_DARWIN_SIGNAL_TRANSITION_POLL_SECONDS = 0.01
 _PROCESS_GROUP_GRACE_SECONDS = 0.5
 _POSIX_SIGKILL = getattr(signal, "SIGKILL", 9)
 _WINDOWS_JOB_OBJECT_LIMIT_PROCESS_MEMORY = 0x00000100
@@ -149,7 +151,7 @@ def _darwin_process_identity(
     *,
     error_type: type[RuntimeError],
     allow_vanished: bool = False,
-) -> tuple[int, int, int] | None:
+) -> tuple[tuple[int, int, int], bool] | None:
     """Read and validate one exact BSD process record."""
 
     actual_struct_size = ctypes.sizeof(_DarwinProcBsdInfo)
@@ -181,17 +183,14 @@ def _darwin_process_identity(
             f"Darwin process-info PID changed while inspecting PID {process_id}"
         )
     if int(process_info.pbi_pgid) != process_group_id:
-        raise error_type(
-            f"PID {process_id} left the anchored Darwin process group"
-        )
-    if int(process_info.pbi_status) != _DARWIN_PROCESS_STATUS_ZOMBIE:
-        raise error_type(
-            f"anchored Darwin process group still contains live PID {process_id}"
-        )
+        raise error_type(f"PID {process_id} left the anchored Darwin process group")
     return (
-        process_id,
-        int(process_info.pbi_start_tvsec),
-        int(process_info.pbi_start_tvusec),
+        (
+            process_id,
+            int(process_info.pbi_start_tvsec),
+            int(process_info.pbi_start_tvusec),
+        ),
+        int(process_info.pbi_status) == _DARWIN_PROCESS_STATUS_ZOMBIE,
     )
 
 
@@ -205,8 +204,9 @@ def _darwin_process_group_snapshot(
     tuple[int, ...],
     tuple[tuple[int, int, int], ...],
     tuple[int, ...],
+    tuple[int, ...],
 ]:
-    """Capture one bounded, fully inspected all-zombie group snapshot.
+    """Capture one bounded, fully inspected group snapshot.
 
     Inspect the known WNOWAIT leader directly with include-zombies semantics,
     even if the group enumeration is empty, while also inspecting every PID
@@ -230,7 +230,8 @@ def _darwin_process_group_snapshot(
     if leader_identity is None:  # pragma: no cover - leader is never optional
         raise error_type("could not inspect the anchored Darwin group leader")
 
-    identities = [leader_identity]
+    identities = [leader_identity[0]]
+    live = [] if leader_identity[1] else [expected_leader_pid]
     vanished: list[int] = []
     for process_id in process_ids:
         if process_id == expected_leader_pid:
@@ -245,11 +246,14 @@ def _darwin_process_group_snapshot(
         if identity is None:
             vanished.append(process_id)
         else:
-            identities.append(identity)
+            identities.append(identity[0])
+            if not identity[1]:
+                live.append(process_id)
     return (
         process_ids,
         tuple(sorted(identities)),
         tuple(vanished),
+        tuple(live),
     )
 
 
@@ -258,15 +262,20 @@ def prove_darwin_process_group_all_zombies(
     *,
     expected_leader_pid: int,
     error_type: type[RuntimeError] = ProcessTreeError,
+    termination_signal_delivered: bool = False,
 ) -> None:
     """Prove that one anchored Darwin group has only stable zombie members.
 
     This exceptional-path proof is intentionally conservative. A non-leader
     may disappear only through an exact ESRCH read race or a monotonic shrink
-    between complete snapshots; bounded retries must then end with two
-    identical complete snapshots. Other API errors, inaccessible or live
-    members, truncated enumeration, PID reuse, membership additions or
-    replacements, and an unreadable WNOWAIT leader reject the proof.
+    between complete snapshots. A caller whose terminating ``killpg`` call
+    returned successfully may explicitly allow a bounded live-to-zombie
+    transition, but success still requires two identical complete all-zombie
+    snapshots within the original stability bound. A denied signal never
+    enables that transition. Other API errors, inaccessible members,
+    persistent liveness, zombie-to-live reversal, truncated enumeration, PID
+    reuse, membership additions or replacements, and an unreadable WNOWAIT
+    leader reject the proof.
     """
 
     for label, value in (
@@ -292,9 +301,13 @@ def prove_darwin_process_group_all_zombies(
     previous_complete: tuple[tuple[int, int, int], ...] | None = None
     required_absent: frozenset[int] = frozenset()
     known_identities: dict[int, tuple[int, int, int]] = {}
+    known_zombies: set[int] = set()
+    pending_live: set[int] = set()
+    live_transition_attempts = 0
+    stability_attempts = 0
 
-    for _attempt in range(_DARWIN_PROCESS_GROUP_STABILITY_ATTEMPTS):
-        members, identities, vanished = _darwin_process_group_snapshot(
+    while True:
+        members, identities, vanished, live = _darwin_process_group_snapshot(
             libproc,
             process_group_id,
             expected_leader_pid,
@@ -324,7 +337,38 @@ def prove_darwin_process_group_all_zombies(
                 )
             known_identities[process_id] = identity
 
-        if not vanished:
+        live_set = frozenset(live)
+        for process_id in sorted(pending_live - member_set):
+            omitted_record = _darwin_process_identity(
+                libproc,
+                process_id,
+                process_group_id,
+                error_type=error_type,
+                allow_vanished=True,
+            )
+            if omitted_record is None:
+                continue
+            omitted_identity, omitted_is_zombie = omitted_record
+            known_identity = known_identities.get(process_id)
+            if known_identity is not None and known_identity != omitted_identity:
+                raise error_type("anchored Darwin process identity changed during inspection")
+            if not omitted_is_zombie:
+                raise error_type(
+                    f"anchored Darwin process-group enumeration omitted live PID {process_id}"
+                )
+            known_identities[process_id] = omitted_identity
+            known_zombies.add(process_id)
+        if known_zombies & live_set:
+            raise error_type(
+                "an anchored Darwin process-group member changed from "
+                "zombie to live during inspection"
+            )
+        known_zombies.update(identity[0] for identity in identities if identity[0] not in live_set)
+        pending_live = set(live_set)
+
+        if live:
+            previous_complete = None
+        elif not vanished:
             if (
                 previous_complete is not None
                 and previous_members == members
@@ -337,11 +381,22 @@ def prove_darwin_process_group_all_zombies(
 
         previous_members = members
         required_absent = frozenset(vanished)
+        if live:
+            live_transition_attempts += 1
+            if (
+                not termination_signal_delivered
+                or live_transition_attempts >= _DARWIN_SIGNAL_TRANSITION_ATTEMPTS
+            ):
+                raise error_type(f"anchored Darwin process group still contains live PID {live[0]}")
+            time.sleep(_DARWIN_SIGNAL_TRANSITION_POLL_SECONDS)
+            continue
 
-    raise error_type(
-        "anchored Darwin process-group membership did not stabilize "
-        "within the bounded inspection attempts"
-    )
+        stability_attempts += 1
+        if stability_attempts >= _DARWIN_PROCESS_GROUP_STABILITY_ATTEMPTS:
+            raise error_type(
+                "anchored Darwin process-group membership did not stabilize "
+                "within the bounded inspection attempts"
+            )
 
 
 class WindowsJob:
@@ -705,6 +760,7 @@ def _verify_darwin_process_group_after_sigkill(
     process: subprocess.Popen[Any],
     *,
     error_type: type[RuntimeError],
+    termination_signal_delivered: bool,
 ) -> None:
     """Require disappearance or stable all-zombie proof after Darwin SIGKILL."""
 
@@ -732,6 +788,7 @@ def _verify_darwin_process_group_after_sigkill(
         process.pid,
         expected_leader_pid=process.pid,
         error_type=error_type,
+        termination_signal_delivered=termination_signal_delivered,
     )
 
 
@@ -739,11 +796,14 @@ def _force_anchored_posix_process_group(
     process: subprocess.Popen[Any],
     *,
     error_type: type[RuntimeError],
+    prior_termination_signal_delivered: bool = False,
 ) -> None:
     """Deliver the final group signal while the direct leader remains waitable."""
 
+    termination_signal_delivered = prior_termination_signal_delivered
     try:
         os.killpg(process.pid, _POSIX_SIGKILL)
+        termination_signal_delivered = True
     except ProcessLookupError:
         return
     except PermissionError as exc:
@@ -755,6 +815,7 @@ def _force_anchored_posix_process_group(
         _verify_darwin_process_group_after_sigkill(
             process,
             error_type=error_type,
+            termination_signal_delivered=termination_signal_delivered,
         )
 
 
@@ -824,6 +885,7 @@ def terminate_anchored_posix_process_group(
                     process.pid,
                     expected_leader_pid=process.pid,
                     error_type=error_type,
+                    termination_signal_delivered=True,
                 )
                 return
             raise error_type(
@@ -842,6 +904,7 @@ def terminate_anchored_posix_process_group(
     _force_anchored_posix_process_group(
         process,
         error_type=error_type,
+        prior_termination_signal_delivered=True,
     )
 
 

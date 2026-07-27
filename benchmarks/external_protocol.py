@@ -19,6 +19,10 @@ from context_compiler.local_qwen import (
     QWEN_Q4_VARIANT,
 )
 
+from .external_runner import (
+    _DARWIN_PRELIMIT_LAUNCHER,
+    _DARWIN_PRELIMIT_LAUNCHER_PROTOCOL,
+)
 from .json_io import (
     StrictJsonError,
     StrictJsonLimits,
@@ -27,7 +31,7 @@ from .json_io import (
 )
 from .lrcbench import TOKENIZER_ID
 
-EXTERNAL_PROTOCOL_SCHEMA = "lrcbench-external-protocol-0.9"
+EXTERNAL_PROTOCOL_SCHEMA = "lrcbench-external-protocol-0.10"
 DEFAULT_EXTERNAL_PROTOCOL = (
     Path(__file__).resolve().parent
     / "protocols"
@@ -36,6 +40,10 @@ DEFAULT_EXTERNAL_PROTOCOL = (
 EXACT_QWEN_MODEL_ID = QWEN_Q4_VARIANT
 EXACT_QWEN_QUANTIZATION = QWEN_Q4_QUANTIZATION
 EXACT_QWEN_CONTEXT_LENGTH = QWEN_Q4_CONTEXT_LENGTH
+_EXACT_DARWIN_PRELIMIT_SHELL_PREFIX = ("/bin/sh", "-p", "-c")
+_EXACT_DARWIN_PRELIMIT_LAUNCHER_SHA256 = hashlib.sha256(
+    _DARWIN_PRELIMIT_LAUNCHER.encode("utf-8")
+).hexdigest()
 _PROTOCOL_LIMITS = StrictJsonLimits(
     max_bytes=2 * 1024 * 1024,
     max_line_chars=256 * 1024,
@@ -144,7 +152,10 @@ _RUNNER_FIELDS = {
     "inference_service_memory_metric",
     "inference_service_executable_sha256",
     "max_inference_service_memory_mb",
-    "shell_invocation",
+    "adapter_shell_interpretation",
+    "darwin_prelimit_shell_prefix",
+    "darwin_prelimit_launcher_protocol",
+    "darwin_prelimit_launcher_sha256",
     "overwrite_existing_outputs",
     "failure_policy",
     "offline_execution",
@@ -179,6 +190,10 @@ class ExternalExecutionContract:
     max_stderr_bytes: int
     max_candidate_bytes: int
     max_memory_mb: int | None
+    adapter_shell_interpretation: bool
+    darwin_prelimit_shell_prefix: tuple[str, ...]
+    darwin_prelimit_launcher_protocol: str
+    darwin_prelimit_launcher_sha256: str
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -209,6 +224,12 @@ class ExternalExecutionContract:
             "max_stderr_bytes": self.max_stderr_bytes,
             "max_candidate_bytes": self.max_candidate_bytes,
             "max_memory_mb": self.max_memory_mb,
+            "adapter_shell_interpretation": self.adapter_shell_interpretation,
+            "darwin_prelimit_shell_prefix": list(self.darwin_prelimit_shell_prefix),
+            "darwin_prelimit_launcher_protocol": (
+                self.darwin_prelimit_launcher_protocol
+            ),
+            "darwin_prelimit_launcher_sha256": self.darwin_prelimit_launcher_sha256,
         }
 
 
@@ -819,7 +840,10 @@ def _validate_runner(value: object, *, frozen: bool) -> None:
         "max_stdout_bytes": 1_000_000,
         "max_stderr_bytes": 1_000_000,
         "max_candidate_bytes": 20_000_000,
-        "shell_invocation": False,
+        "adapter_shell_interpretation": False,
+        "darwin_prelimit_shell_prefix": list(_EXACT_DARWIN_PRELIMIT_SHELL_PREFIX),
+        "darwin_prelimit_launcher_protocol": _DARWIN_PRELIMIT_LAUNCHER_PROTOCOL,
+        "darwin_prelimit_launcher_sha256": _EXACT_DARWIN_PRELIMIT_LAUNCHER_SHA256,
         "overwrite_existing_outputs": False,
         "failure_policy": "registered-failures-are-non-wins",
         "offline_execution": True,
@@ -1158,6 +1182,19 @@ def load_external_protocol(
                 None
                 if payload["runner"]["max_memory_mb"] is None
                 else int(payload["runner"]["max_memory_mb"])
+            ),
+            adapter_shell_interpretation=bool(
+                payload["runner"]["adapter_shell_interpretation"]
+            ),
+            darwin_prelimit_shell_prefix=tuple(
+                str(part)
+                for part in payload["runner"]["darwin_prelimit_shell_prefix"]
+            ),
+            darwin_prelimit_launcher_protocol=str(
+                payload["runner"]["darwin_prelimit_launcher_protocol"]
+            ),
+            darwin_prelimit_launcher_sha256=str(
+                payload["runner"]["darwin_prelimit_launcher_sha256"]
             ),
         ),
         candidate_count=len(payload["comparison_candidates"]),
