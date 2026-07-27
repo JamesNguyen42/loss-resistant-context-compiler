@@ -330,7 +330,13 @@ The script forwards only quoted positional arguments to an isolated no-site
 (`-I -S`) verifier; it never shell-interprets adapter text.
 A bounded canonical encoding of the exact adapter environment is passed through
 an anonymous, unlinked regular-file descriptor with its expected byte count and
-SHA-256 digest. The verifier first requires exact inherited `RLIMIT_AS`;
+SHA-256 digest. Before bounds and hashing on Darwin, the runner reserves
+`__CF_USER_TEXT_ENCODING` as `0x{uid:X}:0:0`; a conflicting caller value fails
+closed. The counted, hashed entry prevents CoreFoundation's default-text-encoding
+initializer from replacing that environment entry with a host/home-derived
+value after `execve`. Evidence covers the exact mapping passed
+to `execve`, not later mutations by arbitrary runtime code. The verifier first
+requires exact inherited `RLIMIT_AS`;
 validates the descriptor, file, and expected size; reads, scrubs, truncates,
 and closes the handoff; validates the retained in-memory length, SHA-256, and
 protocol; applies byte-exact `RLIMIT_FSIZE`; canonically decodes the

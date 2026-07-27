@@ -234,7 +234,10 @@ def test_claim_identity_requires_frozen_model_and_environment_contract() -> None
         safe_environment.environment_sha256
         != changed_environment.environment_sha256
     )
-    assert safe_environment.variable_names == ("LRCBENCH_MODE",)
+    expected_variable_names = ("LRCBENCH_MODE",)
+    if sys.platform == "darwin":
+        expected_variable_names += ("__CF_USER_TEXT_ENCODING",)
+    assert safe_environment.variable_names == expected_variable_names
     assert not sensitive_environment.claim_evidence_complete
     with pytest.raises(
         ExternalRunnerError,
@@ -257,6 +260,309 @@ def test_claim_identity_requires_frozen_model_and_environment_contract() -> None
     assert not replace(identity, model_service_cost_usd=0.01).claim_metadata_complete
     with pytest.raises(TypeError, match="model_service_cost_usd must be numeric"):
         replace(identity, model_service_cost_usd=None)  # type: ignore[arg-type]
+
+
+def test_darwin_process_environment_binds_core_foundation_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "_environment_platform",
+        lambda: "posix",
+    )
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "getuid",
+        lambda: 501,
+        raising=False,
+    )
+    monkeypatch.setenv("__CF_USER_TEXT_ENCODING", "0xDEAD:0x1:0x2")
+    source = {"LRCBENCH_MODE": "fixture"}
+
+    environment, evidence = external_runner_module._prepare_process_environment(
+        source
+    )
+
+    assert source == {"LRCBENCH_MODE": "fixture"}
+    assert environment == {
+        "LRCBENCH_MODE": "fixture",
+        "__CF_USER_TEXT_ENCODING": "0x1F5:0:0",
+    }
+    assert evidence.variable_names == (
+        "LRCBENCH_MODE",
+        "__CF_USER_TEXT_ENCODING",
+    )
+    assert evidence.encoded_bytes == sum(
+        len(name.encode("utf-8")) + len(value.encode("utf-8"))
+        for name, value in environment.items()
+    )
+    assert evidence.environment_sha256 == _canonical_sha256(
+        {
+            "algorithm": "lrcbench-process-environment-0.1",
+            "platform": "posix",
+            "variables": [
+                {
+                    "name": name,
+                    "value_sha256": hashlib.sha256(
+                        value.encode("utf-8")
+                    ).hexdigest(),
+                }
+                for name, value in environment.items()
+            ],
+        }
+    )
+    assert evidence == capture_process_environment_evidence(environment)
+    assert external_runner_module._encode_darwin_process_environment(
+        environment
+    ) == (
+        external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL
+        + b"LRCBENCH_MODE=fixture\x00"
+        + b"__CF_USER_TEXT_ENCODING=0x1F5:0:0\x00"
+    )
+
+
+def test_darwin_process_environment_accepts_exact_reserved_encoding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "_environment_platform",
+        lambda: "posix",
+    )
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "getuid",
+        lambda: 501,
+        raising=False,
+    )
+    source = {
+        "LRCBENCH_MODE": "fixture",
+        "__CF_USER_TEXT_ENCODING": "0x1F5:0:0",
+    }
+
+    environment, _evidence = external_runner_module._prepare_process_environment(
+        source
+    )
+
+    assert environment == source
+
+
+def test_non_darwin_process_environment_does_not_access_uid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(external_runner_module.sys, "platform", "linux")
+
+    def fail_getuid() -> int:
+        raise AssertionError("non-Darwin preparation must not access getuid")
+
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "getuid",
+        fail_getuid,
+        raising=False,
+    )
+
+    environment, evidence = external_runner_module._prepare_process_environment(
+        {"LRCBENCH_MODE": "fixture"}
+    )
+
+    assert environment == {"LRCBENCH_MODE": "fixture"}
+    assert evidence.variable_names == ("LRCBENCH_MODE",)
+
+
+@pytest.mark.parametrize("mode", ["missing", "error"])
+def test_darwin_process_environment_rejects_unavailable_uid(
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+) -> None:
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    if mode == "missing":
+        monkeypatch.delattr(external_runner_module.os, "getuid", raising=False)
+    else:
+        def fail_getuid() -> int:
+            raise OSError(errno.EPERM, "injected getuid failure")
+
+        monkeypatch.setattr(
+            external_runner_module.os,
+            "getuid",
+            fail_getuid,
+            raising=False,
+        )
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="could not bind the Darwin CoreFoundation environment",
+    ):
+        external_runner_module._prepare_process_environment({})
+
+
+@pytest.mark.parametrize("user_id", [True, None, -1, 0x80000000])
+def test_darwin_process_environment_rejects_invalid_uid(
+    monkeypatch: pytest.MonkeyPatch,
+    user_id: object,
+) -> None:
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "getuid",
+        lambda: user_id,
+        raising=False,
+    )
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="could not bind the Darwin CoreFoundation environment",
+    ):
+        external_runner_module._prepare_process_environment({})
+
+
+def test_darwin_default_environment_does_not_inherit_host_encoding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "_environment_platform",
+        lambda: "posix",
+    )
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "getuid",
+        lambda: 501,
+        raising=False,
+    )
+    monkeypatch.setenv("__CF_USER_TEXT_ENCODING", "0xDEAD:0x1:0x2")
+
+    environment, _evidence = external_runner_module._prepare_process_environment(
+        None
+    )
+
+    assert environment["__CF_USER_TEXT_ENCODING"] == "0x1F5:0:0"
+
+
+def test_darwin_environment_handoff_rejects_uid_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_ids = iter((501, 502))
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "_environment_platform",
+        lambda: "posix",
+    )
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "getuid",
+        lambda: next(user_ids),
+        raising=False,
+    )
+    environment, _evidence = external_runner_module._prepare_process_environment(
+        {"CTXC_ENV": "literal"}
+    )
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="must bind the current user and fixed encoding fields",
+    ):
+        external_runner_module._encode_darwin_process_environment(environment)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "0x1F6:0:0",
+        "0x1F5:0x0:0x0",
+        "0x1F5:not-numeric:0",
+        "501:0:0",
+    ],
+)
+def test_darwin_process_environment_rejects_incompatible_encoding(
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+) -> None:
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "_environment_platform",
+        lambda: "posix",
+    )
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "getuid",
+        lambda: 501,
+        raising=False,
+    )
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="must bind the current user and fixed encoding fields",
+    ):
+        external_runner_module._prepare_process_environment(
+            {"__CF_USER_TEXT_ENCODING": value}
+        )
+
+
+def test_darwin_reserved_environment_key_counts_toward_variable_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "_environment_platform",
+        lambda: "posix",
+    )
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "getuid",
+        lambda: 501,
+        raising=False,
+    )
+    source = {
+        f"CTXC_{index:04d}": ""
+        for index in range(
+            external_runner_module._PROCESS_ENVIRONMENT_MAX_VARIABLES
+        )
+    }
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="variable-count limit",
+    ):
+        external_runner_module._prepare_process_environment(source)
+
+    assert "__CF_USER_TEXT_ENCODING" not in source
+
+
+def test_darwin_reserved_environment_key_counts_toward_byte_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module,
+        "_environment_platform",
+        lambda: "posix",
+    )
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "getuid",
+        lambda: 501,
+        raising=False,
+    )
+    source = {
+        name: "x" * 999_991
+        for name in ("CTXC_A", "CTXC_B", "CTXC_C", "CTXC_D")
+    }
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="aggregate byte limit",
+    ):
+        external_runner_module._prepare_process_environment(source)
+
+    assert "__CF_USER_TEXT_ENCODING" not in source
 
 
 def test_inference_service_contract_captures_stable_process_identity() -> None:
@@ -1720,6 +2026,12 @@ def test_external_command_environment_evidence_matches_adapter_observation(
     assert observed_environment == expected_environment
     assert observed_environment["PYTHONCOERCECLOCALE"] == "0"
     assert observed_environment["LC_CTYPE"] == "UTF-8"
+    if sys.platform == "darwin":
+        assert observed_environment["__CF_USER_TEXT_ENCODING"] == (
+            f"0x{os.getuid():X}:0:0"
+        )
+    else:
+        assert "__CF_USER_TEXT_ENCODING" not in observed_environment
     assert manifest.process_environment == capture_process_environment_evidence(
         observed_environment
     )
@@ -3956,14 +4268,18 @@ def test_darwin_prelimit_is_exact_and_preserves_literal_adapter_argv(
         "$(printf injected >&2)",
         "*?[literal]",
     )
-    environment = {
-        "BASHOPTS": "extdebug",
-        "BASH_ENV": str(startup_file),
-        "ENV": str(startup_file),
-        "IFS": "/",
-        "LC_CTYPE": "UTF-8",
-        "SHELLOPTS": "xtrace",
-    }
+    environment, _environment_evidence = (
+        external_runner_module._prepare_process_environment(
+            {
+                "BASHOPTS": "extdebug",
+                "BASH_ENV": str(startup_file),
+                "ENV": str(startup_file),
+                "IFS": "/",
+                "LC_CTYPE": "UTF-8",
+                "SHELLOPTS": "xtrace",
+            }
+        )
+    )
     program = (
         "import json,os,resource,sys;"
         "print(json.dumps({'limit':resource.getrlimit(resource.RLIMIT_AS),"
@@ -4019,6 +4335,9 @@ def test_darwin_prelimit_is_exact_and_preserves_literal_adapter_argv(
         "argv": list(literal_arguments),
         "environment": environment,
     }
+    assert payload["environment"]["__CF_USER_TEXT_ENCODING"] == (
+        f"0x{os.getuid():X}:0:0"
+    )
     assert "SHLVL" not in payload["environment"]
     assert "_" not in payload["environment"]
 

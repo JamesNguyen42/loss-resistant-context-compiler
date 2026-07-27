@@ -30,6 +30,10 @@ versioning and release rules in
 - Added an isolated no-site macOS resource-limit launcher, stable `libproc`
   inference-service identity/RSS accounting, and retained non-scoreable
   manifests for post-start external process-group cleanup failures.
+- Bound the exact Darwin adapter environment before accounting and handoff,
+  including a canonical UID-qualified CoreFoundation text-encoding entry that
+  rejects conflicting caller values instead of permitting post-`execve`
+  host-derived mutation.
 - Bound external stdout/stderr evidence to runner-retained descriptors and a
   finite `cap + 1` prefix witness, preventing path substitution and unbounded
   hashing when a failed cleanup leaves a writer alive.

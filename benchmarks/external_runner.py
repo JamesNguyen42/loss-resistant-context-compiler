@@ -83,6 +83,7 @@ _PROCESS_ENVIRONMENT_MAX_NAME_BYTES = 4_096
 _PROCESS_ENVIRONMENT_MAX_VALUE_BYTES = 1_000_000
 _PROCESS_ENVIRONMENT_MAX_TOTAL_BYTES = 4_000_000
 _ENVIRONMENT_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+_DARWIN_USER_TEXT_ENCODING_NAME = "__CF_USER_TEXT_ENCODING"
 _SENSITIVE_ENVIRONMENT_NAME_RE = re.compile(
     r"(?:^|_)(?:API_?KEY|AUTH_?TOKEN|ACCESS_?TOKEN|TOKEN|SECRET|"
     r"PASSWORD|PASSWD|CREDENTIALS?|PRIVATE_?KEY)(?:$|_)",
@@ -911,6 +912,42 @@ def _default_process_environment() -> dict[str, str]:
     return environment
 
 
+def _stabilize_darwin_process_environment(source: dict[str, str]) -> None:
+    if sys.platform != "darwin":
+        return
+    getuid = getattr(os, "getuid", None)
+    if getuid is None:
+        raise ExternalRunnerError(
+            "could not bind the Darwin CoreFoundation environment"
+        )
+    try:
+        user_id = getuid()
+    except OSError as exc:
+        raise ExternalRunnerError(
+            "could not bind the Darwin CoreFoundation environment"
+        ) from exc
+    if (
+        isinstance(user_id, bool)
+        or not isinstance(user_id, int)
+        or user_id < 0
+        or user_id > 0x7FFFFFFF
+    ):
+        raise ExternalRunnerError(
+            "could not bind the Darwin CoreFoundation environment"
+        )
+
+    value = f"0x{user_id:X}:0:0"
+    if (
+        _DARWIN_USER_TEXT_ENCODING_NAME in source
+        and source[_DARWIN_USER_TEXT_ENCODING_NAME] != value
+    ):
+        raise ExternalRunnerError(
+            "Darwin __CF_USER_TEXT_ENCODING must bind the current "
+            "user and fixed encoding fields"
+        )
+    source[_DARWIN_USER_TEXT_ENCODING_NAME] = value
+
+
 def _prepare_process_environment(
     environment: Mapping[str, str] | None,
 ) -> tuple[dict[str, str], ProcessEnvironmentEvidence]:
@@ -919,6 +956,7 @@ def _prepare_process_environment(
         if environment is None
         else dict(environment)
     )
+    _stabilize_darwin_process_environment(source)
     if len(source) > _PROCESS_ENVIRONMENT_MAX_VARIABLES:
         raise ExternalRunnerError(
             "environment exceeds the variable-count limit"

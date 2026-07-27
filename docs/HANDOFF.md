@@ -1047,7 +1047,13 @@ lower quantile before results are observed.
   adapter argv remain quoted positional parameters and are never
   shell-interpreted. A bounded canonical anonymous-FD payload carries the exact
   adapter environment with byte-count and SHA-256 verification. The isolated
-  no-site (`-I -S`) verifier first requires exact inherited `RLIMIT_AS`;
+  Darwin normalizer reserves `__CF_USER_TEXT_ENCODING` as `0x{uid:X}:0:0`
+  before bounds and hashing; a conflicting caller value fails closed. This
+  counted, hashed entry prevents CoreFoundation's default-text-encoding initializer
+  from replacing that environment entry with a host/home-derived value after
+  `execve`. Evidence covers the exact mapping passed to `execve`, not
+  later mutations by arbitrary runtime code. The no-site (`-I -S`) verifier first
+  requires exact inherited `RLIMIT_AS`;
   validates the descriptor, file, and expected size; reads, scrubs, truncates,
   and closes the handoff; validates the retained in-memory length, SHA-256, and
   protocol; applies byte-exact `RLIMIT_FSIZE`; canonically decodes the

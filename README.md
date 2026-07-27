@@ -1211,8 +1211,14 @@ and its control fields are runner-generated. It forwards the isolated no-site
 without evaluating adapter
 text. The runner passes a bounded canonical encoding of the exact adapter
 environment through an anonymous, unlinked regular-file descriptor, together
-with its byte count and SHA-256 digest. The verifier first requires the exact
-inherited `RLIMIT_AS`. It then validates the descriptor, file, and expected
+with its byte count and SHA-256 digest. Before bounds and hashing on Darwin, the
+runner reserves `__CF_USER_TEXT_ENCODING` as `0x{uid:X}:0:0`; a conflicting
+caller value fails closed. The counted, hashed entry prevents CoreFoundation's
+default-text-encoding initializer from replacing that environment entry with a
+host/home-derived value after `execve`. Evidence covers the
+exact mapping passed to `execve`, not later mutations by arbitrary runtime code.
+The verifier first requires the exact inherited `RLIMIT_AS`. It then validates
+the descriptor, file, and expected
 size; reads, scrubs, truncates, and closes the handoff; validates the retained
 in-memory length, SHA-256, and protocol; applies byte-exact `RLIMIT_FSIZE`;
 canonically decodes the environment; and uses `execve` with the literal adapter
