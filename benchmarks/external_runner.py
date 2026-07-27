@@ -3177,15 +3177,19 @@ def _terminate_posix_process_group(
                 exc.errno == errno.EPERM
                 and sys.platform == "darwin"
                 and process is not None
-                and direct_process_exited
             ):
-                prove_darwin_process_group_all_zombies(
-                    process_group_id,
-                    expected_leader_pid=process.pid,
-                    error_type=ExternalRunnerError,
-                    termination_signal_delivered=True,
-                )
-                return
+                if not direct_process_exited:
+                    direct_process_exited = _posix_process_exited_without_reaping(
+                        process
+                    )
+                if direct_process_exited:
+                    prove_darwin_process_group_all_zombies(
+                        process_group_id,
+                        expected_leader_pid=process.pid,
+                        error_type=ExternalRunnerError,
+                        termination_signal_delivered=True,
+                    )
+                    return
             raise ExternalRunnerError(
                 "could not verify the adapter process group after SIGTERM"
             ) from exc

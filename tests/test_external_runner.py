@@ -65,13 +65,14 @@ from tests.protocol_fixtures import (
 )
 
 FIXTURE_ADAPTER_REVISION = "a" * 40
-# CPython on Darwin maps more than 256 MiB before adapter code runs. Keep the
-# functional subprocess tests hard-bounded without confusing runtime startup
-# address space with adapter behavior. The launcher contract test below still
-# verifies exact propagation of a deliberately small 256 MiB ceiling.
+# Hosted Darwin arm64 maps hundreds of GiB before adapter code runs. Keep the
+# functional subprocess tests at a finite 1 TiB ceiling above runtime startup
+# mappings without confusing those mappings with adapter behavior. The launcher
+# contract test below still verifies exact propagation of a 256 MiB ceiling.
 _FUNCTIONAL_ADAPTER_MEMORY_MB = (
-    32_768 if sys.platform == "darwin" else 256
+    1_048_576 if sys.platform == "darwin" else 256
 )
+_LAUNCHER_TEST_EXECUTABLE = str(Path(sys.executable).resolve())
 
 
 @pytest.mark.parametrize(
@@ -1689,7 +1690,10 @@ def test_external_command_environment_evidence_matches_adapter_observation(
     ]
     environment = external_runner_module._default_process_environment()
     environment["CTXC_ENVIRONMENT_PROBE"] = "literal=one\nSnowman: \u2603"
+    # Prevent CPython's PEP 538 startup from rewriting the observer environment.
+    environment["PYTHONCOERCECLOCALE"] = "0"
     environment["LC_CTYPE"] = "UTF-8"
+
     expected_environment, _expected_evidence = (
         external_runner_module._prepare_process_environment(environment)
     )
@@ -1714,6 +1718,8 @@ def test_external_command_environment_evidence_matches_adapter_observation(
     assert manifest.process_succeeded
     assert manifest.candidate_valid
     assert observed_environment == expected_environment
+    assert observed_environment["PYTHONCOERCECLOCALE"] == "0"
+    assert observed_environment["LC_CTYPE"] == "UTF-8"
     assert manifest.process_environment == capture_process_environment_evidence(
         observed_environment
     )
@@ -3233,6 +3239,37 @@ def test_darwin_launch_context_uses_empty_supervisor_environment_and_closes_hand
     assert environment == {"CTXC_EMPTY": "", "CTXC_ENV": "literal=value"}
 
 
+def test_darwin_limit_launcher_rejects_relative_adapter_executable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_resource = ModuleType("resource")
+    monkeypatch.setitem(sys.modules, "resource", fake_resource)
+
+    def fail_after_contract(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("relative executable must fail before resource access")
+
+    monkeypatch.setattr(external_runner_module.os, "fstat", fail_after_contract)
+    monkeypatch.setattr(external_runner_module.os, "execve", fail_after_contract)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "darwin-limit-launcher",
+            external_runner_module._DARWIN_LIMIT_LAUNCHER_PROTOCOL,
+            "1",
+            "1",
+            "17",
+            str(len(external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL)),
+            "0" * 64,
+            "--",
+            "runtime",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="invalid Darwin limit-launcher contract"):
+        exec(external_runner_module._DARWIN_LIMIT_LAUNCHER, {})
+
+
 def test_darwin_limit_launcher_rechecks_memory_and_sets_exact_file_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3293,7 +3330,7 @@ def test_darwin_limit_launcher_rechecks_memory_and_sets_exact_file_limit(
             str(handoff[1]),
             handoff[2],
             "--",
-            "/usr/bin/runtime",
+            _LAUNCHER_TEST_EXECUTABLE,
             "adapter.py",
         ],
     )
@@ -3305,8 +3342,8 @@ def test_darwin_limit_launcher_rechecks_memory_and_sets_exact_file_limit(
     ]
     assert executed == [
         (
-            "/usr/bin/runtime",
-            ["/usr/bin/runtime", "adapter.py"],
+            _LAUNCHER_TEST_EXECUTABLE,
+            [_LAUNCHER_TEST_EXECUTABLE, "adapter.py"],
             expected_environment,
         )
     ]
@@ -3534,7 +3571,7 @@ def test_darwin_limit_launcher_rejects_untrusted_environment_payload(
             str(handoff[1]),
             handoff[2],
             "--",
-            "/usr/bin/runtime",
+            _LAUNCHER_TEST_EXECUTABLE,
         ],
     )
 
@@ -3590,7 +3627,7 @@ def test_darwin_limit_launcher_rejects_environment_size_bounds(
             raw_size,
             "0" * 64,
             "--",
-            "/usr/bin/runtime",
+            _LAUNCHER_TEST_EXECUTABLE,
         ],
     )
 
@@ -3637,7 +3674,7 @@ def test_darwin_limit_launcher_retains_environment_consume_io_failure(
             str(len(payload)),
             hashlib.sha256(payload).hexdigest(),
             "--",
-            "/usr/bin/runtime",
+            _LAUNCHER_TEST_EXECUTABLE,
         ],
     )
 
@@ -3687,7 +3724,7 @@ def test_darwin_limit_launcher_rejects_invalid_descriptor_bounds(
             str(len(external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL)),
             "0" * 64,
             "--",
-            "/usr/bin/runtime",
+            _LAUNCHER_TEST_EXECUTABLE,
         ],
     )
 
@@ -3754,7 +3791,7 @@ def test_darwin_limit_launcher_rejects_inexact_prelimited_memory(
             str(len(external_runner_module._DARWIN_ENVIRONMENT_HANDOFF_PROTOCOL)),
             "a" * 64,
             "--",
-            "/usr/bin/runtime",
+            _LAUNCHER_TEST_EXECUTABLE,
         ],
     )
 
@@ -3819,7 +3856,7 @@ def test_darwin_limit_launcher_rejects_file_hard_limit_clamping(
             str(handoff[1]),
             handoff[2],
             "--",
-            "/usr/bin/runtime",
+            _LAUNCHER_TEST_EXECUTABLE,
         ],
     )
 
@@ -3889,7 +3926,7 @@ def test_darwin_limit_launcher_rejects_limit_application_failure_before_exec(
             str(handoff[1]),
             handoff[2],
             "--",
-            "/usr/bin/runtime",
+            _LAUNCHER_TEST_EXECUTABLE,
         ],
     )
 
@@ -3936,7 +3973,7 @@ def test_darwin_prelimit_is_exact_and_preserves_literal_adapter_argv(
         max_stdout_bytes=1_048_576,
         max_stderr_bytes=1_048_576,
         max_candidate_bytes=1_048_576,
-        max_memory_mb=32_768,
+        max_memory_mb=_FUNCTIONAL_ADAPTER_MEMORY_MB,
     )
     with external_runner_module._adapter_process_launch_context(
         [
@@ -3976,7 +4013,7 @@ def test_darwin_prelimit_is_exact_and_preserves_literal_adapter_argv(
     )
     assert completed.stderr == b""
     payload = json.loads(completed.stdout)
-    memory_bytes = 32_768 * 1024 * 1024
+    memory_bytes = _FUNCTIONAL_ADAPTER_MEMORY_MB * 1024 * 1024
     assert payload == {
         "limit": [memory_bytes, memory_bytes],
         "argv": list(literal_arguments),
@@ -4180,6 +4217,144 @@ def test_darwin_group_eperm_after_term_requires_proof_without_reaping(
         ("waitid", process.pid),
         ("killpg", 0),
         ("proof", "all-zombie"),
+    ]
+
+
+def test_darwin_post_sigterm_probe_eperm_reobserves_before_proof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int | str]] = []
+    observations = iter((False, False, True))
+
+    class RacingProcess:
+        pid = 42
+        returncode: int | None = None
+
+    process = RacingProcess()
+
+    def exited_without_reaping(observed_process: object) -> bool:
+        assert observed_process is process
+        events.append(("observe", process.pid))
+        return next(observations)
+
+    def killpg(process_group_id: int, requested_signal: int) -> None:
+        assert process_group_id == process.pid
+        events.append(("killpg", requested_signal))
+        if requested_signal == 0:
+            raise PermissionError(
+                errno.EPERM,
+                "injected racing zombie-leader denial",
+            )
+        assert requested_signal == signal.SIGTERM
+
+    def prove(
+        process_group_id: int,
+        *,
+        expected_leader_pid: int,
+        error_type: type[RuntimeError],
+        termination_signal_delivered: bool,
+    ) -> None:
+        assert process_group_id == expected_leader_pid == process.pid
+        assert error_type is ExternalRunnerError
+        assert termination_signal_delivered is True
+        events.append(("proof", "all-zombie"))
+
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "killpg",
+        killpg,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        exited_without_reaping,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "prove_darwin_process_group_all_zombies",
+        prove,
+    )
+
+    external_runner_module._terminate_posix_process_group(
+        process.pid,
+        process=process,  # type: ignore[arg-type]
+    )
+
+    assert events == [
+        ("observe", process.pid),
+        ("killpg", signal.SIGTERM),
+        ("observe", process.pid),
+        ("killpg", 0),
+        ("observe", process.pid),
+        ("proof", "all-zombie"),
+    ]
+
+
+def test_darwin_post_sigterm_probe_eperm_rejects_fresh_live_leader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int]] = []
+    observations = iter((False, False, False))
+
+    class LiveProcess:
+        pid = 43
+        returncode: int | None = None
+
+    process = LiveProcess()
+
+    def exited_without_reaping(observed_process: object) -> bool:
+        assert observed_process is process
+        events.append(("observe", process.pid))
+        return next(observations)
+
+    def killpg(process_group_id: int, requested_signal: int) -> None:
+        assert process_group_id == process.pid
+        events.append(("killpg", requested_signal))
+        if requested_signal == 0:
+            raise PermissionError(
+                errno.EPERM,
+                "injected live-leader denial",
+            )
+        assert requested_signal == signal.SIGTERM
+
+    def fail_proof(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("a freshly observed live leader must reject proof")
+
+    monkeypatch.setattr(external_runner_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "killpg",
+        killpg,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        exited_without_reaping,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "prove_darwin_process_group_all_zombies",
+        fail_proof,
+    )
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="could not verify the adapter process group after SIGTERM",
+    ):
+        external_runner_module._terminate_posix_process_group(
+            process.pid,
+            process=process,  # type: ignore[arg-type]
+        )
+
+    assert events == [
+        ("observe", process.pid),
+        ("killpg", signal.SIGTERM),
+        ("observe", process.pid),
+        ("killpg", 0),
+        ("observe", process.pid),
     ]
 
 

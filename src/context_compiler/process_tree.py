@@ -20,7 +20,7 @@ _DARWIN_PROC_PIDTBSDINFO_INCLUDE_ZOMBIES = 1
 _DARWIN_PROC_BSD_INFO_SIZE = 136
 _DARWIN_PROCESS_STATUS_ZOMBIE = 5
 _DARWIN_PROCESS_GROUP_STABILITY_ATTEMPTS = 8
-_DARWIN_SIGNAL_TRANSITION_ATTEMPTS = 64
+_DARWIN_SIGNAL_TRANSITION_ATTEMPTS = 512
 _DARWIN_SIGNAL_TRANSITION_POLL_SECONDS = 0.01
 _PROCESS_GROUP_GRACE_SECONDS = 0.5
 _POSIX_SIGKILL = getattr(signal, "SIGKILL", 9)
@@ -876,18 +876,20 @@ def terminate_anchored_posix_process_group(
         except ProcessLookupError:
             return
         except PermissionError as exc:
-            if (
-                exc.errno == errno.EPERM
-                and sys.platform == "darwin"
-                and direct_process_exited
-            ):
-                prove_darwin_process_group_all_zombies(
-                    process.pid,
-                    expected_leader_pid=process.pid,
-                    error_type=error_type,
-                    termination_signal_delivered=True,
-                )
-                return
+            if exc.errno == errno.EPERM and sys.platform == "darwin":
+                if not direct_process_exited:
+                    direct_process_exited = posix_process_exited_without_reaping(
+                        process,
+                        error_type=error_type,
+                    )
+                if direct_process_exited:
+                    prove_darwin_process_group_all_zombies(
+                        process.pid,
+                        expected_leader_pid=process.pid,
+                        error_type=error_type,
+                        termination_signal_delivered=True,
+                    )
+                    return
             raise error_type(
                 "could not verify the owned POSIX process group after SIGTERM"
             ) from exc

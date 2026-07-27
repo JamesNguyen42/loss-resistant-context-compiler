@@ -400,6 +400,41 @@ def test_darwin_all_zombie_proof_retries_a_delivered_signal_transition(
     assert sleeps == [process_tree._DARWIN_SIGNAL_TRANSITION_POLL_SECONDS]
 
 
+def test_darwin_all_zombie_proof_accepts_transition_at_retry_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leader_pid = 4431
+    member_pid = 4432
+    live_attempts = process_tree._DARWIN_SIGNAL_TRANSITION_ATTEMPTS - 1
+    zombie = process_tree._DARWIN_PROCESS_STATUS_ZOMBIE
+    fake_libproc = _FakeDarwinLibproc(
+        leader_pid,
+        [(leader_pid, member_pid) for _ in range(live_attempts + 2)],
+        statuses={
+            member_pid: (2,) * live_attempts
+            + (
+                zombie,
+                zombie,
+            ),
+        },
+    )
+    sleeps: list[float] = []
+    _install_fake_darwin_libproc(monkeypatch, fake_libproc)
+    monkeypatch.setattr(process_tree.time, "sleep", sleeps.append)
+
+    process_tree.prove_darwin_process_group_all_zombies(
+        leader_pid,
+        expected_leader_pid=leader_pid,
+        termination_signal_delivered=True,
+    )
+
+    assert fake_libproc.list_calls == process_tree._DARWIN_SIGNAL_TRANSITION_ATTEMPTS + 1
+    assert len(sleeps) == live_attempts
+    assert set(sleeps) == {
+        process_tree._DARWIN_SIGNAL_TRANSITION_POLL_SECONDS
+    }
+
+
 def test_darwin_all_zombie_proof_rechecks_an_omitted_live_signal_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

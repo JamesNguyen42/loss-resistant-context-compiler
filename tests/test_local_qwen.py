@@ -834,6 +834,74 @@ def test_darwin_initial_sigterm_eperm_reobserves_and_proves_exited_leader(
     ]
 
 
+def test_darwin_post_sigterm_probe_eperm_reobserves_before_proof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int]] = []
+    observations = iter((False, False, True))
+
+    class RacingLeader:
+        pid = 4331
+        returncode = None
+
+    def observe(
+        process: object,
+        *,
+        error_type: type[RuntimeError],
+    ) -> bool:
+        assert process is leader
+        assert error_type is LocalQwenError
+        events.append(("observe", RacingLeader.pid))
+        return next(observations)
+
+    def signal_group(process_group_id: int, requested_signal: int) -> None:
+        assert process_group_id == RacingLeader.pid
+        events.append(("signal", requested_signal))
+        if requested_signal == 0:
+            raise PermissionError(errno.EPERM, "Darwin zombie-only group")
+        assert requested_signal == signal.SIGTERM
+
+    def prove_group(
+        process_group_id: int,
+        *,
+        expected_leader_pid: int,
+        error_type: type[RuntimeError],
+        termination_signal_delivered: bool,
+    ) -> None:
+        assert process_group_id == expected_leader_pid == RacingLeader.pid
+        assert error_type is LocalQwenError
+        assert termination_signal_delivered is True
+        events.append(("proof", process_group_id))
+
+    leader = RacingLeader()
+    monkeypatch.setattr(process_tree.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        process_tree,
+        "posix_process_exited_without_reaping",
+        observe,
+    )
+    monkeypatch.setattr(process_tree.os, "killpg", signal_group, raising=False)
+    monkeypatch.setattr(
+        process_tree,
+        "prove_darwin_process_group_all_zombies",
+        prove_group,
+    )
+
+    process_tree.terminate_anchored_posix_process_group(  # type: ignore[arg-type]
+        leader,
+        error_type=LocalQwenError,
+    )
+
+    assert events == [
+        ("observe", RacingLeader.pid),
+        ("signal", signal.SIGTERM),
+        ("observe", RacingLeader.pid),
+        ("signal", 0),
+        ("observe", RacingLeader.pid),
+        ("proof", RacingLeader.pid),
+    ]
+
+
 @pytest.mark.parametrize("final_signal_denied", [False, True])
 def test_darwin_final_sigkill_requires_proof_and_rejects_a_live_survivor(
     monkeypatch: pytest.MonkeyPatch,
