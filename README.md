@@ -39,6 +39,7 @@ meaning can be compressed without loss.
 | External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
+| OpenHands integration | Separately packaged `ctxc-openhands` `0.1.0a1` draft alpha; reviewed offline fake-runtime foundation only; live execution blocked |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
 | Production readiness | Not production-ready |
@@ -164,6 +165,11 @@ The repository currently includes:
   operations, a strict versioned JSONL process boundary, immutable
   `SourceEvent` mapping, self-hashed `ContextBundle` output, and deterministic
   checkpoints;
+- a separately packaged `ctxc-openhands` draft alpha that leaves the core
+  dependency-free, pins one exact OpenHands identity, maps a closed 18-class
+  event inventory, retains immutable source history in SQLite WAL, and
+  exercises compaction, recovery, rehydration, and exact fake-request replay
+  without claiming a successful live OpenHands run;
 - seventeen packaged connector schemas, six-operation golden JSONL, 66
   intentional negative vectors, and a standalone conformance runner that proves
   in-process and stdio semantic equivalence;
@@ -760,6 +766,12 @@ NaN/infinity, excessive depth, and request lines above the configured byte
 limit fail closed. A protocol error produces an error response and the service
 continues with the next line.
 
+Connector failures expose only a closed category/code pair, a fixed public
+message, retryability, and a normalized public exception type. Raw exception
+text, concrete Python exception classes, paths, provider payloads, source
+content, and credentials are never serialized into the response envelope.
+Clients must branch on `error.code`, not parse `error.message`.
+
 For example, these two physical input lines query capabilities and compile one
 event:
 
@@ -902,6 +914,110 @@ An issued connector certificate says exactly
 recognized by the current detectors. It does not claim semantic completeness,
 that every natural-language requirement was detected, or that a self-hashed
 bundle authenticates its producer.
+
+## Separately packaged OpenHands alpha
+
+[`ctxc-openhands`](integrations/openhands/README.md) is an isolated
+`0.1.0a1` package under `integrations/openhands/`. Ordinary
+`loss-resistant-context-compiler` installation and every standalone `ctxc`
+Python/CLI path remain dependency-free and do not import OpenHands. Importing
+`ctxc_openhands` also defers all host imports until its exact compatibility
+gate passes.
+
+The reviewed identity is OpenHands `1.8.0` at
+`bc26df351dd5d833a95131556dbe2da69af82253` with
+`openhands-sdk`, `openhands-tools`, and `openhands-agent-server` `1.27.0` at
+`904279edf2df5fa12d7caecc7576f62659b2e2dd`, on CPython 3.12 or 3.13. The
+[machine-readable pin](integrations/openhands/compatibility/openhands-1.8.0.json)
+and [closed event map](integrations/openhands/docs/EVENT_AUTHORITY_MAP.md) bind
+that review. Unknown top-level event classes, kinds, or fields fail closed.
+Host `source` and message `role` values are claims, not authentication;
+assistant, tool, retrieval, attachment, file/search, hook, and delegated-agent
+output remains untrusted unless an independently issued event-bound authority
+receipt verifies it. An otherwise valid event with an unknown explicit tool
+name and no serialized nested kind remains generic and cannot be
+authority-promoted. An unknown serialized nested action/observation kind fails
+closed, and every known nested kind must match the explicit tool category.
+
+The callback runs before the host persistence callback, never raises into the
+host, and poisons later ingestion and dispatch after its first refusal. Poison
+clears only after exact-order reconciliation against the complete persisted
+host EventLog. Action/result and assistant tool-call/result pairs remain
+atomic: call id, tool name, and action id where available must match, and an
+incomplete, duplicate, reversed, or cross-family group blocks compaction.
+
+The integration store keeps source events append-only and moves a candidate
+through `prepared` -> `verified` -> `committed` -> `active`. Only the verified
+`active` generation is visible. Source-head, parent-generation, and
+active-epoch compare-and-swap checks make a crash expose the old or new
+verified generation, while `superseded` and `rolled_back` generations remain
+retained. Exact span rehydration always returns `untrusted-evidence`; byte or
+span fidelity does not establish truth, authority, or instruction priority.
+The qualified store boundary is a local, non-cloud-synchronized,
+non-symbolic filesystem. Schema 2 is required and has no automatic repair or
+migration. Evidence producers exclusively create new databases/reports;
+diagnostic commands use `require_existing=True`, so a typo cannot initialize a
+store, and backups never overwrite an existing destination.
+
+The immutable request ledger accounts for prompts, verified memory, recent
+tail, current turn, retrieval, attachments, tool schemas, provider framing,
+reserved output, and safety margin, and refuses hard-limit overflow. Its
+bundled tokenizer is exact only for the offline canonical-UTF-8-byte fake
+protocol. `character-estimate-v1` remains estimated. Real OpenHands `run()` and
+`arun()` are intentionally refused because no stable public hook exposes both
+the final immutable provider request and its exact tokenizer for replay.
+
+From a source checkout, the offline-only preflight and crash scenario are:
+
+```console
+PYTHONPATH=src:integrations/openhands/src python -m ctxc_openhands.cli doctor
+PYTHONPATH=src:integrations/openhands/src python -m ctxc_openhands.cli offline-scenario --database .artifacts/openhands-offline.sqlite --output .artifacts/openhands-offline.json
+```
+
+The scenario forces three compactions and one activation crash/restart and
+checks exact retention of its PostgreSQL and authentication constraints. It
+uses the offline fake runtime, imports no OpenHands dependency, makes no
+network request, and uses no paid service. Process-level network access is not
+disabled by the Python runner, so the report honestly retains
+`isolation.network_isolation_enforced: false`; only separately retained
+runtime controls such as the container demo's `--network=none` can evidence
+process isolation. It is not a recorded live demonstration.
+`doctor --require-live` is expected to exit 2 with
+`hash-pinned-wheelhouse-absent` while the complete reviewed hash-pinned offline
+dependency closure and supported immutable final-request/exact-tokenizer hook
+are absent. Retain that failure rather than relabeling ordinary `doctor`
+success as live readiness.
+
+Operational commands include `doctor`, `explain`, `replay`, `recover`,
+`rehydrate`, `offline-scenario`, `soak`, `fault-campaign`, and
+`verify-evidence`. Evidence JSON is bounded and self-hashed, but only:
+
+```console
+ctxc-openhands verify-evidence --report REPORT --database DATABASE
+```
+
+can exit 0 after matching the frozen SQLite SHA-256/size, WAL-checkpoint
+binding, source/generation/integrity state, and retained request ledgers.
+Omitting the database is an intentional JSON-only diagnostic that reports
+`passed: false`, has scope `json-only`, and exits 2. Preserve each report and
+its exact SQLite database together at non-overwriting paths. The captured CLI
+argument vector is reconciled with report parameters; it does not attest the
+shell, executable, environment, container, or operator.
+
+Local offline validation does not establish release readiness. Hosted
+qualification and durable evidence retention remain pending. The integration
+wheel reproduced byte-identically in the local candidate build, but the raw
+Setuptools sdist did not; hash-pinned build-input closure, a candidate SBOM,
+signatures, and provenance attestations remain separate red gates.
+
+See the
+[operator runbook](integrations/openhands/docs/RUNBOOK.md),
+[compatibility policy](integrations/openhands/compatibility/README.md), and
+[release checklist](integrations/openhands/docs/RELEASE_CHECKLIST.md), the
+[offline container demo](integrations/openhands/demo/README.md), and the
+[draft upstream hook RFC](integrations/openhands/docs/UPSTREAM_RFC.md). No
+offline test, replay, scenario, soak, certificate, or self-hash establishes
+semantic completeness, live compatibility, or superiority.
 
 ## Python API
 
@@ -1401,6 +1517,10 @@ the commands above for the current revision and environment.
 - [Compiled-artifact schema compatibility](docs/SCHEMA_COMPATIBILITY.md)
 - [Related work](docs/RELATED_WORK.md)
 - [Exact local Qwen integration](docs/LOCAL_QWEN.md)
+- [Separately packaged OpenHands alpha](integrations/openhands/README.md)
+- [OpenHands event and authority map](integrations/openhands/docs/EVENT_AUTHORITY_MAP.md)
+- [OpenHands operator runbook](integrations/openhands/docs/RUNBOOK.md)
+- [OpenHands release checklist](integrations/openhands/docs/RELEASE_CHECKLIST.md)
 - [LRCBench harness notes](benchmarks/README.md)
 - [Draft external comparison protocol](benchmarks/protocols/external-comparison-v1.md)
 - [Machine-verifiable external protocol](benchmarks/protocols/external-comparison-v1.json)

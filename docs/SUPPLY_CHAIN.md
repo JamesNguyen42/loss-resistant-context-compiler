@@ -111,6 +111,14 @@ content, or installed bytes changed. A failed candidate pathname is retained
 rather than risking deletion of a concurrently substituted file. Without the
 epoch the hook preserves normal Setuptools behavior.
 
+That normalization applies only to the core distribution.
+`integrations/openhands` uses `setuptools.build_meta` directly. In the
+2026-07-27 local candidate diagnostic, repeated integration wheels were
+byte-identical but repeated sdists differed because gzip/member timestamps
+varied across 17 generated members. That result remains a failed
+integration-sdist reproducibility gate; no artifact was rewritten or relabeled
+to manufacture equality.
+
 CI fixes `SOURCE_DATE_EPOCH` and `PYTHONHASHSEED`, builds wheel and sdist from
 two clean checkouts in one job with pip 25.0.1, Setuptools 83.0.0, and wheel
 0.47.0, records Python and the installed tool inventory, and requires the

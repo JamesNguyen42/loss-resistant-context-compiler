@@ -15,6 +15,10 @@ alpha implementation. It is not a security certification.
 - source ordering and temporal state;
 - active-context budget and benchmark evidence;
 - potentially sensitive raw history stored in source records or archives.
+- OpenHands host EventLog/source parity, atomic tool-call/result linkage, and
+  callback failure diagnostics;
+- verified generation visibility and immutable final-request ledgers in the
+  separate integration store.
 
 ## Trust boundaries
 
@@ -30,7 +34,14 @@ The compiler assumes:
    untrusted data;
 6. connector checkpoints, explicit source records, and archives carrying a
    previously admitted authority marker are protected host state and do not
-   arrive from an untrusted bearer.
+   arrive from an untrusted bearer;
+7. an OpenHands `source` or message `role` literal is not authentication;
+   authority exists only after an independently issued event-bound receipt
+   verifies under a reviewed issuer policy;
+8. the separate SQLite-WAL store runs on a correct local non-symbolic
+   filesystem, and neither SQLite nor the Python process is fully compromised;
+9. the canonical byte tokenizer and fake runtime establish exactness only for
+   their offline protocol, not for a real OpenHands provider request.
 
 If an attacker controls both an artifact and the “trusted” source history used
 to verify it, hashes cannot recover the original truth.
@@ -62,7 +73,16 @@ to verify it, hashes cannot recover the original truth.
 | Budget pressure removes requirements | Protected kinds bypass optional selection; overflow is explicit or strict-fail | Enough protected content can exceed the downstream model’s hard context window |
 | Source/artifact path redirection or resource exhaustion | Serialized source/artifact paths require stable regular files, reject linked/reparse ancestors, freeze and recheck every ancestor identity, use POSIX parent-relative access, use no-follow flags and pre/open identity checks, retry bounded atomic replacement races, compare post-read content metadata, and never decompress input; shared positive limits cap serialized source/archive bytes, physical line length, JSON depth, record count, per-record and total canonical size across loaders, compiler, verifier, and archive; fixed 1,024/128/256-character id/role/timestamp ceilings bound identity-field replication; strict JSON rejects ambiguous/non-finite input | Direct caller streams remain host trust boundaries. On hosts without parent-relative APIs, a privileged rename inside pathname resolution can cause an unintended descriptor to be opened before the post-open ancestor check rejects it. Python objects may already be allocated before a direct API call; accepted maxima and derived-item multiplicity are not process-RSS limits |
 | Benchmark evidence resource exhaustion or parser ambiguity | Reports, corpora, candidates, and manifests share ancestor-guarded bounded regular-file hashing, pre/open/final file snapshots, and strict UTF-8 JSON decoding with duplicate-key, non-finite, byte, line, and depth rejection | Direct already-decoded Python objects are caller allocations; configured file limits do not cap total verifier RSS |
-| Connector contract ambiguity or schema-only trust | Seventeen bounded Draft 2020-12 schemas, strict runtime decoding, six golden stateful transcripts, 66 negative vectors, and in-process/stdio semantic-equivalence checks constrain the wire shape | JSON Schema acceptance is structural. It does not prove source authority, provenance truth, replay validity, checkpoint freshness, protected completeness, or digest authenticity; runtime verification remains authoritative |
+| Connector contract ambiguity, schema-only trust, or exception-data disclosure | Seventeen bounded Draft 2020-12 schemas, strict runtime decoding, six golden stateful transcripts, 66 negative vectors, in-process/stdio semantic-equivalence checks, and ten schema-closed error variants constrain the wire shape; fixed public messages and normalized public exception types prevent raw exception text from crossing the boundary | JSON Schema acceptance is structural. It does not prove source authority, provenance truth, replay validity, checkpoint freshness, protected completeness, or digest authenticity; trusted in-process diagnostics remain a host responsibility and runtime verification remains authoritative |
+| Unknown or malformed OpenHands event enters durable history | The separate adapter requires one of 18 exact top-level classes, matching concrete class and serialized kind, exact reviewed fields, bounded canonical JSON, and explicit durable/transient handling; unknown classes, kinds, and fields fail closed | The map is intentionally revision-specific. A legitimate new host event is an availability failure until reviewed, pinned, documented, and regression-tested |
+| Forged authenticated or trusted-state `SourceRecord` is passed directly to the public SQLite store | Append independently rederives the exact mapper-produced record from the canonical host event and compares role, content, receipt-bound authority, provenance, OpenHands metadata, and record identity before insertion; direct transient ingestion is refused | This protects the application API, not a database modified outside it. Receipt issuer policy and local database/filesystem integrity remain trusted boundaries |
+| OpenHands source/role spoof or authority self-promotion | Host source, message role, hook identity, and tool payload remain claims; an independent receipt binds the exact canonical event, session, id, kind, role, issuer, and optional reviewed tool. Unknown tools cannot receive authority, and only allowlisted `ObservationEvent` tools can become trusted for state | Compromise or misconfiguration of the independent issuer secret/allowlists can grant incorrect authority; hashing records the decision but cannot justify it |
+| Pre-persistence callback refusal loses parity with the host EventLog | The callback catches every failure instead of raising into the host, records the first bounded failure, and poisons later ingestion and dispatch until the complete persisted EventLog is replayed in exact order and source counts match | Correct host persistence and delivery of a complete, ordered EventLog remain host responsibilities. An incomplete or filtered reconciliation must stay blocked |
+| Tool call/result split, duplication, reordering, or family substitution | Atomic groups are re-derived from canonical events, compared with declared metadata, and require ordered matching call id, tool name, and action id where present; incomplete or inconsistent groups block compaction and active-tail reads | A host that never emits a matching result causes safe availability loss. ACP progress telemetry deliberately cannot complete an ordinary action group |
+| Crash, contention, or historical-row corruption exposes an unverified OpenHands generation | The local SQLite store uses WAL, `synchronous=FULL`, immutable source/transition/ledger triggers, independently replayed `prepared`, `verified`, `committed`, and `active` states, and source-head/parent/epoch compare-and-swap; only one verified active pointer is readable. One-transaction integrity review enumerates every retained generation/transition/ledger/operation, reconstructs source prefixes and activation epochs, and exactly replays supported request ledgers | SQLite and local filesystem correctness remain assumptions. A privileged local attacker can rewrite or replace the database and recompute self-hashes; these controls are not consensus, signatures, remote attestation, or hostile-storage containment |
+| Estimated or partial accounting is mislabeled exact, or a final request exceeds its hard limit | The fake-runtime ledger requires all eight request categories, tokenizer vector replay, component/total equality, reserves, margin, tool-schema and final-request digests, and refuses overflow. Real host `run()`/`arun()` remains refused without an exact immutable request/tokenizer hook | Exactness currently covers only the canonical-UTF-8-byte fake protocol. It says nothing exact about LiteLLM/provider wire bytes or a real model tokenizer |
+| Exact rehydration promotes malicious source text into authority | Rehydration verifies the retained source record, half-open character span, quote digest, and response self-hash, but fixes the trust label to `untrusted-evidence` and warns that fidelity is not truth or instruction priority | A downstream consumer can ignore the label and follow hostile evidence; access control and safe presentation remain integration responsibilities |
+| Version-matching OpenHands packages are mistaken for reviewed live compatibility | A self-hashed compatibility manifest binds exact host/SDK/tools/agent-server revisions, source files, artifact digests, Python versions, and retained blocker state; imports happen only after the exact gate. Manual installation cannot clear the final-request accounting refusal | No complete hash-pinned offline dependency closure or successful live demonstration exists. Self-hashes are not signatures, and private host seams may change or differ from provider wire behavior |
 | Artifact resource exhaustion | Strict bounded loaders cap raw/canonical bytes, physical lines, JSON depth, item/selection collections, provenance spans, and embedded issues before inspect or replay | Direct Python objects may already be allocated; limits do not make a self-hashed artifact trustworthy |
 | Compile/provider resource exhaustion | Built-in extraction checks an incremental item ceiling; every extractor result is bounded by item/rejection/canonical/auxiliary size, all passes share candidate/resolved/provenance ceilings, and recovery, resolution, conflict search, selection, and independent verification consume one shared item-work budget. Model responses/candidate counts and unique-literal cited-source search are separately bounded; optional whole-compile isolation and the exact-Qwen CLI transport own a POSIX process group or Windows Job Object, retain the POSIX leader until group signaling finishes, and terminate the Windows Job at the deadline | A custom extractor executes before its returned result can be bounded. Item/search work are deterministic proxies, not wall-clock or RSS caps, and do not cover every regex, token, allocation, or custom-counter cost. A deliberately daemonized POSIX child can escape its process group. Linux group-signal success does not prove that every member accepted the signal; after final macOS group signaling, cleanup requires either group disappearance or stable all-zombie evidence. Deadline job configuration uses local pickle and therefore requires trusted serializable objects |
 | Common content-secret disclosure | Optional preprocessing uses nine fixed lexical detectors, length/line-boundary-preserving masks, recomputed record hashes, explicit limits, deterministic replay, and a strict self-hashed coordinate report that omits original content-secret text and hashes | Detection is heuristic; false positives and false negatives remain. Original input enters process memory first. Metadata, ids, timestamps, PII, unknown formats, report coordinates, storage, logs, and previous artifacts are outside the redaction scope |
@@ -100,6 +120,17 @@ proof that the host authored that marker: accepting attacker-controlled,
 rehashable connector state would let the attacker assert the same authority as
 an authenticated `SourceEvent`. Protect these serialized inputs as part of the
 host boundary; they are not safe bearer credentials.
+
+The separate OpenHands adapter does not reuse a host `source` or nested role as
+an authority marker. A receipt is eligible only for reviewed model-facing,
+non-transient events and is verified against an independently configured issuer
+secret and allowlists. It binds the complete canonical event and session, so
+mutation or cross-session replay fails. Even a valid receipt cannot promote
+most event kinds to state authority: only an exact reviewed
+`ObservationEvent` tool may become `trusted_for_state=true`, and only when that
+issuer independently allowlists the tool. File, search, retrieval, attachment,
+hook, assistant, and delegated-agent text therefore remains untrusted unless a
+narrower reviewed receipt path explicitly applies.
 
 `ModelExtractor` applies the same role policies before accepting candidates.
 It also requires ordinary candidate text to equal a complete atomic cited span
@@ -185,6 +216,14 @@ The CLI's redacted source and report files are each replaced atomically, but
 the pair is not one cross-file filesystem transaction. Verify the report digest
 against the retained redacted source set before use.
 
+The OpenHands SQLite store deliberately retains complete canonical host events,
+superseded and rolled-back generations, request ledgers, and bounded callback
+failure evidence. Rehydration can reproduce exact source substrings. Apply
+redaction and access/retention policy before this boundary; the store does not
+provide encryption, secure deletion, or PII discovery. Preserve databases and
+reports for audit only in approved storage, and use SQLite-aware backup rather
+than copying a live WAL database as ordinary files.
+
 Before ingestion:
 
 - authenticate roles and minimize metadata and source identifiers;
@@ -239,6 +278,22 @@ marker. File existence is not ownership: the OS advisory lock is released when
 the descriptor closes or the process dies, while the marker remains available
 for the next writer. Do not delete or replace that marker while writers may be
 running; use a local filesystem with documented advisory-lock semantics.
+
+In the separate OpenHands alpha, callback rejection is an availability stop,
+not permission to skip the event. The callback lets host persistence continue,
+then blocks subsequent dispatch until exact EventLog reconciliation succeeds.
+Do not clear poison manually, filter a refused event, or synthesize a matching
+tool half merely to resume.
+
+A failed compile, replay, compare-and-swap, crash recovery, or hard-limit check
+leaves the candidate invisible or retained as a non-active failure; it does not
+authorize truncation or deletion of source history. Lowering reserved output or
+safety margin merely to fit is a gate weakening.
+
+Ordinary OpenHands `doctor` success means offline readiness only. The
+live-required preflight remains a retained failure, and guarded `run()`/`arun()`
+remains refused, until both the complete hash-pinned offline dependency closure
+and a supported exact final-request/tokenizer hook exist.
 
 ## Benchmark and claim threats
 
@@ -450,4 +505,10 @@ The current package does not provide:
 - protection after host or Python-process compromise;
 - guaranteed bounded process memory or runtime for adversarial extractors,
   token counters, or caller-allocated Python objects;
+- a successful live OpenHands demonstration or production compatibility claim;
+- a complete reviewed hash-pinned offline OpenHands dependency closure;
+- exact provider-wire or real-model token accounting without a stable public
+  final-immutable-request/tokenizer hook;
+- hostile or distributed SQLite storage, encrypted retention, or consensus over
+  the active generation;
 - a production incident-response or migration system.

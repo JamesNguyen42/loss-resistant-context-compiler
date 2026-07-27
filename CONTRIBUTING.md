@@ -19,6 +19,13 @@ On POSIX, use `.venv/bin/python` instead. Before editing, read `README.md`,
 `docs/RELEASE_POLICY.md`. Inspect the branch, diff, frozen evidence, and public
 API first.
 
+OpenHands integration changes also require CPython 3.12 or 3.13 and review of
+the [separate package README](integrations/openhands/README.md),
+[event-authority map](integrations/openhands/docs/EVENT_AUTHORITY_MAP.md),
+[operator runbook](integrations/openhands/docs/RUNBOOK.md),
+[compatibility policy](integrations/openhands/compatibility/README.md), and
+[release checklist](integrations/openhands/docs/RELEASE_CHECKLIST.md).
+
 ## Required engineering rules
 
 - Preserve standalone `context_compiler` and `ctxc` behavior and keep the core
@@ -33,6 +40,18 @@ API first.
 - Add a focused regression for every security, parsing, integrity, or
   concurrency change.
 - Keep stored-format changes versioned, strict, and free of silent migration.
+- Keep `ctxc-openhands` separately packaged. Do not add OpenHands or its
+  dependencies to the core graph or ordinary import path.
+- Keep unknown host events fail-closed, host source/role claims
+  unauthenticated, tool pairs atomic, source history immutable, and rehydrated
+  spans untrusted.
+- Use local, non-cloud-synchronized, non-symbolic paths for integration SQLite
+  evidence. Schema 2 has no repair/automatic migration; new reports, stores,
+  and backups must not overwrite an existing path.
+- Preserve each scenario/soak/campaign JSON report with its exact SQLite
+  database. JSON-only evidence verification must remain a failed scope, and
+  report network-isolation fields must remain false absent report-level
+  attestation.
 - Do not add assistant, model, tool, or service authorship. Repository commits
   use the sole configured `JamesNguyen42` identity and must not include
   co-author trailers.
@@ -48,8 +67,21 @@ python -m ruff check src tests benchmarks scripts conformance _ctxc_build_backen
 python -m compileall -q src benchmarks tests scripts conformance _ctxc_build_backend.py
 ```
 
+For an OpenHands integration change, install it without live dependencies and
+run its isolated checks too:
+
+```console
+python -m pip install -e integrations/openhands --no-deps
+python -m pytest -q integrations/openhands/tests
+python -m ruff check integrations/openhands/src integrations/openhands/tests integrations/openhands/scripts
+python -m compileall -q integrations/openhands/src integrations/openhands/tests integrations/openhands/scripts
+python -m ctxc_openhands.cli doctor
+```
+
 Generate exploratory reports only at temporary paths. Do not overwrite files in
-`docs/results/` or freeze a protocol based on observed comparative results.
+`docs/results/`, reuse evidence output paths, or freeze a protocol based on
+observed comparative results. Never install the `live` extra to make a blocked
+compatibility result look green.
 
 ## Pull requests
 

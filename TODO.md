@@ -47,6 +47,29 @@ raw evidence when completing benchmark work.
   `capabilities`, `ingest_source_events`, `compile_memory`, `render_context`,
   `verify_memory`, and `inspect_memory` over one strict shared versioned
   request/response JSONL envelope and `ctxc connector --stdio`.
+- [x] Add the separately packaged `ctxc-openhands` `0.1.0a1` draft-alpha
+  foundation without adding OpenHands or another dependency to the ordinary
+  core installation or import path. The implemented evidence is offline-only;
+  it is not a successful live integration claim.
+- [x] Pin one exact OpenHands/SDK/tools/agent-server identity, map a closed
+  18-class event inventory, keep host actor claims untrusted without an
+  independent receipt, poison dispatch after callback refusal, preserve atomic
+  tool pairs, and retain source history through the SQLite-WAL
+  `prepared` -> `verified` -> `committed` -> `active` transaction.
+- [x] Add exact fake-runtime request replay, hard-limit refusal, source-span
+  rehydration as `untrusted-evidence`, recovery diagnostics, and an offline
+  three-compaction crash/restart scenario with the live blocker retained.
+- [x] Add bounded, strict, self-hashed scenario/soak evidence contracts and a
+  standalone `verify-evidence` command whose JSON-only scope remains exit 2;
+  only reconciliation against the exact checkpointed SQLite database can pass.
+- [x] Add deterministic 10,000-event/100-compaction and seeded 1,024-schedule
+  offline producers with exclusive non-overwriting database/report paths.
+  One post-freeze local candidate set ran once and passed fresh DB-backed
+  verification: the three-compaction scenario, 10,000/100 soak, and
+  1,024-schedule campaign all exited 0 with no SQLite sidecars. The exact files
+  remain local temporary evidence until the hosted artifact is retained; every
+  earlier failed attempt remains a failed record. These runners are not live
+  OpenHands or production-readiness proof.
 - [x] Keep ordinary API and CLI behavior independent of `localai-contracts`
   and every sibling project; accept structural contract objects in-process and
   plain versioned JSON across a process boundary.
@@ -621,11 +644,31 @@ of sublinear compile cost.
   isolation. Current stdio sessions are sequential and in-memory, and one
   configured archive is owned by one connector session.
 
+The separate OpenHands alpha has a local SQLite-WAL multi-process store with
+source-head and active-generation compare-and-swap. That integration-specific
+store does not complete the framework-neutral connector item above and is not
+evidence of sublinear compilation.
+
 ### Agent framework adapters
 
 - [x] Define a small framework-neutral integration protocol with versioned
   SourceEvent, ContextBundle, checkpoint, and strict request/response envelopes.
 - [ ] Add at least one production-quality coding-agent integration.
+  `ctxc-openhands` is a separately packaged offline draft alpha, but this gate
+  remains open: the complete hash-pinned offline dependency closure and a
+  stable public final-immutable-request/exact-tokenizer hook are absent, so
+  real `run()`/`arun()` and the recorded live demonstration remain blocked.
+- [x] Run one post-freeze, DB-backed-verified scenario, deterministic
+  10,000-event/100-compaction soak, and 1,024-schedule crash/concurrency
+  campaign at exclusive local paths. Do not replace the retained failed
+  attempts or infer live readiness from an offline pass.
+- [ ] Complete the hosted Linux, Windows, and macOS Python 3.12/3.13 matrix and
+  retain the passing evidence pair as a hosted artifact. Do not describe the
+  candidate as cross-platform validated while any required lane is pending or
+  red, and do not call temporary local evidence durable retention.
+- [x] Pin and review one exact OpenHands identity and implement its closed
+  top-level event, authority, atomicity, callback, recovery, and offline fake
+  runtime contracts without importing OpenHands through the core package.
 - [ ] Add adapters for selected popular agent runtimes after verifying their
   role and event semantics.
 - [x] Map tool, developer, system, assistant, and user authority explicitly at
@@ -636,21 +679,30 @@ of sublinear compile cost.
   confirmed-fact-only.
 - [ ] Define and enforce retrieved-document role semantics so framework
   adapters cannot mislabel retrieved text as an authoritative actor.
-- [ ] Add examples showing compilation before context-window overflow and
-  rehydration of exact source spans on demand.
+- [x] Add an offline OpenHands example with forced compactions, crash/restart,
+  exact fake-request replay, and on-demand exact-span rehydration labeled
+  `untrusted-evidence`.
+- [ ] Record the equivalent live OpenHands scenario only after every live gate
+  passes; do not substitute the offline fake report.
 
 ### Token accounting and selection
 
 - [ ] Add named tokenizer adapters for the models used in evaluation. The
   connector now accepts a generic exact in-process adapter, but ships no
-  provider/model-specific tokenizer.
+  provider/model-specific tokenizer. The OpenHands byte tokenizer is exact
+  only for its canonical offline fake protocol, not a real model.
 - [x] Bind an in-process exact token-counter identity into connector bundles
   and replay, label the fallback character counter as estimated, and reject an
   estimated bundle relabeled as exact.
-- [ ] Include chat framing, tool schemas, and provenance pointers in budget
-  accounting. Current compiler accounting covers its typed-memory envelope and
-  provenance pointers, not arbitrary host chat framing or tool schemas.
-- [ ] Test hard model context limits with strict overflow behavior.
+- [ ] Include chat framing, tool schemas, and provenance pointers in the exact
+  final request sent by a live host. The OpenHands fake-runtime ledger covers
+  prompts, memory, tail, current turn, retrieval, attachments, tool schemas,
+  framing, reserved output, and margin, but cannot establish real-host
+  wire/tokenizer exactness.
+- [x] Test strict hard-limit overflow refusal for the exact offline OpenHands
+  fake-request ledger.
+- [ ] Apply and replay that hard-limit gate against the final immutable request
+  actually sent by a live host.
 - [ ] Compare the current priority-per-token selector with constrained
   optimization and learned policies.
 - [ ] Preserve protected-item retention as a hard constraint in every selector.
@@ -847,6 +899,9 @@ of sublinear compile cost.
 
 ### `0.4.0` — live integration beta
 
+- [x] separately packaged OpenHands offline draft-alpha foundation with closed
+  event/authority mapping, crash-safe generations, exact fake accounting, and
+  an explicit retained live blocker;
 - efficient incremental invalidation beyond the current full-prefix recompile;
 - at least two agent integrations;
 - operational limits and metrics;
@@ -872,19 +927,25 @@ of sublinear compile cost.
 
 The next chat should start here unless new evidence changes the priority:
 
-1. preserve and replay the completed held-out paired result without tuning its
+1. keep live OpenHands execution and the recorded live demonstration blocked
+   until a complete reviewed hash-pinned offline dependency closure and a
+   stable public final-immutable-request/exact-tokenizer hook both exist;
+2. if those inputs become available, perform a result-blind live compatibility
+   run under the retained pin and resource/network controls, preserving any
+   failed attempt as a failure;
+3. preserve and replay the completed held-out paired result without tuning its
    corpus, validators, recovery, scoring, or recorded metrics;
-2. resolve the nine explicit blockers in the external-comparison manifest;
-3. complete result-blind inclusion decisions and freeze the initial
+4. resolve the nine explicit blockers in the external-comparison manifest;
+5. complete result-blind inclusion decisions and freeze the initial
    related-system set;
-4. supply the exact clean Python 3.11 checkout, dependency lock, network-policy
+6. supply the exact clean Python 3.11 checkout, dependency lock, network-policy
    evidence, inference-service accounting, and LM Studio executable needed to
    rerun the retained ACON diagnostic;
-5. add clean reproducible adapters only for systems admitted by the frozen
+7. add clean reproducible adapters only for systems admitted by the frozen
    result-blind protocol;
-6. collect licensed/consented histories under the implemented natural-history
+8. collect licensed/consented histories under the implemented natural-history
    contracts, perform independent annotation/adjudication and privacy review;
-7. freeze a full natural corpus only after those reviews and split checks pass;
-8. record every failure and result without changing the claim boundary.
+9. freeze a full natural corpus only after those reviews and split checks pass;
+10. record every failure and result without changing the claim boundary.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) before changing code or benchmark rules.

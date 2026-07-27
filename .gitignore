@@ -9,3 +9,4 @@ dist/
 build/
 .venv/
 benchmark-results/
+.artifacts/

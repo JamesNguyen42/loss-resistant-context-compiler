@@ -91,6 +91,13 @@ fields. A malformed line receives a structured error envelope with null request
 identity, after which the service continues. This gives hosts a plain,
 versioned process boundary without requiring shared Python types.
 
+The response error object is also a trust boundary. Runtime exceptions are
+translated to one of ten closed category/code variants. Messages and the
+reported exception type are fixed public values; raw exception text and
+concrete Python types do not cross the connector boundary. This prevents
+source content, paths, provider diagnostics, and credentials embedded in an
+exception from becoming protocol output.
+
 In-process callers may supply a mapping, dataclass, or an object with
 `model_dump()`, `to_dict()`, or `dict()`. This is structural compatibility
 only; the core does not import or require `localai-contracts`. If such an
@@ -241,6 +248,139 @@ Stdio dispatch is sequential and its sessions live only in process memory.
 A configured `SourceArchive` is owned by one connector session; the current
 implementation does not provide multi-session isolation inside one archive or
 connector instance.
+
+## Isolated OpenHands integration package
+
+`integrations/openhands/` builds the separate `ctxc-openhands` `0.1.0a1`
+draft-alpha package. Neither the core distribution nor an ordinary
+`ctxc_openhands` import imports OpenHands; host imports occur only behind the
+exact compatibility gate. The only reviewed identity is OpenHands `1.8.0` at
+`bc26df351dd5d833a95131556dbe2da69af82253` plus SDK, tools, and agent server
+`1.27.0` at `904279edf2df5fa12d7caecc7576f62659b2e2dd`, on CPython 3.12 or 3.13.
+The packaged self-hashed manifest binds the reviewed source inventory and
+artifact digests. A version string alone is insufficient.
+
+This is an offline fake-runtime foundation, not a completed live integration.
+The live compatibility report retains `hash-pinned-wheelhouse-absent`, and
+there is no stable public host seam that exposes both the final immutable
+provider request and its exact tokenizer. Installing version-matching packages
+manually cannot clear either claim boundary.
+
+### Event, authority, callback, and atomic boundaries
+
+The adapter maps exactly the 18 top-level classes in
+[`SUPPORTED_EVENT_KINDS`](../integrations/openhands/docs/EVENT_AUTHORITY_MAP.md).
+Unknown top-level classes, serialized kinds, or fields fail closed. Closed
+nested message/content/tool-call shapes also reject unknown fields, while
+expressly opaque application JSON slots remain bounded and uninterpreted.
+Known transient/derived event classes are validated and then refused as durable
+source history; they are not silently dropped.
+
+The public SQLite append boundary does not trust a caller-supplied
+`SourceRecord` merely because its hashes are internally consistent. It
+independently rederives the mapper-produced record from the canonical host
+event and requires exact agreement on role, content, receipt-bound authority,
+provenance, OpenHands metadata, and record identity. A forged
+`authenticated`/`trusted_for_state` record therefore fails before insertion,
+and direct store calls cannot persist a reviewed transient event.
+
+Host `source`, message `role`, and tool-shaped payloads are serialized claims,
+not authentication. Model-facing events remain unauthenticated and
+`trusted_for_state=false` unless a separately issued receipt verifies the exact
+canonical event, session, event id/kind, claimed role, issuer, and optional tool
+name. An otherwise valid event with an unknown explicit tool name and no nested
+kind remains generic and cannot receive authority. An unknown serialized nested
+action/observation kind fails closed, and a known kind must match the explicit
+tool category.
+`ObservationEvent` is the only class eligible for trusted-state promotion, and
+only for an independently allowlisted exact tool receipt. Retrieval,
+attachments, file/search output, hooks, and delegated-agent output remain
+untrusted evidence under the same host boundary.
+
+The durable callback is installed before the host's default persistence
+callback. It catches every failure and never raises into the host, because
+raising there could prevent the host EventLog from retaining the event. The
+first refusal records a bounded diagnostic and poisons later ingestion and
+model dispatch. Poison clears only when reviewed code replays the complete
+persisted EventLog in exact order and the retained source count equals its
+length.
+
+Atomic bindings are derived again from each canonical host event; declared
+adapter metadata is comparison-only. An `ActionEvent` call completes only with
+one later `ObservationEvent`, `UserRejectObservation`, or `AgentErrorEvent`
+whose call id and tool name match, plus action id where that result shape has
+one. Assistant `MessageEvent` tool calls and tool-role message results form a
+separate family. Duplicate, reversed, incomplete, or cross-family groups block
+compaction and active-tail reads. ACP visualizer telemetry cannot complete an
+ordinary action group.
+
+### SQLite-WAL generation transaction
+
+The integration store is a local, non-symbolic SQLite database configured for
+WAL, `synchronous=FULL`, foreign keys, no dirty reads, disabled trusted schema,
+and bounded writer waits. Source events, transitions, operations, and request
+ledgers are append-only through schema triggers; generations are retained.
+Host condensation events may be recorded as untrusted input, but do not delete
+or rewrite the integration's source history.
+
+One compaction advances through these visibility states:
+
+| State | Reader visibility | Required transition evidence |
+| --- | --- | --- |
+| `prepared` | Invisible | Immutable source count/head/digest, parent generation, active epoch, policy, and tokenizer captured |
+| `verified` | Invisible | Independently replayed checkpoint and bundle with passed evidence and semantic digest |
+| `committed` | Invisible | Verified payload reloaded and made activation-eligible |
+| `active` | The one visible generation | Source-head, parent-generation, and active-epoch compare-and-swap won |
+| `superseded` | Invisible, retained | Former active generation available for explicit verified rollback |
+| `rolled_back` | Invisible, retained | Provisional candidate terminally ineligible without deleting evidence |
+
+Activation supersedes the old generation, marks the committed candidate
+active, and increments the session pointer in one SQLite transaction. A crash
+therefore exposes the old or new verified generation, never a partially
+switched candidate. Stale source heads, parent pointers, or epochs lose the
+compare-and-swap. Rollback changes only the visible verified generation; it
+does not rewind the immutable source head.
+
+The store integrity report takes one SQLite read transaction and enumerates
+every retained session, source chain, generation, transition, request ledger,
+and append operation. It reconstructs each captured source prefix, requires
+contiguous legal transition history ending in the stored state, reconciles the
+active pointer and activation count with the session epoch, replays every
+historical canonical-byte request ledger with the supported exact tokenizer,
+and binds every append result back to its retained event payload. A legitimate
+`prepared` crash remnant passes only with no verification payload; verified,
+committed, active, superseded, and verification-bearing rolled-back rows must
+reload all checkpoint, bundle, replay, and semantic bindings. These checks
+detect accidental or partial local corruption. They are self-consistency
+checks, not signatures, remote attestation, or a hostile-storage guarantee.
+
+Exact span rehydration reads retained source content, verifies the requested
+half-open character span and quote digest, and returns a self-hashed record
+whose trust is always `untrusted-evidence`. Provenance fidelity does not
+promote truth, authority, or instruction priority.
+
+### Final-request ledger and live refusal
+
+The immutable fake-runtime ledger attributes every UTF-8 transport byte and
+exact fake token to prompts, verified memory, recent tail, current turn,
+retrieval, attachments, tool schemas, or provider framing. It also binds the
+model and route, source head, active generation, semantic result, exact
+tokenizer identity/vector digest, tool-schema digest, reserved output, safety
+margin, transport digest, final-request digest, and ledger self-hash. Payload
+plus reserve plus margin above the declared hard limit is refused.
+
+That exactness is deliberately narrow: the bundled byte tokenizer is exact
+only for the canonical-UTF-8-byte offline fake protocol. Core
+`character-estimate-v1` accounting remains estimated, and neither mode can be
+relabelled. The guarded host proxy always refuses real `run()` and `arun()`
+until a supported final-request/tokenizer adapter exists; it also refuses the
+unrecorded `ask_agent()` path and the event/security-bypassing `execute_tool()`
+path. The offline three-compaction crash scenario and deterministic soak test
+these contracts through code paths that make no network or paid-service call.
+Their reports honestly set network-isolation enforcement to false unless an
+operator retains separate container/runtime evidence. They do not constitute
+a live OpenHands demonstration, semantic-completeness claim, or superiority
+claim.
 
 ## Core data model
 
@@ -1083,6 +1223,10 @@ beyond the same rewrite boundary.
 - Use `LocalAIConnector` for the six-operation in-process or versioned JSONL
   integration contract, and `ExactTokenCounterAdapter` when its accounting can
   be exact.
+- Install `ctxc-openhands` separately for the exact pinned OpenHands offline
+  alpha, and follow its event map, runbook, and live-blocker policy. Do not use
+  its fake-runtime exact ledger as a real-model tokenizer or bypass the guarded
+  host request paths.
 - Use `IncrementalCompiler` for deterministic append/checkpoint/resume
   semantics while treating changed-prefix compilation as a full batch
   recompile until finer invalidation is implemented.

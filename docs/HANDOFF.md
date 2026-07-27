@@ -19,6 +19,12 @@ before changing candidate selection, adapter identity, resources, datasets, or
 claim rules. Read [natural-history evidence contracts](NATURAL_HISTORY_EVIDENCE.md)
 and [result-blind compatibility records](../benchmarks/compatibility/README.md)
 before collecting histories or rerunning an external diagnostic.
+Read the separate [OpenHands package README](../integrations/openhands/README.md),
+[event and authority map](../integrations/openhands/docs/EVENT_AUTHORITY_MAP.md),
+[operator runbook](../integrations/openhands/docs/RUNBOOK.md), and
+[release checklist](../integrations/openhands/docs/RELEASE_CHECKLIST.md) before
+changing its pin, host mapping, authority, storage transaction, accounting, or
+live-readiness status.
 
 ## Snapshot
 
@@ -29,7 +35,7 @@ before collecting histories or rerunning an external diagnostic.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 1,414 collected: 1,399 passing, 15 skipped; 105 subtests passing |
+| Tests at this snapshot | Core: 1,507 collected (1,487 passed, 20 skipped); integration: 461 collected (456 passed, 5 skipped); 105 core subtests passed |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -44,6 +50,7 @@ before collecting histories or rerunning an external diagnostic.
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
+| OpenHands integration | Separate `ctxc-openhands` `0.1.0a1` draft alpha; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
 | Installed JSON Schemas | 25 (7 historical ids, 18 current-namespace ids) |
 | External 50%-better claim | Not established |
 | Downstream task completion evidence | None yet |
@@ -307,6 +314,10 @@ and measured duration.
 | `benchmarks/natural_history.py` | Bounded corpus/annotation/adjudication/split/gold-free/report contract validation |
 | `benchmarks/compatibility/` | Result-blind pinned system screens and retained ACON blocker/failure evidence |
 | `conformance/` | Dependency-free connector schema/golden/negative validation and in-process/stdio equivalence |
+| `integrations/openhands/src/ctxc_openhands/` | Separate exact-pin host guard, closed event/authority mapping, callback poison, atomic binding, SQLite-WAL generations, immutable request ledger, fake runtime, replay/recovery/rehydration, scenario, soak, and CLI |
+| `integrations/openhands/compatibility/` | Reviewed OpenHands/SDK/tools/agent-server source, artifact, license, lock, API, and live-blocker identity |
+| `integrations/openhands/docs/` | Event-authority map, operator runbook, release checklist, and draft upstream hook RFC |
+| `integrations/openhands/demo/` | Offline-only no-network container demonstration; not a live OpenHands demo |
 | `benchmarks/performance_gate.py` | Fixed-digest CI compile latency/growth/traced-memory regression gate |
 | `benchmarks/qwen_phrase_eval.py` | Sequential exact-Qwen prompt/output capture, model-only/recovery scoring, and offline replay |
 | `benchmarks/qwen_literal_ablation.py` | Model-free frozen-output offset ablation, literal replay, self-hashed report, and strict regeneration |
@@ -319,6 +330,7 @@ and measured duration.
 | `docs/RELEASE_POLICY.md` | Stable identities, Semantic Versioning, compatibility, and release gates |
 | `MANIFEST.in` | Complete source-distribution inclusion policy |
 | `.github/workflows/ci.yml` | Cross-version tests, lint, wheel checks, interchange, benchmark |
+| `.github/workflows/openhands-integration.yml` | Isolated Python 3.12/3.13 Linux, Windows, and macOS tests, lint, compile, doctor, build, and clean-install checks without live OpenHands dependencies |
 
 ## Public interfaces
 
@@ -474,6 +486,144 @@ owned process-group signaling finishes, then reaps it without retrying a
 reusable numeric group ID; Windows uses a Job Object. See
 [Local Qwen integration](LOCAL_QWEN.md).
 
+### Separate `ctxc-openhands` package
+
+The draft-alpha OpenHands integration is its own distribution under
+`integrations/openhands/`, with import package `ctxc_openhands` and CLI
+`ctxc-openhands`. It requires the core but does not add OpenHands to the core's
+dependency graph. Ordinary import of either package loads no OpenHands module;
+the host import gate first requires the exact reviewed versions and 23 source
+file digests.
+
+Primary integration interfaces include `OpenHandsSession`,
+`SQLiteGenerationStore`, the closed event mapper and atomic-pair validator,
+the immutable final-request ledger, deterministic semantic projection, and the
+offline exact byte tokenizer. The host-specific guard module validates exact
+class identity, installs the non-throwing durable callback, refuses unrecorded
+or security-bypassing host APIs, and refuses real `run()`/`arun()` because the
+final immutable provider request cannot yet be captured, counted, and replayed
+exactly.
+
+The CLI surface is:
+
+```console
+ctxc-openhands doctor [--require-live]
+ctxc-openhands explain --database DATABASE --session-id SESSION
+ctxc-openhands replay --ledger LEDGER
+ctxc-openhands replay --database DATABASE --session-id SESSION --request-id REQUEST
+ctxc-openhands recover --database DATABASE --session-id SESSION [--apply]
+ctxc-openhands rehydrate --database DATABASE --session-id SESSION --source-id ID --start START --end END --quote-sha256 SHA256
+ctxc-openhands offline-scenario --database NEW_DATABASE --output NEW_REPORT
+ctxc-openhands soak --database NEW_DATABASE --events 10000 --compactions 100 --restart-every 10 --output NEW_REPORT
+ctxc-openhands fault-campaign --database NEW_DATABASE --schedules 1024 --seed 0x5A17C7C0 --output NEW_REPORT
+ctxc-openhands verify-evidence --report REPORT [--database DATABASE]
+```
+
+`doctor` exit 0 means offline readiness only. In the recorded environment,
+`doctor --require-live` must remain exit 2 with
+`hash-pinned-wheelhouse-absent`. The complete reviewed transitive dependency
+closure is not present in a local hash-pinned wheelhouse, and no stable public
+OpenHands hook exposes both the final immutable request and an exact tokenizer.
+Manually installing matching version labels does not clear that blocker.
+
+The exact host map contains 18 top-level event classes. Unknown classes,
+kinds, and fields fail closed. Host source and role claims do not authenticate
+themselves. An unknown explicit tool with no serialized nested kind stays
+generic and cannot receive authority; an unknown serialized nested
+action/observation kind fails closed, and a known kind must match the explicit
+tool category. Only independently verified event-bound receipts can enable
+narrow allowlisted authority paths. Tool calls/results remain atomic. The
+callback never blocks host persistence when
+it refuses an event, but poisons later ingestion/dispatch until complete exact
+EventLog reconciliation.
+
+The local SQLite-WAL store retains immutable source events and advances
+invisible candidates through `prepared`, `verified`, and `committed` before one
+verified `active` pointer becomes visible. Source-head, parent, and epoch
+compare-and-swap checks make activation old-or-new across a crash; rollback
+changes visibility without deleting source. Rehydrated exact spans are always
+`untrusted-evidence`.
+
+The qualified SQLite boundary is a local, non-cloud-synchronized,
+non-symbolic filesystem; network/distributed/cloud-sync semantics are not
+qualified. Store schema 2 has no repair or automatic migration. Evidence
+producers use exclusive `require_new=True` paths; `explain`, replay, recovery,
+rehydration, and evidence verification use `require_existing=True`, so a path
+typo cannot initialize a database. Report outputs and backups are likewise
+non-overwriting.
+
+The bundled tokenizer and final-request ledger are exact only for the offline
+canonical-UTF-8-byte fake protocol. The offline scenario records three forced
+compactions, one activation crash/restart, and exact retention of PostgreSQL and
+authentication constraints, but its status is
+`passed-offline-fake-runtime`; its nested `live_openhands.status` is
+`blocked-not-run`. It is not
+a live demonstration and does not establish semantic completeness or
+superiority. Use the package [runbook](../integrations/openhands/docs/RUNBOOK.md)
+and [release checklist](../integrations/openhands/docs/RELEASE_CHECKLIST.md) for
+operations and validation.
+
+Scenario, soak, and crash-campaign reports are bounded, canonical,
+self-hashed, and bound to a checkpointed SQLite SHA-256 and byte length.
+`verify-evidence` can exit 0 only with the exact database and
+`json-and-database` scope; omitting `--database` intentionally reports
+`passed: false`, scope `json-only`, and exits 2. Producers require absent
+WAL/SHM sidecars after the truncating checkpoint, and verification reconciles
+the retained source, generation, integrity, and request-ledger state before
+rehashing the original database. Preserve the JSON and SQLite file together.
+
+The report records only the producing subcommand argument vector (or an honest
+empty vector for a library call) and its parameters; it does not attest the
+shell, executable, environment, container, or operator. Scenario/soak retain
+`isolation.network_isolation_enforced: false`, and the campaign retains the
+equivalent top-level false field. The producers make no network request and use
+no paid service, but the Python process retains ordinary network capability
+unless externally isolated. External enforcement such as
+`docker run --network=none` must be retained separately. Never edit a report
+to claim isolation.
+
+One post-freeze local candidate set completed at exclusive paths on 2026-07-27.
+Every producer and fresh database-backed verifier exited 0, stderr was empty,
+no WAL/SHM sidecar remained, and every report retained both
+`network_isolation_enforced: false` and
+`semantic_completeness_claimed: false`:
+
+- scenario: report self-hash
+  `accea44b269d364e76549095907351bcf17a29b1d44a917e26fc26ba7c5e0ea0`,
+  report-file SHA-256
+  `5d6a11f520b835b557ec009e48f2e6234496050383766b2f0ccebf0f51f046dc`,
+  SQLite SHA-256
+  `81183fa9d47caf656ff44ccb5231148a700182823e4de9ff30c90abbcae67fd2`
+  over 159,744 bytes, and verifier self-hash
+  `9aeaca00114089ddd66e46584009392934f3d8a00dcfd7bffa244b9e853f0315`;
+- 10,000-event/100-compaction soak: report self-hash
+  `e080e1a9926c4b844b0edb3324491cfb24533e7589d8a3e46b9ffe72291ac348`,
+  report-file SHA-256
+  `e48d4754990c2f654508788515c31c9a29d7bfa60fcc04e6da8b4cbc895decbc`,
+  SQLite SHA-256
+  `ac7344e3ca04d64a7f7cdbf599f398463ef070f04f965cf818caf4cd34700067`
+  over 927,645,696 bytes, and verifier self-hash
+  `b693b97a29f298c1ebc49ca342c6f50db7ddc482aa8a22dac9eecd61e6d9b0bb`;
+- 1,024-schedule campaign: 1,024 injected faults, 1,024 passes, zero
+  failures, and six passing abrupt-process cases; report self-hash
+  `24c1ad5929b686785aba949c3aa378493e75793c09d8158dd705f658cd4e220a`,
+  report-file SHA-256
+  `fc612202590c509b3ae037ff2f380d2a6bd05b522e9b63c89185c90afdb0ab0b`,
+  SQLite SHA-256
+  `083fa6a34beb828b69576e0a745fa2cb94df2ca36589211f9a7a500881ed61ca`
+  over 7,163,904 bytes, and verifier self-hash
+  `485f555fefe9d53f133bea23695c1ccce2a60ddacfbe25169722d49ee67b60bd`.
+
+This candidate set remains local temporary evidence, not durable hosted
+retention. The hosted evidence artifact and six OS/Python package lanes remain
+pending. Three earlier failed campaign roots and the first failed clean-install
+root remain preserved under ignored `.artifacts` paths and were not deleted,
+overwritten, or relabeled. Also consult the
+[offline container demo](../integrations/openhands/demo/README.md),
+[compatibility policy](../integrations/openhands/compatibility/README.md), and
+[draft upstream hook RFC](../integrations/openhands/docs/UPSTREAM_RFC.md) for
+operations, validation, and unresolved host requirements.
+
 ## Naming and version map
 
 | Identity | Current value |
@@ -484,6 +634,11 @@ reusable numeric group ID; Windows uses a Job Object. See
 | Import package | `context_compiler` |
 | CLI command | `ctxc` |
 | Package version | `0.1.0` |
+| OpenHands distribution | `ctxc-openhands` (separate package) |
+| OpenHands import / CLI | `ctxc_openhands` / `ctxc-openhands` |
+| OpenHands integration version | `0.1.0a1` draft alpha |
+| Reviewed OpenHands host | `1.8.0` at `bc26df351dd5d833a95131556dbe2da69af82253` |
+| Reviewed OpenHands SDK/tools/agent-server | `1.27.0` at `904279edf2df5fa12d7caecc7576f62659b2e2dd` |
 | Compiled artifact schema | `1.0` |
 | Artifact schema compatibility registry | `ctxc-artifact-schema-compatibility-0.1` |
 | Artifact diff schema | `ctxc-artifact-diff-0.1` |
@@ -571,8 +726,15 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 1,414 tests are collected: 1,399 pass and 15 platform/optional checks are
-  skipped on the current Windows validation host; 105 subtests also pass.
+- Core validation collected 1,507 tests: 1,487 passed and 20
+  platform/optional checks were skipped on the current Windows host; 105
+  subtests also passed.
+- The separate integration validation collected 461 tests: 456 passed and five
+  Windows symlink-privilege checks were skipped.
+- One earlier core invocation failed closed when strict executable hashing
+  observed the active `.venv` Python launcher change during a Windows snapshot.
+  The isolated node and one clean complete rerun passed; the first invocation
+  remains recorded as a failed local validation attempt, not reclassified.
 - Ruff and `compileall` pass across `src`, `tests`, `benchmarks`, `scripts`,
   `conformance`, and `_ctxc_build_backend.py`.
 - Complete Ubuntu CI covers Python 3.11, 3.12, and 3.13; Windows and macOS run
@@ -584,12 +746,19 @@ audited. Any selected superseded item independently fails verification as
   `ctxc --help`, compile, trust-create, and trust-verify round trips.
 - CI runs connector golden/negative conformance, natural-history contract
   validation, external-candidate interchange, and external protocol checks.
-- CI builds wheel and deterministic sdist outputs from two clean checkouts with
+- Core CI builds wheel and deterministic sdist outputs from two clean checkouts with
   a fixed timestamp/hash seed and explicit pip/Setuptools/wheel versions,
   retains the Python/tool inventory, then requires the separate exact comparator
   to accept both archives byte-for-byte. This is same-job-toolchain
   repeatability, not offline, hash-pinned-input, cross-toolchain, or independent
   reproduction evidence.
+- `ctxc-openhands` uses `setuptools.build_meta` directly. Its repeated candidate
+  wheels were byte-identical at
+  `8df8d4a0890daf149461205293d308329212a5c107c25ee4d1f0d068a2d88db1`,
+  but its repeated sdists differed because Setuptools varied gzip/member
+  timestamps across 17 generated members. Integration-sdist reproducibility
+  remains a red gate; the failed comparison was retained, not normalized into
+  a pass.
 - CI enforces `ci-compile-v1` through a self-hashed
   `ctxc-performance-gate-0.1` report: three-trial medians at 128/256 events,
   doubling growth, and a separate exclusive `tracemalloc` peak.
@@ -996,6 +1165,40 @@ lower quantile before results are observed.
   semantics. The `.append.lock` marker intentionally persists and must not be
   interpreted as evidence that a writer is active.
 
+### OpenHands draft alpha
+
+- The six hosted package lanes (Linux, Windows, and macOS on Python 3.12 and
+  3.13) and the hosted retained-evidence job have not run for this candidate.
+  Local validation is not cross-platform release qualification.
+- The passing post-freeze scenario, soak, and campaign currently exist only in
+  a temporary local evidence root. They are not durably retained until the
+  hosted artifact upload succeeds.
+- The reviewed OpenHands distributions are not available as a complete local
+  hash-pinned offline dependency closure. Real offline import and live
+  execution remain blocked.
+- The integration wheel reproduced byte-identically, but the raw Setuptools
+  sdist did not. Build tools are version-pinned yet acquired online without a
+  reviewed hash-pinned input closure.
+- No candidate SBOM, artifact signature, or provenance attestation exists.
+  Checksums and self-hashes are substitution-detection groundwork, not
+  authentication or release provenance.
+- The pinned host exposes no stable public hook for the final immutable
+  provider request plus exact tokenizer. Integrated `run()` and `arun()` always
+  refuse; private seams are not treated as wire-exact.
+- The crash scenario implementation and deterministic soak use only the offline fake
+  runtime. They cannot satisfy the required recorded live scenario.
+- The exact tokenizer and final-request digest apply only to the fake canonical
+  UTF-8 transport, not a real OpenHands model or provider wire request.
+- The closed 18-class event map is valid only for the pinned revisions. An
+  unreviewed event or field fails availability closed until a result-blind
+  compatibility review updates the pin, map, tests, and documentation.
+- Callback recovery depends on the host retaining and supplying the complete
+  persisted EventLog in exact order. No filtered or partial reconciliation is
+  accepted.
+- The SQLite-WAL store assumes a correct local non-symbolic filesystem. It is
+  not encrypted, distributed, tamper-proof, or a substitute for host access,
+  backup, privacy, and retention controls.
+
 ### Evaluation
 
 - The recorded histories are generated templates, not natural production
@@ -1110,14 +1313,24 @@ context is removed. A safe integration should perform this transaction:
 
 Recent-tail composition, atomic multi-artifact installation, rollback,
 retention, redaction-policy selection, unsupported sensitive-data handling,
-and trust-anchor storage are host responsibilities. The package does not
-currently implement this transaction manager.
+and trust-anchor storage are host responsibilities. The core package does not
+implement this transaction manager. The separate OpenHands alpha implements a
+local SQLite-WAL source/generation transaction with verified old-or-new active
+visibility and explicit rollback, but it does not supply host authentication,
+redaction policy, provider-request capture, or production storage controls.
 
 ## Exact next step
 
 The known in-process safety paths, internal benchmark estimands, frozen model
-diagnostic, and narrow LM Studio stdout framing are complete. The highest-value
-next work is the external and natural-history evidence path:
+diagnostic, narrow LM Studio stdout framing, and separately packaged OpenHands
+offline foundation are complete.
+
+OpenHands live execution still has two hard prerequisites: a complete reviewed
+hash-pinned offline dependency closure and a stable public hook for the final
+immutable request plus exact tokenizer. Until both exist, keep `run()`/`arun()`
+and the recorded live scenario blocked; do not substitute the fake scenario or
+private host seams. While that gate remains red, the highest-value broader
+project work is the external and natural-history evidence path:
 
 1. preserve every frozen report and the paired report's four verification
    failures without post-result tuning or rescoring;
@@ -1146,6 +1359,11 @@ python -m pip install -e ".[dev]"
 python -m pytest -q
 python -m ruff check src tests benchmarks scripts conformance _ctxc_build_backend.py
 python -m compileall -q src benchmarks tests scripts conformance _ctxc_build_backend.py
+python -m pip install -e integrations/openhands --no-deps
+python -m pytest -q integrations/openhands/tests
+python -m ruff check integrations/openhands/src integrations/openhands/tests integrations/openhands/scripts
+python -m compileall -q integrations/openhands/src integrations/openhands/tests integrations/openhands/scripts
+python -m ctxc_openhands.cli doctor
 python conformance/run_connector_conformance.py
 python -m benchmarks.natural_history
 python -m pytest -q tests/test_external_compatibility.py
@@ -1173,6 +1391,12 @@ with tempfile.TemporaryDirectory() as directory:
     assert sum(name.endswith('.schema.json') for name in names) == 25
 "
 ```
+
+Run `python -m ctxc_openhands.cli doctor --require-live` separately and retain
+its expected exit 2 and `hash-pinned-wheelhouse-absent` report. Do not make the
+restart checklist green by omitting that red live gate, and do not overwrite a
+failed scenario, replay, recovery, or doctor report with a later run under the
+same evidence path.
 
 To regenerate the reviewed local snapshot intentionally:
 
@@ -1210,9 +1434,14 @@ Then:
 ```text
 Continue the loss-resistant context compiler from this repository.
 First read README.md, TODO.md, docs/HANDOFF.md, docs/ARCHITECTURE.md,
-docs/BENCHMARKING.md, docs/THREAT_MODEL.md, docs/REDACTION.md, and
-docs/LITERAL_MODEL_EXTRACTION.md. Inspect the current branch, diff, tests, and
-recorded evidence before changing anything.
+docs/BENCHMARKING.md, docs/THREAT_MODEL.md, docs/REDACTION.md,
+docs/LITERAL_MODEL_EXTRACTION.md, integrations/openhands/README.md,
+integrations/openhands/docs/EVENT_AUTHORITY_MAP.md, and
+integrations/openhands/docs/RUNBOOK.md. Inspect the current branch, diff, tests,
+and recorded evidence before changing anything. Keep live OpenHands execution
+blocked until the complete hash-pinned offline dependency closure and supported
+exact final-request/tokenizer hook both exist; do not call the fake scenario a
+live demonstration.
 Preserve the fail-closed provenance, authority, protected-retention, privacy-
 scope, and claim-boundary rules. Start with the highest-priority incomplete P0
 evidence work in TODO.md, validate it empirically, and do not claim external
@@ -1254,3 +1483,16 @@ and commits solely under JamesNguyen42.
 - Use LRCBench certificates as scoped evidence, never universal product claims.
 - Require real downstream task completion and external comparisons for the
   original 50%-better target.
+- Keep OpenHands integration code and dependencies in the separate
+  `ctxc-openhands` package; ordinary core installation and import stay
+  dependency-free.
+- Pin exact reviewed host bytes and fail closed on unknown top-level events or
+  fields; never derive authority from host source/role claims.
+- Preserve tool calls/results atomically and poison dispatch after a callback
+  refusal until the complete persisted EventLog reconciles exactly.
+- Retain source history and make only independently verified SQLite-WAL
+  generations active through source-head, parent, and epoch compare-and-swap.
+- Label rehydrated exact source as untrusted evidence.
+- Claim exact final-request accounting only for the offline fake protocol;
+  refuse live OpenHands request execution until the complete pinned dependency
+  closure and a stable exact final-request/tokenizer hook both exist.
