@@ -106,6 +106,37 @@ def test_connector_schema_graph_materializes_every_wire_contract() -> None:
     assert len(response["oneOf"]) == 7
     assert request["additionalProperties"] is False
     assert response["additionalProperties"] is False
+    assert len(response["$defs"]["error"]["oneOf"]) == 10
+
+
+def test_connector_response_schema_rejects_unredacted_error_details() -> None:
+    documents = conformance_runner._validate_schema_graph()
+    response = LocalAIConnector().handle_request(
+        _request("redaction", "unsupported", {})
+    )
+    validate_instance(
+        response,
+        "connector-response.schema.json",
+        documents=documents,
+    )
+
+    raw_message = copy.deepcopy(response)
+    raw_message["error"]["message"] = "C:\\private\\tenant\\memory.json"
+    with pytest.raises(SchemaValidationError):
+        validate_instance(
+            raw_message,
+            "connector-response.schema.json",
+            documents=documents,
+        )
+
+    raw_type = copy.deepcopy(response)
+    raw_type["error"]["details"]["exception_type"] = "TenantBackendError"
+    with pytest.raises(SchemaValidationError):
+        validate_instance(
+            raw_type,
+            "connector-response.schema.json",
+            documents=documents,
+        )
 
 
 def test_dependency_free_validator_uses_json_schema_numeric_equality() -> None:

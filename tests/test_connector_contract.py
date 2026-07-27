@@ -177,8 +177,13 @@ def test_shared_envelope_returns_bounded_errors_and_keeps_request_identity() -> 
         operation="delete_memory",
         ok=False,
     )
-    assert unknown["error"]["code"] == "unsupported_operation"
-    assert unknown["error"]["retryable"] is False
+    assert unknown["error"] == {
+        "category": "invalid_request",
+        "code": "unsupported_operation",
+        "message": "connector operation is unsupported",
+        "retryable": False,
+        "details": {"exception_type": "ConnectorRequestError"},
+    }
 
     extra = request("bad-2", "capabilities")
     extra["unexpected"] = True
@@ -190,6 +195,79 @@ def test_shared_envelope_returns_bounded_errors_and_keeps_request_identity() -> 
         ok=False,
     )
     assert invalid["error"]["code"] == "invalid_value"
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            ValueError(
+                "unsupported connector operation: "
+                "'delete_memory?token=phase-0-secret'"
+            ),
+            {
+                "category": "invalid_request",
+                "code": "unsupported_operation",
+                "message": "connector operation is unsupported",
+                "retryable": False,
+                "details": {"exception_type": "ConnectorRequestError"},
+            },
+        ),
+        (
+            RuntimeError(
+                "provider failed at C:\\private\\tenant\\memory.json "
+                "with bearer phase-0-secret"
+            ),
+            {
+                "category": "runtime",
+                "code": "connector_failure",
+                "message": "connector operation failed",
+                "retryable": False,
+                "details": {"exception_type": "ConnectorRuntimeError"},
+            },
+        ),
+    ],
+)
+def test_shared_envelope_redacts_internal_error_details(
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    expected: dict,
+) -> None:
+    connector = LocalAIConnector()
+
+    def fail_dispatch(_operation: str, _payload: dict) -> dict:
+        raise error
+
+    monkeypatch.setattr(connector, "_dispatch_operation", fail_dispatch)
+    response = connector.handle_request(request("redacted", "capabilities"))
+
+    assert response["error"] == expected
+    assert "phase-0-secret" not in json.dumps(response)
+    assert response["error"]["details"]["exception_type"] != type(error).__name__
+
+
+def test_shared_envelope_survives_unrenderable_exception_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class UnrenderableValueError(ValueError):
+        def __str__(self) -> str:
+            raise RuntimeError("phase-0-secret")
+
+    connector = LocalAIConnector()
+
+    def fail_dispatch(_operation: str, _payload: dict) -> dict:
+        raise UnrenderableValueError()
+
+    monkeypatch.setattr(connector, "_dispatch_operation", fail_dispatch)
+    response = connector.handle_request(request("unrenderable", "capabilities"))
+
+    assert response["error"] == {
+        "category": "invalid_request",
+        "code": "invalid_value",
+        "message": "connector request has an invalid value",
+        "retryable": False,
+        "details": {"exception_type": "ConnectorRequestError"},
+    }
 
 
 @pytest.mark.parametrize(

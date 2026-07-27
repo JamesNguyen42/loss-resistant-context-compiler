@@ -66,6 +66,59 @@ CONNECTOR_OPERATIONS = (
     "inspect_memory",
 )
 
+_CONNECTOR_PUBLIC_ERROR_SPECS = {
+    ("resource_limit", "resource_limit_exceeded"): (
+        "connector request exceeds a resource limit",
+        "ConnectorResourceLimitError",
+        False,
+    ),
+    ("state", "unknown_session"): (
+        "connector session is unknown",
+        "ConnectorStateError",
+        False,
+    ),
+    ("timeout", "operation_timed_out"): (
+        "connector operation timed out",
+        "ConnectorTimeoutError",
+        True,
+    ),
+    ("invalid_request", "invalid_json"): (
+        "connector request is not valid JSON",
+        "ConnectorRequestError",
+        False,
+    ),
+    ("invalid_request", "invalid_type"): (
+        "connector request has an invalid type",
+        "ConnectorRequestError",
+        False,
+    ),
+    ("invalid_request", "invalid_value"): (
+        "connector request has an invalid value",
+        "ConnectorRequestError",
+        False,
+    ),
+    ("invalid_request", "unsupported_operation"): (
+        "connector operation is unsupported",
+        "ConnectorRequestError",
+        False,
+    ),
+    ("invalid_request", "unsupported_schema"): (
+        "connector request schema is unsupported",
+        "ConnectorRequestError",
+        False,
+    ),
+    ("integrity", "integrity_check_failed"): (
+        "connector integrity check failed",
+        "ConnectorIntegrityError",
+        False,
+    ),
+    ("runtime", "connector_failure"): (
+        "connector operation failed",
+        "ConnectorRuntimeError",
+        False,
+    ),
+}
+_MAX_ERROR_CLASSIFICATION_CHARACTERS = 4096
 _SHA256 = re.compile(r"[a-f0-9]{64}")
 _MAX_JSON_INTEGER_DIGITS = 640
 _UNTRUSTED_HISTORY_ROLES = frozenset({"assistant", "tool", "function"})
@@ -2629,6 +2682,16 @@ class LocalAIConnector:
         )
 
 
+def _error_classification_text(exc: Exception) -> str:
+    """Return bounded internal-only text for stable error classification."""
+
+    try:
+        message = str(exc)
+    except BaseException:
+        return ""
+    return message[:_MAX_ERROR_CLASSIFICATION_CHARACTERS].casefold()
+
+
 def _connector_error(exc: Exception) -> dict[str, Any]:
     if isinstance(
         exc,
@@ -2650,7 +2713,7 @@ def _connector_error(exc: Exception) -> dict[str, Any]:
         code = "invalid_type"
     elif isinstance(exc, ValueError):
         category = "invalid_request"
-        message = str(exc).casefold()
+        message = _error_classification_text(exc)
         if "connector request exceeds" in message:
             category = "resource_limit"
             code = "resource_limit_exceeded"
@@ -2677,12 +2740,18 @@ def _connector_error(exc: Exception) -> dict[str, Any]:
     else:
         category = "runtime"
         code = "connector_failure"
+    public_spec = _CONNECTOR_PUBLIC_ERROR_SPECS.get((category, code))
+    if public_spec is None:  # Defensive closure for future classifications.
+        category = "runtime"
+        code = "connector_failure"
+        public_spec = _CONNECTOR_PUBLIC_ERROR_SPECS[(category, code)]
+    public_message, public_exception_type, retryable = public_spec
     return {
         "category": category,
         "code": code,
-        "message": str(exc),
-        "retryable": isinstance(exc, TimeoutError),
-        "details": {"exception_type": type(exc).__name__},
+        "message": public_message,
+        "retryable": retryable,
+        "details": {"exception_type": public_exception_type},
     }
 
 

@@ -8,6 +8,9 @@ versioning and release rules in
 
 ### Changed
 
+- Closed the connector response error contract over ten stable variants and
+  replaced raw exception messages and concrete Python types with fixed public
+  messages and normalized connector error types.
 - Standardized the Python distribution and installed schema directory on
   `loss-resistant-context-compiler`. The import package remains
   `context_compiler`, the command remains `ctxc`, and artifact schema versions
