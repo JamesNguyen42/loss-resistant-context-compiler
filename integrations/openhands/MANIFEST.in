@@ -1,4 +1,6 @@
+include _ctxc_openhands_build_backend.py
 include LICENSE
+include pyproject.toml
 include README.md
 include requirements-live.lock
 recursive-include compatibility *.json *.md

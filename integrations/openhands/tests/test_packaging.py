@@ -11,6 +11,7 @@ import sys
 import tarfile
 import tempfile
 import textwrap
+import tomllib
 import venv
 import zipfile
 from pathlib import Path
@@ -19,9 +20,14 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+BACKEND_MODULE = "_ctxc_openhands_build_backend"
+BACKEND_PATH = f"{BACKEND_MODULE}.py"
+SOURCE_DATE_EPOCH = 1_700_000_000
 MANIFEST_NAME = "openhands-1.8.0.json"
 TOKENIZER_VECTORS_NAME = "canonical-utf8-byte-tokenizer-vectors.json"
 SDIST_AUDIT_PATHS = (
+    BACKEND_PATH,
+    "pyproject.toml",
     "docs/RUNBOOK.md",
     "docs/UPSTREAM_RFC.md",
     "docs/RELEASE_CHECKLIST.md",
@@ -71,6 +77,7 @@ def _offline_env() -> dict[str, str]:
             "PIP_NO_INDEX": "1",
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONHASHSEED": "0",
+            "SOURCE_DATE_EPOCH": str(SOURCE_DATE_EPOCH),
         }
     )
     return env
@@ -118,20 +125,36 @@ def built_distributions(request: pytest.FixtureRequest) -> dict[str, Path]:
     root = Path(tempfile.mkdtemp(prefix="ctxc-oh-package-"))
     request.addfinalizer(lambda: shutil.rmtree(root, ignore_errors=True))
     integration_source = root / "integration-source"
+    integration_repeat_source = root / "integration-repeat-source"
     core_source = root / "core-source"
     integration_dist = root / "integration-dist"
+    integration_repeat_dist = root / "integration-repeat-dist"
     core_dist = root / "core-dist"
     _copy_source(PROJECT_ROOT, integration_source, exclude_integrations=False)
+    _copy_source(
+        PROJECT_ROOT,
+        integration_repeat_source,
+        exclude_integrations=False,
+    )
     _copy_source(REPOSITORY_ROOT, core_source, exclude_integrations=True)
     integration_dist.mkdir()
+    integration_repeat_dist.mkdir()
     core_dist.mkdir()
     env = _offline_env()
 
     _build(
         integration_source,
         integration_dist,
-        backend="setuptools.build_meta",
+        backend=BACKEND_MODULE,
         wheel=True,
+        sdist=True,
+        env=env,
+    )
+    _build(
+        integration_repeat_source,
+        integration_repeat_dist,
+        backend=BACKEND_MODULE,
+        wheel=False,
         sdist=True,
         env=env,
     )
@@ -146,13 +169,18 @@ def built_distributions(request: pytest.FixtureRequest) -> dict[str, Path]:
 
     integration_wheels = list(integration_dist.glob("ctxc_openhands-*.whl"))
     integration_sdists = list(integration_dist.glob("ctxc_openhands-*.tar.gz"))
+    integration_repeat_sdists = list(
+        integration_repeat_dist.glob("ctxc_openhands-*.tar.gz")
+    )
     core_wheels = list(core_dist.glob("loss_resistant_context_compiler-*.whl"))
     assert len(integration_wheels) == 1
     assert len(integration_sdists) == 1
+    assert len(integration_repeat_sdists) == 1
     assert len(core_wheels) == 1
     return {
         "integration_wheel": integration_wheels[0],
         "integration_sdist": integration_sdists[0],
+        "integration_repeat_sdist": integration_repeat_sdists[0],
         "core_wheel": core_wheels[0],
         "root": root,
     }
@@ -191,6 +219,7 @@ def test_wheel_and_sdist_contain_exact_resources_and_supply_chain_evidence(
         )
         assert any(name.endswith(".dist-info/licenses/LICENSE") for name in names)
         assert not any(name.startswith(("openhands/", "openhands_sdk/")) for name in names)
+        assert BACKEND_PATH not in names
 
     sdist_path = built_distributions["integration_sdist"]
     with tarfile.open(sdist_path, mode="r:gz") as archive:
@@ -247,6 +276,34 @@ def test_wheel_and_sdist_contain_exact_resources_and_supply_chain_evidence(
 
 
         assert "openhands-agent-server==1.27.0" in lock_text
+
+
+def test_integration_backend_configuration_and_source_parity() -> None:
+    build_system = tomllib.loads(
+        (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )["build-system"]
+    assert build_system["build-backend"] == BACKEND_MODULE
+    assert build_system["backend-path"] == ["."]
+    assert (PROJECT_ROOT / BACKEND_PATH).read_bytes() == (
+        REPOSITORY_ROOT / "_ctxc_build_backend.py"
+    ).read_bytes()
+
+
+def test_repeated_integration_sdists_are_byte_identical_and_epoch_bound(
+    built_distributions: dict[str, Path],
+) -> None:
+    first = built_distributions["integration_sdist"]
+    second = built_distributions["integration_repeat_sdist"]
+    expected = first.read_bytes()
+    assert second.read_bytes() == expected
+    assert int.from_bytes(expected[4:8], "little") == SOURCE_DATE_EPOCH
+
+    with tarfile.open(first, mode="r:gz") as archive:
+        members = archive.getmembers()
+    assert members
+    assert all(member.mtime == SOURCE_DATE_EPOCH for member in members)
+    assert all("mtime" not in member.pax_headers for member in members)
+
 
 def test_container_demo_dockerfile_is_offline_fake_runtime_only() -> None:
     dockerfile = (PROJECT_ROOT / "demo" / "Dockerfile").read_text(encoding="utf-8")

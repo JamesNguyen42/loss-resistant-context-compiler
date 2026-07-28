@@ -152,10 +152,12 @@ jobs:
       - name: Run Ruff and compileall
         run: |
           python -m ruff check `
+            integrations/openhands/_ctxc_openhands_build_backend.py `
             integrations/openhands/src `
             integrations/openhands/tests `
             integrations/openhands/scripts
           python -m compileall -q `
+            integrations/openhands/_ctxc_openhands_build_backend.py `
             integrations/openhands/src `
             integrations/openhands/tests `
             integrations/openhands/scripts
