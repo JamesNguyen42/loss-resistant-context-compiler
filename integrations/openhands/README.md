@@ -263,12 +263,34 @@ The backend is present in the sdist, absent from the runtime wheel, and normal
 Setuptools behavior remains when no epoch is supplied. Clean wheel and
 recursive-sdist installs passed. The build-tool wheelhouse was still acquired
 online without a reviewed hash-pinned closure, so that release gate remains
-open; no cross-platform artifact equality is claimed. Exact packaging head
-`2f692484` passed all six automatic Linux, Windows, and macOS Python
-3.12/3.13 jobs in push run `30341548763` and all six in pull-request run
+open. That `2f692484` result did not establish cross-platform artifact
+equality. Exact packaging head `2f692484` passed all six automatic Linux,
+Windows, and macOS Python 3.12/3.13 jobs in push run `30341548763` and all six
+in pull-request run
 `30341552866`; retained evidence remained skipped/default-off. Root push CI
 `30341549065` and pull-request CI `30341552713` each passed 7/7 jobs;
 CodeQL `30341552714` and dependency review `30341553236` passed.
+
+Exact package-gate implementation head
+`f9ba3de6f0ab2ac7e861bd7da907e6949df1339e` adds a separate automatic
+comparison of the uploaded package files from all six package lanes. OpenHands
+push run `30355357305` and pull-request run `30355359105` each passed six package
+jobs plus the aggregate; retained evidence was skipped/default-off. Root push
+CI `30355357152` and pull-request CI `30355359094` each passed 7/7 jobs; CodeQL
+`30355359110` and dependency review `30355359096` passed. The push aggregate
+report raw SHA-256/self-hash are
+`e9203177989fab536e70febcf5316ba6ea21d2a39ea2d3f8dc2c46b146a6f743`
+and `9931d25167831dea6698e0794a93e1cc46a1fc23ed29126c94708aefe7efb35c`.
+It binds the implementation revision and reports byte-identical root wheels,
+integration wheels, and integration sdists across Linux, macOS, and Windows on
+Python 3.12/3.13. The pull-request report is separately bound to GitHub
+synthetic merge revision `a585ddbea770e49ff23f49b091536a86fa9db295`, whose
+tree equals the implementation tree; its raw SHA-256/self-hash are
+`9c8ef8530ffa37c6596d94070f75aaed95ab532af3fbf9737870bfa53b08c942`
+and `8ccf05ab81647db1d5030f79ee5e9f367318e923b539b9376cf3e015b04ff2c5`.
+These temporary Actions artifacts expire on 2026-08-11. Durable retained
+evidence, hash-pinned build inputs, live OpenHands execution, SBOMs,
+signatures, provenance attestations, and release authorization remain open.
 
 ## Installation policy
 

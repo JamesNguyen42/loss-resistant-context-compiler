@@ -35,7 +35,7 @@ live-readiness status.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; no local inference |
+| Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; no local inference |
 | Canonical optional boundary | `localai-contracts==0.2.0a2`, protocol/schema `1.0.0`; `context.compile` only; non-inference |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
@@ -1345,6 +1345,31 @@ lower quantile before results are observed.
   builds, one extracted-sdist rebuild, clean wheel/sdist installation, Ruff,
   compileall, and ordinary test selection on Linux, Windows, and macOS
   Python 3.12/3.13.
+- Exact package-gate implementation head
+  `f9ba3de6f0ab2ac7e861bd7da907e6949df1339e` added an automatic aggregate over
+  the uploaded package files from those six package lanes. OpenHands push run
+  `30355357305` and pull-request run `30355359105` each passed six package jobs
+  plus the aggregate; retained evidence was skipped/default-off. Root push CI
+  `30355357152` and pull-request CI `30355359094` each passed 7/7 jobs; CodeQL
+  `30355359110` and dependency review `30355359096` passed. The 16,681-byte
+  push report has raw SHA-256
+  `e9203177989fab536e70febcf5316ba6ea21d2a39ea2d3f8dc2c46b146a6f743`
+  and self-hash
+  `9931d25167831dea6698e0794a93e1cc46a1fc23ed29126c94708aefe7efb35c`.
+  It binds the exact implementation revision and reports byte-identical root
+  wheels
+  (`ffc60ecf166cc28563c2a5bc6597e1c4cb0a4c2be6c965d31bafbe3877d1c17c`),
+  integration wheels
+  (`ed846517d05b9a734754a9d893de84f23d807f9236c626f1791f9f6d215fa3a9`),
+  and integration sdists
+  (`b8ee2f1f13c06cfe7de1343f9d765eb25aaf6bc1f7d03da7c6443b46eec0594a`)
+  across all six lanes. The pull-request report is bound to synthetic merge
+  revision `a585ddbea770e49ff23f49b091536a86fa9db295`, whose tree
+  `812b43400e7028a4b89ab6ad7aa30eb73aafb536` equals the implementation tree;
+  its raw SHA-256/self-hash are
+  `9c8ef8530ffa37c6596d94070f75aaed95ab532af3fbf9737870bfa53b08c942`
+  and `8ccf05ab81647db1d5030f79ee5e9f367318e923b539b9376cf3e015b04ff2c5`.
+  Both report artifacts are temporary and expire on 2026-08-11.
 - The hosted retained-evidence job is manual/default-off and has not run for
   this candidate; both automatic runs skipped it. Local validation does not
   replace that durable retained-evidence gate.
@@ -1361,8 +1386,10 @@ lower quantile before results are observed.
   package-local backend at `2f692484` produced byte-identical final sdists
   across two exact source archives and an extracted-sdist rebuild under one
   recorded Windows toolchain and epoch. Build tools are still acquired online
-  without a reviewed hash-pinned input closure, and no cross-platform artifact
-  equality is claimed.
+  without a reviewed hash-pinned input closure. That `2f692484` result by
+  itself did not establish cross-platform artifact equality; the later
+  `f9ba3de` automatic aggregate closes only the six recorded hosted package
+  lanes.
 - No candidate SBOM, artifact signature, or provenance attestation exists.
   Checksums and self-hashes are substitution-detection groundwork, not
   authentication or release provenance.

@@ -287,8 +287,23 @@ Record each unresolved gate; do not delete this section when it is non-empty.
   regression. Root push CI `30341549065` and pull-request CI `30341552713`
   each passed 7/7 jobs; CodeQL `30341552714` and dependency review
   `30341553236` passed.
+  Exact package-gate implementation head
+  `f9ba3de6f0ab2ac7e861bd7da907e6949df1339e` then passed six package jobs plus
+  the separate aggregate in OpenHands push run `30355357305` and pull-request
+  run `30355359105`. Root push CI `30355357152` and pull-request CI
+  `30355359094` each passed 7/7 jobs; CodeQL `30355359110` and dependency
+  review `30355359096` passed. The push report raw SHA-256/self-hash are
+  `e9203177989fab536e70febcf5316ba6ea21d2a39ea2d3f8dc2c46b146a6f743`
+  and `9931d25167831dea6698e0794a93e1cc46a1fc23ed29126c94708aefe7efb35c`.
+  The pull-request report is bound to synthetic merge revision
+  `a585ddbea770e49ff23f49b091536a86fa9db295` with the implementation tree; its
+  raw SHA-256/self-hash are
+  `9c8ef8530ffa37c6596d94070f75aaed95ab532af3fbf9737870bfa53b08c942`
+  and `8ccf05ab81647db1d5030f79ee5e9f367318e923b539b9376cf3e015b04ff2c5`.
   The retained-evidence jobs were skipped/default-off, so the manual durable
-  retained-evidence gate remains pending.
+  retained-evidence gate remains pending. Both aggregate artifacts expire on
+  2026-08-11; build-input closure, live execution, SBOMs, signatures,
+  provenance attestations, and release authorization also remain open.
 - Evidence verification and retention: the hash-intact 2026-07-27 scenario and
   soak pairs were not reverified under the strengthened report-to-database
   verifier. The separately verified campaign pair was not affected by that
@@ -326,8 +341,10 @@ Record each unresolved gate; do not delete this section when it is non-empty.
   two fresh exact Git archives and an extracted-sdist rebuild all produced
   232,006 bytes at
   `9a8f5035d8cbe904dc03142b3be54e3e15fae699153fb7630b4948b7415ac6be`
-  under epoch `1785225894` and the recorded toolchain. This does not close
-  build-input, cross-platform equality, or release gates.
+  under epoch `1785225894` and the recorded toolchain. At that checkpoint this
+  did not close build-input, cross-platform equality, or release gates. The
+  later `f9ba3de` aggregate closes only equality across its six recorded hosted
+  package lanes.
 - Build-input closure: CI installs exact build-tool versions from the configured
   index without reviewed hashes. A later `--no-index` artifact install does not
   authenticate the online-acquired wheelhouse.
