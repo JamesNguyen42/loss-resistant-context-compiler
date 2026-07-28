@@ -35,7 +35,8 @@ live-readiness status.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | Core: 1,507 collected (1,487 passed, 20 skipped); integration: 461 collected (456 passed, 5 skipped); 105 core subtests passed |
+| Tests at this snapshot | Core ordinary: 1,508 collected (1,487 passed, 21 skipped), plus 105 subtests; exact optional adapter: 27 passed; integration: 461 collected (456 passed, 5 skipped) |
+| Canonical optional boundary | `localai-contracts==0.2.0a1`, protocol/schema `1.0.0`; `context.compile` only; non-inference |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -306,6 +307,9 @@ and measured duration.
 | `src/context_compiler/schema_compatibility.py` | Machine-readable artifact reader/writer window and no-silent-migration policy |
 | `src/context_compiler/redaction.py` | Fixed common-secret content detectors, masking policy, immutable result, audit report, and exact replay |
 | `src/context_compiler/cli.py` | `ctxc` parsing, atomic output transactions, versioned error/completion diagnostics, and exit codes |
+| `src/context_compiler/localai_contracts_adapter.py` | Lazy exact-version canonical adapter, closed authority projection, direct ContextBundle result, typed request server, and 22-case probe |
+| `src/context_compiler/localai_contracts_connector.py` | Optional bounded NDJSON module/console entry point; exits closed when the contracts wheel is absent |
+| `scripts/validate_localai_contracts_install.py` | Offline provider-only and exact-contracts clean-wheel lanes, subprocess equivalence, and clean-installed Phase 0 conformance |
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
 | `benchmarks/json_io.py` | Shared bounded regular-file hashing and strict JSON decoding for benchmark evidence |
 | `benchmarks/report_verifier.py` | Bounded strict saved-report verification and deterministic replay |
@@ -471,6 +475,13 @@ Primary exported objects:
 - `verify_trust_manifest`;
 - `VerificationReport`.
 
+
+The canonical adapter is intentionally submodule-only:
+`context_compiler.__init__` and the exported list above are unchanged.
+Importing `context_compiler.localai_contracts_adapter` does not import the
+optional dependency; constructing `LocalAIContractsAdapter` requires the exact
+reviewed version and protocol. The root API and ordinary `ctxc` behavior remain
+standalone.
 Custom token accounting requires both a callback and a stable
 `token_counter_id`. Artifact verification must receive the identical callback
 and id or fail with `unverifiable_token_counter`.
@@ -630,6 +641,8 @@ operations, validation, and unresolved host requirements.
 | --- | --- |
 | Project and repository name | Loss-resistant Context Compiler |
 | GitHub repository slug | `loss-resistant-context-compiler` |
+| Optional canonical connector | `ctxc-localai-contracts` / `python -m context_compiler.localai_contracts_connector` |
+| Optional contracts identity | `localai-contracts==0.2.0a1`; protocol/schema `1.0.0`; reviewed wheel SHA-256 `3f1cbc1c1079a552304541caa6b7bfbaae926494b67956e3107767ffc980ee41` |
 | Python distribution | `loss-resistant-context-compiler` |
 | Import package | `context_compiler` |
 | CLI command | `ctxc` |
@@ -726,9 +739,37 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- Core validation collected 1,507 tests: 1,487 passed and 20
-  platform/optional checks were skipped on the current Windows host; 105
-  subtests also passed.
+- Ordinary provider-only core validation collected 1,508 tests: 1,487 passed
+  and 21 platform/optional checks were skipped on the current Windows host;
+  105 subtests also passed. The extra skip is the intentionally absent
+  canonical contracts wheel.
+- The separate exact-wheel adapter lane passed 27 tests, including every
+  canonical role, strict bounds, authority separation, direct ContextBundle
+  shape, deterministic projection, in-process/NDJSON equivalence, and the
+  mandatory subject-operation probe. `assert_phase0_conformant` reported
+  `passed_count: 22`, `failed_count: 0`,
+  `inference_status: not_run`, and
+  `observation_scope: connector_transport_conformance`.
+- The reviewed contracts wheel re-hashed to
+  `3f1cbc1c1079a552304541caa6b7bfbaae926494b67956e3107767ffc980ee41`.
+  The final provider wheel re-hashed to
+  `0d46899e8cf4c8eddf051137a9cae0a6036aa73da24b228d5ee52cc67a42e80b`;
+  it contains both optional modules and has no unconditional dependency.
+- The final offline clean-install run passed the distinct provider-only and
+  provider-plus-exact-contracts lanes. The latter launched
+  `[clean-environment sys.executable, "-m",
+  "context_compiler.localai_contracts_connector"]`; literal argv tail:
+  `-m context_compiler.localai_contracts_connector`. Its real handshake and
+  compile responses matched the in-process bundle digest, then its
+  clean-installed 22-case gate passed.
+- Three earlier clean-install attempts remain failures: the original
+  provider-only stderr check assumed LF on Windows; the first strengthened
+  conformance-report check observed CRLF; and the next attempt exposed an
+  omitted child report-write line. The final explicit UTF-8/LF write fixed the
+  framing without weakening the byte-exact gate.
+- No local model, inference endpoint, or user-owned runtime was loaded, called,
+  reconfigured, stopped, or otherwise touched. The global inference lease was
+  not granted.
 - The separate integration validation collected 461 tests: 456 passed and five
   Windows symlink-privilege checks were skipped.
 - One earlier core invocation failed closed when strict executable hashing
@@ -1173,8 +1214,10 @@ lower quantile before results are observed.
   ordinary matrix mistakenly selected the mission-size campaign. The focused
   follow-up marks that exact test `retained_evidence`, proves it is excluded
   from ordinary lanes, qualifies an unlinked `RUNNER_TEMP` descendant, and
-  leaves the fail-closed path guard unchanged. Replacement hosted results are
-  still required.
+  leaves the fail-closed path guard unchanged. Replacement push run
+  `30307262723` and pull-request run `30307266578` both completed successfully;
+  all 12 ordinary Linux, Windows, and macOS Python 3.12/3.13 package jobs
+  passed.
 - The hosted retained-evidence job is manual/default-off and has not run for
   this candidate. Local validation is not cross-platform release
   qualification.

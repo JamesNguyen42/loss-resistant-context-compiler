@@ -742,6 +742,107 @@ chain is reported as `io` / `unsafe_path_boundary`.
 
 ## Optional LocalAI connector
 
+### Canonical `localai-contracts` 1.0.0 boundary
+
+`context_compiler.localai_contracts_adapter` is a separately imported optional
+boundary over the private CtxC connector. The ordinary `context_compiler`
+import, Python API, and `ctxc` command do not import or require
+`localai-contracts`; required core dependencies remain empty. The `unified`
+extra pins the optional distribution version but does not authenticate wheel
+bytes. To use the reviewed identity, independently verify the exact wheel hash
+below, then install it with the provider wheel using `--no-index --no-deps`.
+
+The reviewed compatibility identity is:
+
+| Identity | Value |
+| --- | --- |
+| Distribution/import | `localai-contracts` / `localai_contracts` |
+| Distribution version | `0.2.0a1` |
+| Protocol and contract schemas | `1.0.0` |
+| Reviewed source commit | `dda116eb6431f6f701425f1dec52bf01d9435cfe` |
+| Reviewed wheel SHA-256 | `3f1cbc1c1079a552304541caa6b7bfbaae926494b67956e3107767ffc980ee41` |
+
+It advertises exactly one executed subject operation,
+`context.compile`. The payload is exactly
+`{"source_events": [SourceEvent, ...]}` with one to eight actual
+`localai_contracts.SourceEvent` documents. The result is the canonical
+`ContextBundle` document directly, not a private bundle and not a wrapper.
+The wheel's `ConnectorServer` owns request and NDJSON negotiation:
+`connector.handshake` must succeed first, unknown or private six-operation
+names fail closed, and an expected `ContextBundle` schema is semantically
+validated before success. Direct `handle` is only the server's
+already-negotiated callback seam.
+
+Use the wheel-owned typed in-process client/server classes, or run the bounded
+canonical NDJSON console alias:
+
+```console
+ctxc-localai-contracts
+```
+
+The accepted module entry point is
+`python -m context_compiler.localai_contracts_connector`.
+
+Every physical record must end with a newline. The wheel's default limits cap
+a record at 1 MiB, depth at 32, individual strings at 262,144 characters,
+arrays and objects at 10,000 entries, and the complete parse at 100,000 nodes.
+Duplicate keys, non-finite numbers, malformed UTF-8, missing newlines, and
+oversized requests produce canonical closed errors. The adapter applies the
+same canonical round trip and limits to in-process payloads, so the Python path
+cannot bypass stdio bounds.
+
+`SourceEvent.trust` is a serialized claim, not authentication. Without a
+host-owned `authority_verifier`, every event is compiled through the private
+untrusted-history path and every projected span remains untrusted. A verifier
+may return `AuthenticatedAuthority` only after independently authenticating
+the exact event; caller metadata, role names, hashes, or `trust: trusted`
+cannot construct that decision. Authenticated tool state additionally requires
+the verifier's explicit `trusted_for_state=True` decision and remains limited
+to the private confirmed-fact path.
+
+The projection preserves every complete source event as an exact UTF-8
+`untrusted_retrieved_spans` entry. Selected private provenance quotes are
+projected from exact source text with character offsets converted to UTF-8
+byte offsets; only independently authenticated selected spans can enter
+`trusted_active_memory`. Rehydrated full sources stay untrusted even when the
+actor was authenticated. Private protected omissions and budget overflow
+remain explicit. Estimated counts remain estimated; exact counts require an
+injected exact counter and bind its identity digest. Counts cover the actual
+emitted span-content components, including deliberate duplicate components,
+not host framing or a final request.
+
+The canonical projection cannot carry the private compiled artifact,
+checkpoint, archive-verification state, or detector-scoped retention
+certificate. Those richer structures remain private and independently
+replay-verified. A canonical `ContextBundle` is not a replacement certificate,
+does not authenticate its producer, and makes no semantic-completeness claim.
+
+The clean-installed exact-wheel conformance gate requires all 22 fresh-session in-process
+and NDJSON cases and retains the non-inference scope:
+
+```python
+report = localai_contracts.assert_phase0_conformant(
+    LocalAIContractsAdapter,
+    operation_probe=adapter.build_phase0_probe([source_event]),
+).to_dict()
+assert report["passed_count"] == 22
+assert report["inference_status"] == "not_run"
+```
+
+`scripts/validate_localai_contracts_install.py` runs two isolated offline
+lanes. The provider-only lane verifies ordinary core use and the installed
+console alias's fixed exit-2 failure while `localai_contracts` is absent. The
+provider-plus-exact-wheel lane launches
+`[clean-environment sys.executable, "-m",
+"context_compiler.localai_contracts_connector"]`; its literal argv tail is
+`-m context_compiler.localai_contracts_connector`. It sends a canonical
+handshake followed by `context.compile`, requires the direct `ContextBundle`
+payload to match the in-process digest, and runs the same 22-case gate with
+`failed_count: 0` and `inference_status: not_run`. No concrete temporary
+interpreter path is retained in the repository.
+
+### Dependency-free six-operation connector
+
 `LocalAIConnector` exposes six operations over the existing compiler:
 `capabilities`, `ingest_source_events`, `compile_memory`, `render_context`,
 `verify_memory`, and `inspect_memory`. It is framework-neutral and uses only

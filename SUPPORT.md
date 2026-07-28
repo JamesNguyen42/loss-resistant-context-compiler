@@ -10,6 +10,7 @@ means exercised by the stated checks; it does not imply a production SLA.
 | Python distribution | `loss-resistant-context-compiler` |
 | Import package | `context_compiler` |
 | CLI command | `ctxc` |
+| Optional canonical connector | `ctxc-localai-contracts` |
 | Installed schemas | `share/loss-resistant-context-compiler/schemas` |
 | Artifact schema | `1.0` reader and writer |
 
@@ -34,6 +35,11 @@ optional `dev` dependencies. The exact LM Studio Qwen adapter is optional and
 supports only the documented local Qwen Q4 identity for the retained
 diagnostic; deterministic compilation does not require a model.
 
+The `unified` extra supports exactly `localai-contracts==0.2.0a1`, protocol and
+schema version `1.0.0`, through the separately imported canonical adapter.
+Other versions are refused. Provider-only installation and import remain
+supported; invoking the optional entry point without its wheel exits closed.
+
 ## Format support
 
 | Format | Current support |
@@ -46,6 +52,7 @@ diagnostic; deterministic compilation does not require a model.
 | Detached trust manifests | `ctxc-trust-manifest-0.1`; verification reports use `ctxc-trust-verification-0.1` |
 | CLI diagnostics/events | `ctxc-diagnostic-0.1` / `ctxc-event-0.1` |
 | Connector wire contracts | Seventeen Draft 2020-12 schemas for request/response, source event, bundle, checkpoint, and six payload/result pairs; runtime semantic verification remains authoritative |
+| Canonical optional connector | `localai-contracts` protocol, SourceEvent, ContextBundle, request/response, error, and manifest `1.0.0`; only `context.compile` is executed |
 | LRCBench reports | Current `lrcbench-0.2` plus the explicit retained local-only `0.1` replay path |
 | Natural-history evidence | Six strict source-distribution schemas and seven self-hashed contract fixtures; no collected natural cohort exists |
 | External compatibility evidence | Result-blind ACON and AMA-Agent screening records plus one retained failed ACON diagnostic; no scoreable candidate exists |
@@ -68,6 +75,14 @@ each in a separate clean environment, and runs metadata, schema, CLI, compile,
 and detached-trust round trips on Ubuntu, Windows, and macOS. Windows and macOS
 remain provisional because their hosted jobs are targeted smoke coverage, not
 the complete suite.
+
+The optional boundary additionally has two offline clean-wheel lanes: provider
+only, and provider plus the exact contracts wheel. The latter launches
+`[clean-environment sys.executable, "-m",
+"context_compiler.localai_contracts_connector"]` (literal argv tail
+`-m context_compiler.localai_contracts_connector`) for a real subprocess
+handshake and canonical `context.compile` NDJSON round trip, then runs the
+22-case non-inference conformance gate.
 
 No package index release is currently claimed. Before a public release, the
 repository must add signed or otherwise externally attestable source/wheel

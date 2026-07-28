@@ -26,7 +26,12 @@ def test_distribution_identity_matches_the_public_release_contract() -> None:
     assert project["dependencies"] == []
     assert project["license"] == "MIT"
     assert project["license-files"] == ["LICENSE"]
-    assert project["scripts"] == {"ctxc": "context_compiler.cli:main"}
+    assert project["scripts"] == {
+        "ctxc": "context_compiler.cli:main",
+        "ctxc-localai-contracts": (
+            "context_compiler.localai_contracts_connector:main"
+        ),
+    }
     assert project["urls"] == {
         "Repository": (
             "https://github.com/JamesNguyen42/"

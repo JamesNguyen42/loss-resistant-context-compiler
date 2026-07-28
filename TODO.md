@@ -71,8 +71,46 @@ raw evidence when completing benchmark work.
   earlier failed attempt remains a failed record. These runners are not live
   OpenHands or production-readiness proof.
 - [x] Keep ordinary API and CLI behavior independent of `localai-contracts`
-  and every sibling project; accept structural contract objects in-process and
-  plain versioned JSON across a process boundary.
+  and every sibling project. The existing private six-operation connector
+  accepts structural contract objects in-process and plain versioned JSON
+  across a process boundary; the optional canonical boundary below requires
+  actual wheel classes.
+- [x] Add the separately imported canonical
+  `context_compiler.localai_contracts_adapter` boundary for the reviewed
+  `localai-contracts==0.2.0a1` wheel and protocol `1.0.0`, without adding a
+  required core dependency or changing the private six-operation connector.
+- [x] Advertise only executed `context.compile`; leave
+  `connector.handshake` to the wheel's stateful server, require actual typed
+  request/response objects on its request and NDJSON surfaces, return the
+  canonical `ContextBundle` document directly, reject private/unknown operation
+  names, and apply the same strict canonical parse limits in-process and over
+  NDJSON. Direct `handle` remains only the server's negotiated callback seam.
+- [x] Treat canonical role and `trust` as unauthenticated claims. Namespace
+  caller metadata, default every event to the private untrusted-history path,
+  require a host callback returning `AuthenticatedAuthority` before admitting
+  selected spans to trusted memory, and retain tool state as
+  independently-authenticated confirmed facts only.
+- [x] Preserve every exact source event as untrusted evidence, project exact
+  selected quotes with character-to-UTF-8-byte conversion, expose protected
+  omissions/overflow, recompute component-grain accounting without relabeling
+  estimates, and exclude private certificate/session/time fields from the
+  deterministic canonical bundle id.
+- [x] Pass the exact installed-wheel Phase 0 gate with 22 of 22 fresh-session
+  in-process/NDJSON cases and `inference_status: not_run`; no local model or
+  runtime endpoint was loaded, called, or modified.
+- [x] Run and report both distinct isolated install lanes: provider wheel only,
+  then provider plus the exact contracts wheel. The second launches
+  `[clean-environment sys.executable, "-m",
+  "context_compiler.localai_contracts_connector"]` (literal argv tail
+  `-m context_compiler.localai_contracts_connector`) for the
+  handshake/compile round trip and runs the 22-case gate. The earlier
+  provider-only attempt remains a failure because its exact error-byte
+  assertion assumed LF on Windows. After adding clean-installed conformance,
+  one attempt failed because `print` emitted CRLF and the next failed because a
+  hand-applied fix omitted the child report-write line; neither was relabeled.
+  The final explicit UTF-8/LF run passed both lanes with 22 passed, zero failed,
+  and no inference. Passing terminal output is reported without tracking its
+  private temporary interpreter path.
 - [x] Map connector SourceEvents into fresh immutable SourceRecords while
   preserving hashes, redaction/provenance metadata, and core role authority;
   default assistant/tool history to untrusted unless the host authenticates

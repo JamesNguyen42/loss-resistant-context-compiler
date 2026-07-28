@@ -104,6 +104,61 @@ only; the core does not import or require `localai-contracts`. If such an
 object is accepted, it is converted to detached JSON-shaped data before
 validation.
 
+### Lazy canonical-contract projection
+
+`localai_contracts_adapter.py` and `localai_contracts_connector.py` form a
+parallel optional boundary, not a reinterpretation of the private
+six-operation protocol above. It is not
+imported from `context_compiler.__init__`, and importing the module itself does
+not import its optional dependency. Constructing `LocalAIContractsAdapter`
+requires exactly `localai-contracts==0.2.0a1` and protocol `1.0.0`.
+
+The typed `handle_request` and NDJSON surfaces use the wheel's stateful
+`ConnectorServer`, which exclusively handles `connector.handshake` and requires
+it first. The adapter advertises only executed `context.compile`. Its direct
+`handle` method is the server's already-negotiated callback seam, not a session
+API. The input is a closed one-to-eight array of actual canonical `SourceEvent`
+documents, and the return value is the canonical `ContextBundle` document
+directly. Private `capabilities`, `ingest_source_events`, `compile_memory`,
+`render_context`, `verify_memory`, and `inspect_memory` names are never
+advertised or aliased. The same wheel `ParseLimits`, canonical serializer, and
+strict parser are applied before in-process execution and by the NDJSON server.
+
+Canonical `trust` cannot authenticate an event. All unverified roles are
+mapped to the existing private assistant-history path with connector-owned
+`authenticated: false`; the original role, declared trust, metadata, and
+content digest remain nested inert evidence. Only a host callback returning an
+actual `AuthenticatedAuthority` after independent verification can preserve a
+role as authenticated. The callback is consulted only for events that also
+declare `trust: trusted`; `untrusted` and `derived` events cannot be promoted.
+A `trusted_for_state` decision is accepted only for an authenticated tool and
+retains the core's confirmed-fact-only scope.
+
+Compilation still produces and independently replays the rich private
+`ContextBundle`. The public projection then:
+
+1. includes every complete canonical source event as an exact untrusted span;
+2. projects only exact private provenance quotes, never derived item text;
+3. converts private character offsets to exact UTF-8 byte offsets;
+4. places a selected quote in trusted memory only when its source passed the
+   independent authority callback;
+5. projects protected omissions and protected-budget overflow explicitly;
+6. recomputes accounting over every emitted component with one method, keeping
+   estimates and exact counts distinct;
+7. hashes the exact canonical source documents and compiler policy as separate
+   identities; and
+8. derives the bundle id from the deterministic projected body, excluding
+   private session ids, wall-clock compilation fields, and private bundle
+   hashes.
+
+Complete source spans remain untrusted even for an authenticated actor because
+rehydration returns evidence, not authority. Selected and complete components
+may deliberately overlap; accounting counts both. The projection omits the
+private artifact, checkpoint, archive claim, and detector-scoped certificate
+because canonical `ContextBundle` has no lossless field for them. Therefore it
+is neither a private-bundle replacement nor a semantic-completeness,
+authenticity, or final-request-accounting certificate.
+
 ### Source events and authority
 
 `source_event_to_record()` accepts `localai-source-event-0.1`. It validates any

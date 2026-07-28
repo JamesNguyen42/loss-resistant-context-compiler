@@ -74,6 +74,10 @@ commit:
    source-distribution conformance and natural-history contract assets;
 7. connector golden/negative transcript conformance and in-process/stdio
    semantic-equivalence checks;
+   when the canonical optional extra is included, this also requires the exact
+   contracts-wheel identity, 22-case non-inference conformance, provider-only
+   installation, and provider-plus-contracts subprocess handshake/compile
+   round trip;
 8. frozen benchmark, protocol, and model-diagnostic replay without new model
    calls, with failed external runs retained as failures;
 9. the fixed performance gate;

@@ -65,6 +65,15 @@ versioning and release rules in
 - Seventeen packaged connector JSON Schemas, six-operation golden JSONL,
   66 intentional negative vectors, and a standalone dependency-free
   conformance runner proving in-process/stdio semantic equivalence.
+- A separately imported optional `localai-contracts==0.2.0a1` adapter for
+  protocol/schema `1.0.0` that exposes only executed `context.compile`, uses
+  the wheel's handshake-first typed server and bounded canonical NDJSON
+  transport, and leaves the dependency-free core and private six-operation
+  protocol unchanged.
+- A deterministic canonical ContextBundle projection with exact UTF-8 source
+  spans, explicit trust separation, provenance, omissions/overflow, truthful
+  component-grain accounting, a 22-case non-inference conformance gate, and
+  distinct provider-only/provider-plus-contracts clean-install validation.
 - Six strict natural-history evidence schemas with bounded self-hashed corpus,
   annotation, adjudication, repository/task-group split, gold-free export, and
   report contract fixtures. These fixtures are not a collected natural cohort.
@@ -111,6 +120,11 @@ versioning and release rules in
 - Prevented post-reap POSIX group-ID reuse during compile and external-run
   cleanup. macOS signal permission ambiguity now fails closed unless stable
   process evidence proves that every remaining group member is a zombie.
+- Prevented canonical SourceEvent role, trust, or nested metadata from
+  authenticating authority. Unverified content remains private untrusted
+  history; only an independent host callback may admit exact selected spans to
+  trusted memory, and complete rehydrated sources always remain untrusted
+  evidence.
 
 ## 0.1.0 - 2026-07-23
 

@@ -30,6 +30,18 @@ backend, or package index is uncompromised.
 architecture, security, license, and release review. Build and development
 requirements must stay bounded and visible.
 
+The `unified` extra is pinned to `localai-contracts==0.2.0a1`. The reviewed
+`py3-none-any` wheel has SHA-256
+`3f1cbc1c1079a552304541caa6b7bfbaae926494b67956e3107767ffc980ee41`,
+source commit `dda116eb6431f6f701425f1dec52bf01d9435cfe`, packaged MIT
+license bytes, `Requires-Python >=3.11`, and no `Requires-Dist` entries. The
+workspace handoff copy is ignored and must not be committed or published by
+this repository. Runtime version checks do not prove installed files came from
+that wheel, so release evidence must re-hash the wheel before an offline
+two-lane install. The current local hash/install/conformance result is
+integration evidence, not a signature, independent source audit, vulnerability
+scan, or publication authorization.
+
 The build and development extras currently use lower bounds and CI resolves
 compatible releases from the live package index. No cross-version, hash-pinned
 dev/build lock or offline wheelhouse is retained. A credible replacement needs

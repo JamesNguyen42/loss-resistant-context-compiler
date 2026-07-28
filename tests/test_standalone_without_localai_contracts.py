@@ -27,6 +27,9 @@ builtins.__import__ = blocked_import
 
 from context_compiler import ContextCompiler, LocalAIConnector, SourceRecord
 from context_compiler.cli import main
+from context_compiler.localai_contracts_adapter import LocalAIContractsAdapter
+
+assert LocalAIContractsAdapter.__name__ == "LocalAIContractsAdapter"
 
 source = SourceRecord.create(
     id="standalone",
@@ -83,11 +86,13 @@ def test_core_metadata_has_no_required_sibling_or_forbidden_project_imports() ->
         project = tomllib.load(stream)["project"]
 
     assert project["dependencies"] == []
-    unified = project.get("optional-dependencies", {}).get("unified", [])
-    assert all(
-        dependency.casefold().startswith("localai-contracts")
-        for dependency in unified
-    )
+    assert project.get("optional-dependencies", {}).get("unified") == [
+        "localai-contracts==0.2.0a1"
+    ]
+    assert project["scripts"] == {
+        "ctxc": "context_compiler.cli:main",
+        "ctxc-localai-contracts": "context_compiler.localai_contracts_connector:main",
+    }
 
     source_text = "\n".join(
         path.read_text(encoding="utf-8")
@@ -96,7 +101,7 @@ def test_core_metadata_has_no_required_sibling_or_forbidden_project_imports() ->
     for forbidden in (
         "zoomcache",
         "tokconductor",
-        "vram compiler",
+        "vram_compiler",
         "expertpack",
     ):
         assert f"import {forbidden}" not in source_text

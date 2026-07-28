@@ -27,6 +27,9 @@ Repository = "https://github.com/JamesNguyen42/loss-resistant-context-compiler"
 Issues = "https://github.com/JamesNguyen42/loss-resistant-context-compiler/issues"
 
 [project.optional-dependencies]
+unified = [
+  "localai-contracts==0.2.0a1",
+]
 dev = [
   "pytest>=8.0",
   "pytest-cov>=5.0",
@@ -37,6 +40,7 @@ dev = [
 
 [project.scripts]
 ctxc = "context_compiler.cli:main"
+ctxc-localai-contracts = "context_compiler.localai_contracts_connector:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

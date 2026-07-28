@@ -55,6 +55,19 @@ a production PyPI upload, or a broader product/evidence claim.
   trust-verify smoke tests. Require lexical real distribution paths and
   regular single-link archives; retain any link or replacement rejection.
 - [ ] Confirm the installed core has no third-party runtime requirement.
+- [ ] If the `unified` extra is in the candidate, verify the reviewed
+  `localai-contracts==0.2.0a1` wheel SHA-256, source commit, packaged MIT
+  license bytes, zero-dependency metadata, and protocol/schema `1.0.0`.
+- [ ] Run the canonical adapter's 22-case Phase 0 gate and require exactly
+  `passed_count: 22` and `inference_status: not_run`; do not substitute model
+  execution or a synthetic response.
+- [ ] Run `scripts/validate_localai_contracts_install.py` against the candidate
+  provider wheel and exact contracts wheel. Require distinct provider-only and
+  provider-plus-contracts environments. The second must launch
+  `[clean-environment sys.executable, "-m",
+  "context_compiler.localai_contracts_connector"]` (literal argv tail
+  `-m context_compiler.localai_contracts_connector`) for a real
+  handshake/compile NDJSON round trip and repeat the 22-case non-inference gate.
 - [ ] Provide a reviewed hash-pinned offline wheelhouse and exact requirements
   file for sdist build tools. Run `scripts/release_install_smoke.py` with both
   `--build-wheelhouse <directory>` and
