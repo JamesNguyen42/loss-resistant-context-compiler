@@ -27,6 +27,7 @@ MANIFEST_NAME = "openhands-1.8.0.json"
 TOKENIZER_VECTORS_NAME = "canonical-utf8-byte-tokenizer-vectors.json"
 SDIST_AUDIT_PATHS = (
     BACKEND_PATH,
+    "MANIFEST.in",
     "pyproject.toml",
     "docs/RUNBOOK.md",
     "docs/UPSTREAM_RFC.md",
@@ -129,6 +130,8 @@ def built_distributions(request: pytest.FixtureRequest) -> dict[str, Path]:
     core_source = root / "core-source"
     integration_dist = root / "integration-dist"
     integration_repeat_dist = root / "integration-repeat-dist"
+    integration_roundtrip_source = root / "integration-roundtrip-source"
+    integration_roundtrip_dist = root / "integration-roundtrip-dist"
     core_dist = root / "core-dist"
     _copy_source(PROJECT_ROOT, integration_source, exclude_integrations=False)
     _copy_source(
@@ -139,6 +142,8 @@ def built_distributions(request: pytest.FixtureRequest) -> dict[str, Path]:
     _copy_source(REPOSITORY_ROOT, core_source, exclude_integrations=True)
     integration_dist.mkdir()
     integration_repeat_dist.mkdir()
+    integration_roundtrip_source.mkdir()
+    integration_roundtrip_dist.mkdir()
     core_dist.mkdir()
     env = _offline_env()
 
@@ -177,10 +182,32 @@ def built_distributions(request: pytest.FixtureRequest) -> dict[str, Path]:
     assert len(integration_sdists) == 1
     assert len(integration_repeat_sdists) == 1
     assert len(core_wheels) == 1
+
+    with tarfile.open(integration_sdists[0], mode="r:gz") as archive:
+        archive.extractall(integration_roundtrip_source, filter="data")
+    extracted_roots = tuple(integration_roundtrip_source.iterdir())
+    assert len(extracted_roots) == 1
+    extracted_root = extracted_roots[0]
+    assert extracted_root.is_dir()
+    assert not extracted_root.is_symlink()
+    _build(
+        extracted_root,
+        integration_roundtrip_dist,
+        backend=BACKEND_MODULE,
+        wheel=False,
+        sdist=True,
+        env=env,
+    )
+    integration_roundtrip_sdists = list(
+        integration_roundtrip_dist.glob("ctxc_openhands-*.tar.gz")
+    )
+    assert len(integration_roundtrip_sdists) == 1
+
     return {
         "integration_wheel": integration_wheels[0],
         "integration_sdist": integration_sdists[0],
         "integration_repeat_sdist": integration_repeat_sdists[0],
+        "integration_roundtrip_sdist": integration_roundtrip_sdists[0],
         "core_wheel": core_wheels[0],
         "root": root,
     }
@@ -287,6 +314,11 @@ def test_integration_backend_configuration_and_source_parity() -> None:
     assert (PROJECT_ROOT / BACKEND_PATH).read_bytes() == (
         REPOSITORY_ROOT / "_ctxc_build_backend.py"
     ).read_bytes()
+    manifest_lines = (PROJECT_ROOT / "MANIFEST.in").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    assert manifest_lines.count("exclude setup.cfg") == 1
+    assert not (PROJECT_ROOT / "setup.cfg").exists()
 
 
 def test_repeated_integration_sdists_are_byte_identical_and_epoch_bound(
@@ -294,13 +326,38 @@ def test_repeated_integration_sdists_are_byte_identical_and_epoch_bound(
 ) -> None:
     first = built_distributions["integration_sdist"]
     second = built_distributions["integration_repeat_sdist"]
+    roundtrip = built_distributions["integration_roundtrip_sdist"]
     expected = first.read_bytes()
+    assert first.name == second.name == roundtrip.name
     assert second.read_bytes() == expected
+    assert roundtrip.read_bytes() == expected
     assert int.from_bytes(expected[4:8], "little") == SOURCE_DATE_EPOCH
 
     with tarfile.open(first, mode="r:gz") as archive:
         members = archive.getmembers()
+        names = archive.getnames()
+        setup_name = _single_name(names, "/setup.cfg")
+        sources_name = _single_name(
+            names,
+            "/src/ctxc_openhands.egg-info/SOURCES.txt",
+        )
+        setup_stream = archive.extractfile(setup_name)
+        sources_stream = archive.extractfile(sources_name)
+        assert setup_stream is not None
+        assert sources_stream is not None
+        newline = os.linesep.encode("ascii")
+        assert setup_stream.read() == newline.join(
+            (
+                b"[egg_info]",
+                b"tag_build = ",
+                b"tag_date = 0",
+                b"",
+                b"",
+            )
+        )
+        sources_lines = sources_stream.read().decode("utf-8").splitlines()
     assert members
+    assert "setup.cfg" not in sources_lines
     assert all(member.mtime == SOURCE_DATE_EPOCH for member in members)
     assert all("mtime" not in member.pax_headers for member in members)
 

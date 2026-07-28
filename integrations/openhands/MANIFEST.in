@@ -12,4 +12,5 @@ include demo/Dockerfile
 include demo/Dockerfile.dockerignore
 include demo/README.md
 recursive-include src/ctxc_openhands/data *.json
+exclude setup.cfg
 global-exclude __pycache__ *.py[cod]
