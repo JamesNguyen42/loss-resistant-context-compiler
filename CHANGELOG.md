@@ -44,6 +44,19 @@ versioning and release rules in
 - Bound external stdout/stderr evidence to runner-retained descriptors and a
   finite `cap + 1` prefix witness, preventing path substitution and unbounded
   hashing when a failed cleanup leaves a writer alive.
+- Rebound the optional canonical adapter from revoked
+  `localai-contracts==0.2.0a1` transport evidence to the immutable
+  `0.2.0a2` wheel. The a1 read-error and oversized-line outcomes remain failed,
+  superseded evidence rather than being relabeled.
+- Required the optional adapter to validate one exact distribution,
+  built-in module/spec/source-loader origins, the bounded link-free 29-member
+  package tree, and any executable bytecode before import, repeat the complete
+  gate afterward, and reject shadowed, preloaded, substituted, or mutated
+  package state.
+- Applied a2 `bounded_canonical_bytes` with the adapter's explicit
+  `ParseLimits` at every private serialization seam, retained binary-only
+  handshake-first NDJSON, and distinguished recoverable bounded oversize
+  draining from fatal over-ceiling and real I/O failures.
 
 ### Added
 
@@ -65,7 +78,7 @@ versioning and release rules in
 - Seventeen packaged connector JSON Schemas, six-operation golden JSONL,
   66 intentional negative vectors, and a standalone dependency-free
   conformance runner proving in-process/stdio semantic equivalence.
-- A separately imported optional `localai-contracts==0.2.0a1` adapter for
+- A separately imported optional `localai-contracts==0.2.0a2` adapter for
   protocol/schema `1.0.0` that exposes only executed `context.compile`, uses
   the wheel's handshake-first typed server and bounded canonical NDJSON
   transport, and leaves the dependency-free core and private six-operation
@@ -125,6 +138,15 @@ versioning and release rules in
   history; only an independent host callback may admit exact selected spans to
   trusted memory, and complete rehydrated sources always remain untrusted
   evidence.
+- Rejected optional-contract shadow packages, ambiguous distributions,
+  distribution/spec/loader path mismatches, loader instance overrides,
+  non-string module or namespace keys, external bytecode-cache prefixes,
+  linked/reparse tree entries, unexpected installed-tree entries,
+  source/resource digest or size mismatches, forged package-local bytecode, and
+  post-import origin changes before exposing the canonical adapter. Attribute
+  hooks on rejected preloaded modules are not invoked. The gate remains
+  installed-environment validation rather than wheel-archive authentication,
+  atomic import, or containment of a compromised Python process.
 
 ## 0.1.0 - 2026-07-23
 

@@ -111,7 +111,23 @@ parallel optional boundary, not a reinterpretation of the private
 six-operation protocol above. It is not
 imported from `context_compiler.__init__`, and importing the module itself does
 not import its optional dependency. Constructing `LocalAIContractsAdapter`
-requires exactly `localai-contracts==0.2.0a1` and protocol `1.0.0`.
+requires exactly `localai-contracts==0.2.0a2` and protocol `1.0.0`.
+
+Before the adapter initiates package import or exposes a preloaded root,
+construction requires one exact-version distribution, an unset
+`sys.pycache_prefix`, and exact built-in module/spec/source-loader state bound
+to the distribution's recorded package and initializer. It rejects loader
+instance overrides, non-string namespace/module-registry keys, linked/reparse
+and unexpected package-tree entries, then checks exact sizes and a canonically
+framed SHA-256 over every reviewed source/resource file. Package-local
+executable bytecode is accepted only when its payload equals fresh compilation
+of verified source; external cache prefixes fail closed. After import the
+adapter repeats the file/origin gate, validates all loaded contract-module
+paths and loaders, and requires the returned object to be the validated
+`sys.modules` root. This is installed-environment checking, not an import
+sandbox or FD-pinned transaction. Writable-site-packages races, code already
+run by startup/custom-finder/preload hooks, and arbitrary same-origin object
+forgery in a compromised process remain host boundaries.
 
 The typed `handle_request` and NDJSON surfaces use the wheel's stateful
 `ConnectorServer`, which exclusively handles `connector.handshake` and requires
@@ -121,8 +137,14 @@ API. The input is a closed one-to-eight array of actual canonical `SourceEvent`
 documents, and the return value is the canonical `ContextBundle` document
 directly. Private `capabilities`, `ingest_source_events`, `compile_memory`,
 `render_context`, `verify_memory`, and `inspect_memory` names are never
-advertised or aliased. The same wheel `ParseLimits`, canonical serializer, and
-strict parser are applied before in-process execution and by the NDJSON server.
+advertised or aliased. The same wheel `ParseLimits`, public
+`bounded_canonical_bytes`, and strict parser are applied at every private
+serialization seam before in-process execution and by the NDJSON server.
+NDJSON is binary-only. A bounded oversized physical record is drained through
+its newline and receives exactly one error before processing resumes; bounded
+unterminated EOF receives one error. A record beyond the drain ceiling, a
+non-binary reader/writer, a short write, or a real reader/writer I/O failure is
+fatal and never receives a fabricated success.
 
 Canonical `trust` cannot authenticate an event. All unverified roles are
 mapped to the existing private assistant-history path with connector-owned

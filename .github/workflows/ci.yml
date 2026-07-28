@@ -72,6 +72,7 @@ jobs:
           tests/test_local_qwen.py
           tests/test_parent_directory_safety.py
           tests/test_release_install_smoke.py
+          tests/test_standalone_without_localai_contracts.py
       - name: Build wheel and source distribution
         run: |
           python -m pip wheel . --no-deps --wheel-dir dist

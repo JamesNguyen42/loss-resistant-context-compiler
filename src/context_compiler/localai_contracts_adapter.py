@@ -9,26 +9,76 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import importlib.machinery
+import importlib.metadata
+import importlib.util
+import marshal
+import os
+import stat
+import sys
 import threading
+import types
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from .connector import LocalAIConnector
 from .connector import SourceEvent as PrivateSourceEvent
+from .path_safety import _is_link_or_reparse
 
 LOCALAI_CONTRACTS_DISTRIBUTION = "localai-contracts"
-LOCALAI_CONTRACTS_VERSION = "0.2.0a1"
+LOCALAI_CONTRACTS_VERSION = "0.2.0a2"
 LOCALAI_CONTRACTS_PROTOCOL_VERSION = "1.0.0"
 LOCALAI_CONTRACTS_WHEEL_SHA256 = (
-    "3f1cbc1c1079a552304541caa6b7bfbaae926494b67956e3107767ffc980ee41"
+    "36a02dbc4267402949dddda1da180d800590cc579e0c1ecb022fc96f6a7c29ae"
 )
-LOCALAI_CONTRACTS_SOURCE_COMMIT = "dda116eb6431f6f701425f1dec52bf01d9435cfe"
+LOCALAI_CONTRACTS_SOURCE_COMMIT = "3858190e8b458847da94e9ed24be83f4928b7d1a"
 CONTEXT_COMPILE_OPERATION = "context.compile"
 MAX_CONTEXT_SOURCE_EVENTS = 8
 MAX_CONTEXT_SPANS = 10_000
 _PROJECTION_VERSION = "ctxc-localai-context-bundle-projection-v1"
+_CONTRACTS_IMPORT_NAME = "localai_contracts"
+_CONTRACTS_VALIDATION_ERROR = (
+    "localai-contracts 0.2.0a2 failed optional-adapter validation"
+)
+_CONTRACTS_INSTALLED_TREE_SHA256 = (
+    "296f49a2d7b48158d2d3a33e36b77d5b5c495362cbe3aceaaf8975fb256e538c"
+)
+_MAX_CONTRACTS_TREE_ENTRIES = 256
+_MAX_CONTRACTS_BYTECODE_BYTES = 4 * 1024 * 1024
+_CONTRACTS_INSTALLED_FILES = (
+    ("__init__.py", 6_474),
+    ("_integration_bootstrap.py", 1_684),
+    ("canonical.py", 8_389),
+    ("conformance.py", 60_091),
+    ("connector.py", 40_852),
+    ("errors.py", 1_862),
+    ("fixtures/phase0-conformance-v1.json", 7_551),
+    ("inference_lease.py", 92_469),
+    ("integration.py", 141_988),
+    ("models.py", 14_235),
+    ("privacy.py", 2_139),
+    ("profiles.py", 876),
+    ("profiles/r9700-qwen3.6-q4.development.json", 1_743),
+    ("py.typed", 27),
+    ("schemas/common.schema.json", 2_817),
+    ("schemas/component-capability-manifest.schema.json", 3_386),
+    ("schemas/connector-request.schema.json", 1_030),
+    ("schemas/connector-response.schema.json", 1_198),
+    ("schemas/context-bundle.schema.json", 4_248),
+    ("schemas/deployment-plan.schema.json", 3_452),
+    ("schemas/error-envelope.schema.json", 224),
+    ("schemas/generation-receipt.schema.json", 2_385),
+    ("schemas/identity-envelope.schema.json", 2_786),
+    ("schemas/model-state-handle.schema.json", 2_221),
+    ("schemas/runtime-control-plan.schema.json", 4_169),
+    ("schemas/source-event.schema.json", 996),
+    ("schemas/telemetry-event.schema.json", 2_935),
+    ("smoke.py", 80_032),
+    ("validation.py", 10_997),
+)
 
 
 class LocalAIContractsUnavailableError(RuntimeError):
@@ -63,27 +113,477 @@ AuthorityVerifier = Callable[[Any], AuthenticatedAuthority | None]
 ConnectorFactory = Callable[[], LocalAIConnector]
 
 
+@dataclass(frozen=True, slots=True)
+class _ContractsOrigin:
+    package_directory: Path
+    initializer: Path
+
+
+def _validation_failed() -> LocalAIContractsUnavailableError:
+    return LocalAIContractsUnavailableError(_CONTRACTS_VALIDATION_ERROR)
+
+
+def _same_file(left: Path, right: Path) -> bool:
+    try:
+        return os.path.samefile(left, right)
+    except (OSError, ValueError):
+        return False
+
+
+def _validated_namespace(value: object) -> dict[str, Any]:
+    if type(value) is not dict:
+        raise ValueError("contracts namespace is not an exact dictionary")
+    keys = tuple(value)
+    if any(type(key) is not str for key in keys):
+        raise ValueError("contracts namespace key is not an exact string")
+    return value
+
+
+def _validate_source_loader(
+    loader: object,
+    *,
+    module_name: str,
+    expected_path: Path,
+) -> None:
+    if type(loader) is not importlib.machinery.SourceFileLoader:
+        raise ValueError("contracts source loader type mismatch")
+    loader_state = _validated_namespace(vars(loader))
+    if sorted(loader_state) != ["name", "path"]:
+        raise ValueError("contracts source loader state mismatch")
+    loader_name = loader_state.get("name")
+    loader_path = loader_state.get("path")
+    if (
+        type(loader_name) is not str
+        or loader_name != module_name
+        or type(loader_path) is not str
+        or not _same_file(Path(loader_path), expected_path)
+    ):
+        raise ValueError("contracts source loader origin mismatch")
+
+
+def _hash_expected_regular_file(
+    path: Path,
+    *,
+    relative: str,
+    expected_size: int,
+    tree_digest: Any,
+) -> bytes:
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        before = os.stat(path, follow_symlinks=False)
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or _is_link_or_reparse(before)
+            or not stat.S_ISREG(opened.st_mode)
+            or before.st_dev != opened.st_dev
+            or before.st_ino != opened.st_ino
+            or before.st_size != expected_size
+            or opened.st_size != expected_size
+        ):
+            raise ValueError("contracts file identity mismatch")
+        encoded_name = relative.encode("utf-8")
+        tree_digest.update(len(encoded_name).to_bytes(4, "big"))
+        tree_digest.update(encoded_name)
+        tree_digest.update(expected_size.to_bytes(8, "big"))
+        remaining = expected_size
+        contents = bytearray()
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 65_536))
+            if not chunk:
+                raise ValueError("contracts file truncated")
+            tree_digest.update(chunk)
+            contents.extend(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise ValueError("contracts file exceeds expected size")
+        after = os.fstat(descriptor)
+        if (
+            after.st_dev != opened.st_dev
+            or after.st_ino != opened.st_ino
+            or after.st_size != opened.st_size
+        ):
+            raise ValueError("contracts file changed during validation")
+        return bytes(contents)
+    finally:
+        os.close(descriptor)
+
+
+def _read_bounded_regular_file(path: Path, *, maximum_size: int) -> bytes:
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        before = os.stat(path, follow_symlinks=False)
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or _is_link_or_reparse(before)
+            or not stat.S_ISREG(opened.st_mode)
+            or before.st_dev != opened.st_dev
+            or before.st_ino != opened.st_ino
+            or opened.st_size < 16
+            or opened.st_size > maximum_size
+        ):
+            raise ValueError("contracts bytecode identity mismatch")
+        remaining = opened.st_size
+        contents = bytearray()
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 65_536))
+            if not chunk:
+                raise ValueError("contracts bytecode truncated")
+            contents.extend(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise ValueError("contracts bytecode exceeds expected size")
+        after = os.fstat(descriptor)
+        if (
+            after.st_dev != opened.st_dev
+            or after.st_ino != opened.st_ino
+            or after.st_size != opened.st_size
+        ):
+            raise ValueError("contracts bytecode changed during validation")
+        return bytes(contents)
+    finally:
+        os.close(descriptor)
+
+
+def _validate_bytecode_cache(
+    path: Path,
+    *,
+    source: bytes,
+    source_path: Path,
+    optimize: int,
+) -> None:
+    cached = _read_bounded_regular_file(
+        path,
+        maximum_size=_MAX_CONTRACTS_BYTECODE_BYTES,
+    )
+    flags = int.from_bytes(cached[4:8], "little")
+    expected_code = compile(
+        source,
+        str(source_path),
+        "exec",
+        dont_inherit=True,
+        optimize=optimize,
+    )
+    if (
+        cached[:4] != importlib.util.MAGIC_NUMBER
+        or flags not in {0, 1, 3}
+        or cached[16:] != marshal.dumps(expected_code)
+    ):
+        raise ValueError("contracts bytecode does not match verified source")
+
+
+def _validate_installed_tree_shape(
+    package_directory: Path,
+) -> tuple[tuple[Path, str, int], ...]:
+    expected_files = {path for path, _size in _CONTRACTS_INSTALLED_FILES}
+    expected_directories: set[str] = set()
+    for relative in expected_files:
+        parts = relative.split("/")
+        expected_directories.update(
+            "/".join(parts[:index]) for index in range(1, len(parts))
+        )
+    expected_cache_names = {
+        Path(
+            importlib.util.cache_from_source(
+                str(package_directory / relative),
+                optimization=tag,
+            )
+        ).name: (
+            relative,
+            optimize,
+        )
+        for relative in expected_files
+        if relative.endswith(".py") and "/" not in relative
+        for optimize, tag in ((0, ""), (1, "1"), (2, "2"))
+    }
+    cached_files: list[tuple[Path, str, int]] = []
+    observed_files: set[str] = set()
+    pending = [(package_directory, "")]
+    entry_count = 0
+    while pending:
+        directory, prefix = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                entry_count += 1
+                if entry_count > _MAX_CONTRACTS_TREE_ENTRIES:
+                    raise ValueError("contracts package tree exceeds limit")
+                relative = f"{prefix}/{entry.name}" if prefix else entry.name
+                entry_stat = entry.stat(follow_symlinks=False)
+                if _is_link_or_reparse(entry_stat):
+                    raise ValueError("contracts package tree contains a link")
+                if stat.S_ISDIR(entry_stat.st_mode):
+                    if relative == "__pycache__":
+                        with os.scandir(entry.path) as cache_entries:
+                            for cached in cache_entries:
+                                entry_count += 1
+                                if entry_count > _MAX_CONTRACTS_TREE_ENTRIES:
+                                    raise ValueError(
+                                        "contracts package tree exceeds limit"
+                                    )
+                                cached_stat = cached.stat(follow_symlinks=False)
+                                if (
+                                    _is_link_or_reparse(cached_stat)
+                                    or not stat.S_ISREG(cached_stat.st_mode)
+                                ):
+                                    raise ValueError(
+                                        "contracts bytecode cache is unexpected"
+                                    )
+                                cache_identity = expected_cache_names.get(cached.name)
+                                if cache_identity is None:
+                                    raise ValueError(
+                                        "contracts bytecode cache is unexpected"
+                                    )
+                                cached_files.append((Path(cached.path), *cache_identity))
+                        continue
+                    if relative not in expected_directories:
+                        raise ValueError("contracts package directory is unexpected")
+                    pending.append((Path(entry.path), relative))
+                    continue
+                if (
+                    not stat.S_ISREG(entry_stat.st_mode)
+                    or relative not in expected_files
+                ):
+                    raise ValueError("contracts package file is unexpected")
+                observed_files.add(relative)
+    if observed_files != expected_files:
+        raise ValueError("contracts package file set mismatch")
+    return tuple(cached_files)
+
+
+def _module_file_for_name(name: str) -> str | None:
+    if name == _CONTRACTS_IMPORT_NAME:
+        return "__init__.py"
+    prefix = f"{_CONTRACTS_IMPORT_NAME}."
+    if not name.startswith(prefix):
+        return None
+    relative = name.removeprefix(prefix).replace(".", "/")
+    expected_files = {path for path, _size in _CONTRACTS_INSTALLED_FILES}
+    module_file = f"{relative}.py"
+    if module_file in expected_files:
+        return module_file
+    package_file = f"{relative}/__init__.py"
+    if package_file in expected_files:
+        return package_file
+    return None
+
+
+def _validate_loaded_modules(origin: _ContractsOrigin) -> None:
+    prefix = f"{_CONTRACTS_IMPORT_NAME}."
+    modules = vars(sys).get("modules")
+    if type(modules) is not dict:
+        raise ValueError("invalid interpreter module registry")
+    for name, module in tuple(modules.items()):
+        if type(name) is not str:
+            raise ValueError("invalid interpreter module name")
+        if name != _CONTRACTS_IMPORT_NAME and not name.startswith(prefix):
+            continue
+        if type(module) is not types.ModuleType:
+            raise ValueError("invalid preloaded contracts module")
+        module_state = _validated_namespace(vars(module))
+        if module_state.get("__name__") != name:
+            raise ValueError("invalid preloaded contracts module")
+        relative = _module_file_for_name(name)
+        if relative is None:
+            raise ValueError("unexpected preloaded contracts module")
+        expected = origin.package_directory.joinpath(*relative.split("/"))
+        module_spec = module_state.get("__spec__")
+        if type(module_spec) is not importlib.machinery.ModuleSpec:
+            raise ValueError("preloaded contracts module spec mismatch")
+        spec_state = _validated_namespace(vars(module_spec))
+        module_origin = spec_state.get("origin")
+        module_file = module_state.get("__file__")
+        if (
+            module_state.get("__loader__") is not spec_state.get("loader")
+            or type(module_origin) is not str
+            or type(module_file) is not str
+            or not _same_file(Path(module_origin), expected)
+            or not _same_file(Path(module_file), expected)
+        ):
+            raise ValueError("preloaded contracts module origin mismatch")
+        _validate_source_loader(
+            spec_state.get("loader"),
+            module_name=name,
+            expected_path=expected,
+        )
+        expected_package = (
+            _CONTRACTS_IMPORT_NAME
+            if name == _CONTRACTS_IMPORT_NAME
+            else name.rpartition(".")[0]
+        )
+        if module_state.get("__package__") != expected_package:
+            raise ValueError("preloaded contracts module package mismatch")
+        if name == _CONTRACTS_IMPORT_NAME:
+            search_locations = module_state.get("__path__")
+            spec_search_locations = spec_state.get("submodule_search_locations")
+            if (
+                type(search_locations) is not list
+                or len(search_locations) != 1
+                or type(search_locations[0]) is not str
+                or type(spec_search_locations) is not list
+                or len(spec_search_locations) != 1
+                or type(spec_search_locations[0]) is not str
+                or not _same_file(
+                    Path(search_locations[0]),
+                    origin.package_directory,
+                )
+                or not _same_file(
+                    Path(spec_search_locations[0]),
+                    origin.package_directory,
+                )
+            ):
+                raise ValueError("preloaded contracts package path mismatch")
+        elif spec_state.get("submodule_search_locations") is not None:
+            raise ValueError("preloaded contracts submodule is a package")
+
+
+def _preflight_contracts_origin() -> _ContractsOrigin:
+    try:
+        interpreter_state = _validated_namespace(vars(sys))
+        if (
+            type(interpreter_state.get("modules")) is not dict
+            or interpreter_state.get("pycache_prefix") is not None
+        ):
+            raise ValueError("external bytecode cache prefix is unsupported")
+        modules = interpreter_state["modules"]
+        if any(type(name) is not str for name in tuple(modules)):
+            raise ValueError("invalid interpreter module name")
+        distributions = list(
+            importlib.metadata.distributions(name=LOCALAI_CONTRACTS_DISTRIBUTION)
+        )
+        if len(distributions) != 1:
+            raise ValueError("contracts distribution is absent or ambiguous")
+        distribution = distributions[0]
+        distribution_name = distribution.metadata.get("Name")
+        if (
+            not isinstance(distribution_name, str)
+            or distribution_name.casefold() != LOCALAI_CONTRACTS_DISTRIBUTION
+            or distribution.version != LOCALAI_CONTRACTS_VERSION
+        ):
+            raise ValueError("contracts distribution identity mismatch")
+
+        recorded_files = distribution.files
+        if recorded_files is None:
+            raise ValueError("contracts distribution has no file inventory")
+        by_name: dict[str, list[Any]] = {}
+        for recorded in recorded_files:
+            by_name.setdefault(recorded.as_posix(), []).append(recorded)
+        expected_paths = {
+            f"{_CONTRACTS_IMPORT_NAME}/{relative}"
+            for relative, _size in _CONTRACTS_INSTALLED_FILES
+        }
+        if any(len(by_name.get(path, ())) != 1 for path in expected_paths):
+            raise ValueError("contracts distribution inventory mismatch")
+
+        initializer_record = by_name[f"{_CONTRACTS_IMPORT_NAME}/__init__.py"][0]
+        initializer = Path(distribution.locate_file(initializer_record))
+        package_directory = initializer.parent
+        directory_stat = os.stat(package_directory, follow_symlinks=False)
+        if (
+            not stat.S_ISDIR(directory_stat.st_mode)
+            or _is_link_or_reparse(directory_stat)
+        ):
+            raise ValueError("contracts package is not a directory")
+
+        spec = importlib.util.find_spec(_CONTRACTS_IMPORT_NAME)
+        if type(spec) is not importlib.machinery.ModuleSpec:
+            raise ValueError("contracts import spec is invalid")
+        spec_state = _validated_namespace(vars(spec))
+        spec_origin = spec_state.get("origin")
+        spec_loader = spec_state.get("loader")
+        spec_locations = spec_state.get("submodule_search_locations")
+        if (
+            spec_state.get("name") != _CONTRACTS_IMPORT_NAME
+            or spec_state.get("_set_fileattr") is not True
+            or type(spec_origin) is not str
+            or type(spec_loader) is not importlib.machinery.SourceFileLoader
+            or type(spec_locations) is not list
+        ):
+            raise ValueError("contracts import spec is invalid")
+        if (
+            len(spec_locations) != 1
+            or type(spec_locations[0]) is not str
+            or not _same_file(Path(spec_origin), initializer)
+            or not _same_file(Path(spec_locations[0]), package_directory)
+        ):
+            raise ValueError("contracts import spec origin mismatch")
+        import_initializer = Path(spec_origin)
+        import_package_directory = Path(spec_locations[0])
+        _validate_source_loader(
+            spec_loader,
+            module_name=_CONTRACTS_IMPORT_NAME,
+            expected_path=import_initializer,
+        )
+        if (
+            not import_initializer.is_absolute()
+            or not import_package_directory.is_absolute()
+        ):
+            raise ValueError("contracts import spec paths are not absolute")
+        origin = _ContractsOrigin(
+            package_directory=import_package_directory,
+            initializer=import_initializer,
+        )
+        cached_files = _validate_installed_tree_shape(origin.package_directory)
+        tree_digest = hashlib.sha256()
+        verified_sources: dict[str, bytes] = {}
+        for relative, expected_size in _CONTRACTS_INSTALLED_FILES:
+            recorded = by_name[f"{_CONTRACTS_IMPORT_NAME}/{relative}"][0]
+            located = Path(distribution.locate_file(recorded))
+            expected = origin.package_directory.joinpath(*relative.split("/"))
+            if not _same_file(located, expected):
+                raise ValueError("contracts distribution file origin mismatch")
+            contents = _hash_expected_regular_file(
+                expected,
+                relative=relative,
+                expected_size=expected_size,
+                tree_digest=tree_digest,
+            )
+            if relative.endswith(".py"):
+                verified_sources[relative] = contents
+        if tree_digest.hexdigest() != _CONTRACTS_INSTALLED_TREE_SHA256:
+            raise ValueError("contracts installed tree digest mismatch")
+        for cached_path, source_relative, optimize in cached_files:
+            _validate_bytecode_cache(
+                cached_path,
+                source=verified_sources[source_relative],
+                source_path=origin.package_directory.joinpath(
+                    *source_relative.split("/")
+                ),
+                optimize=optimize,
+            )
+        _validate_loaded_modules(origin)
+        return origin
+    except Exception:
+        raise _validation_failed() from None
+
+
 @lru_cache(maxsize=1)
 def _load_contracts() -> Any:
+    origin = _preflight_contracts_origin()
     try:
-        contracts = importlib.import_module("localai_contracts")
-    except ModuleNotFoundError as exc:
-        if exc.name == "localai_contracts":
-            raise LocalAIContractsUnavailableError(
-                "localai-contracts 0.2.0a1 is required for this optional adapter"
-            ) from exc
-        raise
-    if getattr(contracts, "__version__", None) != LOCALAI_CONTRACTS_VERSION:
-        raise LocalAIContractsUnavailableError(
-            "the optional adapter requires localai-contracts 0.2.0a1 exactly"
-        )
+        contracts = importlib.import_module(_CONTRACTS_IMPORT_NAME)
+    except Exception:
+        raise _validation_failed() from None
     if (
-        getattr(contracts, "PROTOCOL_VERSION", None)
-        != LOCALAI_CONTRACTS_PROTOCOL_VERSION
+        sys.modules.get(_CONTRACTS_IMPORT_NAME) is not contracts
+        or _preflight_contracts_origin() != origin
     ):
-        raise LocalAIContractsUnavailableError(
-            "the optional adapter requires localai-contracts protocol 1.0.0"
-        )
+        raise _validation_failed() from None
+    try:
+        contracts_state = _validated_namespace(vars(contracts))
+        if contracts_state.get("__version__") != LOCALAI_CONTRACTS_VERSION:
+            raise ValueError("contracts runtime version mismatch")
+        if (
+            contracts_state.get("PROTOCOL_VERSION")
+            != LOCALAI_CONTRACTS_PROTOCOL_VERSION
+        ):
+            raise ValueError("contracts protocol version mismatch")
+    except Exception:
+        raise _validation_failed() from None
     required = (
         "ComponentCapabilityManifest",
         "ConnectorRequest",
@@ -97,13 +597,15 @@ def _load_contracts() -> Any:
         "SubjectOperationProbe",
         "SubjectOperationPurpose",
         "UnsupportedOperationError",
+        "bounded_canonical_bytes",
         "canonical_bytes",
         "parse_json",
     )
-    if any(not hasattr(contracts, name) for name in required):
-        raise LocalAIContractsUnavailableError(
-            "the installed localai-contracts package lacks the required API"
-        )
+    try:
+        if any(name not in contracts_state for name in required):
+            raise ValueError("contracts API mismatch")
+    except Exception:
+        raise _validation_failed() from None
     return contracts
 
 
@@ -155,7 +657,10 @@ class LocalAIContractsAdapter:
         self._connector_factory = connector_factory or LocalAIConnector
         self._authority_verifier = authority_verifier
         self._limits = selected_limits
-        self._request_server = contracts.ConnectorServer(self)
+        self._request_server = contracts.ConnectorServer(
+            self,
+            limits=self._limits,
+        )
         self._request_lock = threading.RLock()
 
     @property
@@ -249,7 +754,9 @@ class LocalAIContractsAdapter:
             )
 
         events, private_events, authenticated = self._map_source_events(documents)
-        payload_digest = _digest(self._contracts.canonical_bytes(bounded))
+        payload_digest = _digest(
+            self._contracts.bounded_canonical_bytes(bounded, limits=self._limits)
+        )
         connector = self._connector_factory()
         if not isinstance(connector, LocalAIConnector):
             raise TypeError("connector_factory must return LocalAIConnector")
@@ -267,11 +774,10 @@ class LocalAIContractsAdapter:
             authenticated=authenticated,
             connector=connector,
         )
-        encoded = projected.canonical_bytes()
-        if len(encoded) > self._limits.max_bytes:
-            raise self._contracts.ParseLimitError(
-                "canonical ContextBundle exceeds the configured frame bound"
-            )
+        encoded = self._contracts.bounded_canonical_bytes(
+            projected.to_dict(),
+            limits=self._limits,
+        )
         parsed = self._contracts.parse_json(encoded, limits=self._limits)
         checked = self._contracts.ContextBundle.from_dict(parsed)
         return checked.to_dict()
@@ -334,11 +840,7 @@ class LocalAIContractsAdapter:
 
     def _bounded_json(self, value: Any, *, label: str) -> Any:
         try:
-            encoded = self._contracts.canonical_bytes(value)
-            if len(encoded) > self._limits.max_bytes:
-                raise self._contracts.ParseLimitError(
-                    f"{label} exceeds the configured byte bound"
-                )
+            encoded = self._contracts.bounded_canonical_bytes(value, limits=self._limits)
             return self._contracts.parse_json(encoded, limits=self._limits)
         except self._contracts.LocalAIContractsError:
             raise
@@ -603,9 +1105,11 @@ class LocalAIContractsAdapter:
                 key=lambda item: (item.sequence, item.source_event_id),
             )
         ]
-        source_digest = _digest(
-            self._contracts.canonical_bytes(canonical_source_documents)
+        source_bytes = self._contracts.bounded_canonical_bytes(
+            canonical_source_documents,
+            limits=self._limits,
         )
+        source_digest = _digest(source_bytes)
 
         body = {
             "trusted_active_memory": trusted_spans,
@@ -638,10 +1142,14 @@ class LocalAIContractsAdapter:
                 "digest": _digest_record(source_digest),
             },
         }
+        body_bytes = self._contracts.bounded_canonical_bytes(
+            body,
+            limits=self._limits,
+        )
         bundle_digest = _digest(
             _PROJECTION_VERSION.encode("utf-8")
             + b"\x00"
-            + self._contracts.canonical_bytes(body)
+            + body_bytes
         )
         projected = self._contracts.ContextBundle(
             bundle_id=f"ctxc-context-{bundle_digest}",

@@ -30,17 +30,37 @@ backend, or package index is uncompromised.
 architecture, security, license, and release review. Build and development
 requirements must stay bounded and visible.
 
-The `unified` extra is pinned to `localai-contracts==0.2.0a1`. The reviewed
+The `unified` extra is pinned to `localai-contracts==0.2.0a2`. The reviewed
 `py3-none-any` wheel has SHA-256
-`3f1cbc1c1079a552304541caa6b7bfbaae926494b67956e3107767ffc980ee41`,
-source commit `dda116eb6431f6f701425f1dec52bf01d9435cfe`, packaged MIT
-license bytes, `Requires-Python >=3.11`, and no `Requires-Dist` entries. The
-workspace handoff copy is ignored and must not be committed or published by
-this repository. Runtime version checks do not prove installed files came from
-that wheel, so release evidence must re-hash the wheel before an offline
-two-lane install. The current local hash/install/conformance result is
-integration evidence, not a signature, independent source audit, vulnerability
-scan, or publication authorization.
+`36a02dbc4267402949dddda1da180d800590cc579e0c1ecb022fc96f6a7c29ae`.
+The immutable handoff records source commit
+`3858190e8b458847da94e9ed24be83f4928b7d1a`, 35 `RECORD` rows with raw
+SHA-256 `a20ae81b7cc5dd9e80fc2757d5fea6331f2c232818049026caecf63d48d14076`,
+29 package members equal to that commit's Git blobs, packaged MIT license
+bytes, `Requires-Python >=3.11`, and no `Requires-Dist` entries. The installed
+package tree is independently bound to framed SHA-256
+`296f49a2d7b48158d2d3a33e36b77d5b5c495362cbe3aceaaf8975fb256e538c`.
+The workspace handoff copy is ignored and must not be committed or published.
+
+The optional adapter does not rely on runtime version strings alone. Before it
+initiates package import or exposes a preloaded root, it requires one
+exact-version distribution, an unset `sys.pycache_prefix`, and exact built-in
+module/spec/source-loader state bound to the distribution's recorded package
+and initializer. It rejects loader instance overrides, non-string
+registry/namespace keys, links/reparse points, and unexpected tree entries,
+then verifies exact sizes plus a canonically framed SHA-256 over the reviewed
+installed source/resource files. Any package-local executable bytecode must
+equal fresh compilation of verified source; external cache prefixes fail
+closed. It repeats those checks after import and validates the returned module
+and loaded module paths. This proves only observed installed-tree agreement. It
+does not authenticate the wheel archive, make the check/import sequence atomic
+against a writable install, or undo `.pth`, `sitecustomize`, `meta_path`, or
+same-origin module-object effects already inside the process. Release evidence
+must independently re-hash the wheel before an offline two-lane
+`--no-index --no-deps --no-compile` install, unset `PYTHONPYCACHEPREFIX`, and
+keep the environment non-writable by untrusted actors. The current local result
+is not a signature, independent source audit,
+vulnerability scan, or publication authorization.
 
 The build and development extras currently use lower bounds and CI resolves
 compatible releases from the live package index. No cross-version, hash-pinned

@@ -35,10 +35,21 @@ optional `dev` dependencies. The exact LM Studio Qwen adapter is optional and
 supports only the documented local Qwen Q4 identity for the retained
 diagnostic; deterministic compilation does not require a model.
 
-The `unified` extra supports exactly `localai-contracts==0.2.0a1`, protocol and
+The `unified` extra supports exactly `localai-contracts==0.2.0a2`, protocol and
 schema version `1.0.0`, through the separately imported canonical adapter.
 Other versions are refused. Provider-only installation and import remain
 supported; invoking the optional entry point without its wheel exits closed.
+The optional adapter also requires one unambiguous installed distribution, an
+unset `sys.pycache_prefix`, exact built-in module/spec/source-loader state bound
+to its recorded package, the reviewed source/resource tree digest and sizes, no
+linked/reparse or unexpected importable entries, and package-local bytecode
+that matches compilation of verified source. Loader instance overrides and
+non-string registry/namespace keys fail closed without invoking their hooks.
+Failures use one path-free validation error. This is a strict clean-install
+support contract, not support for writable or hook-modified site-packages.
+Independently hash the wheel archive and unset `PYTHONPYCACHEPREFIX` before
+installation; prior startup/finder/preload execution and same-origin
+in-process module forgery are not reversible by the adapter.
 
 ## Format support
 
@@ -82,7 +93,11 @@ only, and provider plus the exact contracts wheel. The latter launches
 "context_compiler.localai_contracts_connector"]` (literal argv tail
 `-m context_compiler.localai_contracts_connector`) for a real subprocess
 handshake and canonical `context.compile` NDJSON round trip, then runs the
-22-case non-inference conformance gate.
+22-case non-inference conformance gate. Both installs use
+`--no-index --no-deps --no-compile`. The module child uses the harness
+interpreter exactly, without an argv-level `-B`, receives
+`PYTHONDONTWRITEBYTECODE=1`, and is followed by a provider/contracts package
+no-`.pyc` check.
 
 No package index release is currently claimed. Before a public release, the
 repository must add signed or otherwise externally attestable source/wheel

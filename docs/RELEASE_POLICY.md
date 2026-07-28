@@ -76,8 +76,17 @@ commit:
    semantic-equivalence checks;
    when the canonical optional extra is included, this also requires the exact
    contracts-wheel identity, 22-case non-inference conformance, provider-only
-   installation, and provider-plus-contracts subprocess handshake/compile
-   round trip;
+   installation, provider-plus-contracts subprocess handshake/compile round
+   trip, and pre/post import validation of one exact-version distribution,
+   exact built-in module/spec/source-loader origin and state, an unset external
+   bytecode-cache prefix, exact bounded link-free installed source/resource
+   tree, unexpected importable entries, and package-local executable bytecode
+   against verified source. The archive hash remains an independent gate.
+   Clean lanes use `--no-index --no-deps --no-compile`; the shared module-form
+   child uses the harness interpreter exactly with
+   `PYTHONDONTWRITEBYTECODE=1`, followed by a provider/contracts package
+   no-`.pyc` check. The clean environment must unset `PYTHONPYCACHEPREFIX` and
+   remain non-writable by untrusted actors;
 8. frozen benchmark, protocol, and model-diagnostic replay without new model
    calls, with failed external runs retained as failures;
 9. the fixed performance gate;

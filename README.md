@@ -750,17 +750,45 @@ import, Python API, and `ctxc` command do not import or require
 `localai-contracts`; required core dependencies remain empty. The `unified`
 extra pins the optional distribution version but does not authenticate wheel
 bytes. To use the reviewed identity, independently verify the exact wheel hash
-below, then install it with the provider wheel using `--no-index --no-deps`.
+below, then install it with the provider wheel using
+`--no-index --no-deps --no-compile`.
+
+Adapter construction does not execute the first matching package and then
+inspect version strings. Before the adapter initiates an optional-package
+import, and before it exposes any preloaded package through this boundary, it
+requires exactly one reviewed-version distribution, an unset
+`sys.pycache_prefix`, and exact built-in module/spec/source-loader state bound to
+the recorded package. It rejects loader instance overrides, non-string
+namespace/module-registry keys, links/reparse points, unexpected tree entries,
+and file-set drift. Exact sizes plus a canonically framed SHA-256 bind the
+reviewed installed source/resource tree. Any package-local executable bytecode
+cache must match fresh compilation of those verified source bytes; external
+bytecode-cache prefixes fail closed. The complete file/origin gate is repeated
+after import, and the returned module must be the validated `sys.modules` root.
+
+These checks establish agreement for the installed tree at the observed
+checks. They do not authenticate the wheel archive, make check-and-import
+atomic against writable site-packages, or undo code that already ran through
+`.pth`, `sitecustomize`, a custom `meta_path`, or a preloaded module. A custom
+finder can run while Python resolves the preflight spec. A same-origin module
+object forged inside a compromised process remains outside this boundary.
+Independently hash the reviewed wheel before installation, unset
+`PYTHONPYCACHEPREFIX`, and use a clean environment that is not writable by
+untrusted actors while the connector runs.
 
 The reviewed compatibility identity is:
 
 | Identity | Value |
 | --- | --- |
 | Distribution/import | `localai-contracts` / `localai_contracts` |
-| Distribution version | `0.2.0a1` |
+| Distribution version | `0.2.0a2` |
 | Protocol and contract schemas | `1.0.0` |
-| Reviewed source commit | `dda116eb6431f6f701425f1dec52bf01d9435cfe` |
-| Reviewed wheel SHA-256 | `3f1cbc1c1079a552304541caa6b7bfbaae926494b67956e3107767ffc980ee41` |
+| Reviewed source commit | `3858190e8b458847da94e9ed24be83f4928b7d1a` |
+| Reviewed wheel SHA-256 | `36a02dbc4267402949dddda1da180d800590cc579e0c1ecb022fc96f6a7c29ae` |
+| Wheel members / package members | `35` / `29` |
+| Wheel `RECORD` SHA-256 | `a20ae81b7cc5dd9e80fc2757d5fea6331f2c232818049026caecf63d48d14076` |
+| Installed package-tree SHA-256 | `296f49a2d7b48158d2d3a33e36b77d5b5c495362cbe3aceaaf8975fb256e538c` |
+| Phase-0 fixture SHA-256 | `458bdd75449c70277d212761f84e6e04a79ddc010b314a2d0a4799801ef1706d` |
 
 It advertises exactly one executed subject operation,
 `context.compile`. The payload is exactly
@@ -786,10 +814,15 @@ The accepted module entry point is
 Every physical record must end with a newline. The wheel's default limits cap
 a record at 1 MiB, depth at 32, individual strings at 262,144 characters,
 arrays and objects at 10,000 entries, and the complete parse at 100,000 nodes.
-Duplicate keys, non-finite numbers, malformed UTF-8, missing newlines, and
-oversized requests produce canonical closed errors. The adapter applies the
-same canonical round trip and limits to in-process payloads, so the Python path
-cannot bypass stdio bounds.
+Duplicate keys, non-finite numbers, malformed UTF-8, and missing newlines
+produce canonical closed errors. A bounded oversized physical line is drained
+through its newline and produces exactly one error before the next record; an
+oversized unterminated EOF produces one error, while a line beyond the bounded
+drain ceiling closes fatally without a fabricated response. Reader I/O errors
+propagate and poison the transport. The adapter applies the wheel's public
+`bounded_canonical_bytes` with the same explicit `ParseLimits` at every private
+serialization seam, so the Python path cannot bypass structural or byte
+bounds.
 
 `SourceEvent.trust` is a serialized claim, not authentication. Without a
 host-owned `authority_verifier`, every event is compiled through the private
@@ -830,8 +863,12 @@ assert report["inference_status"] == "not_run"
 ```
 
 `scripts/validate_localai_contracts_install.py` runs two isolated offline
-lanes. The provider-only lane verifies ordinary core use and the installed
-console alias's fixed exit-2 failure while `localai_contracts` is absent. The
+`--no-index --no-deps --no-compile` lanes. Its repository-owned Python probes
+use `-B`; the shared-compatible connector argv does not. Instead, that module
+child receives `PYTHONDONTWRITEBYTECODE=1`, and the validator proves no provider
+or contracts package `.pyc` appeared before or after the round trip. The
+provider-only lane verifies ordinary core use and the installed console alias's
+fixed exit-2 failure while `localai_contracts` is absent. The
 provider-plus-exact-wheel lane launches
 `[clean-environment sys.executable, "-m",
 "context_compiler.localai_contracts_connector"]`; its literal argv tail is

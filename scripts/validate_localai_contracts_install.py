@@ -13,9 +13,9 @@ import venv
 from pathlib import Path
 
 EXPECTED_CONTRACTS_SHA256 = (
-    "3f1cbc1c1079a552304541caa6b7bfbaae926494b67956e3107767ffc980ee41"
+    "36a02dbc4267402949dddda1da180d800590cc579e0c1ecb022fc96f6a7c29ae"
 )
-EXPECTED_CONTRACTS_FILENAME = "localai_contracts-0.2.0a1-py3-none-any.whl"
+EXPECTED_CONTRACTS_FILENAME = "localai_contracts-0.2.0a2-py3-none-any.whl"
 
 
 def _sha256(path: Path) -> str:
@@ -75,6 +75,7 @@ def _create_environment(root: Path, wheels: list[Path]) -> Path:
             "install",
             "--no-index",
             "--no-deps",
+            "--no-compile",
             *[str(path) for path in wheels],
         ]
     )
@@ -106,11 +107,13 @@ except LocalAIContractsUnavailableError:
 else:
     raise AssertionError("optional adapter did not fail closed without its wheel")
 """
-    _run([str(python), "-I", "-c", script])
+    _run([str(python), "-I", "-B", "-c", script])
     connector = _venv_connector(root)
+    connector_environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     completed = subprocess.run(
         [str(connector)],
         input=b"",
+        env=connector_environment,
         capture_output=True,
         timeout=30,
         check=False,
@@ -120,7 +123,7 @@ else:
     if completed.stdout != b"":
         raise RuntimeError("provider-only optional entry point wrote protocol output")
     expected_stderr = (
-        "localai-contracts 0.2.0a1 is required for this optional connector"
+        "localai-contracts 0.2.0a2 is unavailable or failed optional-adapter validation"
         + os.linesep
     ).encode("utf-8")
     if completed.stderr != expected_stderr:
@@ -136,9 +139,12 @@ def _provider_and_contracts_lane(
     script = r"""
 import hashlib
 import json
+import os
 import subprocess
 import sys
+from pathlib import Path
 
+import context_compiler
 import localai_contracts as contracts
 from context_compiler.localai_contracts_adapter import (
     CONTEXT_COMPILE_OPERATION,
@@ -146,6 +152,16 @@ from context_compiler.localai_contracts_adapter import (
 )
 
 adapter = LocalAIContractsAdapter()
+limits = contracts.DEFAULT_PARSE_LIMITS
+assert adapter.limits is limits
+package_roots = (
+    Path(context_compiler.__file__).parent,
+    Path(contracts.__file__).parent,
+)
+def assert_no_package_bytecode():
+    assert not any(path for root in package_roots for path in root.rglob("*.pyc"))
+
+assert_no_package_bytecode()
 manifest = adapter.get_manifest()
 handshake = contracts.ConnectorRequest(
     protocol_version="1.0.0",
@@ -180,13 +196,21 @@ request = contracts.ConnectorRequest(
     payload={"source_events": [event.to_dict()]},
     expected_response_schema={"name": "ContextBundle", "version": "1.0.0"},
 )
+wire_input = (
+    contracts.bounded_canonical_bytes(handshake.to_dict(), limits=limits)
+    + b"\n"
+    + contracts.bounded_canonical_bytes(request.to_dict(), limits=limits)
+    + b"\n"
+)
+connector_environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
 completed = subprocess.run(
     [
         sys.executable,
         "-m",
         "context_compiler.localai_contracts_connector",
     ],
-    input=handshake.canonical_bytes() + b"\n" + request.canonical_bytes() + b"\n",
+    input=wire_input,
+    env=connector_environment,
     stdout=subprocess.PIPE,
     stderr=subprocess.PIPE,
     timeout=30,
@@ -194,10 +218,11 @@ completed = subprocess.run(
 )
 assert completed.returncode == 0, completed.stderr
 assert completed.stderr == b""
+assert_no_package_bytecode()
 lines = completed.stdout.splitlines()
 assert len(lines) == 2
-handshake_response = contracts.ConnectorResponse.from_json(lines[0])
-compile_response = contracts.ConnectorResponse.from_json(lines[1])
+handshake_response = contracts.ConnectorResponse.from_json(lines[0], limits=limits)
+compile_response = contracts.ConnectorResponse.from_json(lines[1], limits=limits)
 assert handshake_response.ok
 assert compile_response.ok
 assert compile_response.payload is not None
@@ -228,7 +253,7 @@ encoded_report = json.dumps(
 ).encode("utf-8")
 sys.stdout.buffer.write(encoded_report + b"\n")
 """
-    completed = _run([str(python), "-I", "-c", script])
+    completed = _run([str(python), "-I", "-B", "-c", script])
     try:
         report = json.loads(completed.stdout)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:

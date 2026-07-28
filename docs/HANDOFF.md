@@ -35,8 +35,8 @@ live-readiness status.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | Core ordinary: 1,508 collected (1,487 passed, 21 skipped), plus 105 subtests; exact optional adapter: 27 passed; integration: 461 collected (456 passed, 5 skipped) |
-| Canonical optional boundary | `localai-contracts==0.2.0a1`, protocol/schema `1.0.0`; `context.compile` only; non-inference |
+| Tests at this snapshot | Core ordinary: 1,516 collected (1,495 passed, 21 skipped), plus 105 subtests; exact optional adapter: 55 collected (54 passed, 1 Windows symlink skip), plus 8 provider-only standalone tests; integration: 461 collected (456 passed, 5 skipped) |
+| Canonical optional boundary | `localai-contracts==0.2.0a2`, protocol/schema `1.0.0`; `context.compile` only; non-inference |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -307,7 +307,7 @@ and measured duration.
 | `src/context_compiler/schema_compatibility.py` | Machine-readable artifact reader/writer window and no-silent-migration policy |
 | `src/context_compiler/redaction.py` | Fixed common-secret content detectors, masking policy, immutable result, audit report, and exact replay |
 | `src/context_compiler/cli.py` | `ctxc` parsing, atomic output transactions, versioned error/completion diagnostics, and exit codes |
-| `src/context_compiler/localai_contracts_adapter.py` | Lazy exact-version canonical adapter, closed authority projection, direct ContextBundle result, typed request server, and 22-case probe |
+| `src/context_compiler/localai_contracts_adapter.py` | Lazy exact-version canonical adapter, pre/post import origin and installed-tree gate, closed authority projection, direct ContextBundle result, typed request server, and 22-case probe |
 | `src/context_compiler/localai_contracts_connector.py` | Optional bounded NDJSON module/console entry point; exits closed when the contracts wheel is absent |
 | `scripts/validate_localai_contracts_install.py` | Offline provider-only and exact-contracts clean-wheel lanes, subprocess equivalence, and clean-installed Phase 0 conformance |
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
@@ -480,8 +480,20 @@ The canonical adapter is intentionally submodule-only:
 `context_compiler.__init__` and the exported list above are unchanged.
 Importing `context_compiler.localai_contracts_adapter` does not import the
 optional dependency; constructing `LocalAIContractsAdapter` requires the exact
-reviewed version and protocol. The root API and ordinary `ctxc` behavior remain
-standalone.
+reviewed version and protocol. Before initiating optional-package import or
+exposing a preloaded root, the adapter requires one unambiguous distribution,
+an unset `sys.pycache_prefix`, exact built-in module/spec/source-loader state
+bound to the recorded package/initializer, an exact bounded link-free installed
+file set, and the reviewed source/resource tree digest. Loader instance
+overrides and non-string registry/namespace keys fail closed without invoking
+their hooks. Package-local executable bytecode must match compilation of
+verified source; external cache prefixes are refused. The gate repeats after
+import and binds the returned module object and every loaded contract-module
+path. Its fixed path-free failure does not imply wheel-archive authentication,
+an atomic import transaction, or containment of writable site-packages, code
+already run by startup/custom-finder/preload hooks, or arbitrary same-origin
+module forgery in a compromised process. The root API and ordinary `ctxc`
+behavior remain standalone.
 Custom token accounting requires both a callback and a stable
 `token_counter_id`. Artifact verification must receive the identical callback
 and id or fail with `unverifiable_token_counter`.
@@ -642,7 +654,7 @@ operations, validation, and unresolved host requirements.
 | Project and repository name | Loss-resistant Context Compiler |
 | GitHub repository slug | `loss-resistant-context-compiler` |
 | Optional canonical connector | `ctxc-localai-contracts` / `python -m context_compiler.localai_contracts_connector` |
-| Optional contracts identity | `localai-contracts==0.2.0a1`; protocol/schema `1.0.0`; reviewed wheel SHA-256 `3f1cbc1c1079a552304541caa6b7bfbaae926494b67956e3107767ffc980ee41` |
+| Optional contracts identity | `localai-contracts==0.2.0a2`; protocol/schema `1.0.0`; reviewed wheel SHA-256 `36a02dbc4267402949dddda1da180d800590cc579e0c1ecb022fc96f6a7c29ae` |
 | Python distribution | `loss-resistant-context-compiler` |
 | Import package | `context_compiler` |
 | CLI command | `ctxc` |
@@ -739,43 +751,93 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- Ordinary provider-only core validation collected 1,508 tests: 1,487 passed
-  and 21 platform/optional checks were skipped on the current Windows host;
-  105 subtests also passed. The extra skip is the intentionally absent
-  canonical contracts wheel.
-- The separate exact-wheel adapter lane passed 27 tests, including every
-  canonical role, strict bounds, authority separation, direct ContextBundle
-  shape, deterministic projection, in-process/NDJSON equivalence, and the
-  mandatory subject-operation probe. `assert_phase0_conformant` reported
-  `passed_count: 22`, `failed_count: 0`,
+- An exact copy of all 285 tracked working files outside the synchronized
+  workspace passed the ordinary provider-only suite: 1,516 collected,
+  1,495 passed, 21 platform/optional checks skipped on Windows, and 105 subtests
+  passed. The optional adapter module's single provider-only skip is the
+  intentionally absent contracts wheel. A path check confirmed imports came
+  from that exact tracked-file copy; no private copy path is retained here.
+- The separate immutable-a2 adapter lane collected 55 tests: 54 passed and one
+  local Windows symlink-privilege regression skipped. It covers origin/tree
+  binding, shadow/preload/substitution rejection, exact bytecode validation,
+  canonical roles, bounded serialization, authority separation, direct
+  ContextBundle shape, deterministic projection, binary I/O failures,
+  oversize drain/fatal behavior, and in-process/NDJSON equivalence. Eight
+  distinct provider-only standalone tests also passed.
+- `assert_phase0_conformant` reported `passed_count: 22`, `failed_count: 0`,
   `inference_status: not_run`, and
   `observation_scope: connector_transport_conformance`.
-- The reviewed contracts wheel re-hashed to
-  `3f1cbc1c1079a552304541caa6b7bfbaae926494b67956e3107767ffc980ee41`.
-  The final provider wheel re-hashed to
-  `0d46899e8cf4c8eddf051137a9cae0a6036aa73da24b228d5ee52cc67a42e80b`;
-  it contains both optional modules and has no unconditional dependency.
-- The final offline clean-install run passed the distinct provider-only and
-  provider-plus-exact-contracts lanes. The latter launched
+- The immutable `localai-contracts==0.2.0a2` wheel is 114,553 bytes with
+  SHA-256
+  `36a02dbc4267402949dddda1da180d800590cc579e0c1ecb022fc96f6a7c29ae`.
+  Its handoff records source commit
+  `3858190e8b458847da94e9ed24be83f4928b7d1a`, 35 `RECORD` rows with
+  raw SHA-256
+  `a20ae81b7cc5dd9e80fc2757d5fea6331f2c232818049026caecf63d48d14076`,
+  29 package members equal to Git blobs, and Phase-0 fixture SHA-256
+  `458bdd75449c70277d212761f84e6e04a79ddc010b314a2d0a4799801ef1706d`.
+  The independently derived installed package-tree digest is
+  `296f49a2d7b48158d2d3a33e36b77d5b5c495362cbe3aceaaf8975fb256e538c`.
+- The prior a1 wheel
+  `3f1cbc1c1079a552304541caa6b7bfbaae926494b67956e3107767ffc980ee41`
+  passed its then-current conformance gate but is revoked as final evidence
+  after central transport framing and I/O defects. No current acceptance claim
+  relies on it.
+- The final local checkout-materialized provider candidate is 215,278 bytes
+  with SHA-256
+  `ee36885fa45c6ba763732fdc222634b38bad4352257ab4d66040344766d1a62b`.
+  It is clean-install evidence for this dirty checkout, not exact
+  Git-commit/archive-byte evidence and not a tracked or published artifact.
+- The matching local sdist is 885,292 bytes with SHA-256
+  `08140acb63e31083efdc41eb1b4274e423c12d8e9c1ea55ebe737d478d636ab4`.
+  An offline `--no-index --no-deps --no-build-isolation` wheel build from that
+  sdist reproduced the direct wheel byte-for-byte at
+  `ee36885fa45c6ba763732fdc222634b38bad4352257ab4d66040344766d1a62b`;
+  that identical wheel passed the clean-install lane. This uses the already
+  reviewed local build environment and is not a hash-pinned clean build-tool
+  closure; the cross-platform offline build wheelhouse remains a red release
+  gate.
+- Historical f590 provider provenance remains distinct: a Windows
+  checkout-materialized wheel was 209,860 bytes with SHA-256
+  `0d46899e8cf4c8eddf051137a9cae0a6036aa73da24b228d5ee52cc67a42e80b`,
+  while two independent fresh `git archive` builds of
+  `f59082d82053eb5a25fdfdd6303aa6b527bf70e5` matched at 209,806 bytes
+  with SHA-256
+  `9965d16b888f17fd1624da7606db975fb7d74b82fe0f730bee1a18837b154db7`.
+  Neither historical hash is presented as current a2 provider evidence.
+- The final offline a2 run passed distinct provider-only and
+  provider-plus-exact-contracts `--no-compile` lanes. The latter launched
   `[clean-environment sys.executable, "-m",
   "context_compiler.localai_contracts_connector"]`; literal argv tail:
-  `-m context_compiler.localai_contracts_connector`. Its real handshake and
-  compile responses matched the in-process bundle digest, then its
-  clean-installed 22-case gate passed.
-- Three earlier clean-install attempts remain failures: the original
-  provider-only stderr check assumed LF on Windows; the first strengthened
-  conformance-report check observed CRLF; and the next attempt exposed an
-  omitted child report-write line. The final explicit UTF-8/LF write fixed the
-  framing without weakening the byte-exact gate.
+  `-m context_compiler.localai_contracts_connector`. It used
+  `PYTHONDONTWRITEBYTECODE=1`, produced no provider/contracts package `.pyc`,
+  matched the in-process bundle digest, and passed the clean-installed
+  22-case gate.
+- Earlier clean-install failures remain failures: the original provider-only
+  stderr check assumed LF on Windows; the strengthened report check observed
+  CRLF; a hand-applied fix omitted the child report-write line; and the first
+  a2 inspection install generated path-dependent bytecode that failed exact
+  source/bytecode validation. The accepted a2 recipe uses no-compile rather
+  than weakening bytecode verification.
+- The first current full-suite run failed with one Windows sharing violation
+  while removing a reaped worker's `job.pickle` (1,492 passed, 21 skipped).
+  The same node failed in isolation. Commit `258066c` added a two-second retry
+  only for Windows sharing errors while retaining persistent failures; three
+  focused tests and the complete deadline module then passed 65 with three
+  platform skips.
+- A second full run remains failed because strict executable hashing observed
+  the active `.venv` launcher change (1,494 passed, 21 skipped). Its exact node
+  passed in isolation. A bundled-runtime run from the synchronized workspace
+  remains failed with one failure and 12 dependent errors because corpus ctime
+  changed during strict reads. The exact tracked-file copy outside that
+  metadata-changing boundary produced the complete green result above.
 - No local model, inference endpoint, or user-owned runtime was loaded, called,
   reconfigured, stopped, or otherwise touched. The global inference lease was
   not granted.
-- The separate integration validation collected 461 tests: 456 passed and five
-  Windows symlink-privilege checks were skipped.
-- One earlier core invocation failed closed when strict executable hashing
-  observed the active `.venv` Python launcher change during a Windows snapshot.
-  The isolated node and one clean complete rerun passed; the first invocation
-  remains recorded as a failed local validation attempt, not reclassified.
+- The bounded ordinary integration selector ran 461 tests: 456 passed and five
+  Windows symlink-privilege checks skipped. The one manual retained-evidence
+  node for the real 1,024-schedule campaign was explicitly deselected, not
+  reported as a pass.
 - Ruff and `compileall` pass across `src`, `tests`, `benchmarks`, `scripts`,
   `conformance`, and `_ctxc_build_backend.py`.
 - Complete Ubuntu CI covers Python 3.11, 3.12, and 3.13; Windows and macOS run

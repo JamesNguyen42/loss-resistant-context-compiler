@@ -24,7 +24,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         adapter = LocalAIContractsAdapter()
     except LocalAIContractsUnavailableError:
         sys.stderr.write(
-            "localai-contracts 0.2.0a1 is required for this optional connector\n"
+            "localai-contracts 0.2.0a2 is unavailable or failed "
+            "optional-adapter validation\n"
         )
         return 2
     adapter.serve_ndjson(sys.stdin.buffer, sys.stdout.buffer)

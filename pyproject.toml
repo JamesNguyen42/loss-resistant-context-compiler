@@ -28,7 +28,7 @@ Issues = "https://github.com/JamesNguyen42/loss-resistant-context-compiler/issue
 
 [project.optional-dependencies]
 unified = [
-  "localai-contracts==0.2.0a1",
+  "localai-contracts==0.2.0a2",
 ]
 dev = [
   "pytest>=8.0",
