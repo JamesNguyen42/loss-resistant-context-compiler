@@ -1,18 +1,24 @@
-"""Setuptools PEP 517 delegation with opt-in deterministic sdist encoding."""
+"""Setuptools PEP 517 delegation with opt-in deterministic archives."""
 
 from __future__ import annotations
 
 import argparse
+import base64
+import csv
 import gzip
 import hashlib
+import io
 import json
 import os
 import re
 import stat
+import struct
 import sys
 import tarfile
 import tempfile
+import time
 import unicodedata
+import zipfile
 import zlib
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -34,9 +40,13 @@ _MAX_PAX_PAYLOAD_BYTES = 512 * 1024
 _MAX_TOTAL_PAX_BYTES = 16 * 1024 * 1024
 _MAX_TAR_METADATA_BYTES = 64 * 1024 * 1024
 _MAX_DECOMPRESSED_BYTES = _MAX_EXPANDED_BYTES + _MAX_TAR_METADATA_BYTES
+_MAX_GENERATED_TEXT_BYTES = 16 * 1024 * 1024
 _CHUNK_BYTES = 1024 * 1024
 _MAX_GZIP_EPOCH = (1 << 32) - 1
 _SAFE_FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,254}\.tar\.gz\Z")
+_SAFE_WHEEL_FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,254}\.whl\Z")
+_WHEEL_RECORD_HASH = re.compile(r"sha256=([A-Za-z0-9_-]{43})\Z")
+_WHEEL_RECORD_SIZE = re.compile(r"(?:0|[1-9][0-9]*)\Z")
 _PAX_MTIME = re.compile(r"-?[0-9]+(?:\.[0-9]+)?\Z")
 _ALLOWED_INPUT_PAX_FIELDS = frozenset({"mtime", "path"})
 _ZERO_BLOCK = bytes(tarfile.BLOCKSIZE)
@@ -45,10 +55,13 @@ _WINDOWS_RESERVED_COMPONENT = re.compile(
     re.IGNORECASE,
 )
 _WINDOWS_INVALID_COMPONENT_CHARS = frozenset('<>:"|?*')
+_ZIP_MIN_EPOCH = 315_532_800
+_CANONICAL_DIRECTORY_MODE = 0o755
+_CANONICAL_FILE_MODE = 0o644
 
 
 class DeterministicSdistError(ValueError):
-    """A source distribution cannot be normalized without weakening integrity."""
+    """A distribution cannot be normalized without weakening integrity."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -623,11 +636,51 @@ def _bounded_stream_sha256(
     return digest.hexdigest()
 
 
+def _read_bounded_stream_bytes(
+    stream: BinaryIO,
+    *,
+    expected_bytes: int,
+    max_bytes: int,
+    label: str,
+) -> bytes:
+    if expected_bytes < 0 or expected_bytes > max_bytes:
+        raise DeterministicSdistError(f"{label} exceeds the supported byte limit")
+    payload = _read_exact(stream, expected_bytes, label=label)
+    if stream.read(1):
+        raise DeterministicSdistError(f"{label} expanded beyond its declared size")
+    return payload
+
+
+def _is_generated_sdist_text(name: str, *, expected_root: str) -> bool:
+    path = PurePosixPath(name)
+    if name in {
+        f"{expected_root}/PKG-INFO",
+        f"{expected_root}/setup.cfg",
+    }:
+        return True
+    return (
+        len(path.parts) >= 3
+        and path.parts[0] == expected_root
+        and path.name == "PKG-INFO"
+        and path.parent.name.endswith(".egg-info")
+    )
+
+
+def _canonical_text_bytes(payload: bytes) -> bytes:
+    canonical = payload.replace(b"\r\n", b"\n")
+    if b"\r" in canonical:
+        raise DeterministicSdistError(
+            "generated distribution metadata contains a bare carriage return"
+        )
+    return canonical
+
+
 def _archive_inventory(
     path: Path,
     *,
     expected_root: str,
     allow_mtime_pax: bool,
+    canonicalize: bool = False,
 ) -> tuple[list[dict[str, Any]], _FileSnapshot]:
     lexical, snapshot = _regular_file_snapshot(path, label="source distribution")
     records: list[dict[str, Any]] = []
@@ -649,22 +702,44 @@ def _archive_inventory(
                     if member.isdir():
                         content_sha256 = None
                         member_type = "directory"
+                        member_mode = (
+                            _CANONICAL_DIRECTORY_MODE if canonicalize else member.mode
+                        )
+                        member_size = 0
                     else:
                         extracted = archive.extractfile(member)
                         if extracted is None:
                             raise DeterministicSdistError("sdist member content is unavailable")
                         with extracted:
-                            content_sha256 = _bounded_stream_sha256(
-                                extracted,
-                                expected_bytes=member.size,
-                            )
+                            if canonicalize and _is_generated_sdist_text(
+                                member.name,
+                                expected_root=expected_root,
+                            ):
+                                payload = _read_bounded_stream_bytes(
+                                    extracted,
+                                    expected_bytes=member.size,
+                                    max_bytes=_MAX_GENERATED_TEXT_BYTES,
+                                    label="generated sdist metadata",
+                                )
+                                canonical_payload = _canonical_text_bytes(payload)
+                                content_sha256 = hashlib.sha256(
+                                    canonical_payload
+                                ).hexdigest()
+                                member_size = len(canonical_payload)
+                            else:
+                                content_sha256 = _bounded_stream_sha256(
+                                    extracted,
+                                    expected_bytes=member.size,
+                                )
+                                member_size = member.size
                         member_type = "file"
+                        member_mode = _CANONICAL_FILE_MODE if canonicalize else member.mode
                     records.append(
                         {
                             "name": member.name,
                             "type": member_type,
-                            "mode": member.mode,
-                            "size": member.size,
+                            "mode": member_mode,
+                            "size": member_size,
                             "sha256": content_sha256,
                         }
                     )
@@ -720,23 +795,42 @@ def _write_normalized_archive(
                 for member in members:
                     normalized = tarfile.TarInfo(member.name)
                     normalized.type = member.type
-                    normalized.mode = member.mode
+                    normalized.mode = (
+                        _CANONICAL_DIRECTORY_MODE
+                        if member.isdir()
+                        else _CANONICAL_FILE_MODE
+                    )
                     normalized.uid = 0
                     normalized.gid = 0
                     normalized.uname = ""
                     normalized.gname = ""
                     normalized.mtime = source_date_epoch
-                    normalized.size = member.size
                     if "path" in member.pax_headers:
                         normalized.pax_headers = {"path": member.name}
                     if member.isdir():
+                        normalized.size = 0
                         target.addfile(normalized)
                         continue
                     extracted = source.extractfile(member)
                     if extracted is None:
                         raise DeterministicSdistError("sdist member content is unavailable")
                     with extracted:
-                        target.addfile(normalized, extracted)
+                        if _is_generated_sdist_text(
+                            member.name,
+                            expected_root=expected_root,
+                        ):
+                            payload = _read_bounded_stream_bytes(
+                                extracted,
+                                expected_bytes=member.size,
+                                max_bytes=_MAX_GENERATED_TEXT_BYTES,
+                                label="generated sdist metadata",
+                            )
+                            canonical_payload = _canonical_text_bytes(payload)
+                            normalized.size = len(canonical_payload)
+                            target.addfile(normalized, io.BytesIO(canonical_payload))
+                        else:
+                            normalized.size = member.size
+                            target.addfile(normalized, extracted)
             if _snapshot_from_stat(os.fstat(raw_stream.fileno())) != expected_source_snapshot:
                 raise DeterministicSdistError("source distribution changed during normalization")
             raw_output.flush()
@@ -786,6 +880,14 @@ def _validate_normalized_metadata(
                         or member.gid != 0
                         or member.uname
                         or member.gname
+                        or (
+                            member.mode
+                            != (
+                                _CANONICAL_DIRECTORY_MODE
+                                if member.isdir()
+                                else _CANONICAL_FILE_MODE
+                            )
+                        )
                     ):
                         raise DeterministicSdistError("sdist member metadata is not canonical")
             if _snapshot_from_stat(os.fstat(raw_stream.fileno())) != snapshot:
@@ -834,10 +936,11 @@ def _normalize_sdist_archive(
     expected_root = source_path.name.removesuffix(".tar.gz")
     if "/" in expected_root or "\\" in expected_root:
         raise DeterministicSdistError("source distribution root is unsafe")
-    original_inventory, observed_snapshot = _archive_inventory(
+    expected_inventory, observed_snapshot = _archive_inventory(
         source_path,
         expected_root=expected_root,
         allow_mtime_pax=True,
+        canonicalize=True,
     )
     if observed_snapshot != source_snapshot:
         raise DeterministicSdistError("source distribution changed before deterministic build")
@@ -870,7 +973,7 @@ def _normalize_sdist_archive(
             expected_root=expected_root,
             allow_mtime_pax=False,
         )
-        if normalized_inventory != original_inventory:
+        if normalized_inventory != expected_inventory:
             raise DeterministicSdistError(
                 "deterministic sdist rewrite changed member content or structure"
             )
@@ -912,7 +1015,7 @@ def _normalize_sdist_archive(
         )
         if (
             observed_installed_snapshot != installed_snapshot
-            or installed_inventory != original_inventory
+            or installed_inventory != expected_inventory
         ):
             raise DeterministicSdistError(
                 "installed normalized source distribution changed after replacement"
@@ -938,6 +1041,876 @@ def _normalize_sdist_archive(
             os.close(descriptor)
 
 
+def _safe_wheel_member_name(name: object) -> str:
+    if (
+        not isinstance(name, str)
+        or not name
+        or len(name) > _MAX_MEMBER_NAME_CHARS
+        or name.startswith("/")
+        or name.endswith("/")
+        or "\\" in name
+        or "\x00" in name
+        or any(ord(character) < 32 or 127 <= ord(character) <= 159 for character in name)
+    ):
+        raise DeterministicSdistError("wheel contains an unsafe member name")
+    path = PurePosixPath(name)
+    if (
+        path.as_posix() != name
+        or not path.parts
+        or any(part in {"", ".", ".."} for part in path.parts)
+    ):
+        raise DeterministicSdistError(f"wheel contains an unsafe member name: {name!r}")
+    for part in path.parts:
+        if (
+            part.endswith((" ", "."))
+            or any(character in _WINDOWS_INVALID_COMPONENT_CHARS for character in part)
+            or _WINDOWS_RESERVED_COMPONENT.fullmatch(part) is not None
+        ):
+            raise DeterministicSdistError(f"wheel contains a nonportable member name: {name!r}")
+    return name
+
+
+def _preflight_wheel_stream(
+    raw_stream: BinaryIO,
+    *,
+    snapshot: _FileSnapshot,
+) -> tuple[str, ...]:
+    position = raw_stream.tell()
+    try:
+        if snapshot.size < 22:
+            raise DeterministicSdistError("wheel is too small to contain an end record")
+        raw_stream.seek(-22, os.SEEK_END)
+        end_record = _read_exact(raw_stream, 22, label="wheel end record")
+        (
+            signature,
+            disk_number,
+            directory_disk,
+            entries_on_disk,
+            entries_total,
+            directory_size,
+            directory_offset,
+            comment_size,
+        ) = struct.unpack("<4s4H2LH", end_record)
+        if (
+            signature != b"PK\x05\x06"
+            or disk_number != 0
+            or directory_disk != 0
+            or entries_on_disk != entries_total
+            or entries_total <= 0
+            or entries_total > _MAX_MEMBERS
+            or comment_size != 0
+            or directory_offset + directory_size + 22 != snapshot.size
+        ):
+            raise DeterministicSdistError(
+                "wheel has an unsupported or inconsistent central directory"
+            )
+
+        names: list[str] = []
+        seen: set[str] = set()
+        portable_names: dict[str, str] = {}
+        expanded_bytes = 0
+        directory_end = directory_offset + directory_size
+        raw_stream.seek(directory_offset)
+        for _index in range(entries_total):
+            central_header = _read_exact(
+                raw_stream,
+                46,
+                label="wheel central directory header",
+            )
+            (
+                central_signature,
+                _version_made,
+                _version_needed,
+                flags,
+                compression,
+                _modified_time,
+                _modified_date,
+                _crc,
+                compressed_size,
+                file_size,
+                name_size,
+                extra_size,
+                member_comment_size,
+                member_disk,
+                _internal_attributes,
+                external_attributes,
+                header_offset,
+            ) = struct.unpack("<4s6H3L5H2L", central_header)
+            if (
+                central_signature != b"PK\x01\x02"
+                or flags not in {0, 0x800}
+                or compression not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+                or name_size <= 0
+                or name_size > _MAX_MEMBER_NAME_CHARS * 4
+                or extra_size != 0
+                or member_comment_size != 0
+                or member_disk != 0
+                or external_attributes & 0xFFFF
+                or file_size > _MAX_MEMBER_BYTES
+                or compressed_size > _MAX_ARCHIVE_BYTES
+                or header_offset >= directory_offset
+                or (
+                    compression == zipfile.ZIP_STORED
+                    and compressed_size != file_size
+                )
+            ):
+                raise DeterministicSdistError(
+                    "wheel central directory contains an unsupported member"
+                )
+            raw_name = _read_exact(
+                raw_stream,
+                name_size,
+                label="wheel central directory member name",
+            )
+            try:
+                decoded_name = raw_name.decode("utf-8" if flags & 0x800 else "cp437")
+            except UnicodeDecodeError as exc:
+                raise DeterministicSdistError(
+                    "wheel central directory member name is invalid"
+                ) from exc
+            name = _safe_wheel_member_name(decoded_name)
+            if name in seen:
+                raise DeterministicSdistError(
+                    f"wheel contains a duplicate member: {name!r}"
+                )
+            seen.add(name)
+            portable_key = _portable_member_key(name)
+            prior_name = portable_names.get(portable_key)
+            if prior_name is not None and prior_name != name:
+                raise DeterministicSdistError(
+                    f"wheel member names collide portably: {prior_name!r}, {name!r}"
+                )
+            portable_names[portable_key] = name
+            expanded_bytes += file_size
+            if expanded_bytes > _MAX_EXPANDED_BYTES:
+                raise DeterministicSdistError("wheel exceeds the expanded byte limit")
+            names.append(name)
+        if raw_stream.tell() != directory_end:
+            raise DeterministicSdistError(
+                "wheel central directory byte extent is inconsistent"
+            )
+        return tuple(names)
+    finally:
+        raw_stream.seek(position)
+
+
+def _validated_wheel_members(
+    archive: zipfile.ZipFile,
+) -> tuple[list[zipfile.ZipInfo], str, str]:
+    if archive.comment:
+        raise DeterministicSdistError("wheel has an unexpected archive comment")
+    members = archive.infolist()
+    if not members or len(members) > _MAX_MEMBERS:
+        raise DeterministicSdistError("wheel member count is outside the supported range")
+    seen: set[str] = set()
+    portable_names: dict[str, str] = {}
+    expanded_bytes = 0
+    for member in members:
+        name = _safe_wheel_member_name(member.filename)
+        if name in seen:
+            raise DeterministicSdistError(f"wheel contains a duplicate member: {name!r}")
+        seen.add(name)
+        portable_key = _portable_member_key(name)
+        prior_name = portable_names.get(portable_key)
+        if prior_name is not None and prior_name != name:
+            raise DeterministicSdistError(
+                f"wheel member names collide portably: {prior_name!r}, {name!r}"
+            )
+        portable_names[portable_key] = name
+        if (
+            member.orig_filename != member.filename
+            or member.is_dir()
+            or member.flag_bits not in {0, 0x800}
+            or member.compress_type not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+            or member.extra
+            or member.comment
+            or member.create_system not in {0, 3}
+            or member.volume != 0
+            or member.external_attr & 0xFFFF
+            or member.file_size < 0
+            or member.file_size > _MAX_MEMBER_BYTES
+            or member.compress_size < 0
+            or member.compress_size > _MAX_ARCHIVE_BYTES
+            or (
+                member.compress_type == zipfile.ZIP_STORED
+                and member.compress_size != member.file_size
+            )
+        ):
+            raise DeterministicSdistError(
+                "wheel contains an unsupported, encrypted, linked, or oversized member"
+            )
+        raw_mode = (member.external_attr >> 16) & 0xFFFF
+        if raw_mode and not stat.S_ISREG(raw_mode):
+            raise DeterministicSdistError("wheel contains a link or special member")
+        expanded_bytes += member.file_size
+        if expanded_bytes > _MAX_EXPANDED_BYTES:
+            raise DeterministicSdistError("wheel exceeds the expanded byte limit")
+    record_names = [
+        name
+        for name in seen
+        if name.endswith(".dist-info/RECORD")
+        and len(PurePosixPath(name).parts) == 2
+    ]
+    if len(record_names) != 1:
+        raise DeterministicSdistError("wheel must contain exactly one dist-info RECORD")
+    record_name = record_names[0]
+    dist_info = record_name.rsplit("/", 1)[0]
+    metadata_name = f"{dist_info}/METADATA"
+    wheel_name = f"{dist_info}/WHEEL"
+    if metadata_name not in seen or wheel_name not in seen:
+        raise DeterministicSdistError("wheel is missing METADATA or WHEEL")
+    if members[-1].filename != record_name:
+        raise DeterministicSdistError("wheel RECORD must be the final member")
+    return members, record_name, metadata_name
+
+
+def _validate_raw_deflate_extent(
+    raw_stream: BinaryIO,
+    *,
+    member: zipfile.ZipInfo,
+    compressed_offset: int,
+) -> None:
+    position = raw_stream.tell()
+    remaining = member.compress_size
+    expanded = 0
+    decompressor = zlib.decompressobj(-zlib.MAX_WBITS)
+    try:
+        raw_stream.seek(compressed_offset)
+        while remaining:
+            chunk = _read_exact(
+                raw_stream,
+                min(_CHUNK_BYTES, remaining),
+                label="wheel compressed member",
+            )
+            remaining -= len(chunk)
+            pending = chunk
+            while pending:
+                prior_pending = len(pending)
+                output = decompressor.decompress(
+                    pending,
+                    min(_CHUNK_BYTES, member.file_size - expanded + 1),
+                )
+                expanded += len(output)
+                pending = decompressor.unconsumed_tail
+                if decompressor.unused_data or expanded > member.file_size:
+                    raise DeterministicSdistError(
+                        "wheel compressed member has trailing or excess data"
+                    )
+                if decompressor.eof:
+                    if pending or remaining:
+                        raise DeterministicSdistError(
+                            "wheel compressed member ends before its declared extent"
+                        )
+                    break
+                if len(pending) == prior_pending and not output:
+                    raise DeterministicSdistError(
+                        "wheel compressed member made no bounded progress"
+                    )
+            if decompressor.eof:
+                break
+        if (
+            not decompressor.eof
+            or decompressor.unused_data
+            or decompressor.unconsumed_tail
+            or expanded != member.file_size
+        ):
+            raise DeterministicSdistError(
+                "wheel compressed member does not exactly match its declared extent"
+            )
+    except zlib.error as exc:
+        raise DeterministicSdistError(
+            "wheel compressed member is not a valid raw DEFLATE stream"
+        ) from exc
+    finally:
+        raw_stream.seek(position)
+
+
+def _validate_wheel_framing(
+    raw_stream: BinaryIO,
+    *,
+    archive: zipfile.ZipFile,
+    members: list[zipfile.ZipInfo],
+    snapshot: _FileSnapshot,
+) -> None:
+    if snapshot.size < 22 or min(member.header_offset for member in members) != 0:
+        raise DeterministicSdistError("wheel has prepended or truncated framing")
+    position = raw_stream.tell()
+    try:
+        raw_stream.seek(-22, os.SEEK_END)
+        end_record = _read_exact(raw_stream, 22, label="wheel end record")
+    finally:
+        raw_stream.seek(position)
+    (
+        signature,
+        disk_number,
+        directory_disk,
+        entries_on_disk,
+        entries_total,
+        directory_size,
+        directory_offset,
+        comment_size,
+    ) = struct.unpack("<4s4H2LH", end_record)
+    if (
+        signature != b"PK\x05\x06"
+        or disk_number != 0
+        or directory_disk != 0
+        or entries_on_disk != len(members)
+        or entries_total != len(members)
+        or comment_size != 0
+        or directory_offset != archive.start_dir
+        or directory_offset + directory_size + 22 != snapshot.size
+    ):
+        raise DeterministicSdistError(
+            "wheel has trailing, multidisk, ZIP64, or inconsistent framing"
+        )
+    position = raw_stream.tell()
+    expected_offset = 0
+    try:
+        for member in sorted(members, key=lambda candidate: candidate.header_offset):
+            if member.header_offset != expected_offset:
+                raise DeterministicSdistError(
+                    "wheel local records do not form one contiguous archive"
+                )
+            raw_stream.seek(member.header_offset)
+            local_header = _read_exact(
+                raw_stream,
+                30,
+                label="wheel local file header",
+            )
+            (
+                local_signature,
+                _local_version,
+                local_flags,
+                local_compression,
+                _local_time,
+                _local_date,
+                local_crc,
+                local_compressed_size,
+                local_size,
+                local_name_size,
+                local_extra_size,
+            ) = struct.unpack("<4s5H3L2H", local_header)
+            try:
+                expected_name = member.filename.encode(
+                    "utf-8" if member.flag_bits & 0x800 else "cp437"
+                )
+            except UnicodeEncodeError as exc:
+                raise DeterministicSdistError(
+                    "wheel member name encoding is inconsistent"
+                ) from exc
+            local_name = _read_exact(
+                raw_stream,
+                local_name_size,
+                label="wheel local member name",
+            )
+            compressed_offset = (
+                member.header_offset
+                + len(local_header)
+                + local_name_size
+                + local_extra_size
+            )
+            year, month, day, hour, minute, second = member.date_time
+            central_time = (hour << 11) | (minute << 5) | (second // 2)
+            central_date = ((year - 1980) << 9) | (month << 5) | day
+            if (
+                local_signature != b"PK\x03\x04"
+                or _local_version != member.extract_version
+                or local_flags != member.flag_bits
+                or local_compression != member.compress_type
+                or _local_time != central_time
+                or _local_date != central_date
+                or local_crc != member.CRC
+                or local_compressed_size != member.compress_size
+                or local_size != member.file_size
+                or local_name != expected_name
+                or local_extra_size != 0
+            ):
+                raise DeterministicSdistError(
+                    "wheel local record conflicts with its central directory entry"
+                )
+            if member.compress_type == zipfile.ZIP_DEFLATED:
+                _validate_raw_deflate_extent(
+                    raw_stream,
+                    member=member,
+                    compressed_offset=compressed_offset,
+                )
+            expected_offset = (
+                compressed_offset + member.compress_size
+            )
+        if expected_offset != archive.start_dir:
+            raise DeterministicSdistError(
+                "wheel local records do not end at the central directory"
+            )
+    finally:
+        raw_stream.seek(position)
+
+
+def _read_bounded_zip_member(
+    archive: zipfile.ZipFile,
+    member: zipfile.ZipInfo,
+    *,
+    max_bytes: int,
+    label: str,
+) -> bytes:
+    if member.file_size > max_bytes:
+        raise DeterministicSdistError(f"{label} exceeds the supported byte limit")
+    with archive.open(member, "r") as stream:
+        return _read_bounded_stream_bytes(
+            stream,
+            expected_bytes=member.file_size,
+            max_bytes=max_bytes,
+            label=label,
+        )
+
+
+def _wheel_member_sha256(
+    archive: zipfile.ZipFile,
+    member: zipfile.ZipInfo,
+) -> str:
+    with archive.open(member, "r") as stream:
+        return _bounded_stream_sha256(stream, expected_bytes=member.file_size)
+
+
+def _canonical_record_digest(value: str) -> bytes:
+    matched = _WHEEL_RECORD_HASH.fullmatch(value)
+    if matched is None:
+        raise DeterministicSdistError("wheel RECORD has a noncanonical SHA-256 field")
+    encoded = matched.group(1)
+    try:
+        decoded = base64.b64decode(
+            encoded + "=",
+            altchars=b"-_",
+            validate=True,
+        )
+    except (ValueError, TypeError) as exc:
+        raise DeterministicSdistError(
+            "wheel RECORD has an invalid SHA-256 field"
+        ) from exc
+    if (
+        len(decoded) != hashlib.sha256().digest_size
+        or base64.urlsafe_b64encode(decoded).rstrip(b"=").decode("ascii") != encoded
+    ):
+        raise DeterministicSdistError("wheel RECORD has a noncanonical SHA-256 field")
+    return decoded
+
+
+def _validated_wheel_record(
+    archive: zipfile.ZipFile,
+    members: list[zipfile.ZipInfo],
+    *,
+    record_name: str,
+) -> None:
+    by_name = {member.filename: member for member in members}
+    record_payload = _read_bounded_zip_member(
+        archive,
+        by_name[record_name],
+        max_bytes=_MAX_GENERATED_TEXT_BYTES,
+        label="wheel RECORD",
+    )
+    try:
+        record_text = record_payload.decode("utf-8", "strict")
+    except UnicodeDecodeError as exc:
+        raise DeterministicSdistError("wheel RECORD is not valid UTF-8") from exc
+    if (
+        not record_text.endswith("\n")
+        or "\x00" in record_text
+        or "\r" in record_text.replace("\r\n", "")
+    ):
+        raise DeterministicSdistError("wheel RECORD framing is not canonical")
+    try:
+        rows = list(csv.reader(io.StringIO(record_text, newline=""), strict=True))
+    except csv.Error as exc:
+        raise DeterministicSdistError("wheel RECORD CSV is invalid") from exc
+    if len(rows) != len(members) or any(len(row) != 3 for row in rows):
+        raise DeterministicSdistError("wheel RECORD row count or shape is invalid")
+    row_names = [row[0] for row in rows]
+    member_names = [member.filename for member in members]
+    if row_names != member_names or len(set(row_names)) != len(row_names):
+        raise DeterministicSdistError("wheel RECORD inventory or order is invalid")
+    for path, digest_field, size_field in rows:
+        member = by_name[path]
+        if path == record_name:
+            if digest_field or size_field:
+                raise DeterministicSdistError(
+                    "wheel RECORD self row must have empty hash and size"
+                )
+            continue
+        decoded_digest = _canonical_record_digest(digest_field)
+        if (
+            len(size_field) > len(str(_MAX_MEMBER_BYTES))
+            or _WHEEL_RECORD_SIZE.fullmatch(size_field) is None
+            or int(size_field) != member.file_size
+        ):
+            raise DeterministicSdistError("wheel RECORD size does not match its member")
+        observed_digest = bytes.fromhex(_wheel_member_sha256(archive, member))
+        if observed_digest != decoded_digest:
+            raise DeterministicSdistError("wheel RECORD digest does not match its member")
+
+
+def _canonical_wheel_record_bytes(
+    archive: zipfile.ZipFile,
+    members: list[zipfile.ZipInfo],
+    *,
+    record_name: str,
+    metadata_name: str,
+) -> bytes:
+    rows: list[tuple[str, str, str]] = []
+    for member in members:
+        name = member.filename
+        if name == record_name:
+            rows.append((name, "", ""))
+            continue
+        if name == metadata_name:
+            payload = _canonical_text_bytes(
+                _read_bounded_zip_member(
+                    archive,
+                    member,
+                    max_bytes=_MAX_GENERATED_TEXT_BYTES,
+                    label="wheel METADATA",
+                )
+            )
+            digest = hashlib.sha256(payload).digest()
+            size = len(payload)
+        else:
+            digest = bytes.fromhex(_wheel_member_sha256(archive, member))
+            size = member.file_size
+        encoded = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+        rows.append((name, f"sha256={encoded}", str(size)))
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerows(rows)
+    return output.getvalue().encode("utf-8")
+
+
+def _wheel_timestamp(source_date_epoch: int) -> tuple[int, int, int, int, int, int]:
+    values = list(time.gmtime(max(source_date_epoch, _ZIP_MIN_EPOCH))[:6])
+    values[5] -= values[5] % 2
+    return tuple(values)  # type: ignore[return-value]
+
+
+def _wheel_inventory(
+    path: Path,
+    *,
+    source_date_epoch: int | None,
+) -> tuple[list[dict[str, Any]], _FileSnapshot]:
+    lexical, snapshot = _regular_file_snapshot(path, label="wheel")
+    records: list[dict[str, Any]] = []
+    try:
+        with lexical.open("rb") as raw_stream:
+            if _snapshot_from_stat(os.fstat(raw_stream.fileno())) != snapshot:
+                raise DeterministicSdistError("wheel changed while opening")
+            preflight_names = _preflight_wheel_stream(
+                raw_stream,
+                snapshot=snapshot,
+            )
+            with zipfile.ZipFile(raw_stream, mode="r") as archive:
+                members, record_name, metadata_name = _validated_wheel_members(archive)
+                if tuple(member.filename for member in members) != preflight_names:
+                    raise DeterministicSdistError(
+                        "wheel parser inventory differs from physical preflight"
+                    )
+                _validate_wheel_framing(
+                    raw_stream,
+                    archive=archive,
+                    members=members,
+                    snapshot=snapshot,
+                )
+                _validated_wheel_record(
+                    archive,
+                    members,
+                    record_name=record_name,
+                )
+                canonical_record = (
+                    _canonical_wheel_record_bytes(
+                        archive,
+                        members,
+                        record_name=record_name,
+                        metadata_name=metadata_name,
+                    )
+                    if source_date_epoch is not None
+                    else None
+                )
+                for member in members:
+                    if source_date_epoch is None:
+                        size = member.file_size
+                        digest = _wheel_member_sha256(archive, member)
+                        mode = (member.external_attr >> 16) & 0xFFFF
+                        creator = member.create_system
+                        timestamp = member.date_time
+                        compression = member.compress_type
+                    else:
+                        if member.filename == record_name:
+                            assert canonical_record is not None
+                            size = len(canonical_record)
+                            digest = hashlib.sha256(canonical_record).hexdigest()
+                        elif member.filename == metadata_name:
+                            payload = _canonical_text_bytes(
+                                _read_bounded_zip_member(
+                                    archive,
+                                    member,
+                                    max_bytes=_MAX_GENERATED_TEXT_BYTES,
+                                    label="wheel METADATA",
+                                )
+                            )
+                            size = len(payload)
+                            digest = hashlib.sha256(payload).hexdigest()
+                        else:
+                            size = member.file_size
+                            digest = _wheel_member_sha256(archive, member)
+                        mode = stat.S_IFREG | _CANONICAL_FILE_MODE
+                        creator = 3
+                        timestamp = _wheel_timestamp(source_date_epoch)
+                        compression = zipfile.ZIP_DEFLATED
+                    records.append(
+                        {
+                            "name": member.filename,
+                            "size": size,
+                            "sha256": digest,
+                            "mode": mode,
+                            "creator": creator,
+                            "timestamp": timestamp,
+                            "compression": compression,
+                        }
+                    )
+            if _snapshot_from_stat(os.fstat(raw_stream.fileno())) != snapshot:
+                raise DeterministicSdistError("wheel changed while reading")
+    except DeterministicSdistError:
+        raise
+    except (OSError, RuntimeError, ValueError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
+        raise DeterministicSdistError("wheel is not a valid bounded archive") from exc
+    _assert_regular_file_snapshot(lexical, snapshot, label="wheel")
+    return records, snapshot
+
+
+def _copy_bounded_stream(
+    source: BinaryIO,
+    target: BinaryIO,
+    *,
+    expected_bytes: int,
+    label: str,
+) -> None:
+    observed = 0
+    while True:
+        chunk = source.read(min(_CHUNK_BYTES, expected_bytes - observed + 1))
+        if not chunk:
+            break
+        observed += len(chunk)
+        if observed > expected_bytes:
+            raise DeterministicSdistError(f"{label} expanded beyond its declared size")
+        target.write(chunk)
+    if observed != expected_bytes:
+        raise DeterministicSdistError(
+            f"{label} expanded to {observed} bytes, expected {expected_bytes}"
+        )
+
+
+def _write_normalized_wheel(
+    source_path: Path,
+    raw_output: BinaryIO,
+    *,
+    expected_source_snapshot: _FileSnapshot,
+    source_date_epoch: int,
+) -> None:
+    try:
+        with source_path.open("rb") as preflight_stream:
+            if (
+                _snapshot_from_stat(os.fstat(preflight_stream.fileno()))
+                != expected_source_snapshot
+            ):
+                raise DeterministicSdistError(
+                    "wheel changed while opening for physical preflight"
+                )
+            preflight_names = _preflight_wheel_stream(
+                preflight_stream,
+                snapshot=expected_source_snapshot,
+            )
+            if (
+                _snapshot_from_stat(os.fstat(preflight_stream.fileno()))
+                != expected_source_snapshot
+            ):
+                raise DeterministicSdistError(
+                    "wheel changed during physical preflight"
+                )
+        with (
+            source_path.open("rb") as raw_stream,
+            zipfile.ZipFile(raw_stream, mode="r") as source,
+        ):
+            if _snapshot_from_stat(os.fstat(raw_stream.fileno())) != expected_source_snapshot:
+                raise DeterministicSdistError(
+                    "wheel changed while opening for normalization"
+                )
+            members, record_name, metadata_name = _validated_wheel_members(source)
+            if tuple(member.filename for member in members) != preflight_names:
+                raise DeterministicSdistError(
+                    "wheel parser inventory differs from physical preflight"
+                )
+            _validate_wheel_framing(
+                raw_stream,
+                archive=source,
+                members=members,
+                snapshot=expected_source_snapshot,
+            )
+            _validated_wheel_record(source, members, record_name=record_name)
+            canonical_record = _canonical_wheel_record_bytes(
+                source,
+                members,
+                record_name=record_name,
+                metadata_name=metadata_name,
+            )
+            with zipfile.ZipFile(
+                raw_output,
+                mode="w",
+                compression=zipfile.ZIP_DEFLATED,
+                compresslevel=9,
+                allowZip64=False,
+            ) as target:
+                for member in members:
+                    normalized = zipfile.ZipInfo(
+                        member.filename,
+                        date_time=_wheel_timestamp(source_date_epoch),
+                    )
+                    normalized.compress_type = zipfile.ZIP_DEFLATED
+                    normalized.create_system = 3
+                    normalized.external_attr = (
+                        stat.S_IFREG | _CANONICAL_FILE_MODE
+                    ) << 16
+                    normalized.internal_attr = 0
+                    normalized.extra = b""
+                    normalized.comment = b""
+                    normalized._compresslevel = 9
+                    if member.filename == record_name:
+                        source_stream: BinaryIO = io.BytesIO(canonical_record)
+                        expected_bytes = len(canonical_record)
+                    elif member.filename == metadata_name:
+                        metadata = _canonical_text_bytes(
+                            _read_bounded_zip_member(
+                                source,
+                                member,
+                                max_bytes=_MAX_GENERATED_TEXT_BYTES,
+                                label="wheel METADATA",
+                            )
+                        )
+                        source_stream = io.BytesIO(metadata)
+                        expected_bytes = len(metadata)
+                    else:
+                        source_stream = source.open(member, "r")
+                        expected_bytes = member.file_size
+                    try:
+                        with target.open(normalized, mode="w", force_zip64=False) as output:
+                            _copy_bounded_stream(
+                                source_stream,
+                                output,
+                                expected_bytes=expected_bytes,
+                                label="wheel member",
+                            )
+                    finally:
+                        source_stream.close()
+            if _snapshot_from_stat(os.fstat(raw_stream.fileno())) != expected_source_snapshot:
+                raise DeterministicSdistError("wheel changed during normalization")
+            raw_output.flush()
+            os.fsync(raw_output.fileno())
+    except DeterministicSdistError:
+        raise
+    except (OSError, RuntimeError, ValueError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
+        raise DeterministicSdistError("wheel could not be normalized") from exc
+
+
+def _normalize_wheel_archive(
+    path: str | Path,
+    source_date_epoch: int,
+) -> Path:
+    epoch = _parse_source_date_epoch(source_date_epoch)
+    source_path, source_snapshot = _regular_file_snapshot(path, label="wheel")
+    output_directory, directory_identity = _real_directory(
+        source_path.parent,
+        label="wheel directory",
+    )
+    if source_path.parent.resolve(strict=True) != output_directory:
+        raise DeterministicSdistError("wheel is outside its validated directory")
+    if _SAFE_WHEEL_FILENAME.fullmatch(source_path.name) is None:
+        raise DeterministicSdistError("wheel filename is unsafe")
+    expected_inventory, observed_snapshot = _wheel_inventory(
+        source_path,
+        source_date_epoch=epoch,
+    )
+    if observed_snapshot != source_snapshot:
+        raise DeterministicSdistError("wheel changed before deterministic build")
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{source_path.name}.",
+        suffix=".tmp",
+        dir=output_directory,
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        if hasattr(os, "fchmod"):
+            os.fchmod(descriptor, stat.S_IMODE(source_snapshot.mode))
+        with os.fdopen(descriptor, "w+b") as raw_output:
+            descriptor = -1
+            _write_normalized_wheel(
+                source_path,
+                raw_output,
+                expected_source_snapshot=source_snapshot,
+                source_date_epoch=epoch,
+            )
+        _assert_regular_file_snapshot(source_path, source_snapshot, label="wheel")
+        normalized_inventory, temporary_snapshot = _wheel_inventory(
+            temporary_path,
+            source_date_epoch=None,
+        )
+        if normalized_inventory != expected_inventory:
+            raise DeterministicSdistError(
+                "deterministic wheel rewrite changed member content or structure"
+            )
+        temporary_bytes, temporary_sha256 = _bounded_file_sha256(temporary_path)
+        _assert_regular_file_snapshot(
+            temporary_path,
+            temporary_snapshot,
+            label="normalized wheel",
+        )
+        _assert_directory_identity(
+            output_directory,
+            directory_identity,
+            label="wheel directory",
+        )
+        _assert_regular_file_snapshot(source_path, source_snapshot, label="wheel")
+        os.replace(temporary_path, source_path)
+        _fsync_directory(output_directory)
+        installed_path, installed_snapshot = _regular_file_snapshot(
+            source_path,
+            label="installed normalized wheel",
+        )
+        if installed_snapshot != temporary_snapshot:
+            raise DeterministicSdistError(
+                "installed normalized wheel changed during replacement"
+            )
+        installed_inventory, observed_installed_snapshot = _wheel_inventory(
+            installed_path,
+            source_date_epoch=None,
+        )
+        if (
+            observed_installed_snapshot != installed_snapshot
+            or installed_inventory != expected_inventory
+        ):
+            raise DeterministicSdistError(
+                "installed normalized wheel changed after replacement"
+            )
+        installed_bytes, installed_sha256 = _bounded_file_sha256(installed_path)
+        if installed_bytes != temporary_bytes or installed_sha256 != temporary_sha256:
+            raise DeterministicSdistError(
+                "installed normalized wheel bytes changed after replacement"
+            )
+        _assert_regular_file_snapshot(
+            installed_path,
+            installed_snapshot,
+            label="installed normalized wheel",
+        )
+        return installed_path
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
 def _validated_backend_filename(value: object) -> str:
     if (
         not isinstance(value, str)
@@ -946,6 +1919,49 @@ def _validated_backend_filename(value: object) -> str:
     ):
         raise DeterministicSdistError("Setuptools returned an unsafe sdist filename")
     return value
+
+
+def _validated_wheel_filename(value: object) -> str:
+    if (
+        not isinstance(value, str)
+        or Path(value).name != value
+        or _SAFE_WHEEL_FILENAME.fullmatch(value) is None
+    ):
+        raise DeterministicSdistError("Setuptools returned an unsafe wheel filename")
+    return value
+
+
+def build_wheel(
+    wheel_directory: str,
+    config_settings: dict[str, Any] | None = None,
+    metadata_directory: str | None = None,
+) -> str:
+    """Delegate to Setuptools and normalize only when SOURCE_DATE_EPOCH is set."""
+
+    epoch = _source_date_epoch()
+    if epoch is None:
+        return _setuptools_backend.build_wheel(
+            wheel_directory,
+            config_settings=config_settings,
+            metadata_directory=metadata_directory,
+        )
+    directory, directory_identity = _real_directory(
+        wheel_directory,
+        label="wheel directory",
+    )
+    filename = _setuptools_backend.build_wheel(
+        str(directory),
+        config_settings=config_settings,
+        metadata_directory=metadata_directory,
+    )
+    _assert_directory_identity(
+        directory,
+        directory_identity,
+        label="wheel directory",
+    )
+    safe_filename = _validated_wheel_filename(filename)
+    _normalize_wheel_archive(directory / safe_filename, epoch)
+    return safe_filename
 
 
 def build_sdist(

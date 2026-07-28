@@ -6,6 +6,7 @@ import os
 import posixpath
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -232,6 +233,23 @@ def test_wheel_and_sdist_contain_exact_resources_and_supply_chain_evidence(
     assert packaged_manifest == audit_manifest
 
     wheel_path = built_distributions["integration_wheel"]
+    for candidate in (wheel_path, built_distributions["core_wheel"]):
+        with zipfile.ZipFile(candidate) as candidate_wheel:
+            members = candidate_wheel.infolist()
+            candidate_metadata = candidate_wheel.read(
+                _single_name(candidate_wheel.namelist(), ".dist-info/METADATA")
+            )
+        assert members
+        assert b"\r" not in candidate_metadata
+        assert all(member.create_system == 3 for member in members)
+        assert all(
+            (member.external_attr >> 16) == (stat.S_IFREG | 0o644)
+            for member in members
+        )
+        assert all(
+            member.date_time == (2023, 11, 14, 22, 13, 20)
+            for member in members
+        )
     with zipfile.ZipFile(wheel_path) as wheel:
         names = wheel.namelist()
         assert wheel.read(f"ctxc_openhands/data/{MANIFEST_NAME}") == packaged_manifest
@@ -345,8 +363,7 @@ def test_repeated_integration_sdists_are_byte_identical_and_epoch_bound(
         sources_stream = archive.extractfile(sources_name)
         assert setup_stream is not None
         assert sources_stream is not None
-        newline = os.linesep.encode("ascii")
-        assert setup_stream.read() == newline.join(
+        assert setup_stream.read() == b"\n".join(
             (
                 b"[egg_info]",
                 b"tag_build = ",
@@ -360,6 +377,10 @@ def test_repeated_integration_sdists_are_byte_identical_and_epoch_bound(
     assert "setup.cfg" not in sources_lines
     assert all(member.mtime == SOURCE_DATE_EPOCH for member in members)
     assert all("mtime" not in member.pax_headers for member in members)
+    assert all(
+        member.mode == (0o755 if member.isdir() else 0o644)
+        for member in members
+    )
 
 
 def test_container_demo_dockerfile_is_offline_fake_runtime_only() -> None:

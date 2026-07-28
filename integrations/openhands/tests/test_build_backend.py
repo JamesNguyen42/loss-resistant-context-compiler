@@ -195,6 +195,7 @@ def test_non_sdist_hook_delegates_unchanged(
     tmp_path: Path,
 ) -> None:
     observed: list[tuple[str, object, object]] = []
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)
 
     def build_wheel(
         directory: str,
