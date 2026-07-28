@@ -761,7 +761,7 @@ evidence of sublinear compilation.
   evidence. Do not replace retained attempts or infer live readiness from an
   offline run.
 - [x] Complete the automatic hosted Linux, Windows, and macOS Python 3.12/3.13
-  package matrix for exact current head
+  package matrix for exact implementation head
   `1f684d975005a7e552f62f36dfb7309a58b11799`. Do not describe a different
   head as cross-platform validated while any required lane is pending or red.
   The first push/pull-request package lanes remain retained failures: every
@@ -769,10 +769,10 @@ evidence of sublinear compilation.
   exposed its `/var` temporary-root alias during the mission-size campaign.
   The ordinary matrix now excludes the explicit `retained_evidence` test,
   qualifies an unlinked `RUNNER_TEMP` descendant, and retains fast crash
-  primitives. Exact current head passed all six automatic package jobs in push
-  run `30331509718` and all six in pull-request run `30331512148`, covering
-  Linux, Windows, and macOS on Python 3.12/3.13. The retained-evidence jobs were
-  skipped/default-off.
+  primitives. That exact implementation head passed all six automatic package
+  jobs in push run `30331509718` and all six in pull-request run `30331512148`,
+  covering Linux, Windows, and macOS on Python 3.12/3.13. The retained-evidence
+  jobs were skipped/default-off.
 - [ ] Run and durably retain the manual/default-off retained-evidence job for a
   future candidate without replacing the historical attempts. Temporary local
   evidence is not durable retention.

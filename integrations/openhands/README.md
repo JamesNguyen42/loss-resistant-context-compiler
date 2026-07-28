@@ -241,9 +241,9 @@ uses a path-guard-qualified descendant of `RUNNER_TEMP`, and keeps the bounded
 crash primitives. The 10,000/100 soak and 1,024-schedule campaign run only in
 the manual/default-off retained-evidence job.
 
-Exact current head `1f684d975005a7e552f62f36dfb7309a58b11799` passed all
-six automatic Linux, Windows, and macOS Python 3.12/3.13 package jobs in push
-run `30331509718` and all six in pull-request run `30331512148`. The
+Exact implementation head `1f684d975005a7e552f62f36dfb7309a58b11799`
+passed all six automatic Linux, Windows, and macOS Python 3.12/3.13 package jobs
+in push run `30331509718` and all six in pull-request run `30331512148`. The
 retained-evidence jobs were skipped/default-off, and the manual durable
 retained-evidence gate remains pending.
 

@@ -860,10 +860,10 @@ audited. Any selected superseded item independently fails verification as
 - No local model, inference endpoint, or user-owned runtime was loaded, called,
   reconfigured, stopped, or otherwise touched. The global inference lease was
   not granted.
-- The bounded ordinary integration selector ran 461 tests: 456 passed and five
-  Windows symlink-privilege checks skipped. The one manual retained-evidence
-  node for the real 1,024-schedule campaign was explicitly deselected, not
-  reported as a pass.
+- The current parent-archive bounded ordinary integration selector selected 480
+  ordinary node IDs: 475 passed and five Windows symlink-privilege checks
+  skipped. The one manual retained-evidence node for the real 1,024-schedule
+  campaign was explicitly deselected, not reported as a pass.
 - Ruff and `compileall` pass across `src`, `tests`, `benchmarks`, `scripts`,
   `conformance`, and `_ctxc_build_backend.py`.
 - Complete Ubuntu CI covers Python 3.11, 3.12, and 3.13; Windows and macOS run
@@ -1306,7 +1306,7 @@ lower quantile before results are observed.
   `4213410efb5c4e857819de3e831260ed2cd9f59a` then passed all 12 ordinary
   Linux, Windows, and macOS Python 3.12/3.13 package jobs in push run
   `30323957135` and pull-request run `30323958753`.
-- Exact current head `1f684d975005a7e552f62f36dfb7309a58b11799`, including
+- Exact implementation head `1f684d975005a7e552f62f36dfb7309a58b11799`, including
   the later RECORD, report-to-database, pipe, ledger-I/O, and documentation
   review commits, passed all six automatic Linux, Windows, and macOS Python
   3.12/3.13 package jobs in push run `30331509718` and all six in pull-request

@@ -273,10 +273,10 @@ plus outer runtime evidence are durably retained.
 Record each unresolved gate; do not delete this section when it is non-empty.
 
 - Hosted retained evidence: the first failed package matrices remain retained.
-  Exact current head `1f684d975005a7e552f62f36dfb7309a58b11799` passed all
-  six automatic Linux, Windows, and macOS Python 3.12/3.13 package jobs in push
-  run `30331509718` and all six in pull-request run `30331512148`. The
-  retained-evidence jobs were skipped/default-off, so the manual durable
+  Exact implementation head `1f684d975005a7e552f62f36dfb7309a58b11799`
+  passed all six automatic Linux, Windows, and macOS Python 3.12/3.13 package
+  jobs in push run `30331509718` and all six in pull-request run `30331512148`.
+  The retained-evidence jobs were skipped/default-off, so the manual durable
   retained-evidence gate remains pending.
 - Evidence verification and retention: the hash-intact 2026-07-27 scenario and
   soak pairs were not reverified under the strengthened report-to-database
