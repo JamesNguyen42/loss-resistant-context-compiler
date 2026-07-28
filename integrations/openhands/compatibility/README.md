@@ -32,18 +32,22 @@ Assistant, tool, retrieval, file, search, hook, and delegated-agent content
 remains untrusted unless a separate authenticated-authority receipt verifies
 it. This policy does not claim semantic completeness.
 
-The reviewed final-request seams are private OpenHands SDK methods. They are
-usable only while the exact `llm.py` source digest remains bound by the pin
-manifest. They expose LiteLLM-bound arguments, not necessarily byte-identical
-provider HTTP payloads. A wire-exact claim requires an independently verified
+The reviewed private OpenHands SDK request-preparation methods are diagnostic
+candidates only, not a supported `ctxc-openhands` adapter. Binding the exact
+`llm.py` source digest does not make those private methods an accepted live
+seam. They expose LiteLLM-bound arguments, not necessarily byte-identical
+provider HTTP payloads. A stable public immutable final-provider-request and
+exact-tokenizer hook remains independently required before live dispatch can
+be supported. A wire-exact claim also requires an independently verified
 transport capture.
 
 ## Current blocker
 
-A real offline import and live scenario have not run. The reviewed packages
-are absent and there is no local hash-pinned wheelhouse containing their
-complete dependency closure. This is retained as a blocking failure; the
-offline fake runtime is not evidence of live compatibility.
+A real offline import and live scenario have not run. In the recorded
+2026-07-27 environment, the reviewed packages were absent and there was no
+local hash-pinned wheelhouse containing their complete dependency closure.
+This is retained as a blocking failure; the offline fake runtime is not
+evidence of live compatibility.
 `requirements-live.lock` binds the four reviewed direct wheels only and is
 explicitly not evidence of a complete dependency closure.
 
