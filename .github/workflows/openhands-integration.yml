@@ -4,18 +4,34 @@ on:
   push:
     paths:
       - ".github/workflows/openhands-integration.yml"
+      - ".gitattributes"
       - "_ctxc_build_backend.py"
       - "LICENSE"
+      - "MANIFEST.in"
+      - "README.md"
+      - "benchmarks/**"
       - "pyproject.toml"
+      - "scripts/release_reproducibility.py"
+      - "scripts/release_artifact_manifest.py"
+      - "schemas/**"
       - "src/**"
+      - "tests/test_release_reproducibility.py"
       - "integrations/openhands/**"
   pull_request:
     paths:
       - ".github/workflows/openhands-integration.yml"
+      - ".gitattributes"
       - "_ctxc_build_backend.py"
       - "LICENSE"
+      - "MANIFEST.in"
+      - "README.md"
+      - "benchmarks/**"
       - "pyproject.toml"
+      - "scripts/release_reproducibility.py"
+      - "scripts/release_artifact_manifest.py"
+      - "schemas/**"
       - "src/**"
+      - "tests/test_release_reproducibility.py"
       - "integrations/openhands/**"
   workflow_dispatch:
     inputs:
@@ -218,6 +234,60 @@ jobs:
             openhands-clean-install-report.json
             openhands-ci-toolchain.txt
           if-no-files-found: warn
+          retention-days: 14
+
+  package-byte-reproducibility:
+    name: six-lane package byte reproducibility
+    if: ${{ always() }}
+    needs: [offline-package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONHASHSEED: "0"
+      PYTHONPATH: "src"
+    steps:
+      - name: Check out source without credentials or LFS
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          lfs: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Download the six package-lane artifacts
+        if: ${{ always() }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ctxc-openhands-*-python-*
+          path: .ci-package-matrix
+          merge-multiple: false
+
+      - name: Compare exact package bytes across all required lanes
+        if: ${{ always() }}
+        run: |
+          python -m scripts.release_reproducibility `
+            --matrix-root .ci-package-matrix `
+            --revision "${{ github.sha }}" `
+            --upstream-result "${{ needs.offline-package.result }}" `
+            --json-out package-matrix-reproducibility.json
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Retain the bounded package-matrix report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ctxc-openhands-package-byte-reproducibility
+          path: package-matrix-reproducibility.json
+          if-no-files-found: error
           retention-days: 14
 
   retained-offline-evidence:

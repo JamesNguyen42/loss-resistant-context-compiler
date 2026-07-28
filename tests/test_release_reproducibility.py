@@ -4,15 +4,23 @@ import gzip
 import hashlib
 import io
 import json
+import os
+import stat
 import tarfile
 import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 
+from scripts import release_reproducibility as reproducibility
 from scripts.release_reproducibility import (
+    PACKAGE_MATRIX_LANES,
+    PACKAGE_MATRIX_REPORT_SCHEMA,
     ReleaseReproducibilityError,
     _sdist_inventory,
+    compare_package_matrix,
     compare_release_builds,
     main,
 )
@@ -20,6 +28,10 @@ from scripts.release_reproducibility import (
 WHEEL = "loss_resistant_context_compiler-0.1.0-py3-none-any.whl"
 SDIST = "loss_resistant_context_compiler-0.1.0.tar.gz"
 ROOT = "loss_resistant_context_compiler-0.1.0"
+MATRIX_REVISION = "1" * 40
+MATRIX_ROOT_WHEEL = "loss_resistant_context_compiler-0.1.0-py3-none-any.whl"
+MATRIX_INTEGRATION_WHEEL = "ctxc_openhands-0.1.0a1-py3-none-any.whl"
+MATRIX_INTEGRATION_SDIST = "ctxc_openhands-0.1.0a1.tar.gz"
 
 
 def _write_wheel(path: Path, *, timestamp: tuple[int, int, int, int, int, int]) -> None:
@@ -91,6 +103,147 @@ def _dist(tmp_path: Path, name: str, *, mtime: int = 1_700_000_000) -> Path:
     return dist
 
 
+def _write_package_matrix(tmp_path: Path) -> Path:
+    root = tmp_path / "matrix"
+    root.mkdir()
+    for lane in PACKAGE_MATRIX_LANES:
+        lane_path = root / lane
+        core = lane_path / "dist" / "core"
+        openhands = lane_path / "dist" / "openhands"
+        core.mkdir(parents=True)
+        openhands.mkdir()
+        (core / MATRIX_ROOT_WHEEL).write_bytes(b"root-wheel\n")
+        (openhands / MATRIX_INTEGRATION_WHEEL).write_bytes(b"integration-wheel\n")
+        (openhands / MATRIX_INTEGRATION_SDIST).write_bytes(b"integration-sdist\n")
+        (lane_path / "doctor-source.json").write_text(
+            '{"passed":true}\n',
+            encoding="utf-8",
+        )
+        (lane_path / "doctor-live-source.json").write_text(
+            '{"passed":false}\n',
+            encoding="utf-8",
+        )
+        (lane_path / "openhands-clean-install-report.json").write_text(
+            '{"passed":true}\n',
+            encoding="utf-8",
+        )
+        (lane_path / "openhands-ci-toolchain.txt").write_text(
+            f"{lane}\n",
+            encoding="utf-8",
+        )
+    return root
+
+
+def _matrix_artifact_path(root: Path, lane: str, kind: str) -> Path:
+    if kind == "root_wheel":
+        return root / lane / "dist" / "core" / MATRIX_ROOT_WHEEL
+    if kind == "integration_wheel":
+        return root / lane / "dist" / "openhands" / MATRIX_INTEGRATION_WHEEL
+    if kind == "integration_sdist":
+        return root / lane / "dist" / "openhands" / MATRIX_INTEGRATION_SDIST
+    raise AssertionError(f"unsupported test artifact kind: {kind}")
+
+
+def _assert_report_self_hash(report: dict[str, object]) -> None:
+    unsigned = dict(report)
+    claimed = unsigned.pop("report_sha256")
+    encoded = json.dumps(
+        unsigned,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    assert claimed == hashlib.sha256(encoded).hexdigest()
+
+
+def test_project_version_rejects_oversize_before_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = tmp_path / "pyproject.toml"
+    project.write_bytes(b"x" * (reproducibility._MAX_PROJECT_METADATA_BYTES + 1))
+    monkeypatch.setattr(
+        os,
+        "read",
+        lambda *_args, **_kwargs: pytest.fail("oversized metadata was read"),
+    )
+
+    with pytest.raises(ReleaseReproducibilityError, match="outside the supported range"):
+        reproducibility._project_version(project, label="test project metadata")
+
+
+def test_project_version_returns_structured_read_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = tmp_path / "pyproject.toml"
+    project.write_text('[project]\nversion = "1.0"\n', encoding="utf-8")
+
+    def failed_read(_descriptor: int, _size: int) -> bytes:
+        raise OSError("simulated read failure")
+
+    monkeypatch.setattr(os, "read", failed_read)
+
+    with pytest.raises(ReleaseReproducibilityError, match="could not be read"):
+        reproducibility._project_version(project, label="test project metadata")
+
+
+def test_project_version_rejects_short_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = tmp_path / "pyproject.toml"
+    project.write_text('[project]\nversion = "1.0"\n', encoding="utf-8")
+    monkeypatch.setattr(os, "read", lambda _descriptor, _size: b"")
+
+    with pytest.raises(ReleaseReproducibilityError, match="declared bytes"):
+        reproducibility._project_version(project, label="test project metadata")
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (b"\xff", "not valid UTF-8 TOML"),
+        (b"[project\n", "not valid UTF-8 TOML"),
+        (b'[project]\nversion = "has space"\n', "invalid project version"),
+    ],
+)
+def test_project_version_rejects_invalid_metadata(
+    tmp_path: Path,
+    payload: bytes,
+    message: str,
+) -> None:
+    project = tmp_path / "pyproject.toml"
+    project.write_bytes(payload)
+
+    with pytest.raises(ReleaseReproducibilityError, match=message):
+        reproducibility._project_version(project, label="test project metadata")
+
+
+def test_project_version_bounds_parser_recursion(tmp_path: Path) -> None:
+    project = tmp_path / "pyproject.toml"
+    project.write_text(
+        "[project]\nversion = " + ("[" * 1200) + '"1"' + ("]" * 1200),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ReleaseReproducibilityError, match="not valid UTF-8 TOML"):
+        reproducibility._project_version(project, label="test project metadata")
+
+
+def test_configured_identity_rejects_core_public_version_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(reproducibility, "_CORE_VERSION", "9.9.9")
+
+    with pytest.raises(
+        ReleaseReproducibilityError,
+        match="project and public API versions do not match",
+    ):
+        reproducibility._configured_package_identity()
+
+
 def test_release_reproducibility_passes_only_for_exact_archive_bytes(tmp_path: Path) -> None:
     first = _dist(tmp_path, "first")
     second = tmp_path / "second"
@@ -102,16 +255,7 @@ def test_release_reproducibility_passes_only_for_exact_archive_bytes(tmp_path: P
 
     assert report["status"] == "passed"
     assert all(item["byte_identical"] is True for item in report["artifacts"])
-    unsigned = dict(report)
-    claimed = unsigned.pop("report_sha256")
-    encoded = json.dumps(
-        unsigned,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
-    assert claimed == hashlib.sha256(encoded).hexdigest()
+    _assert_report_self_hash(report)
 
 
 def test_release_reproducibility_reports_sdist_tar_metadata_drift(tmp_path: Path) -> None:
@@ -207,3 +351,821 @@ def test_release_reproducibility_cli_retains_failed_red_gate(tmp_path: Path) -> 
     assert retained["status"] == "failed"
     assert main(arguments) == 2
     assert json.loads(report_path.read_text(encoding="utf-8")) == retained
+
+
+def test_release_reproducibility_cli_preserves_incomplete_legacy_parser_error(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "must-not-exist.json"
+
+    with pytest.raises(SystemExit) as captured:
+        main(
+            [
+                "--first-dist",
+                str(tmp_path / "first"),
+                "--json-out",
+                str(report_path),
+            ]
+        )
+
+    assert captured.value.code == 2
+    assert not report_path.exists()
+
+
+def test_release_reproducibility_cli_rejects_mixed_modes_without_report(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "must-not-exist.json"
+
+    with pytest.raises(SystemExit) as captured:
+        main(
+            [
+                "--matrix-root",
+                str(tmp_path / "matrix"),
+                "--revision",
+                MATRIX_REVISION,
+                "--upstream-result",
+                "success",
+                "--first-dist",
+                str(tmp_path / "first"),
+                "--json-out",
+                str(report_path),
+            ]
+        )
+
+    assert captured.value.code == 2
+    assert not report_path.exists()
+
+
+def test_package_matrix_requires_exact_six_lanes_and_self_hashes(
+    tmp_path: Path,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+
+    report = compare_package_matrix(
+        root,
+        revision=MATRIX_REVISION,
+        upstream_result="success",
+    )
+
+    assert report["schema"] == PACKAGE_MATRIX_REPORT_SCHEMA
+    assert report["status"] == "passed"
+    assert report["required_lanes"] == list(PACKAGE_MATRIX_LANES)
+    assert report["package_identity"] == {
+        "core_distribution": "loss-resistant-context-compiler",
+        "core_version": "0.1.0",
+        "root_wheel": MATRIX_ROOT_WHEEL,
+        "integration_distribution": "ctxc-openhands",
+        "integration_version": "0.1.0a1",
+        "integration_wheel": MATRIX_INTEGRATION_WHEEL,
+        "integration_sdist": MATRIX_INTEGRATION_SDIST,
+    }
+    assert [lane["lane"] for lane in report["lanes"]] == list(PACKAGE_MATRIX_LANES)
+    assert len(report["artifact_groups"]) == 3
+    assert all(group["byte_identical"] is True for group in report["artifact_groups"])
+    _assert_report_self_hash(report)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["root_wheel", "integration_wheel", "integration_sdist"],
+)
+def test_package_matrix_reports_one_byte_drift_for_each_artifact_kind(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    changed = _matrix_artifact_path(root, PACKAGE_MATRIX_LANES[-1], kind)
+    changed.write_bytes(changed.read_bytes() + b"x")
+
+    report = compare_package_matrix(
+        root,
+        revision=MATRIX_REVISION,
+        upstream_result="success",
+    )
+    groups = {group["kind"]: group for group in report["artifact_groups"]}
+
+    assert report["status"] == "failed"
+    assert groups[kind]["byte_identical"] is False
+    assert groups[kind]["lanes"][-1]["matches_reference_bytes"] is False
+    assert all(
+        group["byte_identical"] is True
+        for other_kind, group in groups.items()
+        if other_kind != kind
+    )
+    _assert_report_self_hash(report)
+
+
+def test_package_matrix_rejects_missing_lane(tmp_path: Path) -> None:
+    root = _write_package_matrix(tmp_path)
+    missing = root / PACKAGE_MATRIX_LANES[-1]
+    for path in sorted(missing.rglob("*"), reverse=True):
+        if path.is_file():
+            path.unlink()
+        else:
+            path.rmdir()
+    missing.rmdir()
+
+    with pytest.raises(ReleaseReproducibilityError, match="inventory mismatch"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_rejects_extra_lane(tmp_path: Path) -> None:
+    root = _write_package_matrix(tmp_path)
+    (root / "ctxc-openhands-Linux-python-3.11").mkdir()
+
+    with pytest.raises(ReleaseReproducibilityError, match="inventory mismatch"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_bounds_directory_enumeration(tmp_path: Path) -> None:
+    root = _write_package_matrix(tmp_path)
+    for index in range(reproducibility._MAX_MATRIX_DIRECTORY_ENTRIES + 1):
+        (root / f"extra-{index:03d}").mkdir()
+
+    with pytest.raises(ReleaseReproducibilityError, match="too many entries"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_stops_directory_scan_at_the_bound(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "matrix"
+    root.mkdir()
+    observed = 0
+
+    class BoundedIterator:
+        def __enter__(self) -> BoundedIterator:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def __iter__(self) -> BoundedIterator:
+            return self
+
+        def __next__(self) -> object:
+            nonlocal observed
+            observed += 1
+            if observed > reproducibility._MAX_MATRIX_DIRECTORY_ENTRIES + 1:
+                raise AssertionError("directory iterator read beyond the bound")
+            return object()
+
+    monkeypatch.setattr(os, "scandir", lambda _path: BoundedIterator())
+
+    with pytest.raises(ReleaseReproducibilityError, match="too many entries"):
+        reproducibility._matrix_directory_entries(root, label="bounded test root")
+    assert observed == reproducibility._MAX_MATRIX_DIRECTORY_ENTRIES + 1
+
+
+def test_package_matrix_rejects_directory_replacement_during_enumeration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "matrix"
+    root.mkdir()
+    (root / "entry.txt").write_text("x", encoding="utf-8")
+    original_lstat = Path.lstat
+    root_inspections = 0
+
+    def replaced_lstat(path: Path) -> os.stat_result:
+        nonlocal root_inspections
+        value = original_lstat(path)
+        if path == root:
+            root_inspections += 1
+            if root_inspections > 1:
+                fields = list(value)
+                fields[1] += 1
+                return os.stat_result(fields)
+        return value
+
+    monkeypatch.setattr(Path, "lstat", replaced_lstat)
+
+    with pytest.raises(ReleaseReproducibilityError, match="changed while being enumerated"):
+        reproducibility._matrix_directory_entries(root, label="replacement test root")
+
+
+@pytest.mark.parametrize("mutation", ["missing", "extra"])
+def test_package_matrix_rejects_missing_or_extra_lane_file(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    lane = root / PACKAGE_MATRIX_LANES[0]
+    if mutation == "missing":
+        (lane / "doctor-source.json").unlink()
+    else:
+        (lane / "unexpected.json").write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(ReleaseReproducibilityError, match="inventory mismatch"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_rejects_integration_cross_format_version_mismatch(
+    tmp_path: Path,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    for lane_name in PACKAGE_MATRIX_LANES:
+        lane = root / lane_name / "dist" / "openhands"
+        (lane / MATRIX_INTEGRATION_WHEEL).rename(lane / "ctxc_openhands-2.0-py3-none-any.whl")
+        (lane / MATRIX_INTEGRATION_SDIST).rename(lane / "ctxc_openhands-3.0.tar.gz")
+
+    with pytest.raises(
+        ReleaseReproducibilityError,
+        match="configured integration wheel and sdist",
+    ):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_rejects_wrong_root_version_in_every_lane(
+    tmp_path: Path,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    for lane_name in PACKAGE_MATRIX_LANES:
+        lane = root / lane_name / "dist" / "core"
+        (lane / MATRIX_ROOT_WHEEL).rename(
+            lane / "loss_resistant_context_compiler-9.9.9-py3-none-any.whl"
+        )
+
+    with pytest.raises(
+        ReleaseReproducibilityError,
+        match="configured artifact filename",
+    ):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def _symlink_or_skip(target: Path, link: Path, *, directory: bool = False) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=directory)
+    except OSError as exc:
+        pytest.skip(f"symbolic links are unavailable in this test environment: {exc}")
+
+
+def test_package_matrix_rejects_symbolic_link_file(tmp_path: Path) -> None:
+    root = _write_package_matrix(tmp_path)
+    artifact = _matrix_artifact_path(
+        root,
+        PACKAGE_MATRIX_LANES[0],
+        "root_wheel",
+    )
+    target = tmp_path / "outside.whl"
+    artifact.replace(target)
+    _symlink_or_skip(target, artifact)
+
+    with pytest.raises(ReleaseReproducibilityError, match="linked or reparse"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_rejects_symbolic_link_directory(tmp_path: Path) -> None:
+    root = _write_package_matrix(tmp_path)
+    lane = root / PACKAGE_MATRIX_LANES[0]
+    target = tmp_path / "outside-lane"
+    lane.replace(target)
+    _symlink_or_skip(target, lane, directory=True)
+
+    with pytest.raises(ReleaseReproducibilityError, match="linked or reparse"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+@pytest.mark.parametrize("kind", ["file", "directory"])
+def test_package_matrix_rejects_simulated_symbolic_link_cross_platform(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    linked_path = (
+        _matrix_artifact_path(root, PACKAGE_MATRIX_LANES[0], "root_wheel")
+        if kind == "file"
+        else root / PACKAGE_MATRIX_LANES[0] / "dist"
+    )
+    original_lstat = Path.lstat
+
+    def simulated_lstat(path: Path) -> os.stat_result:
+        value = original_lstat(path)
+        if path == linked_path:
+            fields = list(value)
+            fields[0] = stat.S_IFLNK | 0o777
+            return os.stat_result(fields)
+        return value
+
+    monkeypatch.setattr(Path, "lstat", simulated_lstat)
+
+    with pytest.raises(ReleaseReproducibilityError, match="linked or reparse"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_rejects_hard_linked_file(tmp_path: Path) -> None:
+    root = _write_package_matrix(tmp_path)
+    artifact = _matrix_artifact_path(
+        root,
+        PACKAGE_MATRIX_LANES[0],
+        "root_wheel",
+    )
+    try:
+        os.link(artifact, tmp_path / "second-link.whl")
+    except OSError as exc:
+        pytest.skip(f"hard links are unavailable in this test environment: {exc}")
+
+    with pytest.raises(ReleaseReproducibilityError, match="multiply linked"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_rejects_simulated_reparse_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    reparse_path = root / PACKAGE_MATRIX_LANES[0] / "dist"
+    original = reproducibility._is_reparse_or_junction
+
+    def simulated_reparse(path: Path, value: os.stat_result) -> bool:
+        return path == reparse_path or original(path, value)
+
+    monkeypatch.setattr(
+        reproducibility,
+        "_is_reparse_or_junction",
+        simulated_reparse,
+    )
+
+    with pytest.raises(ReleaseReproducibilityError, match="linked or reparse"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_rejects_oversized_support_file(tmp_path: Path) -> None:
+    root = _write_package_matrix(tmp_path)
+    support = root / PACKAGE_MATRIX_LANES[0] / "openhands-ci-toolchain.txt"
+    support.write_bytes(b"x" * (reproducibility._MAX_MATRIX_SUPPORT_BYTES + 1))
+
+    with pytest.raises(ReleaseReproducibilityError, match="byte limit"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_rejects_empty_support_file(tmp_path: Path) -> None:
+    root = _write_package_matrix(tmp_path)
+    support = root / PACKAGE_MATRIX_LANES[0] / "doctor-source.json"
+    support.write_bytes(b"")
+
+    with pytest.raises(ReleaseReproducibilityError, match="cannot be empty"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_rejects_total_byte_overflow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    monkeypatch.setattr(reproducibility, "_MAX_MATRIX_TOTAL_BYTES", 1)
+    monkeypatch.setattr(
+        reproducibility,
+        "_hash_matrix_file",
+        lambda *_args, **_kwargs: pytest.fail(
+            "matrix file hashing started after the stat exceeded remaining bytes"
+        ),
+    )
+
+    with pytest.raises(ReleaseReproducibilityError, match="total byte limit"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_rejects_replacement_between_validation_passes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    original = reproducibility._exact_matrix_file_equal
+    replaced = False
+
+    def replace_after_comparison(
+        first: Path,
+        second: Path,
+        *,
+        expected_bytes: int,
+        first_snapshot: tuple[int, ...],
+        second_snapshot: tuple[int, ...],
+    ) -> bool:
+        nonlocal replaced
+        result = original(
+            first,
+            second,
+            expected_bytes=expected_bytes,
+            first_snapshot=first_snapshot,
+            second_snapshot=second_snapshot,
+        )
+        if not replaced:
+            second.write_bytes(second.read_bytes() + b"x")
+            replaced = True
+        return result
+
+    monkeypatch.setattr(
+        reproducibility,
+        "_exact_matrix_file_equal",
+        replace_after_comparison,
+    )
+
+    with pytest.raises(
+        ReleaseReproducibilityError,
+        match="changed between validation passes",
+    ):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_rejects_precomparison_link_without_reading_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = tmp_path / "first.whl"
+    second = tmp_path / "second.whl"
+    first.write_bytes(b"same")
+    second.write_bytes(b"same")
+    first_snapshot = reproducibility._path_stat_snapshot(first.lstat())
+    second_snapshot = reproducibility._path_stat_snapshot(second.lstat())
+    original_lstat = Path.lstat
+
+    def simulated_lstat(path: Path) -> os.stat_result:
+        value = original_lstat(path)
+        if path == second:
+            fields = list(value)
+            fields[0] = stat.S_IFLNK | 0o777
+            return os.stat_result(fields)
+        return value
+
+    monkeypatch.setattr(Path, "lstat", simulated_lstat)
+    monkeypatch.setattr(
+        os,
+        "read",
+        lambda *_args, **_kwargs: pytest.fail(
+            "replacement target was read before fail-closed rejection"
+        ),
+    )
+
+    with pytest.raises(
+        ReleaseReproducibilityError,
+        match="changed before exact comparison",
+    ):
+        reproducibility._exact_matrix_file_equal(
+            first,
+            second,
+            expected_bytes=4,
+            first_snapshot=first_snapshot,
+            second_snapshot=second_snapshot,
+        )
+
+
+def test_package_matrix_rejects_lstat_to_descriptor_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = tmp_path / "artifact.whl"
+    artifact.write_bytes(b"same")
+    expected_snapshot = reproducibility._path_stat_snapshot(artifact.lstat())
+
+    @contextmanager
+    def mismatched_open(
+        path: Path,
+        *,
+        label: str,
+    ) -> Iterator[tuple[int, os.stat_result]]:
+        del label
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_BINARY", 0),
+        )
+        try:
+            fields = list(os.fstat(descriptor))
+            fields[1] += 1
+            yield descriptor, os.stat_result(fields)
+        finally:
+            os.close(descriptor)
+
+    monkeypatch.setattr(
+        reproducibility,
+        "_open_regular_file",
+        mismatched_open,
+    )
+
+    with (
+        pytest.raises(
+            ReleaseReproducibilityError,
+            match="changed while opening for exact comparison",
+        ),
+        reproducibility._open_matrix_regular_file(
+            artifact,
+            expected_snapshot=expected_snapshot,
+            label="mismatch test artifact",
+        ),
+    ):
+        pytest.fail("descriptor mismatch was accepted")
+
+
+def test_package_matrix_rejects_post_open_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = tmp_path / "first.whl"
+    second = tmp_path / "second.whl"
+    first.write_bytes(b"same")
+    second.write_bytes(b"same")
+    first_snapshot = reproducibility._path_stat_snapshot(first.lstat())
+    second_snapshot = reproducibility._path_stat_snapshot(second.lstat())
+    original_lstat = Path.lstat
+    original_read = os.read
+    comparison_started = False
+
+    def observed_read(descriptor: int, size: int) -> bytes:
+        nonlocal comparison_started
+        block = original_read(descriptor, size)
+        comparison_started = True
+        return block
+
+    def replaced_lstat(path: Path) -> os.stat_result:
+        value = original_lstat(path)
+        if path == second and comparison_started:
+            fields = list(value)
+            fields[1] += 1
+            return os.stat_result(fields)
+        return value
+
+    monkeypatch.setattr(os, "read", observed_read)
+    monkeypatch.setattr(Path, "lstat", replaced_lstat)
+
+    with pytest.raises(
+        ReleaseReproducibilityError,
+        match="changed during exact comparison",
+    ):
+        reproducibility._exact_matrix_file_equal(
+            first,
+            second,
+            expected_bytes=4,
+            first_snapshot=first_snapshot,
+            second_snapshot=second_snapshot,
+        )
+
+
+def test_package_matrix_rejects_post_open_unlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = tmp_path / "first.whl"
+    second = tmp_path / "second.whl"
+    first.write_bytes(b"same")
+    second.write_bytes(b"same")
+    first_snapshot = reproducibility._path_stat_snapshot(first.lstat())
+    second_snapshot = reproducibility._path_stat_snapshot(second.lstat())
+    original_lstat = Path.lstat
+    original_read = os.read
+    comparison_started = False
+
+    def observed_read(descriptor: int, size: int) -> bytes:
+        nonlocal comparison_started
+        block = original_read(descriptor, size)
+        comparison_started = True
+        return block
+
+    def unlinked_lstat(path: Path) -> os.stat_result:
+        if path == second and comparison_started:
+            raise FileNotFoundError(path)
+        return original_lstat(path)
+
+    monkeypatch.setattr(os, "read", observed_read)
+    monkeypatch.setattr(Path, "lstat", unlinked_lstat)
+
+    with pytest.raises(
+        ReleaseReproducibilityError,
+        match="changed after exact comparison",
+    ):
+        reproducibility._exact_matrix_file_equal(
+            first,
+            second,
+            expected_bytes=4,
+            first_snapshot=first_snapshot,
+            second_snapshot=second_snapshot,
+        )
+
+
+def test_package_matrix_returns_structured_read_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = tmp_path / "first.whl"
+    second = tmp_path / "second.whl"
+    first.write_bytes(b"same")
+    second.write_bytes(b"same")
+    first_snapshot = reproducibility._path_stat_snapshot(first.lstat())
+    second_snapshot = reproducibility._path_stat_snapshot(second.lstat())
+
+    def failed_read(_descriptor: int, _size: int) -> bytes:
+        raise OSError("simulated read failure")
+
+    monkeypatch.setattr(os, "read", failed_read)
+
+    with pytest.raises(
+        ReleaseReproducibilityError,
+        match="could not be read during exact comparison",
+    ):
+        reproducibility._exact_matrix_file_equal(
+            first,
+            second,
+            expected_bytes=4,
+            first_snapshot=first_snapshot,
+            second_snapshot=second_snapshot,
+        )
+
+
+def test_package_matrix_retains_upstream_failure(tmp_path: Path) -> None:
+    root = _write_package_matrix(tmp_path)
+
+    report = compare_package_matrix(
+        root,
+        revision=MATRIX_REVISION,
+        upstream_result="failure",
+    )
+
+    assert report["status"] == "failed"
+    assert all(group["byte_identical"] is True for group in report["artifact_groups"])
+    assert report["issues"] == ["offline-package matrix result was 'failure', not 'success'"]
+    _assert_report_self_hash(report)
+
+
+def test_package_matrix_rejects_unknown_upstream_result(tmp_path: Path) -> None:
+    root = _write_package_matrix(tmp_path)
+
+    with pytest.raises(ReleaseReproducibilityError, match="upstream result is invalid"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="unknown",
+        )
+
+
+def test_package_matrix_cli_writes_once_and_neutralizes_input_path(
+    tmp_path: Path,
+) -> None:
+    missing = tmp_path / "missing-matrix"
+    report_path = tmp_path / "package-matrix-report.json"
+    arguments = [
+        "--matrix-root",
+        str(missing),
+        "--revision",
+        MATRIX_REVISION,
+        "--upstream-result",
+        "failure",
+        "--json-out",
+        str(report_path),
+    ]
+
+    assert main(arguments) == 1
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["schema"] == PACKAGE_MATRIX_REPORT_SCHEMA
+    assert report["status"] == "failed"
+    assert str(tmp_path) not in json.dumps(report)
+    _assert_report_self_hash(report)
+    assert main(arguments) == 2
+    assert json.loads(report_path.read_text(encoding="utf-8")) == report
+
+
+def test_package_matrix_cli_neutralizes_invalid_revision_value(tmp_path: Path) -> None:
+    root = _write_package_matrix(tmp_path)
+    report_path = tmp_path / "invalid-revision-report.json"
+    private_revision = str(tmp_path) + ("x" * 2048)
+
+    assert (
+        main(
+            [
+                "--matrix-root",
+                str(root),
+                "--revision",
+                private_revision,
+                "--upstream-result",
+                "success",
+                "--json-out",
+                str(report_path),
+            ]
+        )
+        == 1
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["revision"] == "invalid"
+    assert str(tmp_path) not in json.dumps(report)
+    assert len(report["issues"][0]) <= reproducibility._MAX_MATRIX_ISSUE_CHARS
+    _assert_report_self_hash(report)
+
+
+def test_package_matrix_cli_preserves_relative_root_diagnostic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    report_path = Path("relative-root-report.json")
+
+    assert (
+        main(
+            [
+                "--matrix-root",
+                ".",
+                "--revision",
+                MATRIX_REVISION,
+                "--upstream-result",
+                "success",
+                "--json-out",
+                str(report_path),
+            ]
+        )
+        == 1
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert "package matrix root inventory mismatch" in report["issues"][0]
+    assert "<matrix-root>" not in report["issues"][0]
+    _assert_report_self_hash(report)
+
+
+def test_openhands_workflow_aggregates_six_package_lanes_independently() -> None:
+    workflow = (
+        Path(__file__).parents[1] / ".github" / "workflows" / "openhands-integration.yml"
+    ).read_text(encoding="utf-8")
+    job = workflow.split("  package-byte-reproducibility:\n", 1)[1].split(
+        "  retained-offline-evidence:\n",
+        1,
+    )[0]
+
+    for required_filter in (
+        ".gitattributes",
+        "MANIFEST.in",
+        "README.md",
+        "benchmarks/**",
+        "schemas/**",
+        "scripts/release_artifact_manifest.py",
+        "scripts/release_reproducibility.py",
+        "tests/test_release_reproducibility.py",
+    ):
+        assert workflow.count(f'      - "{required_filter}"') == 2
+    assert "    if: ${{ always() }}" in job
+    assert "    needs: [offline-package]" in job
+    assert "retained-offline-evidence" not in job
+    assert ("actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c") in job
+    assert "pattern: ctxc-openhands-*-python-*" in job
+    assert "merge-multiple: false" in job
+    assert '--upstream-result "${{ needs.offline-package.result }}"' in job
+    assert "if-no-files-found: error" in job
+    assert "continue-on-error" not in job
