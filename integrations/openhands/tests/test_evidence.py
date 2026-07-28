@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -260,6 +261,39 @@ def test_database_mutation_during_reconciliation_is_not_verified(
     assert result["passed"] is False
     assert result["database_verified"] is False
     assert "database changed during SQLite reconciliation" in result["issues"]
+
+
+@pytest.mark.parametrize(
+    ("error", "message"),
+    (
+        (
+            sqlite3.OperationalError("injected ledger read failure"),
+            "injected ledger read failure",
+        ),
+        (OSError("injected ledger I/O failure"), "injected ledger I/O failure"),
+    ),
+)
+def test_scenario_ledger_storage_error_is_structured_and_fails_closed(
+    scenario_evidence: tuple[Path, Path, dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    message: str,
+) -> None:
+    report_path, database, _report = scenario_evidence
+
+    class FailingLedgerStore(SQLiteGenerationStore):
+        def load_request_ledger(self, **_kwargs: Any) -> Any:
+            raise error
+
+    monkeypatch.setattr(evidence_module, "SQLiteGenerationStore", FailingLedgerStore)
+    result = verify_evidence(report_path, database=database)
+
+    assert result["passed"] is False
+    assert result["scope"] == "json-and-database"
+    assert result["report_verified"] is True
+    assert result["database_supplied"] is True
+    assert result["database_verified"] is False
+    assert result["issues"] == [f"database final-request replay failed: {message}"]
 
 
 def test_evidence_report_write_is_exclusive_and_race_safe(

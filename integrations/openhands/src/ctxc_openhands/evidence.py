@@ -1517,7 +1517,14 @@ def _database_issues(
                 tokenizer=tokenizer,
             )
             replay = replay_final_request(ledger, tokenizer=tokenizer).to_dict()
-        except (KeyError, TypeError, ValueError, RuntimeError) as exc:
+        except (
+            KeyError,
+            TypeError,
+            ValueError,
+            RuntimeError,
+            sqlite3.Error,
+            OSError,
+        ) as exc:
             issues.append(f"database final-request replay failed: {exc}")
         else:
             if replay != final_request["replay"]:
