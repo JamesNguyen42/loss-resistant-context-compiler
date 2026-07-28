@@ -8,13 +8,14 @@ import json
 import math
 import os
 import pickle
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Iterable
-from contextlib import suppress
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +64,37 @@ _RESPONSE_LIMITS = ArtifactLimits(
 
 class CompilationIsolationError(RuntimeError):
     """A process-isolated compilation could not return a valid result."""
+
+
+def _remove_compile_directory(path: Path) -> None:
+    deadline = time.monotonic() + 2.0
+    while True:
+        try:
+            shutil.rmtree(path)
+            return
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            if (
+                os.name != "nt"
+                or time.monotonic() >= deadline
+                or getattr(exc, "winerror", None) not in {5, 32, 145}
+            ):
+                raise
+            time.sleep(0.02)
+
+
+@contextmanager
+def _compile_temporary_directory(
+    *,
+    prefix: str,
+    directory: Path,
+) -> Iterator[Path]:
+    path = Path(tempfile.mkdtemp(prefix=prefix, dir=directory))
+    try:
+        yield path
+    finally:
+        _remove_compile_directory(path)
 
 
 def _resolved_temporary_root() -> Path:
@@ -616,11 +648,10 @@ def compile_isolated(
     materialized_sources = list(sources)
     started = time.monotonic()
 
-    with tempfile.TemporaryDirectory(
+    with _compile_temporary_directory(
         prefix="ctxc-compile-",
-        dir=_resolved_temporary_root(),
-    ) as directory:
-        temporary_directory = Path(directory)
+        directory=_resolved_temporary_root(),
+    ) as temporary_directory:
         job_path = temporary_directory / "job.pickle"
         response_path = temporary_directory / "response.json"
         try:
