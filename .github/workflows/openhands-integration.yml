@@ -77,37 +77,74 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             integrations/openhands/pyproject.toml
+            integrations/openhands/requirements-build.lock
 
-      - name: Provision the exact CI toolchain
+      - name: Provision the hash-bound build toolchain
         run: |
-          python -m pip install --no-deps `
-            "pip==25.0.1" `
-            "setuptools==83.0.0" `
-            "wheel==0.47.0" `
-            "packaging==26.2" `
-            "pyproject-hooks==1.2.0" `
+          New-Item -ItemType Directory -Path ci-build-wheelhouse | Out-Null
+          python -m pip --isolated download --no-deps --only-binary=:all: `
+            --require-hashes `
+            --requirement integrations/openhands/requirements-build.lock `
+            --dest ci-build-wheelhouse
+          python -m pip --isolated install --no-deps --no-index `
+            --find-links ci-build-wheelhouse `
+            --only-binary=:all: `
+            --require-hashes `
+            --force-reinstall `
+            --requirement integrations/openhands/requirements-build.lock
+          python -m pip --isolated install --no-deps `
             "iniconfig==2.3.0" `
             "pluggy==1.6.0" `
             "pygments==2.20.0" `
-            "colorama==0.4.6" `
-            "build==1.5.0" `
             "pytest==9.1.1" `
             "ruff==0.16.0"
-          New-Item -ItemType Directory -Path .ci-build-wheelhouse | Out-Null
-          python -m pip download --no-deps --only-binary=:all: `
-            --dest .ci-build-wheelhouse `
-            "pip==25.0.1" `
-            "setuptools==83.0.0" `
-            "wheel==0.47.0" `
-            "packaging==26.2"
+          python -m venv ci-build-environment
+          $relativeBuildPython = if ($IsWindows) {
+            "Scripts/python.exe"
+          } else {
+            "bin/python"
+          }
+          $buildPython = Join-Path `
+            (Resolve-Path -LiteralPath ci-build-environment).Path `
+            $relativeBuildPython
+          if (-not (Test-Path -LiteralPath $buildPython -PathType Leaf)) {
+            throw "dedicated build Python is absent"
+          }
+          & $buildPython -m pip --isolated install --no-deps --no-index `
+            --find-links ci-build-wheelhouse `
+            --only-binary=:all: `
+            --require-hashes `
+            --force-reinstall `
+            --requirement integrations/openhands/requirements-build.lock
+          python integrations/openhands/scripts/ci_build_inputs.py `
+            --lock integrations/openhands/requirements-build.lock `
+            --wheelhouse ci-build-wheelhouse `
+            --builder-python $buildPython `
+            --revision "${{ github.sha }}" `
+            --source-date-epoch $env:SOURCE_DATE_EPOCH `
+            --json-out openhands-build-input-report.json
+          if ($LASTEXITCODE -ne 0) {
+            throw "build-input validation failed with exit code $LASTEXITCODE"
+          }
+          Add-Content -Encoding utf8NoBOM -LiteralPath $env:GITHUB_ENV `
+            -Value "CTXC_BUILD_PYTHON=$buildPython"
+          Copy-Item -LiteralPath integrations/openhands/requirements-build.lock `
+            -Destination openhands-requirements-build.lock
           python -VV | Set-Content -Encoding utf8NoBOM openhands-ci-toolchain.txt
-          python -m pip freeze --all |
+          python -m pip --isolated freeze --all |
+            Add-Content -Encoding utf8NoBOM openhands-ci-toolchain.txt
+          "dedicated build environment:" |
+            Add-Content -Encoding utf8NoBOM openhands-ci-toolchain.txt
+          & $buildPython -VV |
+            Add-Content -Encoding utf8NoBOM openhands-ci-toolchain.txt
+          & $buildPython -m pip --isolated freeze --all |
             Add-Content -Encoding utf8NoBOM openhands-ci-toolchain.txt
 
       - name: Install core and integration without live dependencies
         run: |
-          python -m pip install --no-build-isolation --no-deps -e .
-          python -m pip install --no-build-isolation --no-deps -e integrations/openhands
+          python -m pip --isolated install --no-build-isolation --no-deps -e .
+          python -m pip --isolated install --no-build-isolation --no-deps `
+            -e integrations/openhands
           python -c "import importlib.metadata as m; missing=[]; names=('openhands-ai','openhands-sdk','openhands-tools','openhands-agent-server'); [missing.append(name) for name in names if not any(d.metadata['Name'].casefold()==name for d in m.distributions())]; assert sorted(missing)==sorted(names), missing"
 
       - name: Qualify an unlinked test temp directory
@@ -200,11 +237,11 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path dist/core | Out-Null
           New-Item -ItemType Directory -Path dist/openhands | Out-Null
-          python -m pip wheel . `
+          & $env:CTXC_BUILD_PYTHON -m pip --isolated wheel . `
             --no-build-isolation `
             --no-deps `
             --wheel-dir dist/core
-          python -m build `
+          & $env:CTXC_BUILD_PYTHON -m build `
             --no-isolation `
             --sdist `
             --wheel `
@@ -216,7 +253,8 @@ jobs:
           python integrations/openhands/scripts/ci_clean_install.py `
             --core-dist dist/core `
             --integration-dist dist/openhands `
-            --wheelhouse .ci-build-wheelhouse `
+            --wheelhouse ci-build-wheelhouse `
+            --build-lock integrations/openhands/requirements-build.lock `
             --work-dir .ci-clean-install `
             --report openhands-clean-install-report.json
 
@@ -231,8 +269,11 @@ jobs:
             dist/openhands/*.tar.gz
             doctor-source.json
             doctor-live-source.json
+            openhands-build-input-report.json
             openhands-clean-install-report.json
             openhands-ci-toolchain.txt
+            openhands-requirements-build.lock
+            ci-build-wheelhouse/*.whl
           if-no-files-found: warn
           retention-days: 14
 

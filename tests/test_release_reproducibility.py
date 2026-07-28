@@ -32,6 +32,42 @@ MATRIX_REVISION = "1" * 40
 MATRIX_ROOT_WHEEL = "loss_resistant_context_compiler-0.1.0-py3-none-any.whl"
 MATRIX_INTEGRATION_WHEEL = "ctxc_openhands-0.1.0a1-py3-none-any.whl"
 MATRIX_INTEGRATION_SDIST = "ctxc_openhands-0.1.0a1.tar.gz"
+MATRIX_BUILD_INPUTS = tuple(reproducibility._BUILD_INPUT_WHEELS)
+MATRIX_TRACKED_BUILD_LOCK: bytes | None = None
+
+
+@pytest.fixture(autouse=True)
+def _bind_synthetic_matrix_to_its_tracked_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[None]:
+    global MATRIX_TRACKED_BUILD_LOCK
+    original = reproducibility._tracked_build_lock_payload
+
+    def tracked_lock() -> bytes:
+        if MATRIX_TRACKED_BUILD_LOCK is None:
+            return original()
+        return MATRIX_TRACKED_BUILD_LOCK
+
+    monkeypatch.setattr(
+        reproducibility,
+        "_tracked_build_lock_payload",
+        tracked_lock,
+    )
+    try:
+        yield
+    finally:
+        MATRIX_TRACKED_BUILD_LOCK = None
+
+
+def _self_hashed_report(unsigned: dict[str, object]) -> dict[str, object]:
+    encoded = json.dumps(
+        unsigned,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return {**unsigned, "report_sha256": hashlib.sha256(encoded).hexdigest()}
 
 
 def _write_wheel(path: Path, *, timestamp: tuple[int, int, int, int, int, int]) -> None:
@@ -104,17 +140,55 @@ def _dist(tmp_path: Path, name: str, *, mtime: int = 1_700_000_000) -> Path:
 
 
 def _write_package_matrix(tmp_path: Path) -> Path:
+    global MATRIX_TRACKED_BUILD_LOCK
     root = tmp_path / "matrix"
     root.mkdir()
     for lane in PACKAGE_MATRIX_LANES:
+        lane_python = lane.rsplit("-python-", 1)[-1] + ".0"
+        lane_platform = lane.removeprefix("ctxc-openhands-").split("-python-", 1)[0]
         lane_path = root / lane
         core = lane_path / "dist" / "core"
         openhands = lane_path / "dist" / "openhands"
+        wheelhouse = lane_path / reproducibility._BUILD_WHEELHOUSE_DIRECTORY
         core.mkdir(parents=True)
         openhands.mkdir()
+        wheelhouse.mkdir()
         (core / MATRIX_ROOT_WHEEL).write_bytes(b"root-wheel\n")
         (openhands / MATRIX_INTEGRATION_WHEEL).write_bytes(b"integration-wheel\n")
         (openhands / MATRIX_INTEGRATION_SDIST).write_bytes(b"integration-sdist\n")
+        for _name, _version, filename in MATRIX_BUILD_INPUTS:
+            payload = f"{filename}\n".encode("ascii")
+            (wheelhouse / filename).write_bytes(payload)
+        _rewrite_matrix_build_lock(root, lane)
+        lock_payload = (
+            lane_path / reproducibility._BUILD_LOCK_SUPPORT_FILE
+        ).read_bytes()
+        lock_sha256 = hashlib.sha256(lock_payload).hexdigest()
+        wheel_records = []
+        for name, version, filename in MATRIX_BUILD_INPUTS:
+            payload = (wheelhouse / filename).read_bytes()
+            tags = ["py2-none-any", "py3-none-any"] if name == "colorama" else [
+                "py3-none-any"
+            ]
+            wheel_records.append(
+                {
+                    "name": name,
+                    "version": version,
+                    "filename": filename,
+                    "bytes": len(payload),
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                    "tags": tags,
+                }
+            )
+        inventory_sha256 = hashlib.sha256(
+            json.dumps(
+                wheel_records,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
         (lane_path / "doctor-source.json").write_text(
             '{"passed":true}\n',
             encoding="utf-8",
@@ -123,15 +197,213 @@ def _write_package_matrix(tmp_path: Path) -> Path:
             '{"passed":false}\n',
             encoding="utf-8",
         )
+        build_input_report = _self_hashed_report(
+            {
+                "schema": reproducibility._BUILD_INPUT_REPORT_SCHEMA,
+                "revision": MATRIX_REVISION,
+                "source_date_epoch": reproducibility._EXPECTED_SOURCE_DATE_EPOCH,
+                "validation_only": True,
+                "acquisition_performed": False,
+                "network_action_performed": False,
+                "semantic_completeness_claimed": False,
+                "status": "passed",
+                "passed": True,
+                "lock": {
+                    "filename": "requirements-build.lock",
+                    "bytes": len(lock_payload),
+                    "sha256": lock_sha256,
+                    "record_count": 7,
+                },
+                "wheelhouse": {
+                    "file_count": 7,
+                    "aggregate_bytes": sum(item["bytes"] for item in wheel_records),
+                    "inventory_sha256": inventory_sha256,
+                    "wheels": wheel_records,
+                },
+                "builder": {
+                    "verified": True,
+                    "implementation": "CPython",
+                    "python_version": lane_python,
+                    "distributions": [
+                        {"name": name, "version": version}
+                        for name, version, _filename in MATRIX_BUILD_INPUTS
+                    ],
+                },
+            }
+        )
+        (lane_path / "openhands-build-input-report.json").write_text(
+            json.dumps(build_input_report, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        probe = {
+            "core_version": "0.1.0",
+            "integration_version": "0.1.0a1",
+            "core_file": "/fixture/site-packages/context_compiler/__init__.py",
+            "integration_file": "/fixture/site-packages/ctxc_openhands/__init__.py",
+            "sys_prefix": "/fixture",
+            "core_requirements": [
+                'localai-contracts==0.2.0a2; extra == "unified"',
+                'pytest>=8.0; extra == "dev"',
+                'pytest-cov>=5.0; extra == "dev"',
+                'ruff>=0.6; extra == "dev"',
+                'setuptools>=77; extra == "dev"',
+                'wheel>=0.41; extra == "dev"',
+            ],
+            "integration_requirements": [
+                "loss-resistant-context-compiler==0.1.0",
+                'openhands-ai==1.8.0; extra == "live"',
+                'openhands-sdk==1.27.0; extra == "live"',
+                'openhands-tools==1.27.0; extra == "live"',
+                'openhands-agent-server==1.27.0; extra == "live"',
+                'build>=1.2; extra == "dev"',
+                'pytest>=8.0; extra == "dev"',
+                'ruff>=0.6; extra == "dev"',
+                'setuptools>=77; extra == "dev"',
+                'wheel>=0.41; extra == "dev"',
+            ],
+            "openhands_modules_before": [],
+            "openhands_modules_after_core": [],
+            "openhands_modules_after_integration": [],
+            "openhands_distributions_absent": sorted(
+                [
+                    "openhands-ai",
+                    "openhands-sdk",
+                    "openhands-tools",
+                    "openhands-agent-server",
+                ]
+            ),
+            "openhands_distributions_present": [],
+            "openhands_import_spec_present": False,
+            "user_site_enabled": False,
+            "manifest_blocker": "hash-pinned-wheelhouse-absent",
+            "manifest_file_sha256": "a" * 64,
+            "packaged_manifest_present": True,
+            "packaged_vectors_present": True,
+        }
+        clean_install_report = _self_hashed_report(
+            {
+                "schema": reproducibility._CLEAN_INSTALL_REPORT_SCHEMA,
+                "python": lane_python,
+                "platform": f"{lane_platform}-fixture",
+                "core_wheel": MATRIX_ROOT_WHEEL,
+                "core_wheel_sha256": hashlib.sha256(
+                    (core / MATRIX_ROOT_WHEEL).read_bytes()
+                ).hexdigest(),
+                "passed": True,
+                "build_lock": "requirements-build.lock",
+                "build_lock_sha256": lock_sha256,
+                "build_input_inventory_sha256": inventory_sha256,
+                "build_input_count": 7,
+                "live_dependencies_installed": False,
+                "live_execution_claimed": False,
+                "semantic_completeness_claimed": False,
+                "modes": [
+                    {
+                        "mode": mode,
+                        "artifact": (
+                            MATRIX_INTEGRATION_WHEEL
+                            if mode == "wheel"
+                            else MATRIX_INTEGRATION_SDIST
+                        ),
+                        "artifact_sha256": hashlib.sha256(
+                            (
+                                openhands
+                                / (
+                                    MATRIX_INTEGRATION_WHEEL
+                                    if mode == "wheel"
+                                    else MATRIX_INTEGRATION_SDIST
+                                )
+                            ).read_bytes()
+                        ).hexdigest(),
+                        "probe": probe,
+                        "doctor_manifest_sha256": "a" * 64,
+                        "doctor_live_exit": 2,
+                        "passed": True,
+                        "build_lock_sha256": lock_sha256,
+                        "build_input_inventory_sha256": inventory_sha256,
+                        "builder_inventory_verified": True,
+                    }
+                    for mode in ("wheel", "sdist")
+                ],
+            }
+        )
         (lane_path / "openhands-clean-install-report.json").write_text(
-            '{"passed":true}\n',
+            json.dumps(clean_install_report, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         (lane_path / "openhands-ci-toolchain.txt").write_text(
             f"{lane}\n",
             encoding="utf-8",
         )
+    MATRIX_TRACKED_BUILD_LOCK = (
+        root
+        / PACKAGE_MATRIX_LANES[0]
+        / reproducibility._BUILD_LOCK_SUPPORT_FILE
+    ).read_bytes()
     return root
+
+
+def _rewrite_matrix_build_lock(root: Path, lane: str) -> None:
+    wheelhouse = root / lane / reproducibility._BUILD_WHEELHOUSE_DIRECTORY
+    lock_lines = []
+    for name, version, filename in MATRIX_BUILD_INPUTS:
+        payload = (wheelhouse / filename).read_bytes()
+        lock_lines.append(
+            f"{name}=={version} --hash=sha256:{hashlib.sha256(payload).hexdigest()}\n"
+        )
+    (root / lane / reproducibility._BUILD_LOCK_SUPPORT_FILE).write_text(
+        "".join(lock_lines),
+        encoding="ascii",
+        newline="\n",
+    )
+
+
+def _rebind_matrix_build_reports(root: Path, lane: str) -> None:
+    lane_path = root / lane
+    wheelhouse = lane_path / reproducibility._BUILD_WHEELHOUSE_DIRECTORY
+    lock = lane_path / reproducibility._BUILD_LOCK_SUPPORT_FILE
+    lock_payload = lock.read_bytes()
+    lock_sha256 = hashlib.sha256(lock_payload).hexdigest()
+
+    build_report_path = lane_path / "openhands-build-input-report.json"
+    build_report = json.loads(build_report_path.read_text(encoding="utf-8"))
+    build_report.pop("report_sha256")
+    build_report["lock"]["bytes"] = len(lock_payload)
+    build_report["lock"]["sha256"] = lock_sha256
+    for item in build_report["wheelhouse"]["wheels"]:
+        wheel = wheelhouse / item["filename"]
+        payload = wheel.read_bytes()
+        item["bytes"] = len(payload)
+        item["sha256"] = hashlib.sha256(payload).hexdigest()
+    build_report["wheelhouse"]["aggregate_bytes"] = sum(
+        item["bytes"] for item in build_report["wheelhouse"]["wheels"]
+    )
+    build_report["wheelhouse"]["inventory_sha256"] = (
+        reproducibility._canonical_sha256(
+            build_report["wheelhouse"]["wheels"]
+        )
+    )
+    build_report_path.write_text(
+        json.dumps(_self_hashed_report(build_report), sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    clean_report_path = lane_path / "openhands-clean-install-report.json"
+    clean_report = json.loads(clean_report_path.read_text(encoding="utf-8"))
+    clean_report.pop("report_sha256")
+    clean_report["build_lock_sha256"] = lock_sha256
+    clean_report["build_input_inventory_sha256"] = build_report["wheelhouse"][
+        "inventory_sha256"
+    ]
+    for mode in clean_report["modes"]:
+        mode["build_lock_sha256"] = lock_sha256
+        mode["build_input_inventory_sha256"] = clean_report[
+            "build_input_inventory_sha256"
+        ]
+    clean_report_path.write_text(
+        json.dumps(_self_hashed_report(clean_report), sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _matrix_artifact_path(root: Path, lane: str, kind: str) -> Path:
@@ -141,6 +413,12 @@ def _matrix_artifact_path(root: Path, lane: str, kind: str) -> Path:
         return root / lane / "dist" / "openhands" / MATRIX_INTEGRATION_WHEEL
     if kind == "integration_sdist":
         return root / lane / "dist" / "openhands" / MATRIX_INTEGRATION_SDIST
+    if kind == "build_lock":
+        return root / lane / reproducibility._BUILD_LOCK_SUPPORT_FILE
+    if kind.startswith("build_input_"):
+        for name, _version, filename in MATRIX_BUILD_INPUTS:
+            if kind == f"build_input_{name.replace('-', '_')}":
+                return root / lane / reproducibility._BUILD_WHEELHOUSE_DIRECTORY / filename
     raise AssertionError(f"unsupported test artifact kind: {kind}")
 
 
@@ -155,6 +433,16 @@ def _assert_report_self_hash(report: dict[str, object]) -> None:
         allow_nan=False,
     ).encode("utf-8")
     assert claimed == hashlib.sha256(encoded).hexdigest()
+
+
+def _rewrite_self_hashed_json(path: Path, mutate) -> None:
+    report = json.loads(path.read_text(encoding="utf-8"))
+    report.pop("report_sha256")
+    mutate(report)
+    path.write_text(
+        json.dumps(_self_hashed_report(report), sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def test_project_version_rejects_oversize_before_read(
@@ -419,9 +707,18 @@ def test_package_matrix_requires_exact_six_lanes_and_self_hashes(
         "integration_version": "0.1.0a1",
         "integration_wheel": MATRIX_INTEGRATION_WHEEL,
         "integration_sdist": MATRIX_INTEGRATION_SDIST,
+        "build_lock": reproducibility._BUILD_LOCK_SUPPORT_FILE,
+        "build_lock_sha256": hashlib.sha256(
+            (
+                root
+                / PACKAGE_MATRIX_LANES[0]
+                / reproducibility._BUILD_LOCK_SUPPORT_FILE
+            ).read_bytes()
+        ).hexdigest(),
+        "build_input_count": "7",
     }
     assert [lane["lane"] for lane in report["lanes"]] == list(PACKAGE_MATRIX_LANES)
-    assert len(report["artifact_groups"]) == 3
+    assert len(report["artifact_groups"]) == 11
     assert all(group["byte_identical"] is True for group in report["artifact_groups"])
     _assert_report_self_hash(report)
 
@@ -435,8 +732,21 @@ def test_package_matrix_reports_one_byte_drift_for_each_artifact_kind(
     kind: str,
 ) -> None:
     root = _write_package_matrix(tmp_path)
-    changed = _matrix_artifact_path(root, PACKAGE_MATRIX_LANES[-1], kind)
+    lane = PACKAGE_MATRIX_LANES[-1]
+    changed = _matrix_artifact_path(root, lane, kind)
     changed.write_bytes(changed.read_bytes() + b"x")
+    clean_report_path = root / lane / "openhands-clean-install-report.json"
+
+    def bind_changed_artifact(report: dict[str, object]) -> None:
+        digest = hashlib.sha256(changed.read_bytes()).hexdigest()
+        if kind == "root_wheel":
+            report["core_wheel_sha256"] = digest
+        else:
+            mode = "wheel" if kind == "integration_wheel" else "sdist"
+            selected = next(item for item in report["modes"] if item["mode"] == mode)
+            selected["artifact_sha256"] = digest
+
+    _rewrite_self_hashed_json(clean_report_path, bind_changed_artifact)
 
     report = compare_package_matrix(
         root,
@@ -454,6 +764,246 @@ def test_package_matrix_reports_one_byte_drift_for_each_artifact_kind(
         if other_kind != kind
     )
     _assert_report_self_hash(report)
+
+
+def test_package_matrix_rejects_cross_lane_build_input_and_lock_drift(
+    tmp_path: Path,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    lane = PACKAGE_MATRIX_LANES[-1]
+    kind = "build_input_setuptools"
+    changed = _matrix_artifact_path(root, lane, kind)
+    changed.write_bytes(changed.read_bytes() + b"x")
+    _rewrite_matrix_build_lock(root, lane)
+    lock = _matrix_artifact_path(root, lane, "build_lock")
+    build_report_path = root / lane / "openhands-build-input-report.json"
+    build_report = json.loads(build_report_path.read_text(encoding="utf-8"))
+    build_report.pop("report_sha256")
+    build_report["lock"]["sha256"] = hashlib.sha256(lock.read_bytes()).hexdigest()
+    changed_record = next(
+        item
+        for item in build_report["wheelhouse"]["wheels"]
+        if item["name"] == "setuptools"
+    )
+    changed_record["bytes"] = len(changed.read_bytes())
+    changed_record["sha256"] = hashlib.sha256(changed.read_bytes()).hexdigest()
+    build_report["wheelhouse"]["aggregate_bytes"] = sum(
+        item["bytes"] for item in build_report["wheelhouse"]["wheels"]
+    )
+    build_report["wheelhouse"]["inventory_sha256"] = reproducibility._canonical_sha256(
+        build_report["wheelhouse"]["wheels"]
+    )
+    build_report_path.write_text(
+        json.dumps(_self_hashed_report(build_report), sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    clean_report_path = root / lane / "openhands-clean-install-report.json"
+    clean_report = json.loads(clean_report_path.read_text(encoding="utf-8"))
+    clean_report.pop("report_sha256")
+    clean_report["build_lock_sha256"] = build_report["lock"]["sha256"]
+    clean_report["build_input_inventory_sha256"] = build_report["wheelhouse"][
+        "inventory_sha256"
+    ]
+    for mode in clean_report["modes"]:
+        mode["build_lock_sha256"] = clean_report["build_lock_sha256"]
+        mode["build_input_inventory_sha256"] = clean_report[
+            "build_input_inventory_sha256"
+        ]
+    clean_report_path.write_text(
+        json.dumps(_self_hashed_report(clean_report), sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ReleaseReproducibilityError,
+        match="does not match the tracked build lock",
+    ):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_rejects_all_six_resealed_build_input_drifts(
+    tmp_path: Path,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    for lane in PACKAGE_MATRIX_LANES:
+        changed = _matrix_artifact_path(
+            root,
+            lane,
+            "build_input_setuptools",
+        )
+        changed.write_bytes(changed.read_bytes() + b"x")
+        _rewrite_matrix_build_lock(root, lane)
+        _rebind_matrix_build_reports(root, lane)
+
+    with pytest.raises(
+        ReleaseReproducibilityError,
+        match="does not match the tracked build lock",
+    ):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+def test_package_matrix_rejects_build_input_digest_mismatch(
+    tmp_path: Path,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    changed = _matrix_artifact_path(
+        root,
+        PACKAGE_MATRIX_LANES[0],
+        "build_input_build",
+    )
+    changed.write_bytes(changed.read_bytes() + b"x")
+
+    with pytest.raises(ReleaseReproducibilityError, match="does not match its lock digest"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+@pytest.mark.parametrize("mutation", ["missing", "extra", "renamed"])
+def test_package_matrix_rejects_build_wheelhouse_inventory_changes(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    lane = root / PACKAGE_MATRIX_LANES[0]
+    wheelhouse = lane / reproducibility._BUILD_WHEELHOUSE_DIRECTORY
+    wheel = wheelhouse / MATRIX_BUILD_INPUTS[0][2]
+    if mutation == "missing":
+        wheel.unlink()
+    elif mutation == "extra":
+        (wheelhouse / "extra-1.0-py3-none-any.whl").write_bytes(b"extra")
+    else:
+        wheel.rename(wheelhouse / "renamed-1.0-py3-none-any.whl")
+
+    with pytest.raises(ReleaseReproducibilityError, match="inventory mismatch"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda payload: payload.replace(b"\n", b"\r\n"),
+        lambda payload: payload[:-1],
+        lambda payload: payload + payload.splitlines(keepends=True)[0],
+        lambda payload: b"".join(reversed(payload.splitlines(keepends=True))),
+        lambda payload: payload.replace(b"--hash=sha256:", b"--hash=sha256:A", 1),
+    ],
+    ids=["crlf", "missing-final-lf", "duplicate", "reordered", "uppercase-hash"],
+)
+def test_package_matrix_rejects_noncanonical_build_lock(
+    tmp_path: Path,
+    mutation,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    lock = _matrix_artifact_path(root, PACKAGE_MATRIX_LANES[0], "build_lock")
+    lock.write_bytes(mutation(lock.read_bytes()))
+
+    with pytest.raises(ReleaseReproducibilityError, match="build lock"):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["wheel-extra", "wheel-tags", "builder-python", "lock-extra"],
+)
+def test_package_matrix_rejects_self_rehashed_build_report_drift(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    report_path = (
+        root
+        / PACKAGE_MATRIX_LANES[0]
+        / "openhands-build-input-report.json"
+    )
+
+    def mutate(report: dict[str, object]) -> None:
+        if mutation == "wheel-extra":
+            report["wheelhouse"]["wheels"][0]["unexpected"] = True
+        elif mutation == "wheel-tags":
+            report["wheelhouse"]["wheels"][0]["tags"] = ["py2-none-any"]
+        elif mutation == "builder-python":
+            report["builder"]["python_version"] = "3.13.0"
+        else:
+            report["lock"]["unexpected"] = True
+
+    _rewrite_self_hashed_json(report_path, mutate)
+
+    with pytest.raises(
+        ReleaseReproducibilityError,
+        match="wheel record|builder inventory|lane lock",
+    ):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "top-extra",
+        "core-digest",
+        "mode-digest",
+        "probe-boundary",
+        "doctor-digest",
+    ],
+)
+def test_package_matrix_rejects_self_rehashed_clean_install_report_drift(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    root = _write_package_matrix(tmp_path)
+    report_path = (
+        root
+        / PACKAGE_MATRIX_LANES[0]
+        / "openhands-clean-install-report.json"
+    )
+
+    def mutate(report: dict[str, object]) -> None:
+        if mutation == "top-extra":
+            report["unexpected"] = True
+        elif mutation == "core-digest":
+            report["core_wheel_sha256"] = "c" * 64
+        elif mutation == "mode-digest":
+            report["modes"][0]["artifact_sha256"] = "d" * 64
+        elif mutation == "probe-boundary":
+            report["modes"][0]["probe"]["openhands_modules_after_core"] = [
+                "openhands"
+            ]
+        else:
+            report["modes"][0]["doctor_manifest_sha256"] = "e" * 64
+
+    _rewrite_self_hashed_json(report_path, mutate)
+
+    with pytest.raises(
+        ReleaseReproducibilityError,
+        match="unexpected shape|does not match retained bytes|isolated package boundary",
+    ):
+        compare_package_matrix(
+            root,
+            revision=MATRIX_REVISION,
+            upstream_result="success",
+        )
 
 
 def test_package_matrix_rejects_missing_lane(tmp_path: Path) -> None:
@@ -822,7 +1372,7 @@ def test_package_matrix_rejects_replacement_between_validation_passes(
 
     with pytest.raises(
         ReleaseReproducibilityError,
-        match="changed between validation passes",
+        match="changed between validation passes|does not match retained bytes",
     ):
         compare_package_matrix(
             root,

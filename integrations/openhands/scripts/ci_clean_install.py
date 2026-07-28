@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import platform
 import subprocess
+import sys
 import textwrap
 import venv
 from pathlib import Path
@@ -27,12 +29,7 @@ LIVE_DISTRIBUTIONS = (
     "openhands-agent-server",
 )
 EXPECTED_BLOCKER = "hash-pinned-wheelhouse-absent"
-TOOLCHAIN_REQUIREMENTS = (
-    "pip==25.0.1",
-    "setuptools==83.0.0",
-    "wheel==0.47.0",
-    "packaging==26.2",
-)
+BUILD_LOCK_NAME = "requirements-build.lock"
 
 _PROBE = textwrap.dedent(
     f"""
@@ -111,6 +108,26 @@ class CleanInstallError(RuntimeError):
     """A release artifact failed isolated installation or smoke validation."""
 
 
+def _load_build_input_helper() -> Any:
+    path = Path(__file__).with_name("ci_build_inputs.py")
+    spec = importlib.util.spec_from_file_location(
+        "_ctxc_openhands_ci_build_inputs",
+        path,
+    )
+    if spec is None or spec.loader is None:
+        raise CleanInstallError("build-input verifier could not be loaded")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except (ImportError, OSError, RuntimeError, ValueError) as exc:
+        raise CleanInstallError("build-input verifier could not be loaded") from exc
+    return module
+
+
+_BUILD_INPUTS = _load_build_input_helper()
+
+
 def _canonical_json(value: Any) -> str:
     return json.dumps(
         value,
@@ -164,7 +181,51 @@ def _clean_environment() -> dict[str, str]:
     environment["PYTHONNOUSERSITE"] = "1"
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
+    environment["PIP_CONFIG_FILE"] = os.devnull
+    environment["PIP_NO_INDEX"] = "1"
     return environment
+
+
+def _build_input_install_command(
+    python: Path,
+    wheelhouse: Path,
+    build_lock: Path,
+) -> list[str]:
+    return [
+        str(python),
+        "-m",
+        "pip",
+        "--isolated",
+        "install",
+        "--no-deps",
+        "--no-index",
+        "--find-links",
+        str(wheelhouse),
+        "--only-binary=:all:",
+        "--require-hashes",
+        "--force-reinstall",
+        "--requirement",
+        str(build_lock),
+    ]
+
+
+def _verify_build_inputs(
+    build_lock: Path,
+    wheelhouse: Path,
+    *,
+    builder_python: Path | None = None,
+) -> dict[str, Any]:
+    try:
+        result = _BUILD_INPUTS.verify_build_inputs(
+            build_lock,
+            wheelhouse,
+            builder_python=builder_python,
+        )
+    except _BUILD_INPUTS.BuildInputError as exc:
+        raise CleanInstallError(f"build-input validation failed: {exc}") from exc
+    if not isinstance(result, dict):
+        raise CleanInstallError("build-input verifier returned an invalid result")
+    return result
 
 
 def _run(
@@ -304,14 +365,47 @@ def _assert_doctor(doctor: dict[str, Any], *, require_live: bool) -> None:
         raise CleanInstallError("doctor validation failed: " + ", ".join(failures))
 
 
+def _manifest_digest(document: dict[str, Any], *, label: str) -> str:
+    manifest = document.get("manifest")
+    digest = manifest.get("file_sha256") if isinstance(manifest, dict) else None
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest)
+    ):
+        raise CleanInstallError(f"{label} manifest digest is invalid")
+    return digest
+
+
+def _assert_manifest_evidence(
+    probe: dict[str, Any],
+    doctor: dict[str, Any],
+    live_doctor: dict[str, Any],
+) -> str:
+    probe_digest = probe.get("manifest_file_sha256")
+    doctor_digest = _manifest_digest(doctor, label="doctor")
+    live_digest = _manifest_digest(live_doctor, label="live doctor")
+    if (
+        not isinstance(probe_digest, str)
+        or probe_digest != doctor_digest
+        or probe_digest != live_digest
+    ):
+        raise CleanInstallError(
+            "import probe and doctor manifest evidence do not match"
+        )
+    return doctor_digest
+
+
 def _validate_mode(
     *,
     mode: str,
     work_root: Path,
     wheelhouse: Path,
+    build_lock: Path,
     core_wheel: Path,
     integration_artifact: Path,
 ) -> dict[str, Any]:
+    initial_build_inputs = _verify_build_inputs(build_lock, wheelhouse)
     environment_path = work_root / mode
     if environment_path.exists():
         raise CleanInstallError(f"refusing to replace existing path: {environment_path}")
@@ -319,23 +413,26 @@ def _validate_mode(
     python = _python_in(environment_path)
     environment = _clean_environment()
     _run(
-        [
-            str(python),
-            "-m",
-            "pip",
-            "install",
-            "--no-index",
-            "--find-links",
-            str(wheelhouse),
-            *TOOLCHAIN_REQUIREMENTS,
-        ],
+        _build_input_install_command(python, wheelhouse, build_lock),
         environment=environment,
     )
+    installed_build_inputs = _verify_build_inputs(
+        build_lock,
+        wheelhouse,
+        builder_python=python,
+    )
+    if (
+        installed_build_inputs["lock"] != initial_build_inputs["lock"]
+        or installed_build_inputs["wheelhouse"] != initial_build_inputs["wheelhouse"]
+        or installed_build_inputs["builder"].get("verified") is not True
+    ):
+        raise CleanInstallError("installed build-input inventory did not remain exact")
     _run(
         [
             str(python),
             "-m",
             "pip",
+            "--isolated",
             "install",
             "--no-index",
             "--no-deps",
@@ -347,6 +444,7 @@ def _validate_mode(
         str(python),
         "-m",
         "pip",
+        "--isolated",
         "install",
         "--no-index",
         "--no-deps",
@@ -376,13 +474,22 @@ def _validate_mode(
         label=f"{mode} live doctor",
     )
     _assert_doctor(live_doctor, require_live=True)
+    manifest_digest = _assert_manifest_evidence(probe, doctor, live_doctor)
+    final_build_inputs = _verify_build_inputs(build_lock, wheelhouse)
+    if final_build_inputs != initial_build_inputs:
+        raise CleanInstallError("build-input inventory changed during clean-install validation")
     return {
         "mode": mode,
         "artifact": integration_artifact.name,
         "artifact_sha256": _sha256(integration_artifact),
         "probe": probe,
-        "doctor_manifest_sha256": doctor["manifest"]["file_sha256"],
+        "doctor_manifest_sha256": manifest_digest,
         "doctor_live_exit": 2,
+        "build_lock_sha256": initial_build_inputs["lock"]["sha256"],
+        "build_input_inventory_sha256": initial_build_inputs["wheelhouse"][
+            "inventory_sha256"
+        ],
+        "builder_inventory_verified": True,
         "passed": True,
     }
 
@@ -407,6 +514,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--core-dist", required=True)
     parser.add_argument("--integration-dist", required=True)
     parser.add_argument("--wheelhouse", required=True)
+    parser.add_argument("--build-lock", required=True)
     parser.add_argument("--work-dir", required=True)
     parser.add_argument("--report", required=True)
     return parser
@@ -417,6 +525,7 @@ def main() -> int:
     core_dist = Path(args.core_dist).expanduser().absolute()
     integration_dist = Path(args.integration_dist).expanduser().absolute()
     wheelhouse = Path(args.wheelhouse).expanduser().absolute()
+    build_lock = Path(args.build_lock).expanduser().absolute()
     work_root = Path(args.work_dir).expanduser().absolute()
     report_path = Path(args.report).expanduser().absolute()
     for directory, label in (
@@ -426,6 +535,14 @@ def main() -> int:
     ):
         if directory.is_symlink() or not directory.is_dir():
             raise CleanInstallError(f"{label} is not a regular directory: {directory}")
+    if (
+        build_lock.name != BUILD_LOCK_NAME
+        or build_lock.is_symlink()
+        or not build_lock.is_file()
+    ):
+        raise CleanInstallError(
+            f"build lock must be the regular {BUILD_LOCK_NAME} file"
+        )
     if work_root.exists():
         raise CleanInstallError(f"refusing to replace existing work directory: {work_root}")
     if report_path.exists():
@@ -449,11 +566,13 @@ def main() -> int:
         "ctxc_openhands-*.tar.gz",
         label="integration sdist",
     )
+    initial_build_inputs = _verify_build_inputs(build_lock, wheelhouse)
     modes = [
         _validate_mode(
             mode="wheel",
             work_root=work_root,
             wheelhouse=wheelhouse,
+            build_lock=build_lock,
             core_wheel=core_wheel,
             integration_artifact=integration_wheel,
         ),
@@ -461,16 +580,30 @@ def main() -> int:
             mode="sdist",
             work_root=work_root,
             wheelhouse=wheelhouse,
+            build_lock=build_lock,
             core_wheel=core_wheel,
             integration_artifact=integration_sdist,
         ),
     ]
+    if modes[0]["doctor_manifest_sha256"] != modes[1]["doctor_manifest_sha256"]:
+        raise CleanInstallError(
+            "wheel and sdist manifest evidence do not match"
+        )
+    final_build_inputs = _verify_build_inputs(build_lock, wheelhouse)
+    if final_build_inputs != initial_build_inputs:
+        raise CleanInstallError("build-input inventory changed across clean-install modes")
     report: dict[str, Any] = {
-        "schema": "ctxc-openhands-clean-install-ci-0.1",
+        "schema": "ctxc-openhands-clean-install-ci-0.2",
         "python": platform.python_version(),
         "platform": platform.platform(),
         "core_wheel": core_wheel.name,
         "core_wheel_sha256": _sha256(core_wheel),
+        "build_lock": BUILD_LOCK_NAME,
+        "build_lock_sha256": initial_build_inputs["lock"]["sha256"],
+        "build_input_inventory_sha256": initial_build_inputs["wheelhouse"][
+            "inventory_sha256"
+        ],
+        "build_input_count": initial_build_inputs["wheelhouse"]["file_count"],
         "modes": modes,
         "live_dependencies_installed": False,
         "live_execution_claimed": False,

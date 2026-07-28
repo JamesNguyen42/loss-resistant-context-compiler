@@ -2,7 +2,9 @@ include _ctxc_openhands_build_backend.py
 include LICENSE
 include pyproject.toml
 include README.md
+include requirements-build.lock
 include requirements-live.lock
+include scripts/ci_build_inputs.py
 recursive-include compatibility *.json *.md
 include docs/EVENT_AUTHORITY_MAP.md
 include docs/RELEASE_CHECKLIST.md

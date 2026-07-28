@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import importlib.util
+import io
 import json
 import os
 import posixpath
@@ -276,7 +279,12 @@ def test_wheel_and_sdist_contain_exact_resources_and_supply_chain_evidence(
             names, f"/src/ctxc_openhands/data/{TOKENIZER_VECTORS_NAME}"
         )
         audit_member = _single_name(names, f"/compatibility/{MANIFEST_NAME}")
-        lock_member = _single_name(names, "/requirements-live.lock")
+        live_lock_member = _single_name(names, "/requirements-live.lock")
+        build_lock_member = _single_name(names, "/requirements-build.lock")
+        build_input_verifier_member = _single_name(
+            names,
+            "/scripts/ci_build_inputs.py",
+        )
         for member_name, expected in (
             (manifest_member, packaged_manifest),
             (audit_member, audit_manifest),
@@ -285,17 +293,29 @@ def test_wheel_and_sdist_contain_exact_resources_and_supply_chain_evidence(
             stream = archive.extractfile(member_name)
             assert stream is not None
             assert stream.read() == expected
-        lock_stream = archive.extractfile(lock_member)
-        assert lock_stream is not None
-        lock_text = lock_stream.read().decode("utf-8")
-        assert "intentionally NOT a complete transitive dependency lock" in lock_text
+        live_lock_stream = archive.extractfile(live_lock_member)
+        assert live_lock_stream is not None
+        live_lock_text = live_lock_stream.read().decode("utf-8")
+        assert "intentionally NOT a complete transitive dependency lock" in live_lock_text
+        build_lock_stream = archive.extractfile(build_lock_member)
+        assert build_lock_stream is not None
+        assert build_lock_stream.read() == (
+            PROJECT_ROOT / "requirements-build.lock"
+        ).read_bytes()
+        build_input_verifier_stream = archive.extractfile(
+            build_input_verifier_member
+        )
+        assert build_input_verifier_stream is not None
+        assert build_input_verifier_stream.read() == (
+            PROJECT_ROOT / "scripts" / "ci_build_inputs.py"
+        ).read_bytes()
         for relative_path in SDIST_AUDIT_PATHS:
             member_name = _single_name(names, f"/{relative_path}")
             stream = archive.extractfile(member_name)
             assert stream is not None
             assert stream.read() == (PROJECT_ROOT / relative_path).read_bytes()
 
-        archive_root = lock_member.rsplit("/", 1)[0]
+        archive_root = live_lock_member.rsplit("/", 1)[0]
         for markdown_path in PACKAGED_MARKDOWN_PATHS:
             markdown_member = f"{archive_root}/{markdown_path}"
             assert markdown_member in names
@@ -320,7 +340,7 @@ def test_wheel_and_sdist_contain_exact_resources_and_supply_chain_evidence(
                 assert SUPPLY_CHAIN_URL in markdown
 
 
-        assert "openhands-agent-server==1.27.0" in lock_text
+        assert "openhands-agent-server==1.27.0" in live_lock_text
 
 
 def test_integration_backend_configuration_and_source_parity() -> None:
@@ -668,16 +688,127 @@ def test_clean_install_probe_distinguishes_dev_extras_from_runtime_dependencies(
         clean_install._active_requirements(["not a valid requirement @"], label="core")
 
 
-def test_offline_clean_install_toolchain_includes_wheel_dependency_closure() -> None:
+def test_clean_install_manifest_evidence_must_match_probe_and_both_doctors() -> None:
     clean_install = _load_clean_install_script()
-    assert clean_install.TOOLCHAIN_REQUIREMENTS == (
-        "pip==25.0.1",
-        "setuptools==83.0.0",
-        "wheel==0.47.0",
-        "packaging==26.2",
+    digest = "a" * 64
+    probe = {"manifest_file_sha256": digest}
+    doctor = {"manifest": {"file_sha256": digest}}
+    live_doctor = {"manifest": {"file_sha256": digest}}
+
+    assert (
+        clean_install._assert_manifest_evidence(probe, doctor, live_doctor)
+        == digest
     )
+
+    for changed_probe, changed_doctor, changed_live_doctor in (
+        ({"manifest_file_sha256": "b" * 64}, doctor, live_doctor),
+        (probe, {"manifest": {"file_sha256": "b" * 64}}, live_doctor),
+        (probe, doctor, {"manifest": {"file_sha256": "not-a-digest"}}),
+    ):
+        with pytest.raises(
+            clean_install.CleanInstallError,
+            match="do not match|digest is invalid",
+        ):
+            clean_install._assert_manifest_evidence(
+                changed_probe,
+                changed_doctor,
+                changed_live_doctor,
+            )
+
+
+def test_build_input_install_replaces_same_version_modified_distribution(
+    tmp_path: Path,
+) -> None:
+    clean_install = _load_clean_install_script()
+    wheelhouse = tmp_path / "wheelhouse"
+    wheelhouse.mkdir()
+    wheel = wheelhouse / "sentinel_pkg-1.0-py3-none-any.whl"
+    members = {
+        "sentinel_pkg/__init__.py": b'MARKER = "wheel"\n',
+        "sentinel_pkg-1.0.dist-info/METADATA": (
+            b"Metadata-Version: 2.4\n"
+            b"Name: sentinel-pkg\n"
+            b"Version: 1.0\n\n"
+        ),
+        "sentinel_pkg-1.0.dist-info/WHEEL": (
+            b"Wheel-Version: 1.0\n"
+            b"Generator: ctxc-test\n"
+            b"Root-Is-Purelib: true\n"
+            b"Tag: py3-none-any\n\n"
+        ),
+    }
+    record_rows = []
+    for name, payload in members.items():
+        digest = base64.urlsafe_b64encode(hashlib.sha256(payload).digest())
+        record_rows.append(
+            f"{name},sha256={digest.rstrip(b'=').decode('ascii')},{len(payload)}\n"
+        )
+    record_rows.append("sentinel_pkg-1.0.dist-info/RECORD,,\n")
+    members["sentinel_pkg-1.0.dist-info/RECORD"] = "".join(record_rows).encode(
+        "ascii"
+    )
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as output:
+        for name, payload in members.items():
+            output.writestr(name, payload)
+    wheel.write_bytes(archive.getvalue())
+
+    lock = tmp_path / "requirements-build.lock"
+    lock.write_text(
+        "sentinel-pkg==1.0 --hash=sha256:"
+        f"{hashlib.sha256(wheel.read_bytes()).hexdigest()}\n",
+        encoding="ascii",
+        newline="\n",
+    )
+    environment_path = tmp_path / "environment"
+    venv.EnvBuilder(with_pip=True).create(environment_path)
+    python = clean_install._python_in(environment_path)
+    environment = clean_install._clean_environment()
+    command = clean_install._build_input_install_command(
+        python,
+        wheelhouse,
+        lock,
+    )
+    assert command.count("--force-reinstall") == 1
+
+    clean_install._run(command, environment=environment)
+    module_result = clean_install._run(
+        [
+            str(python),
+            "-c",
+            "import sentinel_pkg; print(sentinel_pkg.__file__)",
+        ],
+        environment=environment,
+    )
+    module_path = Path(module_result.stdout.strip())
+    original = module_path.read_bytes()
+    module_path.write_bytes(original + b'SENTINEL = "modified"\n')
+    assert b"SENTINEL" in module_path.read_bytes()
+
+    clean_install._run(command, environment=environment)
+
+    assert module_path.read_bytes() == original
+
+
+def test_package_workflow_uses_one_hash_bound_build_input_closure() -> None:
+    clean_install = _load_clean_install_script()
+    assert clean_install.BUILD_LOCK_NAME == "requirements-build.lock"
+    lock = PROJECT_ROOT / clean_install.BUILD_LOCK_NAME
+    lock_lines = lock.read_text(encoding="ascii").splitlines()
+    assert len(lock_lines) == 7
+    assert all(" --hash=sha256:" in line for line in lock_lines)
 
     workflow = (
         REPOSITORY_ROOT / ".github" / "workflows" / "openhands-integration.yml"
     ).read_text(encoding="utf-8")
-    assert workflow.count('"packaging==26.2"') == 3
+    assert workflow.count(
+        "--requirement integrations/openhands/requirements-build.lock"
+    ) == 3
+    assert workflow.count("--require-hashes") == 3
+    assert workflow.count("--only-binary=:all:") == 3
+    assert workflow.count("--force-reinstall") == 2
+    assert "& $env:CTXC_BUILD_PYTHON -m pip --isolated wheel ." in workflow
+    assert "& $env:CTXC_BUILD_PYTHON -m build" in workflow
+    assert "openhands-build-input-report.json" in workflow
+    assert "ci-build-wheelhouse/*.whl" in workflow
+    assert ".ci-build-wheelhouse" not in workflow

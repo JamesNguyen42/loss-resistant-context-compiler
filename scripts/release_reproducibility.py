@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import math
 import os
@@ -21,15 +22,17 @@ from typing import Any, BinaryIO
 
 from benchmarks.json_io import (
     StrictJsonError,
+    StrictJsonLimits,
     _open_regular_file,
     hash_bounded_regular_file,
+    load_strict_json_file,
 )
 from context_compiler import __version__ as _CORE_VERSION
 from context_compiler.atomic import atomic_write_text
 from scripts.release_artifact_manifest import ReleaseArtifactError, create_manifest
 
 REPORT_SCHEMA = "ctxc-release-reproducibility-report-0.1"
-PACKAGE_MATRIX_REPORT_SCHEMA = "ctxc-openhands-package-matrix-reproducibility-0.1"
+PACKAGE_MATRIX_REPORT_SCHEMA = "ctxc-openhands-package-matrix-reproducibility-0.2"
 PACKAGE_MATRIX_LANES = (
     "ctxc-openhands-Linux-python-3.12",
     "ctxc-openhands-Linux-python-3.13",
@@ -40,21 +43,50 @@ PACKAGE_MATRIX_LANES = (
 )
 _REVISION_PLACEHOLDER = "0" * 40
 _REVISION_RE = re.compile(r"[0-9a-f]{40}\Z")
+_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _UPSTREAM_RESULTS = frozenset({"cancelled", "failure", "skipped", "success"})
 _SAFE_MATRIX_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,254}\Z")
 _PACKAGE_VERSION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9.!+_-]{0,127}\Z")
+_BUILD_LOCK_LINE_RE = re.compile(
+    r"(?P<name>[a-z0-9]+(?:-[a-z0-9]+)*)"
+    r"==(?P<version>[0-9]+(?:\.[0-9A-Za-z]+)*)"
+    r" --hash=sha256:(?P<sha256>[0-9a-f]{64})\Z"
+)
+_BUILD_LOCK_SUPPORT_FILE = "openhands-requirements-build.lock"
 _MATRIX_SUPPORT_FILES = (
     "doctor-live-source.json",
     "doctor-source.json",
+    "openhands-build-input-report.json",
     "openhands-ci-toolchain.txt",
     "openhands-clean-install-report.json",
+    _BUILD_LOCK_SUPPORT_FILE,
+)
+_BUILD_WHEELHOUSE_DIRECTORY = "ci-build-wheelhouse"
+_BUILD_INPUT_WHEELS = (
+    ("build", "1.5.0", "build-1.5.0-py3-none-any.whl"),
+    ("colorama", "0.4.6", "colorama-0.4.6-py2.py3-none-any.whl"),
+    ("packaging", "26.2", "packaging-26.2-py3-none-any.whl"),
+    ("pip", "25.0.1", "pip-25.0.1-py3-none-any.whl"),
+    ("pyproject-hooks", "1.2.0", "pyproject_hooks-1.2.0-py3-none-any.whl"),
+    ("setuptools", "83.0.0", "setuptools-83.0.0-py3-none-any.whl"),
+    ("wheel", "0.47.0", "wheel-0.47.0-py3-none-any.whl"),
+)
+_BUILD_INPUT_KEYS = tuple(
+    f"build_input_{name.replace('-', '_')}" for name, _version, _filename in _BUILD_INPUT_WHEELS
 )
 _MATRIX_ARTIFACT_KEYS = (
     "root_wheel",
     "integration_wheel",
     "integration_sdist",
+    "build_lock",
+    *_BUILD_INPUT_KEYS,
 )
 _MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
+_MAX_BUILD_INPUT_WHEEL_BYTES = 32 * 1024 * 1024
+_MAX_BUILD_LOCK_BYTES = 64 * 1024
+_BUILD_INPUT_REPORT_SCHEMA = "ctxc-openhands-build-inputs-ci-0.1"
+_CLEAN_INSTALL_REPORT_SCHEMA = "ctxc-openhands-clean-install-ci-0.2"
+_EXPECTED_SOURCE_DATE_EPOCH = 1_700_000_000
 _MAX_MATRIX_SUPPORT_BYTES = 4 * 1024 * 1024
 _MAX_PROJECT_METADATA_BYTES = 256 * 1024
 _MAX_MATRIX_TOTAL_BYTES = 4 * 1024 * 1024 * 1024
@@ -424,6 +456,438 @@ def _open_matrix_regular_file(
         ) from exc
 
 
+def _read_matrix_regular_bytes(
+    path: Path,
+    *,
+    expected_stat: os.stat_result,
+    label: str,
+    max_bytes: int,
+) -> bytes:
+    if expected_stat.st_size <= 0:
+        raise ReleaseReproducibilityError(f"{label} cannot be empty")
+    if expected_stat.st_size > max_bytes:
+        raise ReleaseReproducibilityError(f"{label} exceeds its byte limit")
+    expected_snapshot = _path_stat_snapshot(expected_stat)
+    chunks: list[bytes] = []
+    observed = 0
+    with _open_matrix_regular_file(
+        path,
+        expected_snapshot=expected_snapshot,
+        label=label,
+    ) as descriptor:
+        while True:
+            read_bytes = min(_CHUNK_BYTES, expected_stat.st_size - observed + 1)
+            try:
+                block = os.read(descriptor, read_bytes)
+            except OSError as exc:
+                raise ReleaseReproducibilityError(f"{label} could not be read") from exc
+            if not block:
+                break
+            observed += len(block)
+            if observed > expected_stat.st_size or observed > max_bytes:
+                raise ReleaseReproducibilityError(f"{label} exceeded its validated size")
+            chunks.append(block)
+    if observed != expected_stat.st_size:
+        raise ReleaseReproducibilityError(f"{label} did not yield its validated bytes")
+    return b"".join(chunks)
+
+
+def _parse_build_lock(payload: bytes, *, label: str) -> dict[str, dict[str, str]]:
+    if not payload.endswith(b"\n") or b"\r" in payload or b"\x00" in payload:
+        raise ReleaseReproducibilityError(f"{label} must be canonical LF text")
+    try:
+        text = payload.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise ReleaseReproducibilityError(f"{label} must be ASCII") from exc
+    expected = {
+        name: (version, filename)
+        for name, version, filename in _BUILD_INPUT_WHEELS
+    }
+    records: dict[str, dict[str, str]] = {}
+    lines = text.splitlines()
+    if len(lines) != len(_BUILD_INPUT_WHEELS):
+        raise ReleaseReproducibilityError(f"{label} must contain exactly seven records")
+    for line, (expected_name, expected_version, expected_filename) in zip(
+        lines,
+        _BUILD_INPUT_WHEELS,
+        strict=True,
+    ):
+        match = _BUILD_LOCK_LINE_RE.fullmatch(line)
+        if match is None:
+            raise ReleaseReproducibilityError(f"{label} contains a noncanonical requirement")
+        name = match.group("name")
+        if name in records:
+            raise ReleaseReproducibilityError(f"{label} contains a duplicate requirement")
+        if name not in expected:
+            raise ReleaseReproducibilityError(f"{label} contains an unexpected requirement")
+        version, filename = expected[name]
+        if (
+            name != expected_name
+            or version != expected_version
+            or filename != expected_filename
+            or match.group("version") != version
+        ):
+            raise ReleaseReproducibilityError(
+                f"{label} requirement {name!r} does not match the expected wheel"
+            )
+        records[name] = {
+            "key": f"build_input_{name.replace('-', '_')}",
+            "name": name,
+            "version": version,
+            "filename": filename,
+            "sha256": match.group("sha256"),
+        }
+    if set(records) != set(expected):
+        missing = sorted(set(expected) - set(records))
+        raise ReleaseReproducibilityError(
+            f"{label} does not contain the exact build-input set; missing={missing!r}"
+        )
+    return {name: records[name] for name in sorted(records)}
+
+
+def _tracked_build_lock_payload() -> bytes:
+    source_root = Path(__file__).absolute().parent.parent
+    path = (
+        source_root
+        / "integrations"
+        / "openhands"
+        / "requirements-build.lock"
+    )
+    try:
+        path_stat = path.lstat()
+    except OSError as exc:
+        raise ReleaseReproducibilityError("tracked build lock is unavailable") from exc
+    payload = _read_matrix_regular_bytes(
+        path,
+        expected_stat=path_stat,
+        label="tracked build lock",
+        max_bytes=_MAX_BUILD_LOCK_BYTES,
+    )
+    _parse_build_lock(payload, label="tracked build lock")
+    return payload
+
+
+def _strict_matrix_json(path: Path, *, label: str) -> tuple[dict[str, Any], str]:
+    try:
+        document = load_strict_json_file(
+            path,
+            limits=StrictJsonLimits(
+                max_bytes=_MAX_MATRIX_SUPPORT_BYTES,
+                max_line_chars=_MAX_MATRIX_SUPPORT_BYTES,
+                max_depth=32,
+            ),
+            label=label,
+        )
+    except StrictJsonError as exc:
+        raise ReleaseReproducibilityError(f"{label} is not strict bounded JSON") from exc
+    if not isinstance(document.value, dict):
+        raise ReleaseReproducibilityError(f"{label} must be a JSON object")
+    return document.value, document.file_sha256
+
+
+def _verify_embedded_report_sha256(value: dict[str, Any], *, label: str) -> None:
+    unsigned = dict(value)
+    claimed = unsigned.pop("report_sha256", None)
+    if not isinstance(claimed, str) or _SHA256_RE.fullmatch(claimed) is None:
+        raise ReleaseReproducibilityError(f"{label} has an invalid report digest")
+    if not hmac.compare_digest(claimed, _canonical_sha256(unsigned)):
+        raise ReleaseReproducibilityError(f"{label} self-hash does not match")
+
+
+def _validated_build_input_report(
+    path: Path,
+    *,
+    lane: str,
+    revision: str,
+    build_inputs: dict[str, dict[str, str]],
+    lock_bytes: int,
+    lock_sha256: str,
+) -> tuple[dict[str, Any], str]:
+    report, file_sha256 = _strict_matrix_json(path, label="build-input report")
+    expected_keys = {
+        "schema",
+        "revision",
+        "source_date_epoch",
+        "validation_only",
+        "acquisition_performed",
+        "network_action_performed",
+        "semantic_completeness_claimed",
+        "status",
+        "passed",
+        "lock",
+        "wheelhouse",
+        "builder",
+        "report_sha256",
+    }
+    if set(report) != expected_keys:
+        raise ReleaseReproducibilityError("build-input report has an unexpected shape")
+    _verify_embedded_report_sha256(report, label="build-input report")
+    if (
+        report["schema"] != _BUILD_INPUT_REPORT_SCHEMA
+        or report["revision"] != revision
+        or report["source_date_epoch"] != _EXPECTED_SOURCE_DATE_EPOCH
+        or report["validation_only"] is not True
+        or report["acquisition_performed"] is not False
+        or report["network_action_performed"] is not False
+        or report["semantic_completeness_claimed"] is not False
+        or report["status"] != "passed"
+        or report["passed"] is not True
+    ):
+        raise ReleaseReproducibilityError("build-input report did not retain a passing boundary")
+    lock = report["lock"]
+    if (
+        not isinstance(lock, dict)
+        or set(lock) != {"filename", "bytes", "sha256", "record_count"}
+        or lock
+        != {
+            "filename": "requirements-build.lock",
+            "bytes": lock_bytes,
+            "sha256": lock_sha256,
+            "record_count": len(_BUILD_INPUT_WHEELS),
+        }
+    ):
+        raise ReleaseReproducibilityError("build-input report does not bind the lane lock")
+    wheelhouse = report["wheelhouse"]
+    if not isinstance(wheelhouse, dict) or set(wheelhouse) != {
+        "file_count",
+        "aggregate_bytes",
+        "inventory_sha256",
+        "wheels",
+    }:
+        raise ReleaseReproducibilityError("build-input report wheelhouse must be an object")
+    wheels = wheelhouse.get("wheels")
+    if not isinstance(wheels, list) or len(wheels) != len(_BUILD_INPUT_WHEELS):
+        raise ReleaseReproducibilityError("build-input report wheel inventory is invalid")
+    expected_names = list(build_inputs)
+    for item, expected_name in zip(wheels, expected_names, strict=True):
+        expected = build_inputs[expected_name]
+        expected_tags = (
+            ["py2-none-any", "py3-none-any"]
+            if expected_name == "colorama"
+            else ["py3-none-any"]
+        )
+        if (
+            not isinstance(item, dict)
+            or set(item) != {"name", "version", "filename", "bytes", "sha256", "tags"}
+            or item.get("name") != expected["name"]
+            or item.get("version") != expected["version"]
+            or item.get("filename") != expected["filename"]
+            or item.get("sha256") != expected["sha256"]
+            or isinstance(item.get("bytes"), bool)
+            or not isinstance(item.get("bytes"), int)
+            or item["bytes"] <= 0
+            or item.get("tags") != expected_tags
+        ):
+            raise ReleaseReproducibilityError("build-input report wheel record is invalid")
+    if (
+        wheelhouse.get("file_count") != len(_BUILD_INPUT_WHEELS)
+        or isinstance(wheelhouse.get("aggregate_bytes"), bool)
+        or not isinstance(wheelhouse.get("aggregate_bytes"), int)
+        or wheelhouse["aggregate_bytes"] != sum(item["bytes"] for item in wheels)
+        or wheelhouse.get("inventory_sha256") != _canonical_sha256(wheels)
+    ):
+        raise ReleaseReproducibilityError("build-input report inventory digest is invalid")
+    builder = report["builder"]
+    expected_distributions = [
+        {"name": name, "version": build_inputs[name]["version"]}
+        for name in expected_names
+    ]
+    expected_python = lane.rsplit("-python-", 1)[-1]
+    builder_python = builder.get("python_version") if isinstance(builder, dict) else None
+    if (
+        not isinstance(builder, dict)
+        or set(builder)
+        != {"verified", "implementation", "python_version", "distributions"}
+        or builder.get("verified") is not True
+        or builder.get("implementation") != "CPython"
+        or not isinstance(builder_python, str)
+        or not re.fullmatch(rf"{re.escape(expected_python)}\.[0-9]+", builder_python)
+        or builder.get("distributions") != expected_distributions
+    ):
+        raise ReleaseReproducibilityError("build-input report builder inventory is invalid")
+    return report, file_sha256
+
+
+def _validated_clean_install_report(
+    path: Path,
+    *,
+    lane: str,
+    package_identity: dict[str, str],
+    lock_sha256: str,
+    inventory_sha256: str,
+) -> tuple[dict[str, Any], str]:
+    report, file_sha256 = _strict_matrix_json(path, label="clean-install report")
+    expected_keys = {
+        "schema",
+        "python",
+        "platform",
+        "core_wheel",
+        "core_wheel_sha256",
+        "build_lock",
+        "build_lock_sha256",
+        "build_input_inventory_sha256",
+        "build_input_count",
+        "modes",
+        "live_dependencies_installed",
+        "live_execution_claimed",
+        "semantic_completeness_claimed",
+        "passed",
+        "report_sha256",
+    }
+    if set(report) != expected_keys:
+        raise ReleaseReproducibilityError("clean-install report has an unexpected shape")
+    _verify_embedded_report_sha256(report, label="clean-install report")
+    expected_python = lane.rsplit("-python-", 1)[-1]
+    expected_platform = lane.removeprefix("ctxc-openhands-").split("-python-", 1)[0]
+    platform_value = report.get("platform")
+    if (
+        report.get("schema") != _CLEAN_INSTALL_REPORT_SCHEMA
+        or not isinstance(report.get("python"), str)
+        or not re.fullmatch(rf"{re.escape(expected_python)}\.[0-9]+", report["python"])
+        or not isinstance(platform_value, str)
+        or not platform_value.casefold().startswith(expected_platform.casefold())
+        or report.get("core_wheel") != package_identity["root_wheel"]
+        or not isinstance(report.get("core_wheel_sha256"), str)
+        or _SHA256_RE.fullmatch(report["core_wheel_sha256"]) is None
+        or report.get("passed") is not True
+        or report.get("build_lock") != "requirements-build.lock"
+        or report.get("build_lock_sha256") != lock_sha256
+        or report.get("build_input_inventory_sha256") != inventory_sha256
+        or report.get("build_input_count") != len(_BUILD_INPUT_WHEELS)
+        or report.get("live_dependencies_installed") is not False
+        or report.get("live_execution_claimed") is not False
+        or report.get("semantic_completeness_claimed") is not False
+    ):
+        raise ReleaseReproducibilityError(
+            "clean-install report does not bind the exact build-input closure"
+        )
+    modes = report.get("modes")
+    if (
+        not isinstance(modes, list)
+        or [mode.get("mode") if isinstance(mode, dict) else None for mode in modes]
+        != ["wheel", "sdist"]
+    ):
+        raise ReleaseReproducibilityError("clean-install report modes are invalid")
+    for mode in modes:
+        expected_artifact = (
+            package_identity["integration_wheel"]
+            if mode.get("mode") == "wheel"
+            else package_identity["integration_sdist"]
+        )
+        if (
+            set(mode)
+            != {
+                "mode",
+                "artifact",
+                "artifact_sha256",
+                "probe",
+                "doctor_manifest_sha256",
+                "doctor_live_exit",
+                "build_lock_sha256",
+                "build_input_inventory_sha256",
+                "builder_inventory_verified",
+                "passed",
+            }
+            or mode.get("passed") is not True
+            or mode.get("artifact") != expected_artifact
+            or not isinstance(mode.get("artifact_sha256"), str)
+            or _SHA256_RE.fullmatch(mode["artifact_sha256"]) is None
+            or not isinstance(mode.get("doctor_manifest_sha256"), str)
+            or _SHA256_RE.fullmatch(mode["doctor_manifest_sha256"]) is None
+            or mode.get("doctor_live_exit") != 2
+            or mode.get("build_lock_sha256") != lock_sha256
+            or mode.get("build_input_inventory_sha256") != inventory_sha256
+            or mode.get("builder_inventory_verified") is not True
+        ):
+            raise ReleaseReproducibilityError(
+                "clean-install mode does not bind the exact build-input closure"
+            )
+        probe = mode.get("probe")
+        expected_integration_requirements = [
+            (
+                f"{package_identity['core_distribution']}"
+                f"=={package_identity['core_version']}"
+            ),
+            'openhands-ai==1.8.0; extra == "live"',
+            'openhands-sdk==1.27.0; extra == "live"',
+            'openhands-tools==1.27.0; extra == "live"',
+            'openhands-agent-server==1.27.0; extra == "live"',
+            'build>=1.2; extra == "dev"',
+            'pytest>=8.0; extra == "dev"',
+            'ruff>=0.6; extra == "dev"',
+            'setuptools>=77; extra == "dev"',
+            'wheel>=0.41; extra == "dev"',
+        ]
+        expected_core_requirements = [
+            'localai-contracts==0.2.0a2; extra == "unified"',
+            'pytest>=8.0; extra == "dev"',
+            'pytest-cov>=5.0; extra == "dev"',
+            'ruff>=0.6; extra == "dev"',
+            'setuptools>=77; extra == "dev"',
+            'wheel>=0.41; extra == "dev"',
+        ]
+        if (
+            not isinstance(probe, dict)
+            or set(probe)
+            != {
+                "core_version",
+                "integration_version",
+                "core_file",
+                "integration_file",
+                "sys_prefix",
+                "core_requirements",
+                "integration_requirements",
+                "openhands_modules_before",
+                "openhands_modules_after_core",
+                "openhands_modules_after_integration",
+                "openhands_distributions_absent",
+                "openhands_distributions_present",
+                "openhands_import_spec_present",
+                "user_site_enabled",
+                "manifest_blocker",
+                "manifest_file_sha256",
+                "packaged_manifest_present",
+                "packaged_vectors_present",
+            }
+            or probe.get("core_version") != package_identity["core_version"]
+            or probe.get("integration_version") != package_identity["integration_version"]
+            or any(
+                not isinstance(probe.get(name), str) or not probe[name]
+                for name in ("core_file", "integration_file", "sys_prefix")
+            )
+            or probe.get("core_requirements") != expected_core_requirements
+            or probe.get("integration_requirements") != expected_integration_requirements
+            or probe.get("openhands_modules_before") != []
+            or probe.get("openhands_modules_after_core") != []
+            or probe.get("openhands_modules_after_integration") != []
+            or probe.get("openhands_distributions_absent") != sorted(
+                (
+                    "openhands-ai",
+                    "openhands-sdk",
+                    "openhands-tools",
+                    "openhands-agent-server",
+                )
+            )
+            or probe.get("openhands_distributions_present") != []
+            or probe.get("openhands_import_spec_present") is not False
+            or probe.get("user_site_enabled") is not False
+            or probe.get("manifest_blocker") != "hash-pinned-wheelhouse-absent"
+            or not isinstance(probe.get("manifest_file_sha256"), str)
+            or _SHA256_RE.fullmatch(probe["manifest_file_sha256"]) is None
+            or probe["manifest_file_sha256"] != mode["doctor_manifest_sha256"]
+            or probe.get("packaged_manifest_present") is not True
+            or probe.get("packaged_vectors_present") is not True
+        ):
+            raise ReleaseReproducibilityError(
+                "clean-install probe does not retain the isolated package boundary"
+            )
+    if modes[0]["doctor_manifest_sha256"] != modes[1]["doctor_manifest_sha256"]:
+        raise ReleaseReproducibilityError(
+            "clean-install wheel and sdist manifest evidence do not match"
+        )
+    return report, file_sha256
+
+
 def _exact_matrix_file_equal(
     first: Path,
     second: Path,
@@ -688,8 +1152,10 @@ def _openhands_artifact_names(
     return expected_wheel, expected_sdist
 
 
-def _matrix_snapshot(matrix_root: str | Path) -> _MatrixSnapshot:
+def _matrix_snapshot(matrix_root: str | Path, *, revision: str) -> _MatrixSnapshot:
     package_identity = _configured_package_identity()
+    tracked_build_lock = _tracked_build_lock_payload()
+    tracked_build_lock_sha256 = hashlib.sha256(tracked_build_lock).hexdigest()
     root = Path(os.path.abspath(os.fspath(Path(matrix_root).expanduser())))
     root_entries, root_signature = _matrix_directory_entries(
         root,
@@ -721,7 +1187,11 @@ def _matrix_snapshot(matrix_root: str | Path) -> _MatrixSnapshot:
             lane_path,
             label=f"package lane {lane}",
         )
-        expected_lane_entries = {"dist", *_MATRIX_SUPPORT_FILES}
+        expected_lane_entries = {
+            "dist",
+            _BUILD_WHEELHOUSE_DIRECTORY,
+            *_MATRIX_SUPPORT_FILES,
+        }
         _require_matrix_entries(
             lane_entries,
             expected_lane_entries,
@@ -733,9 +1203,90 @@ def _matrix_snapshot(matrix_root: str | Path) -> _MatrixSnapshot:
             "directory",
             label=f"package lane {lane}",
         )
+        _require_matrix_entry_kind(
+            lane_entries,
+            _BUILD_WHEELHOUSE_DIRECTORY,
+            "directory",
+            label=f"package lane {lane}",
+        )
         signatures.append(lane_signature)
         directory_checks.append(
             (lane_path, f"package lane {lane}", expected_lane_entries, lane_signature)
+        )
+
+        build_lock_stat = _require_matrix_entry_kind(
+            lane_entries,
+            _BUILD_LOCK_SUPPORT_FILE,
+            "file",
+            label=f"package lane {lane}",
+        )
+        build_lock_path = lane_path / _BUILD_LOCK_SUPPORT_FILE
+        build_lock_payload = _read_matrix_regular_bytes(
+            build_lock_path,
+            expected_stat=build_lock_stat,
+            label=f"package lane {lane} build lock",
+            max_bytes=_MAX_BUILD_LOCK_BYTES,
+        )
+        if not hmac.compare_digest(build_lock_payload, tracked_build_lock):
+            raise ReleaseReproducibilityError(
+                f"package lane {lane} build lock does not match the tracked build lock"
+            )
+        build_inputs = _parse_build_lock(
+            build_lock_payload,
+            label=f"package lane {lane} build lock",
+        )
+        build_lock_sha256 = hashlib.sha256(build_lock_payload).hexdigest()
+        build_input_report, build_input_report_file_sha256 = (
+            _validated_build_input_report(
+                lane_path / "openhands-build-input-report.json",
+                lane=lane,
+                revision=revision,
+                build_inputs=build_inputs,
+                lock_bytes=len(build_lock_payload),
+                lock_sha256=build_lock_sha256,
+            )
+        )
+        build_input_inventory_sha256 = build_input_report["wheelhouse"][
+            "inventory_sha256"
+        ]
+        clean_install_report, clean_install_report_file_sha256 = (
+            _validated_clean_install_report(
+                lane_path / "openhands-clean-install-report.json",
+                lane=lane,
+                package_identity=package_identity,
+                lock_sha256=build_lock_sha256,
+                inventory_sha256=build_input_inventory_sha256,
+            )
+        )
+
+        wheelhouse_path = lane_path / _BUILD_WHEELHOUSE_DIRECTORY
+        wheelhouse_entries, wheelhouse_signature = _matrix_directory_entries(
+            wheelhouse_path,
+            label=f"package lane {lane} build wheelhouse",
+        )
+        expected_wheel_names = {
+            record["filename"] for record in build_inputs.values()
+        }
+        _require_matrix_entries(
+            wheelhouse_entries,
+            expected_wheel_names,
+            label=f"package lane {lane} build wheelhouse",
+        )
+        for wheel_name in expected_wheel_names:
+            _require_matrix_entry_kind(
+                wheelhouse_entries,
+                wheel_name,
+                "file",
+                label=f"package lane {lane} build wheelhouse",
+            )
+        signatures.append(wheelhouse_signature)
+        directory_checks.append(
+            (
+                wheelhouse_path,
+                f"package lane {lane} build wheelhouse",
+                expected_wheel_names,
+                wheelhouse_signature,
+            )
         )
 
         dist_path = lane_path / "dist"
@@ -817,8 +1368,25 @@ def _matrix_snapshot(matrix_root: str | Path) -> _MatrixSnapshot:
                 openhands_entries[integration_sdist_name][1],
                 _MAX_ARCHIVE_BYTES,
             ),
+            "build_lock": (
+                build_lock_path,
+                build_lock_stat,
+                _MAX_BUILD_LOCK_BYTES,
+            ),
         }
+        expected_build_digests: dict[str, str] = {}
+        for record in build_inputs.values():
+            key = record["key"]
+            filename = record["filename"]
+            file_specs[key] = (
+                wheelhouse_path / filename,
+                wheelhouse_entries[filename][1],
+                _MAX_BUILD_INPUT_WHEEL_BYTES,
+            )
+            expected_build_digests[key] = record["sha256"]
         for support_name in _MATRIX_SUPPORT_FILES:
+            if support_name == _BUILD_LOCK_SUPPORT_FILE:
+                continue
             file_specs[support_name] = (
                 lane_path / support_name,
                 _require_matrix_entry_kind(
@@ -855,10 +1423,77 @@ def _matrix_snapshot(matrix_root: str | Path) -> _MatrixSnapshot:
             total_bytes += int(record["bytes"])
             if total_bytes > _MAX_MATRIX_TOTAL_BYTES:
                 raise ReleaseReproducibilityError("package matrix exceeds the total byte limit")
+            expected_digest = expected_build_digests.get(key)
+            if expected_digest is not None and record["sha256"] != expected_digest:
+                raise ReleaseReproducibilityError(
+                    f"package lane {lane} build input {key} does not match its lock digest"
+                )
+            if key == "build_lock" and record["sha256"] != build_lock_sha256:
+                raise ReleaseReproducibilityError(
+                    f"package lane {lane} build lock changed after parsing"
+                )
+            if (
+                key == "openhands-build-input-report.json"
+                and record["sha256"] != build_input_report_file_sha256
+            ):
+                raise ReleaseReproducibilityError(
+                    f"package lane {lane} build-input report changed after parsing"
+                )
+            if (
+                key == "openhands-clean-install-report.json"
+                and record["sha256"] != clean_install_report_file_sha256
+            ):
+                raise ReleaseReproducibilityError(
+                    f"package lane {lane} clean-install report changed after parsing"
+                )
+        reported_wheels = {
+            f"build_input_{item['name'].replace('-', '_')}": item
+            for item in build_input_report["wheelhouse"]["wheels"]
+        }
+        for key in _BUILD_INPUT_KEYS:
+            actual = lane_files[key]
+            reported = reported_wheels[key]
+            if (
+                actual["filename"] != reported["filename"]
+                or actual["bytes"] != reported["bytes"]
+                or actual["sha256"] != reported["sha256"]
+            ):
+                raise ReleaseReproducibilityError(
+                    f"package lane {lane} build-input report does not match retained bytes"
+                )
+        clean_artifacts = {
+            "root_wheel": (
+                clean_install_report["core_wheel"],
+                clean_install_report["core_wheel_sha256"],
+            ),
+            "integration_wheel": (
+                clean_install_report["modes"][0]["artifact"],
+                clean_install_report["modes"][0]["artifact_sha256"],
+            ),
+            "integration_sdist": (
+                clean_install_report["modes"][1]["artifact"],
+                clean_install_report["modes"][1]["artifact_sha256"],
+            ),
+        }
+        for key, (reported_filename, reported_sha256) in clean_artifacts.items():
+            actual = lane_files[key]
+            if (
+                actual["filename"] != reported_filename
+                or actual["sha256"] != reported_sha256
+            ):
+                raise ReleaseReproducibilityError(
+                    f"package lane {lane} clean-install report does not match retained bytes"
+                )
         lanes.append({"lane": lane, "files": lane_files})
         paths[lane] = lane_paths
         file_snapshots[lane] = lane_file_snapshots
 
+    package_identity = {
+        **package_identity,
+        "build_lock": _BUILD_LOCK_SUPPORT_FILE,
+        "build_lock_sha256": tracked_build_lock_sha256,
+        "build_input_count": str(len(_BUILD_INPUT_WHEELS)),
+    }
     for path, label, expected_names, expected_signature in directory_checks:
         final_entries, final_signature = _matrix_directory_entries(path, label=label)
         _require_matrix_entries(final_entries, expected_names, label=label)
@@ -937,9 +1572,9 @@ def compare_package_matrix(
         )
     if not isinstance(upstream_result, str) or upstream_result not in _UPSTREAM_RESULTS:
         raise ReleaseReproducibilityError("package matrix upstream result is invalid")
-    first = _matrix_snapshot(matrix_root)
+    first = _matrix_snapshot(matrix_root, revision=revision)
     groups = _matrix_artifact_groups(first)
-    final = _matrix_snapshot(matrix_root)
+    final = _matrix_snapshot(matrix_root, revision=revision)
     if (
         first.package_identity != final.package_identity
         or first.lanes != final.lanes
@@ -947,7 +1582,7 @@ def compare_package_matrix(
     ):
         raise ReleaseReproducibilityError("package matrix changed between validation passes")
     issues = [
-        f"{group['kind']} package bytes differ across the required lanes"
+        f"{group['kind']} bytes differ across the required lanes"
         for group in groups
         if not group["byte_identical"]
     ]
