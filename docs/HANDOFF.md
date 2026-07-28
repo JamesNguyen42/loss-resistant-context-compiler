@@ -35,7 +35,7 @@ live-readiness status.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; no local inference |
+| Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; `0f20b8a`: exact seven-wheel build inputs, clean provider/a2 harness, and all automatic hosted gates passed; no local inference |
 | Canonical optional boundary | `localai-contracts==0.2.0a2`, protocol/schema `1.0.0`; `context.compile` only; non-inference |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
@@ -810,6 +810,30 @@ audited. Any selected superseded item independently fails verification as
   `f356ab0280f07ab3ac60a472cc80614bf273754b7fb8092b71a3298514431d9b`.
   The latter is not exact-commit/source-archive-byte evidence; neither artifact
   is tracked or published.
+- Exact provider reconciliation at implementation head
+  `0f20b8a1c131fe3c0908f7d6738790529f42338c`, tree
+  `f04dcf9a0dbe58d91d87856b3a9d4fd6de0293ca`, used two independent
+  Git-archive materializations. Their 222,688-byte provider wheels matched at
+  SHA-256
+  `bda1b1c50fea351eaf1241e62e8a1dde56de5dc4963d8d04a91e21e5eb7fa993`;
+  raw `RECORD` SHA-256 is
+  `485f77359cfc7f8def4c1b47f73e130784ca7beb17baff2ae270792a8726dfc1`.
+  Provider code/schema members did not drift from the reviewed optional
+  connector. The direct a2 clean install passed Phase 0 22/22 with
+  `inference_status: not_run`, and the same clean interpreter ran the component
+  harness with direct `ContextBundle` output. Component-manifest and canonical
+  payload digests are
+  `d88ba3e2b98ca0f077b02ffb6696f3728ee24ad77972bedd16a229309052b42c`
+  and
+  `f83cc1d120e174189332f9f6131b3ac4878d95a740d938976cc20846142bdd45`.
+  The path-neutral fixed provider witness v2 is ignored/local only: 1,058 bytes,
+  SHA-256
+  `555495a9621798c962129beab1159aa4d573c31a173554738a8253c0b0ceca68`.
+  It is not tracked, published, durably retained, or release evidence. Its
+  commit-epoch wheel differs from the hosted fixed-epoch root wheel below. The
+  first Windows build from the long synchronized workspace path failed while
+  creating a nested schema destination and produced no wheel; the short-root
+  success does not replace or relabel it.
 - An earlier pre-RECORD-gate local checkpoint produced an 885,292-byte sdist
   with SHA-256
   `08140acb63e31083efdc41eb1b4274e423c12d8e9c1ea55ebe737d478d636ab4`.
@@ -1370,6 +1394,35 @@ lower quantile before results are observed.
   `9c8ef8530ffa37c6596d94070f75aaed95ab532af3fbf9737870bfa53b08c942`
   and `8ccf05ab81647db1d5030f79ee5e9f367318e923b539b9376cf3e015b04ff2c5`.
   Both report artifacts are temporary and expire on 2026-08-11.
+- Exact package-input implementation head
+  `0f20b8a1c131fe3c0908f7d6738790529f42338c` tracks a 666-byte
+  `requirements-build.lock`, SHA-256
+  `243f3ab977d82c04968cf4ea6474b7ef79c060d485aa3a3d67a383d1ef6fbbfe`,
+  for seven exact universal build wheels. Every lane acquires only those bytes
+  with `--require-hashes`, validates and retains the wheel inventory, and uses
+  it without an index for a dedicated builder and both clean-install modes.
+  OpenHands push run `30366252700` and pull-request run `30366258656` each
+  passed six Linux, Windows, and macOS Python 3.12/3.13 package jobs plus the
+  aggregate; retained evidence stayed skipped/default-off. Root CI push
+  `30366251022` and pull-request CI `30366255412` each passed 7/7 jobs; CodeQL
+  `30366255532` and dependency review `30366255341` passed.
+- The six hosted lanes at `0f20b8a` agreed on the 222,688-byte root wheel
+  (`ec46f710169a95c21c54a28b941d2f5205104113c3e594fe6945ef68f633642f`),
+  136,967-byte integration wheel
+  (`16976fa84cebb2b35f1cc15db89a41f016a3a8385498fd2335adbc28c85aacf0`),
+  255,770-byte integration sdist
+  (`bf51799df63019c3138368a2d6f9e8bc3ddd398163838669340764be36130957`),
+  the tracked lock, and all seven input wheels. The 44,203-byte push report raw
+  SHA-256/self-hash are
+  `46e47ee4b6f3d1b7ce0fdcc5e41e5f812f2ee0d17005d0c77acd986198213acd`
+  and `62cd0a5a4ee351dc9fc2c3bd892a79db5394058e96a611c2a47946e0e42ec876`.
+  The same-size pull-request report is bound to synthetic merge revision
+  `37f7796a1fa74d2637a5ad85e70a9c988ffc5836`, whose tree equals the
+  implementation tree; its raw SHA-256/self-hash are
+  `4fd96cb025bd557644e670a79c2ae6eeabb244099886d649ab755f7ffb6e8bda`
+  and `aba29437bf2ee4ba7d5876eea978bc1bf74cba321ebe047e5ff92acf80e69626`.
+  This closes exact build-input byte identity for those automatic temporary
+  lanes, not signed origin, durable retention, or a release authorization.
 - The hosted retained-evidence job is manual/default-off and has not run for
   this candidate; both automatic runs skipped it. Local validation does not
   replace that durable retained-evidence gate.
@@ -1385,11 +1438,13 @@ lower quantile before results are observed.
 - The historical raw Setuptools sdist failures remain retained. The later
   package-local backend at `2f692484` produced byte-identical final sdists
   across two exact source archives and an extracted-sdist rebuild under one
-  recorded Windows toolchain and epoch. Build tools are still acquired online
-  without a reviewed hash-pinned input closure. That `2f692484` result by
-  itself did not establish cross-platform artifact equality; the later
-  `f9ba3de` automatic aggregate closes only the six recorded hosted package
-  lanes.
+  recorded Windows toolchain and epoch. At that checkpoint, build tools were
+  acquired online without a reviewed hash-pinned input closure. That
+  `2f692484` result by itself did not establish cross-platform artifact
+  equality; the later `f9ba3de` aggregate closed only equality for its six
+  recorded hosted package lanes. The later `0f20b8a` gate closes the exact
+  seven-wheel build-input bytes for its six recorded lanes while retaining
+  index-origin attestation and durable retention as separate work.
 - No candidate SBOM, artifact signature, or provenance attestation exists.
   Checksums and self-hashes are substitution-detection groundwork, not
   authentication or release provenance.

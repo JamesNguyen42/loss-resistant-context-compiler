@@ -88,12 +88,40 @@ Only the first is exact-commit/source-archive-byte evidence. These
 checkpoint-specific artifacts are not tracked or published, their hashes are
 not interchangeable, and later source or metadata edits require new builds.
 
+At exact implementation head
+`0f20b8a1c131fe3c0908f7d6738790529f42338c`, tree
+`f04dcf9a0dbe58d91d87856b3a9d4fd6de0293ca`, two exact Git archives
+produced the same 222,688-byte provider wheel at SHA-256
+`bda1b1c50fea351eaf1241e62e8a1dde56de5dc4963d8d04a91e21e5eb7fa993`;
+raw `RECORD` SHA-256 is
+`485f77359cfc7f8def4c1b47f73e130784ca7beb17baff2ae270792a8726dfc1`.
+The exact-a2 clean lane passed 22/22 with `inference_status: not_run`, and the
+same clean interpreter ran the direct-`ContextBundle` component harness. The
+ignored path-neutral witness is 1,058 bytes with SHA-256
+`555495a9621798c962129beab1159aa4d573c31a173554738a8253c0b0ceca68`.
+These local, unpublished bytes are not durable retention, signed provenance, or
+release authorization, and the commit-epoch provider wheel is distinct from
+the hosted fixed-epoch root wheel below. The first Windows build from the long
+synchronized workspace path failed while creating a nested schema destination
+and produced no wheel; it remains a failed attempt.
+
 The build and development extras currently use lower bounds and CI resolves
 compatible releases from the live package index. No cross-version, hash-pinned
 dev/build lock or offline wheelhouse is retained. A credible replacement needs
 resolver output for CPython 3.11-3.13 and every CI platform, hashes for each
 allowed distribution, a documented update cadence, and an offline installation
 check; a single host-generated lock would overstate portability.
+
+The OpenHands automatic package workflow has a narrower reviewed exception at
+exact implementation head `0f20b8a`: its tracked 666-byte
+`requirements-build.lock`, SHA-256
+`243f3ab977d82c04968cf4ea6474b7ef79c060d485aa3a3d67a383d1ef6fbbfe`,
+binds seven universal build wheels. Each lane acquires only those bytes with
+`--require-hashes`, validates their metadata, `RECORD`, and contents, retains
+them, and uses them without an index for a dedicated builder and both
+clean-install modes. This does not create a general core/dev lock, authenticate
+the configured index or publishers, or make temporary Actions retention
+durable.
 
 By default, the standalone sdist install smoke bootstraps the lower-bounded
 `setuptools>=77` and `wheel>=0.41` requirements from the configured package
@@ -245,12 +273,31 @@ skipped/default-off. Its six lanes agreed on the 222,688-byte root wheel
 and 241,931-byte integration sdist
 (`a061cfab2643404547c4d3375adaf0bd2e62d8c01cccd2ac14ac134ea8059629`).
 
-These aggregate reports establish equality only for the exact three outputs
-across their six recorded hosted lanes. The adjacent CI evidence records the
-selected Python and installed tool versions, but does not attest dependency
-hashes, the hosted platform image, or the complete build environment. Those
-inputs must be retained and independently checked before any cross-toolchain,
-independently reproduced, or broader reproducible-build claim.
+Exact package-input implementation head
+`0f20b8a1c131fe3c0908f7d6738790529f42338c` then passed OpenHands push run
+`30366252700` and pull-request run `30366258656`, each with six package jobs
+plus the aggregate; retained evidence stayed skipped/default-off. The lanes
+agreed on the 222,688-byte root wheel
+(`ec46f710169a95c21c54a28b941d2f5205104113c3e594fe6945ef68f633642f`),
+136,967-byte integration wheel
+(`16976fa84cebb2b35f1cc15db89a41f016a3a8385498fd2335adbc28c85aacf0`),
+255,770-byte integration sdist
+(`bf51799df63019c3138368a2d6f9e8bc3ddd398163838669340764be36130957`),
+the tracked lock, and all seven build-input wheels. The 44,203-byte push report
+raw SHA-256/self-hash are
+`46e47ee4b6f3d1b7ce0fdcc5e41e5f812f2ee0d17005d0c77acd986198213acd`
+and `62cd0a5a4ee351dc9fc2c3bd892a79db5394058e96a611c2a47946e0e42ec876`;
+the same-size pull-request report raw SHA-256/self-hash are
+`4fd96cb025bd557644e670a79c2ae6eeabb244099886d649ab755f7ffb6e8bda`
+and `aba29437bf2ee4ba7d5876eea978bc1bf74cba321ebe047e5ff92acf80e69626`.
+
+The earlier aggregate reports established equality only for three outputs and
+did not bind dependency hashes. The `0f20b8a` reports additionally bind the
+tracked lock and seven exact input wheels across their six recorded hosted
+lanes. They still do not attest the hosted platform image, publisher identity,
+or complete build environment. Temporary artifacts must be retained durably
+and independently checked before any cross-toolchain, independently
+reproduced, or broader reproducible-build claim.
 
 Portable stdlib checks cannot atomically prevent a hostile same-user process
 from replacing a pathname after the final verification syscall. The wrapper

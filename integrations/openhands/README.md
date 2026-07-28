@@ -290,7 +290,35 @@ tree equals the implementation tree; its raw SHA-256/self-hash are
 and `8ccf05ab81647db1d5030f79ee5e9f367318e923b539b9376cf3e015b04ff2c5`.
 These temporary Actions artifacts expire on 2026-08-11. Durable retained
 evidence, hash-pinned build inputs, live OpenHands execution, SBOMs,
-signatures, provenance attestations, and release authorization remain open.
+signatures, provenance attestations, and release authorization remained open at
+that checkpoint.
+
+Exact package-input implementation head
+`0f20b8a1c131fe3c0908f7d6738790529f42338c` binds package construction to
+the tracked 666-byte `requirements-build.lock`, SHA-256
+`243f3ab977d82c04968cf4ea6474b7ef79c060d485aa3a3d67a383d1ef6fbbfe`,
+and seven exact universal wheels. Acquisition uses `--require-hashes`; the
+dedicated builder, builds, and clean installs use the retained no-index
+wheelhouse and cross-bind its exact bytes. OpenHands push run `30366252700` and
+pull-request run `30366258656` each passed six Linux, Windows, and macOS Python
+3.12/3.13 package jobs plus the aggregate; retained evidence stayed
+skipped/default-off. Root CI push `30366251022` and pull-request CI
+`30366255412` each passed 7/7 jobs; CodeQL `30366255532` and dependency review
+`30366255341` passed. The hosted lanes agreed on the 222,688-byte root wheel
+(`ec46f710169a95c21c54a28b941d2f5205104113c3e594fe6945ef68f633642f`),
+136,967-byte integration wheel
+(`16976fa84cebb2b35f1cc15db89a41f016a3a8385498fd2335adbc28c85aacf0`),
+and 255,770-byte integration sdist
+(`bf51799df63019c3138368a2d6f9e8bc3ddd398163838669340764be36130957`).
+The 44,203-byte push report raw SHA-256/self-hash are
+`46e47ee4b6f3d1b7ce0fdcc5e41e5f812f2ee0d17005d0c77acd986198213acd`
+and `62cd0a5a4ee351dc9fc2c3bd892a79db5394058e96a611c2a47946e0e42ec876`;
+the same-size pull-request report raw SHA-256/self-hash are
+`4fd96cb025bd557644e670a79c2ae6eeabb244099886d649ab755f7ffb6e8bda`
+and `aba29437bf2ee4ba7d5876eea978bc1bf74cba321ebe047e5ff92acf80e69626`.
+This closes exact package-build input byte identity for those temporary lanes,
+not signed origin, durable retention, the complete live OpenHands dependency
+closure, SBOMs, signatures, provenance attestations, or release authorization.
 
 ## Installation policy
 

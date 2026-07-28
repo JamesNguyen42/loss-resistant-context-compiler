@@ -204,9 +204,11 @@ ordinary push or pull-request package lane.
       `--no-index --no-deps`.
 - [ ] A separate fresh sdist environment installs with no build isolation,
       using only the retained exact build-tool wheelhouse.
-- [ ] The build-tool wheelhouse itself comes from a reviewed, hash-pinned
-      offline closure. Current CI downloads exact versions online without
-      `--require-hashes`.
+- [ ] The exact seven-wheel package-build input set is recorded in a reviewed
+      hash-pinned lock. CI acquisition uses `--require-hashes`, then validates,
+      retains, and force-reinstalls those exact bytes into the dedicated builder
+      with `--no-index --no-deps`. This closes input byte identity, not signed
+      origin or durable retention.
 - [ ] Both clean environments disable user-site and inherited `PYTHONPATH`.
 - [ ] Both clean environments pass import isolation, ordinary doctor, retained
       live-blocker, console-entry-point, and packaged-resource checks.
@@ -300,10 +302,24 @@ Record each unresolved gate; do not delete this section when it is non-empty.
   raw SHA-256/self-hash are
   `9c8ef8530ffa37c6596d94070f75aaed95ab532af3fbf9737870bfa53b08c942`
   and `8ccf05ab81647db1d5030f79ee5e9f367318e923b539b9376cf3e015b04ff2c5`.
+  Exact package-input implementation head
+  `0f20b8a1c131fe3c0908f7d6738790529f42338c` then passed six package jobs plus
+  the aggregate in OpenHands push run `30366252700` and pull-request run
+  `30366258656`. Root CI push `30366251022` and pull-request CI `30366255412`
+  each passed 7/7 jobs; CodeQL `30366255532` and dependency review
+  `30366255341` passed. Its tracked 666-byte build lock has SHA-256
+  `243f3ab977d82c04968cf4ea6474b7ef79c060d485aa3a3d67a383d1ef6fbbfe`
+  and binds seven exact wheels. The 44,203-byte push report raw
+  SHA-256/self-hash are
+  `46e47ee4b6f3d1b7ce0fdcc5e41e5f812f2ee0d17005d0c77acd986198213acd`
+  and `62cd0a5a4ee351dc9fc2c3bd892a79db5394058e96a611c2a47946e0e42ec876`;
+  the same-size pull-request report raw SHA-256/self-hash are
+  `4fd96cb025bd557644e670a79c2ae6eeabb244099886d649ab755f7ffb6e8bda`
+  and `aba29437bf2ee4ba7d5876eea978bc1bf74cba321ebe047e5ff92acf80e69626`.
   The retained-evidence jobs were skipped/default-off, so the manual durable
-  retained-evidence gate remains pending. Both aggregate artifacts expire on
-  2026-08-11; build-input closure, live execution, SBOMs, signatures,
-  provenance attestations, and release authorization also remain open.
+  retained-evidence gate remains pending. Current aggregate artifacts expire on
+  2026-08-11; live execution, SBOMs, signatures, provenance attestations, and
+  release authorization also remain open.
 - Evidence verification and retention: the hash-intact 2026-07-27 scenario and
   soak pairs were not reverified under the strengthened report-to-database
   verifier. The separately verified campaign pair was not affected by that
@@ -345,9 +361,11 @@ Record each unresolved gate; do not delete this section when it is non-empty.
   did not close build-input, cross-platform equality, or release gates. The
   later `f9ba3de` aggregate closes only equality across its six recorded hosted
   package lanes.
-- Build-input closure: CI installs exact build-tool versions from the configured
-  index without reviewed hashes. A later `--no-index` artifact install does not
-  authenticate the online-acquired wheelhouse.
+- Build-input retention and origin: `0f20b8a` closes the exact tracked
+  seven-wheel byte set for its automatic lanes. Initial delivery still comes
+  from the configured index under `--require-hashes`; the temporary retained
+  copies and their hashes are not durable retention, publisher authentication,
+  signatures, or provenance attestations.
 - Supply-chain attestations: no candidate SBOM, artifact signature, or
   provenance attestation has been generated. Their absence is retained as a
   release red gate; checksums and self-hashes are substitution-detection

@@ -167,6 +167,25 @@ raw evidence when completing benchmark work.
   the Windows checkout-materialized counterpart was 222,718 bytes with SHA-256
   `f356ab0280f07ab3ac60a472cc80614bf273754b7fb8092b71a3298514431d9b`.
   Do not label the latter exact-commit/archive-byte evidence.
+- [x] Reconcile the optional provider at exact implementation head
+  `0f20b8a1c131fe3c0908f7d6738790529f42338c`, tree
+  `f04dcf9a0dbe58d91d87856b3a9d4fd6de0293ca`. Two exact Git archives
+  produced the same 222,688-byte wheel at
+  `bda1b1c50fea351eaf1241e62e8a1dde56de5dc4963d8d04a91e21e5eb7fa993`
+  with raw `RECORD` SHA-256
+  `485f77359cfc7f8def4c1b47f73e130784ca7beb17baff2ae270792a8726dfc1`.
+  The direct exact-a2 lane passed 22/22 with `inference_status: not_run`, and
+  the clean same-interpreter harness returned the direct `ContextBundle` with
+  manifest/payload digests
+  `d88ba3e2b98ca0f077b02ffb6696f3728ee24ad77972bedd16a229309052b42c`
+  and
+  `f83cc1d120e174189332f9f6131b3ac4878d95a740d938976cc20846142bdd45`.
+  Its ignored 1,058-byte witness at
+  `555495a9621798c962129beab1159aa4d573c31a173554738a8253c0b0ceca68`
+  is local project evidence, not a tracked, published, or durable artifact. The
+  first Windows build from the long synchronized workspace path failed while
+  creating a nested schema destination and produced no wheel; it remains a
+  failed attempt.
 - [x] Map connector SourceEvents into fresh immutable SourceRecords while
   preserving hashes, redaction/provenance metadata, and core role authority;
   default assistant/tool history to untrusted unless the host authenticates
@@ -805,7 +824,28 @@ evidence of sublinear compilation.
   and `8ccf05ab81647db1d5030f79ee5e9f367318e923b539b9376cf3e015b04ff2c5`.
   The Actions artifacts expire on 2026-08-11, so durable retained evidence,
   hash-pinned build inputs, live execution, SBOMs, signatures, provenance
-  attestations, and release authorization remain open.
+  attestations, and release authorization remained open at that checkpoint.
+- [x] Bind automatic package builds to one tracked seven-wheel input set.
+  Exact implementation head
+  `0f20b8a1c131fe3c0908f7d6738790529f42338c` uses a 666-byte
+  `requirements-build.lock` with SHA-256
+  `243f3ab977d82c04968cf4ea6474b7ef79c060d485aa3a3d67a383d1ef6fbbfe`.
+  Each lane acquires those exact universal wheels with `--require-hashes`,
+  validates and retains them, force-reinstalls them into a dedicated builder
+  without an index, and cross-binds the builder and clean-install reports.
+  OpenHands push `30366252700` and pull-request `30366258656` each passed six
+  package jobs plus the aggregate; retained evidence stayed skipped/default-off.
+  Root CI push `30366251022` and pull-request CI `30366255412` each passed 7/7;
+  CodeQL `30366255532` and dependency review `30366255341` passed. The
+  automatic lanes agreed on root wheel
+  `ec46f710169a95c21c54a28b941d2f5205104113c3e594fe6945ef68f633642f`,
+  integration wheel
+  `16976fa84cebb2b35f1cc15db89a41f016a3a8385498fd2335adbc28c85aacf0`,
+  and integration sdist
+  `bf51799df63019c3138368a2d6f9e8bc3ddd398163838669340764be36130957`.
+  This closes their build-input byte identity, not durable retention, signed
+  origin, the live OpenHands dependency closure, SBOMs, signatures, provenance
+  attestations, or release authorization.
 - [ ] Run and durably retain the manual/default-off retained-evidence job for a
   future candidate without replacing the historical attempts. Temporary local
   evidence is not durable retention.
