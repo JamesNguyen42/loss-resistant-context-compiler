@@ -63,9 +63,13 @@ def _run(
     return completed
 
 
-def _create_environment(root: Path, wheels: list[Path]) -> Path:
+def _create_empty_environment(root: Path) -> Path:
     venv.EnvBuilder(with_pip=True, clear=False).create(root)
-    python = _venv_python(root)
+    return _venv_python(root)
+
+
+def _create_environment(root: Path, wheels: list[Path]) -> Path:
+    python = _create_empty_environment(root)
     _run(
         [
             str(python),
@@ -80,6 +84,54 @@ def _create_environment(root: Path, wheels: list[Path]) -> Path:
         ]
     )
     return python
+
+
+def _transitive_without_archive_provenance_lane(
+    root: Path,
+    provider_wheel: Path,
+    contracts_wheel: Path,
+) -> None:
+    python = _create_empty_environment(root)
+    _run(
+        [
+            str(python),
+            "-I",
+            "-m",
+            "pip",
+            "install",
+            "--no-index",
+            "--no-compile",
+            "--find-links",
+            str(contracts_wheel.parent),
+            f"{provider_wheel}[unified]",
+        ]
+    )
+    script = r"""
+import importlib.metadata
+from pathlib import Path
+import sys
+
+from context_compiler.localai_contracts_adapter import (
+    LocalAIContractsAdapter,
+    LocalAIContractsUnavailableError,
+)
+
+distribution = importlib.metadata.distribution("localai-contracts")
+site_root = Path(distribution.locate_file(""))
+dist_info = site_root / "localai_contracts-0.2.0a2.dist-info"
+assert not (dist_info / "direct_url.json").exists()
+assert not (dist_info / "REQUESTED").exists()
+try:
+    LocalAIContractsAdapter()
+except LocalAIContractsUnavailableError as exc:
+    assert str(exc) == (
+        "localai-contracts 0.2.0a2 failed optional-adapter validation"
+    )
+else:
+    raise AssertionError("transitive install without archive provenance was accepted")
+assert "localai_contracts" not in sys.modules
+"""
+    _run([str(python), "-I", "-B", "-c", script])
 
 
 def _provider_only_lane(root: Path, provider_wheel: Path) -> None:
@@ -128,6 +180,59 @@ else:
     ).encode("utf-8")
     if completed.stderr != expected_stderr:
         raise RuntimeError("provider-only optional entry point changed its error")
+
+
+def _tampered_record_lane(root: Path, python: Path) -> None:
+    mutate = r"""
+import importlib.metadata
+from pathlib import Path
+
+distribution = importlib.metadata.distribution("localai-contracts")
+record = Path(distribution.locate_file(
+    "localai_contracts-0.2.0a2.dist-info/RECORD"
+))
+original = (
+    "localai_contracts/__init__.py,"
+    "sha256=ndvRkTKPdPZZ3kzNT2VBznQugtKHy19hdcAD5kUBYKk,6474"
+)
+replacement = (
+    "localai_contracts/__init__.py,"
+    "sha256=AdvRkTKPdPZZ3kzNT2VBznQugtKHy19hdcAD5kUBYKk,6474"
+)
+contents = record.read_text(encoding="ascii")
+assert contents.count(original) == 1
+record.write_text(
+    contents.replace(original, replacement),
+    encoding="ascii",
+    newline="",
+)
+"""
+    _run([str(python), "-I", "-B", "-c", mutate])
+    marker = root / "tampered-record-import-attempted"
+    reject = r"""
+from pathlib import Path
+import sys
+
+from context_compiler import localai_contracts_adapter as adapter
+
+real_import_module = adapter.importlib.import_module
+def forbidden_import(name):
+    Path(sys.argv[1]).write_text("import-attempted", encoding="utf-8")
+    return real_import_module(name)
+adapter.importlib.import_module = forbidden_import
+try:
+    adapter.LocalAIContractsAdapter()
+except adapter.LocalAIContractsUnavailableError as exc:
+    assert str(exc) == (
+        "localai-contracts 0.2.0a2 failed optional-adapter validation"
+    )
+else:
+    raise AssertionError("tampered installed RECORD was accepted")
+assert "localai_contracts" not in sys.modules
+"""
+    _run([str(python), "-I", "-B", "-c", reject, str(marker)])
+    if marker.exists():
+        raise RuntimeError("tampered installed RECORD reached package import")
 
 
 def _provider_and_contracts_lane(
@@ -275,6 +380,7 @@ sys.stdout.buffer.write(encoded_report + b"\n")
         != "connector_transport_conformance"
     ):
         raise RuntimeError("clean-installed Phase 0 conformance did not pass")
+    _tampered_record_lane(root, python)
     return (
         [
             str(python),
@@ -301,6 +407,11 @@ def main(argv: list[str] | None = None) -> int:
     with tempfile.TemporaryDirectory(prefix="ctxc-localai-contracts-install-") as raw:
         temporary = Path(raw)
         _provider_only_lane(temporary / "provider-only", provider_wheel)
+        _transitive_without_archive_provenance_lane(
+            temporary / "transitive-without-archive-provenance",
+            provider_wheel,
+            contracts_wheel,
+        )
         connector_argv, phase0_report = _provider_and_contracts_lane(
             temporary / "provider-and-contracts",
             provider_wheel,
@@ -312,6 +423,8 @@ def main(argv: list[str] | None = None) -> int:
         "provider_wheel_sha256": _sha256(provider_wheel),
         "contracts_wheel_sha256": contracts_sha256,
         "provider_only": "passed",
+        "transitive_without_archive_provenance": "rejected-as-expected",
+        "tampered_record_hash_field": "rejected-before-import",
         "phase0_passed_count": phase0_report["passed_count"],
         "phase0_failed_count": phase0_report["failed_count"],
         "phase0_observation_scope": phase0_report["observation_scope"],

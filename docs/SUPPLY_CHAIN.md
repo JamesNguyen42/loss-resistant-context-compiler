@@ -41,26 +41,41 @@ bytes, `Requires-Python >=3.11`, and no `Requires-Dist` entries. The installed
 package tree is independently bound to framed SHA-256
 `296f49a2d7b48158d2d3a33e36b77d5b5c495362cbe3aceaaf8975fb256e538c`.
 The workspace handoff copy is ignored and must not be committed or published.
+The optional `unified` extra does not by itself make the provider
+`contract_ready`: a transitive `--find-links` resolution can install identical
+package bytes without the PEP 610 direct-archive metadata needed to bind that
+installation to the reviewed wheel file. That lane is intentionally
+fail-closed. The supported conformance lane directly installs both the provider
+wheel and the independently hash-checked reviewed contracts wheel.
 
 The optional adapter does not rely on runtime version strings alone. Before it
 initiates package import or exposes a preloaded root, it requires one
 exact-version distribution, an unset `sys.pycache_prefix`, and exact built-in
 module/spec/source-loader state bound to the distribution's recorded package
 and initializer. It rejects loader instance overrides, non-string
-registry/namespace keys, links/reparse points, and unexpected tree entries,
-then verifies exact sizes plus a canonically framed SHA-256 over the reviewed
-installed source/resource files. Any package-local executable bytecode must
-equal fresh compilation of verified source; external cache prefixes fail
-closed. It repeats those checks after import and validates the returned module
-and loaded module paths. This proves only observed installed-tree agreement. It
-does not authenticate the wheel archive, make the check/import sequence atomic
+registry/namespace keys, links/reparse points, and unexpected tree entries. It
+requires every immutable wheel `RECORD` row exactly once with the reviewed
+path, URL-safe SHA-256, size, and installed bytes. The only accepted
+installer-generated rows are the exact pip marker, exact-wheel PEP 610
+direct-archive metadata, one platform-canonical launcher bound to the reviewed
+entry point, and an optional exact empty `REQUESTED` marker. Windows additionally
+binds the native prefix to the architecture-matched reviewed distlib 0.3.9
+console stub without consulting an ambient pip installation at runtime. An
+installer that emits another native stub is unsupported and fails closed. The
+adapter then verifies exact sizes plus a canonically framed SHA-256 over the
+reviewed installed source/resource files. Any package-local executable
+bytecode must equal fresh compilation of verified source; external cache
+prefixes fail closed. It repeats those checks after import and validates the
+returned module and loaded module paths. This proves only observed
+installed-tree and provenance-claim agreement. PEP 610 metadata does not
+independently authenticate the archive, make the check/import sequence atomic
 against a writable install, or undo `.pth`, `sitecustomize`, `meta_path`, or
 same-origin module-object effects already inside the process. Release evidence
-must independently re-hash the wheel before an offline two-lane
+must independently re-hash the wheel before a direct offline
 `--no-index --no-deps --no-compile` install, unset `PYTHONPYCACHEPREFIX`, and
 keep the environment non-writable by untrusted actors. The current local result
-is not a signature, independent source audit,
-vulnerability scan, or publication authorization.
+is not a signature, independent source audit, vulnerability scan, or
+publication authorization.
 
 The build and development extras currently use lower bounds and CI resolves
 compatible releases from the live package index. No cross-version, hash-pinned

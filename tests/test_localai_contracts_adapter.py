@@ -1,17 +1,24 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import importlib.metadata
 import importlib.util
 import io
+import json
 import marshal
+import os
 import shutil
+import stat
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+import context_compiler.localai_contracts_adapter as adapter_module
 from context_compiler import CompilationPolicy, ExactTokenCounterAdapter, LocalAIConnector
 from context_compiler.localai_contracts_adapter import (
     CONTEXT_COMPILE_OPERATION,
@@ -33,6 +40,56 @@ CONTRACTS_INSTALL_ROOT = Path(contracts.__file__).resolve().parent.parent
 VALIDATION_ERROR = (
     "localai-contracts 0.2.0a2 failed optional-adapter validation"
 )
+CONTRACTS_DIST_INFO = "localai_contracts-0.2.0a2.dist-info"
+EXPECTED_LAUNCHER_BODY = (
+    b"# -*- coding: utf-8 -*-\n"
+    b"import re\n"
+    b"import sys\n"
+    b"from localai_contracts.integration import main\n"
+    b"if __name__ == '__main__':\n"
+    b"    sys.argv[0] = re.sub(r'(-script\\.pyw|\\.exe)?$', '', sys.argv[0])\n"
+    b"    sys.exit(main())\n"
+)
+
+
+def _record_path(install_root: Path) -> Path:
+    return install_root / CONTRACTS_DIST_INFO / "RECORD"
+
+
+def _record_lines(install_root: Path) -> list[str]:
+    return _record_path(install_root).read_text(encoding="ascii").splitlines()
+
+
+def _write_record_lines(install_root: Path, lines: list[str]) -> None:
+    _record_path(install_root).write_text(
+        "\n".join(lines) + "\n",
+        encoding="ascii",
+        newline="\n",
+    )
+
+
+def _replace_record_row(
+    install_root: Path,
+    path: str,
+    replacement: str | None,
+) -> None:
+    lines = _record_lines(install_root)
+    matches = [index for index, line in enumerate(lines) if line.split(",", 1)[0] == path]
+    assert len(matches) == 1
+    index = matches[0]
+    if replacement is None:
+        del lines[index]
+    else:
+        lines[index] = replacement
+    _write_record_lines(install_root, lines)
+
+
+def _record_digest(contents: bytes) -> str:
+    return (
+        base64.urlsafe_b64encode(hashlib.sha256(contents).digest())
+        .rstrip(b"=")
+        .decode("ascii")
+    )
 
 
 def _run_isolated(script: str, *arguments: Path) -> subprocess.CompletedProcess[str]:
@@ -66,6 +123,21 @@ def _copy_contracts_install(destination: Path) -> None:
     )
     assert len(dist_infos) == 1
     shutil.copytree(dist_infos[0], destination / dist_infos[0].name)
+    launcher_name = "localai-integration.exe" if sys.platform == "win32" else "localai-integration"
+    launcher = Path(sys.executable).parent / launcher_name
+    canonical_launcher_row = os.path.relpath(launcher, destination).replace(os.sep, "/")
+    lines = _record_lines(destination)
+    launcher_matches = [
+        index
+        for index, line in enumerate(lines)
+        if line.split(",", 1)[0].replace("\\", "/").rsplit("/", 1)[-1]
+        == launcher_name
+    ]
+    assert len(launcher_matches) == 1
+    index = launcher_matches[0]
+    _old_path, hash_field, size_field = lines[index].split(",")
+    lines[index] = f"{canonical_launcher_row},{hash_field},{size_field}"
+    _write_record_lines(destination, lines)
 
 
 def _assert_install_rejected_before_marker(
@@ -73,15 +145,18 @@ def _assert_install_rejected_before_marker(
     marker: Path,
 ) -> None:
     script = f"""
+from pathlib import Path
 import sys
 sys.path[:0] = [sys.argv[1], sys.argv[2]]
-from context_compiler.localai_contracts_adapter import (
-    LocalAIContractsAdapter,
-    LocalAIContractsUnavailableError,
-)
+import context_compiler.localai_contracts_adapter as adapter
+real_import_module = adapter.importlib.import_module
+def forbidden_import(name):
+    Path(sys.argv[3]).write_text("import-attempted", encoding="utf-8")
+    return real_import_module(name)
+adapter.importlib.import_module = forbidden_import
 try:
-    LocalAIContractsAdapter()
-except LocalAIContractsUnavailableError as exc:
+    adapter.LocalAIContractsAdapter()
+except adapter.LocalAIContractsUnavailableError as exc:
     assert str(exc) == {VALIDATION_ERROR!r}
 else:
     raise AssertionError("invalid contracts install was accepted")
@@ -98,6 +173,219 @@ assert "localai_contracts" not in sys.modules
     assert completed.stdout == ""
     assert completed.stderr == ""
     assert not marker.exists()
+
+
+def _assert_install_accepted(install_root: Path) -> None:
+    script = """
+import sys
+sys.path[:0] = [sys.argv[1], sys.argv[2]]
+from context_compiler.localai_contracts_adapter import LocalAIContractsAdapter
+manifest = LocalAIContractsAdapter().get_manifest()
+assert manifest.supported_operations == ["context.compile"]
+"""
+    completed = _run_isolated(script, ROOT / "src", install_root)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == ""
+    assert completed.stderr == ""
+
+
+def test_posix_launcher_record_path_is_platform_canonical(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = tmp_path / "ctxc-venv"
+    monkeypatch.setattr(adapter_module.sys, "platform", "linux")
+    monkeypatch.setattr(
+        adapter_module.sys,
+        "executable",
+        str(environment / "bin" / "python"),
+    )
+    site_root = environment / "lib" / "python3.13" / "site-packages"
+
+    assert adapter_module._launcher_record_paths(site_root) == {
+        "../../../bin/localai-integration": environment / "bin" / "localai-integration"
+    }
+
+
+def test_posix_safe_shebang_launcher_is_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    executable = tmp_path / "ctxc venv" / "bin" / "python"
+    encoded = os.fsencode(str(executable))
+    monkeypatch.setattr(adapter_module.sys, "platform", "linux")
+    monkeypatch.setattr(adapter_module.sys, "executable", str(executable))
+    launcher = (
+        b"#!/bin/sh\n'''exec' \""
+        + encoded
+        + b'" "$0" "$@"\n'
+        + b"' '''\n"
+        + EXPECTED_LAUNCHER_BODY
+    )
+
+    adapter_module._validate_launcher_contents(launcher)
+
+
+def test_posix_launcher_uses_utf8_for_non_ascii_interpreter(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    executable = tmp_path / "ctxc-é" / "bin" / "python"
+    encoded = str(executable).encode("utf-8")
+    monkeypatch.setattr(adapter_module.sys, "platform", "linux")
+    monkeypatch.setattr(adapter_module.sys, "executable", str(executable))
+    monkeypatch.setattr(
+        adapter_module.os,
+        "fsencode",
+        lambda _value: pytest.fail("distlib launcher encoding used os.fsencode"),
+    )
+
+    adapter_module._validate_launcher_contents(
+        b"#!" + encoded + b"\n" + EXPECTED_LAUNCHER_BODY
+    )
+
+
+def test_posix_launcher_must_be_owner_executable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(adapter_module.sys, "platform", "linux")
+
+    adapter_module._validate_launcher_mode(stat.S_IFREG | stat.S_IRUSR | stat.S_IXUSR)
+    with pytest.raises(ValueError, match="owner-executable"):
+        adapter_module._validate_launcher_mode(stat.S_IFREG | stat.S_IRUSR)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows launcher regression")
+def test_cotampered_windows_launcher_and_record_are_rejected(
+    tmp_path: Path,
+) -> None:
+    install_root = tmp_path / "cotampered-launcher"
+    _copy_contracts_install(install_root)
+    fake_scripts = tmp_path / "fake-venv" / "Scripts"
+    fake_scripts.mkdir(parents=True)
+    fake_executable = fake_scripts / "python.exe"
+    launcher = fake_scripts / "localai-integration.exe"
+    real_launcher = Path(sys.executable).parent / "localai-integration.exe"
+    malicious = b"MALICIOUS-PREFIX" + real_launcher.read_bytes()
+    launcher.write_bytes(malicious)
+    old_launcher_row = next(
+        line
+        for line in _record_lines(install_root)
+        if line.split(",", 1)[0].rsplit("/", 1)[-1]
+        == "localai-integration.exe"
+    )
+    old_path = old_launcher_row.split(",", 1)[0]
+    new_path = os.path.relpath(launcher, install_root).replace(os.sep, "/")
+    _replace_record_row(
+        install_root,
+        old_path,
+        f"{new_path},sha256={_record_digest(malicious)},{len(malicious)}",
+    )
+    marker = tmp_path / "cotampered-launcher-imported"
+    script = f"""
+from pathlib import Path
+import sys
+sys.path[:0] = [sys.argv[1], sys.argv[2]]
+import context_compiler.localai_contracts_adapter as adapter
+adapter.sys.executable = sys.argv[3]
+real_import_module = adapter.importlib.import_module
+def forbidden_import(name):
+    Path(sys.argv[4]).write_text("import-attempted", encoding="utf-8")
+    return real_import_module(name)
+adapter.importlib.import_module = forbidden_import
+try:
+    adapter.LocalAIContractsAdapter()
+except adapter.LocalAIContractsUnavailableError as exc:
+    assert str(exc) == {VALIDATION_ERROR!r}
+else:
+    raise AssertionError("co-tampered native launcher was accepted")
+assert "localai_contracts" not in sys.modules
+"""
+    completed = _run_isolated(
+        script,
+        ROOT / "src",
+        install_root,
+        fake_executable,
+        marker,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == ""
+    assert completed.stderr == ""
+    assert not marker.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows launcher regression")
+def test_windows_launcher_rejects_other_architecture_stubs() -> None:
+    launcher = (
+        Path(sys.executable).parent / "localai-integration.exe"
+    ).read_bytes()
+    expected_size, _expected_digest = (
+        adapter_module._expected_windows_launcher_stub()
+    )
+    remainder = launcher[expected_size:]
+    distribution = importlib.metadata.distribution("pip")
+    candidates = (
+        distribution.locate_file("pip/_vendor/distlib/t32.exe"),
+        distribution.locate_file("pip/_vendor/distlib/t64.exe"),
+        distribution.locate_file("pip/_vendor/distlib/t64-arm.exe"),
+    )
+    wrong_stubs = [
+        Path(candidate).read_bytes()
+        for candidate in candidates
+        if len(Path(candidate).read_bytes()) != expected_size
+    ]
+    assert len(wrong_stubs) == 2
+
+    for stub in wrong_stubs:
+        with pytest.raises(ValueError, match="launcher is truncated|native stub mismatch"):
+            adapter_module._validate_launcher_contents(stub + remainder)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows launcher regression")
+@pytest.mark.parametrize(
+    ("maximum", "version", "resource"),
+    [
+        (2**31 - 1, "32 bit (Intel)", "pip/_vendor/distlib/t32.exe"),
+        (
+            2**63 - 1,
+            "64 bit (AMD64) on Windows ARM64",
+            "pip/_vendor/distlib/t64.exe",
+        ),
+        (2**63 - 1, "64 bit (ARM64)", "pip/_vendor/distlib/t64-arm.exe"),
+    ],
+)
+def test_windows_launcher_stub_constants_cover_supported_architectures(
+    monkeypatch: pytest.MonkeyPatch,
+    maximum: int,
+    version: str,
+    resource: str,
+) -> None:
+    distribution = importlib.metadata.distribution("pip")
+    stub = Path(distribution.locate_file(resource)).read_bytes()
+    monkeypatch.setattr(adapter_module.sys, "maxsize", maximum)
+    monkeypatch.setattr(adapter_module.sys, "version", version)
+
+    assert adapter_module._expected_windows_launcher_stub() == (
+        len(stub),
+        hashlib.sha256(stub).hexdigest(),
+    )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows launcher regression")
+def test_windows_launcher_rejects_global_zip_comment() -> None:
+    launcher = (
+        Path(sys.executable).parent / "localai-integration.exe"
+    ).read_bytes()
+    archive_offset = launcher.index(b"PK\x03\x04")
+    rebuilt = io.BytesIO()
+    with zipfile.ZipFile(rebuilt, mode="w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("__main__.py", EXPECTED_LAUNCHER_BODY)
+        archive.comment = b"unreviewed"
+
+    with pytest.raises(ValueError, match="archive shape mismatch"):
+        adapter_module._validate_launcher_contents(
+            launcher[:archive_offset] + rebuilt.getvalue()
+        )
 
 
 def _event(
@@ -261,6 +549,506 @@ def test_same_size_resource_mutation_is_rejected_before_import(
     fixture.write_bytes(contents)
 
     _assert_install_rejected_before_marker(tampered_root, marker)
+
+
+def test_record_hash_field_mutation_is_rejected_before_import(
+    tmp_path: Path,
+) -> None:
+    tampered_root = tmp_path / "tampered-record"
+    _copy_contracts_install(tampered_root)
+    marker = tmp_path / "tampered-record-imported"
+    initializer = tampered_root / "localai_contracts" / "__init__.py"
+    package_sha256 = hashlib.sha256(initializer.read_bytes()).hexdigest()
+    original = (
+        "localai_contracts/__init__.py,"
+        "sha256=ndvRkTKPdPZZ3kzNT2VBznQugtKHy19hdcAD5kUBYKk,6474"
+    )
+    mutated = original.replace("sha256=n", "sha256=A", 1)
+    assert original in _record_lines(tampered_root)
+    _replace_record_row(
+        tampered_root,
+        "localai_contracts/__init__.py",
+        mutated,
+    )
+
+    assert hashlib.sha256(initializer.read_bytes()).hexdigest() == package_sha256
+    assert initializer.stat().st_size == 6_474
+    _assert_install_rejected_before_marker(tampered_root, marker)
+
+
+def test_record_is_revalidated_after_package_import(tmp_path: Path) -> None:
+    install_root = tmp_path / "post-import-record"
+    _copy_contracts_install(install_root)
+    script = f"""
+from pathlib import Path
+import sys
+sys.path[:0] = [sys.argv[1], sys.argv[2]]
+import context_compiler.localai_contracts_adapter as adapter
+record = Path(sys.argv[3])
+real_import_module = adapter.importlib.import_module
+def import_then_tamper(name):
+    module = real_import_module(name)
+    contents = record.read_bytes()
+    old = b"localai_contracts/__init__.py,sha256=ndvR"
+    new = b"localai_contracts/__init__.py,sha256=AdvR"
+    assert contents.count(old) == 1
+    record.write_bytes(contents.replace(old, new, 1))
+    return module
+adapter.importlib.import_module = import_then_tamper
+try:
+    adapter.LocalAIContractsAdapter()
+except adapter.LocalAIContractsUnavailableError as exc:
+    assert str(exc) == {VALIDATION_ERROR!r}
+else:
+    raise AssertionError("post-import RECORD mutation was accepted")
+"""
+    completed = _run_isolated(
+        script,
+        ROOT / "src",
+        install_root,
+        _record_path(install_root),
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == ""
+    assert completed.stderr == ""
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing",
+        "duplicate",
+        "conflicting-duplicate",
+        "malformed-base64",
+        "missing-self-row",
+        "hashed-self-row",
+    ],
+)
+def test_invalid_immutable_record_inventory_is_rejected(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    install_root = tmp_path / f"immutable-{mutation}"
+    _copy_contracts_install(install_root)
+    marker = tmp_path / f"immutable-{mutation}-imported"
+    lines = _record_lines(install_root)
+    package_path = "localai_contracts/__init__.py"
+    package_line = next(
+        line for line in lines if line.split(",", 1)[0] == package_path
+    )
+    self_path = f"{CONTRACTS_DIST_INFO}/RECORD"
+    self_line = next(line for line in lines if line.split(",", 1)[0] == self_path)
+    if mutation == "missing":
+        lines.remove(package_line)
+    elif mutation == "duplicate":
+        lines.append(package_line)
+    elif mutation == "conflicting-duplicate":
+        lines.append(package_line.replace("sha256=n", "sha256=A", 1))
+    elif mutation == "malformed-base64":
+        index = lines.index(package_line)
+        lines[index] = package_line.replace("sha256=n", "sha256=!", 1)
+    elif mutation == "missing-self-row":
+        lines.remove(self_line)
+    else:
+        index = lines.index(self_line)
+        lines[index] = (
+            f"{self_path},"
+            "sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0"
+        )
+    _write_record_lines(install_root, lines)
+
+    _assert_install_rejected_before_marker(install_root, marker)
+
+
+def test_requested_marker_may_be_absent_when_archive_binding_remains(
+    tmp_path: Path,
+) -> None:
+    install_root = tmp_path / "requested-absent"
+    _copy_contracts_install(install_root)
+    requested = f"{CONTRACTS_DIST_INFO}/REQUESTED"
+    _replace_record_row(install_root, requested, None)
+    (install_root / CONTRACTS_DIST_INFO / "REQUESTED").unlink()
+
+    _assert_install_accepted(install_root)
+
+
+def test_unrecorded_requested_marker_is_rejected(tmp_path: Path) -> None:
+    install_root = tmp_path / "unrecorded-requested"
+    _copy_contracts_install(install_root)
+    marker = tmp_path / "unrecorded-requested-imported"
+    requested = f"{CONTRACTS_DIST_INFO}/REQUESTED"
+    _replace_record_row(install_root, requested, None)
+    assert (install_root / CONTRACTS_DIST_INFO / "REQUESTED").is_file()
+
+    _assert_install_rejected_before_marker(install_root, marker)
+
+
+def test_empty_requested_marker_is_accepted_for_direct_install(
+    tmp_path: Path,
+) -> None:
+    install_root = tmp_path / "direct-install"
+    _copy_contracts_install(install_root)
+    requested = install_root / CONTRACTS_DIST_INFO / "REQUESTED"
+    assert requested.read_bytes() == b""
+
+    _assert_install_accepted(install_root)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["duplicate", "nonempty", "partial-hash"],
+)
+def test_invalid_requested_marker_is_rejected(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    install_root = tmp_path / f"requested-{mutation}"
+    _copy_contracts_install(install_root)
+    marker = tmp_path / f"requested-{mutation}-imported"
+    requested_path = f"{CONTRACTS_DIST_INFO}/REQUESTED"
+    lines = _record_lines(install_root)
+    requested_line = next(
+        line for line in lines if line.split(",", 1)[0] == requested_path
+    )
+    if mutation == "duplicate":
+        lines.append(requested_line)
+        _write_record_lines(install_root, lines)
+    elif mutation == "partial-hash":
+        _replace_record_row(install_root, requested_path, f"{requested_path},,0")
+    else:
+        contents = b"x"
+        (install_root / CONTRACTS_DIST_INFO / "REQUESTED").write_bytes(contents)
+        _replace_record_row(
+            install_root,
+            requested_path,
+            f"{requested_path},sha256={_record_digest(contents)},{len(contents)}",
+        )
+
+    _assert_install_rejected_before_marker(install_root, marker)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "unexpected-extra",
+        "launcher-path",
+        "launcher-hash",
+        "launcher-size",
+        "installer-hash",
+        "direct-url-size",
+        "missing-installer",
+        "missing-direct-url",
+        "missing-launcher",
+    ],
+)
+def test_invalid_generated_record_row_is_rejected(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    install_root = tmp_path / f"generated-{mutation}"
+    _copy_contracts_install(install_root)
+    marker = tmp_path / f"generated-{mutation}-imported"
+    lines = _record_lines(install_root)
+    installer_path = f"{CONTRACTS_DIST_INFO}/INSTALLER"
+    direct_url_path = f"{CONTRACTS_DIST_INFO}/direct_url.json"
+    launcher_name = (
+        "localai-integration.exe" if sys.platform == "win32" else "localai-integration"
+    )
+    if mutation == "unexpected-extra":
+        lines.append(
+            f"{CONTRACTS_DIST_INFO}/UNEXPECTED,"
+            "sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0"
+        )
+    elif mutation == "launcher-path":
+        index = next(
+            index
+            for index, line in enumerate(lines)
+            if line.split(",", 1)[0].rsplit("/", 1)[-1] == launcher_name
+        )
+        _path, hash_field, size_field = lines[index].split(",")
+        lines[index] = f"../alternate/{launcher_name},{hash_field},{size_field}"
+    elif mutation in {"launcher-hash", "launcher-size"}:
+        index = next(
+            index
+            for index, line in enumerate(lines)
+            if line.split(",", 1)[0].rsplit("/", 1)[-1] == launcher_name
+        )
+        path, hash_field, size_field = lines[index].split(",")
+        if mutation == "launcher-hash":
+            prefix = "sha256="
+            assert hash_field.startswith(prefix)
+            first = hash_field[len(prefix)]
+            replacement = "A" if first != "A" else "B"
+            hash_field = prefix + replacement + hash_field[len(prefix) + 1 :]
+        else:
+            size_field = str(int(size_field) + 1)
+        lines[index] = f"{path},{hash_field},{size_field}"
+    elif mutation == "installer-hash":
+        path = installer_path
+        index = next(
+            index
+            for index, line in enumerate(lines)
+            if line.split(",", 1)[0] == path
+        )
+        recorded = lines[index]
+        prefix = f"{path},sha256="
+        assert recorded.startswith(prefix)
+        first = recorded[len(prefix)]
+        replacement = "A" if first != "A" else "B"
+        lines[index] = prefix + replacement + recorded[len(prefix) + 1 :]
+    elif mutation == "direct-url-size":
+        path = direct_url_path
+        index = next(
+            index
+            for index, line in enumerate(lines)
+            if line.split(",", 1)[0] == path
+        )
+        _path, hash_field, size_field = lines[index].split(",")
+        lines[index] = f"{path},{hash_field},{int(size_field) + 1}"
+    else:
+        if mutation == "missing-installer":
+            missing = installer_path
+        elif mutation == "missing-direct-url":
+            missing = direct_url_path
+        else:
+            missing = next(
+                line.split(",", 1)[0]
+                for line in lines
+                if line.split(",", 1)[0].rsplit("/", 1)[-1] == launcher_name
+            )
+        lines = [line for line in lines if line.split(",", 1)[0] != missing]
+    _write_record_lines(install_root, lines)
+
+    _assert_install_rejected_before_marker(install_root, marker)
+
+
+def test_installer_marker_must_be_exact_pip_lf(tmp_path: Path) -> None:
+    install_root = tmp_path / "installer-crlf"
+    _copy_contracts_install(install_root)
+    marker = tmp_path / "installer-crlf-imported"
+    relative = f"{CONTRACTS_DIST_INFO}/INSTALLER"
+    installer = install_root / CONTRACTS_DIST_INFO / "INSTALLER"
+    contents = b"pip\r\n"
+    installer.write_bytes(contents)
+    _replace_record_row(
+        install_root,
+        relative,
+        f"{relative},sha256={_record_digest(contents)},{len(contents)}",
+    )
+
+    _assert_install_rejected_before_marker(install_root, marker)
+
+
+def test_duplicate_generated_launcher_row_is_rejected(tmp_path: Path) -> None:
+    install_root = tmp_path / "duplicate-launcher"
+    _copy_contracts_install(install_root)
+    marker = tmp_path / "duplicate-launcher-imported"
+    lines = _record_lines(install_root)
+    launcher_name = (
+        "localai-integration.exe" if sys.platform == "win32" else "localai-integration"
+    )
+    launcher_line = next(
+        line
+        for line in lines
+        if line.split(",", 1)[0].rsplit("/", 1)[-1] == launcher_name
+    )
+    lines.append(launcher_line)
+    _write_record_lines(install_root, lines)
+
+    _assert_install_rejected_before_marker(install_root, marker)
+
+
+def test_noncanonical_quoted_record_path_is_rejected(tmp_path: Path) -> None:
+    install_root = tmp_path / "quoted-record"
+    _copy_contracts_install(install_root)
+    marker = tmp_path / "quoted-record-imported"
+    lines = _record_lines(install_root)
+    expected = "localai_contracts/__init__.py"
+    index = next(
+        index for index, line in enumerate(lines) if line.split(",", 1)[0] == expected
+    )
+    lines[index] = f'"{expected}",' + lines[index].split(",", 1)[1]
+    _write_record_lines(install_root, lines)
+
+    _assert_install_rejected_before_marker(install_root, marker)
+
+
+def test_mixed_record_line_endings_are_rejected(tmp_path: Path) -> None:
+    install_root = tmp_path / "mixed-record-line-endings"
+    _copy_contracts_install(install_root)
+    marker = tmp_path / "mixed-record-line-endings-imported"
+    record = _record_path(install_root)
+    contents = record.read_bytes()
+    assert b"\r\n" not in contents
+    record.write_bytes(contents.replace(b"\n", b"\r\n", 1))
+
+    _assert_install_rejected_before_marker(install_root, marker)
+
+
+def test_oversized_record_is_rejected_before_import(tmp_path: Path) -> None:
+    install_root = tmp_path / "oversized-record"
+    _copy_contracts_install(install_root)
+    marker = tmp_path / "oversized-record-imported"
+    _record_path(install_root).write_bytes(b"x" * (64 * 1024 + 1))
+
+    _assert_install_rejected_before_marker(install_root, marker)
+
+
+def test_direct_url_duplicate_key_is_rejected(tmp_path: Path) -> None:
+    install_root = tmp_path / "duplicate-direct-url-key"
+    _copy_contracts_install(install_root)
+    marker = tmp_path / "duplicate-direct-url-key-imported"
+    relative = f"{CONTRACTS_DIST_INFO}/direct_url.json"
+    direct_url = install_root / CONTRACTS_DIST_INFO / "direct_url.json"
+    original = direct_url.read_bytes()
+    assert original.endswith(b"}")
+    duplicate = (
+        original[:-1]
+        + b',"url":"file:///localai_contracts-0.2.0a2-py3-none-any.whl"}'
+    )
+    direct_url.write_bytes(duplicate)
+    _replace_record_row(
+        install_root,
+        relative,
+        f"{relative},sha256={_record_digest(duplicate)},{len(duplicate)}",
+    )
+
+    _assert_install_rejected_before_marker(install_root, marker)
+
+
+def test_direct_url_must_bind_the_reviewed_wheel_hash(tmp_path: Path) -> None:
+    install_root = tmp_path / "wrong-direct-url-hash"
+    _copy_contracts_install(install_root)
+    marker = tmp_path / "wrong-direct-url-hash-imported"
+    relative = f"{CONTRACTS_DIST_INFO}/direct_url.json"
+    direct_url = install_root / CONTRACTS_DIST_INFO / "direct_url.json"
+    original = direct_url.read_bytes()
+    expected = LOCALAI_CONTRACTS_WHEEL_SHA256.encode("ascii")
+    assert original.count(expected) >= 2
+    mutated = original.replace(expected, b"0" * 64, 2)
+    direct_url.write_bytes(mutated)
+    _replace_record_row(
+        install_root,
+        relative,
+        f"{relative},sha256={_record_digest(mutated)},{len(mutated)}",
+    )
+
+    _assert_install_rejected_before_marker(install_root, marker)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["relative", "uppercase-scheme", "invalid-escape", "lowercase-escape"],
+)
+def test_direct_url_path_must_be_canonical_and_absolute(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    install_root = tmp_path / f"direct-url-{mutation}"
+    _copy_contracts_install(install_root)
+    marker = tmp_path / f"direct-url-{mutation}-imported"
+    relative = f"{CONTRACTS_DIST_INFO}/direct_url.json"
+    direct_url = install_root / CONTRACTS_DIST_INFO / "direct_url.json"
+    document = json.loads(direct_url.read_text(encoding="utf-8"))
+    filename = "localai_contracts-0.2.0a2-py3-none-any.whl"
+    if mutation == "relative":
+        document["url"] = f"file:{filename}"
+    elif mutation == "uppercase-scheme":
+        document["url"] = f"FILE:///tmp/{filename}"
+    elif mutation == "invalid-escape":
+        document["url"] = f"file:///tmp/%ZZ/{filename}"
+    else:
+        document["url"] = f"file:///tmp/%6c{filename[1:]}"
+    contents = json.dumps(
+        document,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    direct_url.write_bytes(contents)
+    _replace_record_row(
+        install_root,
+        relative,
+        f"{relative},sha256={_record_digest(contents)},{len(contents)}",
+    )
+
+    _assert_install_rejected_before_marker(install_root, marker)
+
+
+def test_posix_direct_url_accepts_canonical_encoded_colon(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(adapter_module.sys, "platform", "linux")
+
+    assert adapter_module._decode_canonical_file_url_path(
+        "/tmp/archive%3Aset/localai_contracts-0.2.0a2-py3-none-any.whl"
+    ) == (
+        b"/tmp/archive:set/localai_contracts-0.2.0a2-py3-none-any.whl"
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/tmp//localai_contracts-0.2.0a2-py3-none-any.whl",
+        "/tmp\\localai_contracts-0.2.0a2-py3-none-any.whl",
+        "/tmp/%2Flocalai_contracts-0.2.0a2-py3-none-any.whl",
+    ],
+)
+def test_posix_direct_url_rejects_noncanonical_separator_forms(
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+) -> None:
+    monkeypatch.setattr(adapter_module.sys, "platform", "linux")
+
+    with pytest.raises(ValueError, match="direct URL"):
+        adapter_module._decode_canonical_file_url_path(path)
+
+
+def test_posix_direct_url_accepts_encoded_literal_backslash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(adapter_module.sys, "platform", "linux")
+
+    assert adapter_module._decode_canonical_file_url_path(
+        "/tmp%5Carchive/localai_contracts-0.2.0a2-py3-none-any.whl"
+    ) == (
+        b"/tmp\\archive/localai_contracts-0.2.0a2-py3-none-any.whl"
+    )
+
+
+def test_linked_installer_metadata_is_rejected_before_import(
+    tmp_path: Path,
+) -> None:
+    install_root = tmp_path / "linked-direct-url"
+    _copy_contracts_install(install_root)
+    marker = tmp_path / "linked-direct-url-imported"
+    direct_url = install_root / CONTRACTS_DIST_INFO / "direct_url.json"
+    target = tmp_path / "direct-url-target"
+    target.write_bytes(direct_url.read_bytes())
+    direct_url.unlink()
+    try:
+        direct_url.symlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"symlink creation is unavailable: {type(exc).__name__}")
+
+    _assert_install_rejected_before_marker(install_root, marker)
+
+
+def test_linked_record_is_rejected_before_import(tmp_path: Path) -> None:
+    install_root = tmp_path / "linked-record"
+    _copy_contracts_install(install_root)
+    marker = tmp_path / "linked-record-imported"
+    record = _record_path(install_root)
+    target = tmp_path / "record-target"
+    target.write_bytes(record.read_bytes())
+    record.unlink()
+    try:
+        record.symlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"symlink creation is unavailable: {type(exc).__name__}")
+
+    _assert_install_rejected_before_marker(install_root, marker)
 
 
 def test_linked_resource_is_rejected_before_import(tmp_path: Path) -> None:

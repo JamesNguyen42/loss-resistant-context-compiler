@@ -7,17 +7,23 @@ The legacy six-operation connector and its JSONL protocol remain separate.
 
 from __future__ import annotations
 
+import base64
+import csv
 import hashlib
 import importlib
 import importlib.machinery
 import importlib.metadata
 import importlib.util
+import io
+import json
 import marshal
 import os
 import stat
 import sys
 import threading
 import types
+import urllib.parse
+import zipfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
@@ -48,6 +54,16 @@ _CONTRACTS_INSTALLED_TREE_SHA256 = (
 )
 _MAX_CONTRACTS_TREE_ENTRIES = 256
 _MAX_CONTRACTS_BYTECODE_BYTES = 4 * 1024 * 1024
+_MAX_CONTRACTS_RECORD_BYTES = 64 * 1024
+_MAX_CONTRACTS_RECORD_ROWS = 128
+_MAX_CONTRACTS_INSTALLER_METADATA_BYTES = 1024 * 1024
+_MAX_CONTRACTS_LAUNCHER_BYTES = 4 * 1024 * 1024
+_CONTRACTS_DIST_INFO_DIRECTORY = "localai_contracts-0.2.0a2.dist-info"
+_CONTRACTS_RECORD_PATH = f"{_CONTRACTS_DIST_INFO_DIRECTORY}/RECORD"
+_CONTRACTS_WHEEL_RECORD_SHA256 = (
+    "a20ae81b7cc5dd9e80fc2757d5fea6331f2c232818049026caecf63d48d14076"
+)
+_CONTRACTS_WHEEL_RECORD_BYTES = 3_464
 _CONTRACTS_INSTALLED_FILES = (
     ("__init__.py", 6_474),
     ("_integration_bootstrap.py", 1_684),
@@ -79,6 +95,211 @@ _CONTRACTS_INSTALLED_FILES = (
     ("smoke.py", 80_032),
     ("validation.py", 10_997),
 )
+_CONTRACTS_WHEEL_RECORD_ROWS = (
+    (
+        "localai_contracts/__init__.py",
+        "ndvRkTKPdPZZ3kzNT2VBznQugtKHy19hdcAD5kUBYKk",
+        6_474,
+    ),
+    (
+        "localai_contracts/_integration_bootstrap.py",
+        "kKE07g2SS7n0_Zc7hWepa5NQuUU2abA3vTWKYnLrGR4",
+        1_684,
+    ),
+    (
+        "localai_contracts/canonical.py",
+        "zPT-kY5itDyfH4Q33JX9s6Oig72pdm3DpLapdBU5dTE",
+        8_389,
+    ),
+    (
+        "localai_contracts/conformance.py",
+        "XO74LTCJswCms-PJiwEPzkYtcB5DjnP1WA5AqwayCPY",
+        60_091,
+    ),
+    (
+        "localai_contracts/connector.py",
+        "eHRdkduze0J1bcZ9_ZYGlgjC4A39xSzfT_fu5W8PXEs",
+        40_852,
+    ),
+    (
+        "localai_contracts/errors.py",
+        "I0axR6ZTgk5wMlARG6HcbLw4Cj8EiVMGewSZcIsb0sg",
+        1_862,
+    ),
+    (
+        "localai_contracts/inference_lease.py",
+        "wRmWHtZWXQUEWHg51H9YwRwZynGbr1fO7uw6ecdjw5I",
+        92_469,
+    ),
+    (
+        "localai_contracts/integration.py",
+        "yLvoGoIzdxGK-5TaoUmUvfsdENiW0JHq0ClNXv42Cck",
+        141_988,
+    ),
+    (
+        "localai_contracts/models.py",
+        "4OVt_2hExL9xFFV689A_Z0Ovf6D6FKlcJZZ0JMT6-ew",
+        14_235,
+    ),
+    (
+        "localai_contracts/privacy.py",
+        "OoI06zXR__kC_aaTKfuQTrUyLOn9ArAzcdPGX1DV2RE",
+        2_139,
+    ),
+    (
+        "localai_contracts/profiles.py",
+        "jz6OZvgyUJqqyFfeQ2Z-jwfM3Y8J88rB1S6Um7dtc_g",
+        876,
+    ),
+    (
+        "localai_contracts/py.typed",
+        "bWew9mHgMy8LqMu7RuqQXFXLBxh2CRx0dUbSx-3wE48",
+        27,
+    ),
+    (
+        "localai_contracts/smoke.py",
+        "TuhsAUnXvOfuKNcC7FCuZ-F1hnA1FdbXy6jKhPrt0So",
+        80_032,
+    ),
+    (
+        "localai_contracts/validation.py",
+        "9Oo4r96Q2Z-lXLld_lG5gjgL0a7bEDMIdBzxZkLEv5A",
+        10_997,
+    ),
+    (
+        "localai_contracts/fixtures/phase0-conformance-v1.json",
+        "RYvddUSccCd9ISdh-E5uBKed3AELMUotCkeZgB7xcG0",
+        7_551,
+    ),
+    (
+        "localai_contracts/profiles/r9700-qwen3.6-q4.development.json",
+        "VRJscT-WKNrOi2edu2czvjUYB5yTxXvSJ-tTkOLPVlQ",
+        1_743,
+    ),
+    (
+        "localai_contracts/schemas/common.schema.json",
+        "osflOREnlyX8BRZp-VNXmgH6mSx62_BBTEc-uIk8nlQ",
+        2_817,
+    ),
+    (
+        "localai_contracts/schemas/component-capability-manifest.schema.json",
+        "7lF5odpEcYO1_Dl0h7kltDLISHAjF3UTOCMDFjw2VK4",
+        3_386,
+    ),
+    (
+        "localai_contracts/schemas/connector-request.schema.json",
+        "yGXyoZVVCicMzgmn8Fm1NhxpzVgaotsEVeDiODTYx2o",
+        1_030,
+    ),
+    (
+        "localai_contracts/schemas/connector-response.schema.json",
+        "p1oH8_c9PGrMnO_BxLnbfDLJ_2UxBMgqRKNz0aoS9_w",
+        1_198,
+    ),
+    (
+        "localai_contracts/schemas/context-bundle.schema.json",
+        "JlQEOwln8j4zav5kp1OuiLtYZ8yzitVjJ3k5825W31g",
+        4_248,
+    ),
+    (
+        "localai_contracts/schemas/deployment-plan.schema.json",
+        "IsnjppsUOYh7PiBQKKmgs5NuPaJrxtYxTxFfCtG2BxY",
+        3_452,
+    ),
+    (
+        "localai_contracts/schemas/error-envelope.schema.json",
+        "EjeHA8fbtm5jnfnx-D8fpgCMogQeltyKR5agV7MavF8",
+        224,
+    ),
+    (
+        "localai_contracts/schemas/generation-receipt.schema.json",
+        "MOdABUIHYOs2RWykB1A5GzV7Z_5QCc9DjaFTAThmi08",
+        2_385,
+    ),
+    (
+        "localai_contracts/schemas/identity-envelope.schema.json",
+        "XPgArZJIV_IXL2n6lGtGBQz9TKosaQp6fh5E3xralOo",
+        2_786,
+    ),
+    (
+        "localai_contracts/schemas/model-state-handle.schema.json",
+        "rtz3Yj6Lxa0veX0bnZ98VLfZo4r8J_k1spRSPVV8lLk",
+        2_221,
+    ),
+    (
+        "localai_contracts/schemas/runtime-control-plan.schema.json",
+        "rXOBCtXCWHTV2DmFyWmPxCXvkPr2NOksL8WenMalORg",
+        4_169,
+    ),
+    (
+        "localai_contracts/schemas/source-event.schema.json",
+        "uzYp4lj8J_FRYwdSHyIp1cARuBO7SU4H-qJDRdUfPC4",
+        996,
+    ),
+    (
+        "localai_contracts/schemas/telemetry-event.schema.json",
+        "7yRpo4b16z1iC5LyWoq6QL2HomllbEhCOZW0gw9I904",
+        2_935,
+    ),
+    (
+        f"{_CONTRACTS_DIST_INFO_DIRECTORY}/licenses/LICENSE",
+        "E2PP2MLZk9Llg9FVk0ePYWaereLGDD3muxHLn_poAdg",
+        1_087,
+    ),
+    (
+        f"{_CONTRACTS_DIST_INFO_DIRECTORY}/METADATA",
+        "4v6JgaC1aTj3yvn9MtmupDKsZRSzh3HW139X9I9T0Pw",
+        9_423,
+    ),
+    (
+        f"{_CONTRACTS_DIST_INFO_DIRECTORY}/WHEEL",
+        "K260EYznzXsJYBQGqmI8VTxEdiZYNvDZwW9cBh9-_MA",
+        91,
+    ),
+    (
+        f"{_CONTRACTS_DIST_INFO_DIRECTORY}/entry_points.txt",
+        "-E94CcVjaEnolzF-b-FNVHceQojzMKZ54AZwi9Lgxwg",
+        75,
+    ),
+    (
+        f"{_CONTRACTS_DIST_INFO_DIRECTORY}/top_level.txt",
+        "p4y1kQQLylo0sN-jWNceUd1_NfWmKpozGvPx5ayqCqk",
+        18,
+    ),
+    (_CONTRACTS_RECORD_PATH, None, None),
+)
+_CONTRACTS_WHEEL_FILENAME = "localai_contracts-0.2.0a2-py3-none-any.whl"
+_CONTRACTS_LAUNCHER_NAME = "localai-integration"
+_WINDOWS_DISTLIB_0_3_9_CONSOLE_STUBS = {
+    "win32": (
+        97_792,
+        "6b4195e640a85ac32eb6f9628822a622057df1e459df7c17a12f97aeabc9415b",
+    ),
+    "win-amd64": (
+        108_032,
+        "81a618f21cb87db9076134e70388b6e9cb7c2106739011b6a51772d22cae06b7",
+    ),
+    "win-arm64": (
+        182_784,
+        "ebc4c06b7d95e74e315419ee7e88e1d0f71e9e9477538c00a93a9ff8c66a6cfc",
+    ),
+}
+_CONTRACTS_LAUNCHER_BODY = (
+    b"# -*- coding: utf-8 -*-\n"
+    b"import re\n"
+    b"import sys\n"
+    b"from localai_contracts.integration import main\n"
+    b"if __name__ == '__main__':\n"
+    b"    sys.argv[0] = re.sub(r'(-script\\.pyw|\\.exe)?$', '', sys.argv[0])\n"
+    b"    sys.exit(main())\n"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _ContractsRecordRow:
+    path: str
+    digest: str | None
+    size: int | None
 
 
 class LocalAIContractsUnavailableError(RuntimeError):
@@ -248,6 +469,591 @@ def _read_bounded_regular_file(path: Path, *, maximum_size: int) -> bytes:
         return bytes(contents)
     finally:
         os.close(descriptor)
+
+
+def _validate_regular_directory(path: Path) -> None:
+    directory_stat = os.stat(path, follow_symlinks=False)
+    if (
+        not stat.S_ISDIR(directory_stat.st_mode)
+        or _is_link_or_reparse(directory_stat)
+    ):
+        raise ValueError("contracts directory identity mismatch")
+
+
+def _read_exact_regular_file(
+    path: Path,
+    *,
+    expected_size: int,
+    maximum_size: int,
+) -> bytes:
+    if (
+        type(expected_size) is not int
+        or expected_size < 0
+        or expected_size > maximum_size
+    ):
+        raise ValueError("contracts recorded file size is invalid")
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        before = os.stat(path, follow_symlinks=False)
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or _is_link_or_reparse(before)
+            or not stat.S_ISREG(opened.st_mode)
+            or before.st_dev != opened.st_dev
+            or before.st_ino != opened.st_ino
+            or before.st_size != expected_size
+            or opened.st_size != expected_size
+        ):
+            raise ValueError("contracts recorded file identity mismatch")
+        remaining = expected_size
+        contents = bytearray()
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 65_536))
+            if not chunk:
+                raise ValueError("contracts recorded file truncated")
+            contents.extend(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise ValueError("contracts recorded file exceeds expected size")
+        after = os.fstat(descriptor)
+        final_path = os.stat(path, follow_symlinks=False)
+        if (
+            after.st_dev != opened.st_dev
+            or after.st_ino != opened.st_ino
+            or after.st_size != opened.st_size
+            or final_path.st_dev != opened.st_dev
+            or final_path.st_ino != opened.st_ino
+            or final_path.st_size != opened.st_size
+            or _is_link_or_reparse(final_path)
+        ):
+            raise ValueError("contracts recorded file changed during validation")
+        return bytes(contents)
+    finally:
+        os.close(descriptor)
+
+
+def _urlsafe_sha256(value: bytes) -> str:
+    return (
+        base64.urlsafe_b64encode(hashlib.sha256(value).digest())
+        .rstrip(b"=")
+        .decode("ascii")
+    )
+
+
+def _validate_urlsafe_sha256(value: str) -> None:
+    if type(value) is not str or len(value) != 43:
+        raise ValueError("contracts RECORD digest is invalid")
+    try:
+        decoded = base64.b64decode(
+            (value + "=").encode("ascii"),
+            altchars=b"-_",
+            validate=True,
+        )
+    except (UnicodeEncodeError, ValueError):
+        raise ValueError("contracts RECORD digest is invalid") from None
+    canonical = base64.urlsafe_b64encode(decoded).rstrip(b"=").decode("ascii")
+    if len(decoded) != hashlib.sha256().digest_size or canonical != value:
+        raise ValueError("contracts RECORD digest is not canonical")
+
+
+def _expected_record_rows() -> dict[str, _ContractsRecordRow]:
+    rows: dict[str, _ContractsRecordRow] = {}
+    encoded = bytearray()
+    for path, digest, size in _CONTRACTS_WHEEL_RECORD_ROWS:
+        if path in rows:
+            raise ValueError("contracts expected RECORD contains a duplicate")
+        if digest is None:
+            if path != _CONTRACTS_RECORD_PATH or size is not None:
+                raise ValueError("contracts expected RECORD row is invalid")
+            hash_field = ""
+            size_field = ""
+        else:
+            _validate_urlsafe_sha256(digest)
+            if type(size) is not int or size < 0:
+                raise ValueError("contracts expected RECORD size is invalid")
+            hash_field = f"sha256={digest}"
+            size_field = str(size)
+        encoded.extend(f"{path},{hash_field},{size_field}\n".encode("ascii"))
+        rows[path] = _ContractsRecordRow(path, digest, size)
+    if (
+        len(rows) != 35
+        or len(encoded) != _CONTRACTS_WHEEL_RECORD_BYTES
+        or hashlib.sha256(encoded).hexdigest() != _CONTRACTS_WHEEL_RECORD_SHA256
+    ):
+        raise ValueError("contracts expected RECORD manifest mismatch")
+    return rows
+
+
+def _parse_record_size(value: str) -> int | None:
+    if value == "":
+        return None
+    if len(value) > 20 or (
+        value != "0"
+        and (not value or value[0] == "0" or not value.isdecimal())
+    ):
+        raise ValueError("contracts RECORD size is invalid")
+    if value == "0":
+        return 0
+    if not value.isascii():
+        raise ValueError("contracts RECORD size is invalid")
+    return int(value)
+
+
+def _parse_record_hash(value: str) -> str | None:
+    if value == "":
+        return None
+    prefix = "sha256="
+    if not value.startswith(prefix):
+        raise ValueError("contracts RECORD hash algorithm mismatch")
+    digest = value.removeprefix(prefix)
+    _validate_urlsafe_sha256(digest)
+    return digest
+
+
+def _validate_record_path(path: str) -> None:
+    if (
+        type(path) is not str
+        or not path
+        or len(path) > 512
+        or not path.isascii()
+        or path.startswith("/")
+        or path.endswith("/")
+        or "\\" in path
+        or ":" in path
+        or any(part in {"", "."} for part in path.split("/"))
+        or any(
+            not (character.isalnum() or character in "._/-")
+            for character in path
+        )
+    ):
+        raise ValueError("contracts RECORD path is invalid")
+
+
+def _parse_contracts_record(contents: bytes) -> dict[str, _ContractsRecordRow]:
+    try:
+        text = contents.decode("ascii")
+    except UnicodeDecodeError:
+        raise ValueError("contracts RECORD is not ASCII") from None
+    rows: dict[str, _ContractsRecordRow] = {}
+    normalized = contents.replace(b"\r\n", b"\n")
+    physical_rows = normalized.split(b"\n")
+    line_feed_count = contents.count(b"\n")
+    crlf_count = contents.count(b"\r\n")
+    if (
+        b"\r" in normalized
+        or b'"' in normalized
+        or crlf_count not in {0, line_feed_count}
+        or not normalized.endswith(b"\n")
+        or physical_rows[-1] != b""
+        or any(row.count(b",") != 2 for row in physical_rows[:-1])
+    ):
+        raise ValueError("contracts RECORD framing is not canonical")
+    try:
+        reader = csv.reader(io.StringIO(text, newline=""), strict=True)
+        for fields in reader:
+            if len(rows) >= _MAX_CONTRACTS_RECORD_ROWS:
+                raise ValueError("contracts RECORD row limit exceeded")
+            if len(fields) != 3:
+                raise ValueError("contracts RECORD row shape is invalid")
+            path, hash_field, size_field = fields
+            _validate_record_path(path)
+            digest = _parse_record_hash(hash_field)
+            size = _parse_record_size(size_field)
+            if (digest is None) != (size is None):
+                raise ValueError("contracts RECORD hash and size are incomplete")
+            if path in rows:
+                raise ValueError("contracts RECORD contains a duplicate path")
+            rows[path] = _ContractsRecordRow(path, digest, size)
+    except csv.Error:
+        raise ValueError("contracts RECORD CSV is invalid") from None
+    if not rows:
+        raise ValueError("contracts RECORD is empty")
+    return rows
+
+
+def _validate_recorded_contents(
+    path: Path,
+    row: _ContractsRecordRow,
+    *,
+    maximum_size: int,
+) -> bytes:
+    if row.digest is None or row.size is None:
+        raise ValueError("contracts recorded file lacks integrity fields")
+    contents = _read_exact_regular_file(
+        path,
+        expected_size=row.size,
+        maximum_size=maximum_size,
+    )
+    if _urlsafe_sha256(contents) != row.digest:
+        raise ValueError("contracts recorded file digest mismatch")
+    return contents
+
+
+def _validate_relative_parent_directories(site_root: Path, relative: str) -> None:
+    current = site_root
+    for part in relative.split("/")[:-1]:
+        if part == "..":
+            raise ValueError("contracts recorded path escapes installation root")
+        current /= part
+        _validate_regular_directory(current)
+
+
+def _read_and_validate_contracts_record(
+    distribution: Any,
+) -> tuple[Path, dict[str, _ContractsRecordRow]]:
+    site_root = Path(distribution.locate_file(""))
+    if not site_root.is_absolute():
+        raise ValueError("contracts distribution root is not absolute")
+    _validate_regular_directory(site_root)
+    dist_info = site_root / _CONTRACTS_DIST_INFO_DIRECTORY
+    _validate_regular_directory(dist_info)
+    record_path = dist_info / "RECORD"
+    located_record = Path(distribution.locate_file(_CONTRACTS_RECORD_PATH))
+    if not located_record.is_absolute() or not _same_file(located_record, record_path):
+        raise ValueError("contracts RECORD origin mismatch")
+    contents = _read_bounded_regular_file(
+        record_path,
+        maximum_size=_MAX_CONTRACTS_RECORD_BYTES,
+    )
+    observed = _parse_contracts_record(contents)
+    expected = _expected_record_rows()
+    for path, expected_row in expected.items():
+        if observed.get(path) != expected_row:
+            raise ValueError("contracts immutable RECORD row mismatch")
+
+    for path, expected_row in expected.items():
+        if (
+            not path.startswith(f"{_CONTRACTS_DIST_INFO_DIRECTORY}/")
+            or path == _CONTRACTS_RECORD_PATH
+        ):
+            continue
+        _validate_relative_parent_directories(site_root, path)
+        _validate_recorded_contents(
+            site_root.joinpath(*path.split("/")),
+            expected_row,
+            maximum_size=_MAX_CONTRACTS_INSTALLER_METADATA_BYTES,
+        )
+    return site_root, observed
+
+
+def _record_path_for(site_root: Path, path: Path) -> str:
+    try:
+        relative = os.path.relpath(path, site_root)
+    except ValueError:
+        raise ValueError("contracts generated path is on another volume") from None
+    return relative.replace(os.sep, "/")
+
+
+def _launcher_record_paths(site_root: Path) -> dict[str, Path]:
+    executable = Path(sys.executable)
+    scripts_directory = executable.parent
+    expected_directory_name = "Scripts" if sys.platform == "win32" else "bin"
+    if (
+        not executable.is_absolute()
+        or scripts_directory.name != expected_directory_name
+    ):
+        raise ValueError("contracts scripts directory is not absolute")
+    suffix = ".exe" if sys.platform == "win32" else ""
+    launcher = scripts_directory / f"{_CONTRACTS_LAUNCHER_NAME}{suffix}"
+    return {_record_path_for(site_root, launcher): launcher}
+
+
+def _normalized_launcher_body(value: bytes) -> bytes:
+    normalized = value.replace(b"\r\n", b"\n")
+    if b"\r" in normalized:
+        raise ValueError("contracts launcher line endings are invalid")
+    return normalized
+
+
+def _expected_windows_launcher_stub() -> tuple[int, str]:
+    if sys.maxsize == 2**31 - 1:
+        identity = "win32"
+    elif sys.maxsize == 2**63 - 1:
+        identity = (
+            "win-arm64"
+            if "(arm64)" in sys.version.casefold()
+            else "win-amd64"
+        )
+    else:
+        raise ValueError("contracts launcher architecture is unsupported")
+    return _WINDOWS_DISTLIB_0_3_9_CONSOLE_STUBS[identity]
+
+
+def _validated_windows_launcher_stub(contents: bytes) -> bytes:
+    size, expected_sha256 = _expected_windows_launcher_stub()
+    if len(contents) <= size:
+        raise ValueError("contracts launcher is truncated")
+    stub = contents[:size]
+    if hashlib.sha256(stub).hexdigest() != expected_sha256:
+        raise ValueError("contracts launcher native stub mismatch")
+    return stub
+
+
+def _canonical_launcher_shebang(executable: bytes, *, safe: bool) -> bytes:
+    quoted = executable
+    if b" " in quoted and not quoted.startswith(b'"'):
+        quoted = b'"' + quoted + b'"'
+    if safe:
+        return (
+            b"#!/bin/sh\n'''exec' "
+            + quoted
+            + b' "$0" "$@"\n'
+            + b"' '''\n"
+        )
+    return b"#!" + quoted + b"\n"
+
+
+def _launcher_executable_bytes() -> bytes:
+    try:
+        return sys.executable.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError("contracts launcher interpreter path is not UTF-8") from None
+
+
+def _split_posix_launcher(contents: bytes) -> bytes:
+    executable = _launcher_executable_bytes()
+    simple = _canonical_launcher_shebang(executable, safe=False)
+    maximum = 512 if sys.platform == "darwin" else 127
+    interpreter_state = _validated_namespace(vars(sys))
+    safe_required = (
+        b" " in executable
+        or len(simple) > maximum
+        or interpreter_state.get("cross_compiling") is True
+    )
+    expected = _canonical_launcher_shebang(executable, safe=safe_required)
+    if not contents.startswith(expected):
+        raise ValueError("contracts launcher shebang is invalid")
+    return contents[len(expected) :]
+
+
+def _validate_launcher_contents(contents: bytes) -> None:
+    if sys.platform == "win32":
+        stub = _validated_windows_launcher_stub(contents)
+        remainder = contents[len(stub) :]
+        shebang, separator, archive_bytes = remainder.partition(b"\n")
+        executable = _launcher_executable_bytes()
+        expected_shebang = _canonical_launcher_shebang(
+            executable,
+            safe=False,
+        ).removesuffix(b"\n")
+        if not separator or shebang != expected_shebang:
+            raise ValueError("contracts launcher interpreter mismatch")
+        try:
+            with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+                members = archive.infolist()
+                if (
+                    archive.comment
+                    or len(members) != 1
+                    or members[0].filename != "__main__.py"
+                ):
+                    raise ValueError("contracts launcher archive shape mismatch")
+                info = members[0]
+                if (
+                    info.is_dir()
+                    or info.flag_bits & 0x1
+                    or info.header_offset != 0
+                    or info.compress_type != zipfile.ZIP_STORED
+                    or info.extra
+                    or info.comment
+                    or info.file_size > 16 * 1024
+                ):
+                    raise ValueError("contracts launcher payload is invalid")
+                payload = archive.read(info)
+        except (OSError, RuntimeError, zipfile.BadZipFile, zipfile.LargeZipFile):
+            raise ValueError("contracts launcher archive is invalid") from None
+        end_record = archive_bytes.rfind(b"PK\x05\x06")
+        if (
+            not archive_bytes.startswith(b"PK\x03\x04")
+            or end_record < 0
+            or len(archive_bytes) < end_record + 22
+        ):
+            raise ValueError("contracts launcher archive framing mismatch")
+        comment_size = int.from_bytes(
+            archive_bytes[end_record + 20 : end_record + 22],
+            "little",
+        )
+        if comment_size != 0 or end_record + 22 != len(archive_bytes):
+            raise ValueError("contracts launcher archive has trailing bytes")
+    else:
+        payload = _split_posix_launcher(contents)
+    if _normalized_launcher_body(payload) != _CONTRACTS_LAUNCHER_BODY:
+        raise ValueError("contracts launcher entry point mismatch")
+
+
+def _validate_launcher_mode(mode: int) -> None:
+    if sys.platform != "win32" and mode & stat.S_IXUSR == 0:
+        raise ValueError("contracts launcher is not owner-executable")
+
+
+def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if type(key) is not str or key in value:
+            raise ValueError("contracts direct URL contains a duplicate key")
+        value[key] = item
+    return value
+
+
+def _reject_json_constant(_value: str) -> None:
+    raise ValueError("contracts direct URL contains a nonstandard constant")
+
+
+def _decode_canonical_file_url_path(path: str) -> bytes:
+    if not path.startswith("/") or path.startswith("//"):
+        raise ValueError("contracts direct URL path is not absolute")
+    index = 0
+    while index < len(path):
+        if path[index] != "%":
+            index += 1
+            continue
+        escape = path[index + 1 : index + 3]
+        if len(escape) != 2 or any(
+            character not in "0123456789ABCDEF" for character in escape
+        ):
+            raise ValueError("contracts direct URL escape is not canonical")
+        index += 3
+    decoded = urllib.parse.unquote_to_bytes(path)
+    safe = "/:" if sys.platform == "win32" else "/"
+    if urllib.parse.quote_from_bytes(decoded, safe=safe) != path:
+        raise ValueError("contracts direct URL path encoding is not canonical")
+    parts = decoded.split(b"/")
+    if (
+        b"\x00" in decoded
+        or not parts[-1]
+        or any(part in {b"", b".", b".."} for part in parts[1:-1])
+        or (sys.platform == "win32" and b"\\" in decoded)
+    ):
+        raise ValueError("contracts direct URL path is invalid")
+    if sys.platform == "win32":
+        if (
+            len(decoded) < 4
+            or decoded[0:1] != b"/"
+            or decoded[1:2] not in b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            or decoded[2:4] != b":/"
+            or b":" in decoded[3:]
+        ):
+            raise ValueError("contracts direct URL is not an absolute drive path")
+    return decoded
+
+
+def _validate_direct_url(contents: bytes) -> None:
+    try:
+        document = json.loads(
+            contents.decode("utf-8"),
+            object_pairs_hook=_strict_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        raise ValueError("contracts direct URL metadata is invalid") from None
+    if type(document) is not dict or sorted(document) != ["archive_info", "url"]:
+        raise ValueError("contracts direct URL shape mismatch")
+    archive_info = document["archive_info"]
+    if (
+        type(archive_info) is not dict
+        or sorted(archive_info) != ["hash", "hashes"]
+        or archive_info.get("hash")
+        != f"sha256={LOCALAI_CONTRACTS_WHEEL_SHA256}"
+    ):
+        raise ValueError("contracts direct URL archive identity mismatch")
+    hashes = archive_info.get("hashes")
+    if (
+        type(hashes) is not dict
+        or hashes != {"sha256": LOCALAI_CONTRACTS_WHEEL_SHA256}
+    ):
+        raise ValueError("contracts direct URL hash set mismatch")
+    url = document["url"]
+    if (
+        type(url) is not str
+        or not url.startswith("file:///")
+        or len(url) > 4_096
+    ):
+        raise ValueError("contracts direct URL is invalid")
+    parsed = urllib.parse.urlsplit(url)
+    if (
+        parsed.scheme != "file"
+        or parsed.netloc != ""
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("contracts direct URL is not a local archive")
+    decoded_path = _decode_canonical_file_url_path(parsed.path)
+    if (
+        decoded_path.rsplit(b"/", 1)[-1]
+        != _CONTRACTS_WHEEL_FILENAME.encode("ascii")
+    ):
+        raise ValueError("contracts direct URL archive filename mismatch")
+
+
+def _validate_installer_extras(
+    site_root: Path,
+    observed: dict[str, _ContractsRecordRow],
+) -> None:
+    expected_paths = {path for path, _digest, _size in _CONTRACTS_WHEEL_RECORD_ROWS}
+    extras = {path: row for path, row in observed.items() if path not in expected_paths}
+    installer_path = f"{_CONTRACTS_DIST_INFO_DIRECTORY}/INSTALLER"
+    requested_path = f"{_CONTRACTS_DIST_INFO_DIRECTORY}/REQUESTED"
+    direct_url_path = f"{_CONTRACTS_DIST_INFO_DIRECTORY}/direct_url.json"
+    if installer_path not in extras or direct_url_path not in extras:
+        raise ValueError("contracts required installer metadata is absent")
+
+    launcher_paths = _launcher_record_paths(site_root)
+    present_launchers = set(extras).intersection(launcher_paths)
+    if len(present_launchers) != 1:
+        raise ValueError("contracts launcher inventory mismatch")
+    allowed = {installer_path, direct_url_path, *present_launchers}
+    if requested_path in extras:
+        allowed.add(requested_path)
+    if set(extras) != allowed:
+        raise ValueError("contracts RECORD contains an unrecognized extra row")
+
+    for metadata_path in (installer_path, direct_url_path):
+        _validate_relative_parent_directories(site_root, metadata_path)
+    installer = _validate_recorded_contents(
+        site_root.joinpath(*installer_path.split("/")),
+        extras[installer_path],
+        maximum_size=_MAX_CONTRACTS_INSTALLER_METADATA_BYTES,
+    )
+    if installer != b"pip\n":
+        raise ValueError("contracts installer marker mismatch")
+    direct_url = _validate_recorded_contents(
+        site_root.joinpath(*direct_url_path.split("/")),
+        extras[direct_url_path],
+        maximum_size=_MAX_CONTRACTS_INSTALLER_METADATA_BYTES,
+    )
+    _validate_direct_url(direct_url)
+
+    if requested_path in extras:
+        _validate_relative_parent_directories(site_root, requested_path)
+        requested = _validate_recorded_contents(
+            site_root.joinpath(*requested_path.split("/")),
+            extras[requested_path],
+            maximum_size=_MAX_CONTRACTS_INSTALLER_METADATA_BYTES,
+        )
+        if requested != b"":
+            raise ValueError("contracts REQUESTED marker is not empty")
+    else:
+        requested_file = site_root.joinpath(*requested_path.split("/"))
+        try:
+            os.stat(requested_file, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError("unrecorded contracts REQUESTED marker is present")
+
+    launcher_record = present_launchers.pop()
+    launcher_path = launcher_paths[launcher_record]
+    _validate_regular_directory(launcher_path.parent)
+    launcher_contents = _validate_recorded_contents(
+        launcher_path,
+        extras[launcher_record],
+        maximum_size=_MAX_CONTRACTS_LAUNCHER_BYTES,
+    )
+    launcher_stat = os.stat(launcher_path, follow_symlinks=False)
+    _validate_launcher_mode(launcher_stat.st_mode)
+    _validate_launcher_contents(launcher_contents)
 
 
 def _validate_bytecode_cache(
@@ -458,6 +1264,7 @@ def _preflight_contracts_origin() -> _ContractsOrigin:
         if len(distributions) != 1:
             raise ValueError("contracts distribution is absent or ambiguous")
         distribution = distributions[0]
+        site_root, record_rows = _read_and_validate_contracts_record(distribution)
         distribution_name = distribution.metadata.get("Name")
         if (
             not isinstance(distribution_name, str)
@@ -466,28 +1273,9 @@ def _preflight_contracts_origin() -> _ContractsOrigin:
         ):
             raise ValueError("contracts distribution identity mismatch")
 
-        recorded_files = distribution.files
-        if recorded_files is None:
-            raise ValueError("contracts distribution has no file inventory")
-        by_name: dict[str, list[Any]] = {}
-        for recorded in recorded_files:
-            by_name.setdefault(recorded.as_posix(), []).append(recorded)
-        expected_paths = {
-            f"{_CONTRACTS_IMPORT_NAME}/{relative}"
-            for relative, _size in _CONTRACTS_INSTALLED_FILES
-        }
-        if any(len(by_name.get(path, ())) != 1 for path in expected_paths):
-            raise ValueError("contracts distribution inventory mismatch")
-
-        initializer_record = by_name[f"{_CONTRACTS_IMPORT_NAME}/__init__.py"][0]
-        initializer = Path(distribution.locate_file(initializer_record))
+        initializer = site_root / _CONTRACTS_IMPORT_NAME / "__init__.py"
         package_directory = initializer.parent
-        directory_stat = os.stat(package_directory, follow_symlinks=False)
-        if (
-            not stat.S_ISDIR(directory_stat.st_mode)
-            or _is_link_or_reparse(directory_stat)
-        ):
-            raise ValueError("contracts package is not a directory")
+        _validate_regular_directory(package_directory)
 
         spec = importlib.util.find_spec(_CONTRACTS_IMPORT_NAME)
         if type(spec) is not importlib.machinery.ModuleSpec:
@@ -523,6 +1311,8 @@ def _preflight_contracts_origin() -> _ContractsOrigin:
             or not import_package_directory.is_absolute()
         ):
             raise ValueError("contracts import spec paths are not absolute")
+        if not _same_file(import_package_directory.parent, site_root):
+            raise ValueError("contracts package root does not match distribution")
         origin = _ContractsOrigin(
             package_directory=import_package_directory,
             initializer=import_initializer,
@@ -531,17 +1321,21 @@ def _preflight_contracts_origin() -> _ContractsOrigin:
         tree_digest = hashlib.sha256()
         verified_sources: dict[str, bytes] = {}
         for relative, expected_size in _CONTRACTS_INSTALLED_FILES:
-            recorded = by_name[f"{_CONTRACTS_IMPORT_NAME}/{relative}"][0]
-            located = Path(distribution.locate_file(recorded))
+            record_path = f"{_CONTRACTS_IMPORT_NAME}/{relative}"
+            recorded = record_rows[record_path]
             expected = origin.package_directory.joinpath(*relative.split("/"))
-            if not _same_file(located, expected):
-                raise ValueError("contracts distribution file origin mismatch")
             contents = _hash_expected_regular_file(
                 expected,
                 relative=relative,
                 expected_size=expected_size,
                 tree_digest=tree_digest,
             )
+            if (
+                recorded.digest is None
+                or recorded.size != expected_size
+                or _urlsafe_sha256(contents) != recorded.digest
+            ):
+                raise ValueError("contracts package file RECORD mismatch")
             if relative.endswith(".py"):
                 verified_sources[relative] = contents
         if tree_digest.hexdigest() != _CONTRACTS_INSTALLED_TREE_SHA256:
@@ -555,6 +1349,7 @@ def _preflight_contracts_origin() -> _ContractsOrigin:
                 ),
                 optimize=optimize,
             )
+        _validate_installer_extras(site_root, record_rows)
         _validate_loaded_modules(origin)
         return origin
     except Exception:

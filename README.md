@@ -748,10 +748,13 @@ chain is reported as `io` / `unsafe_path_boundary`.
 boundary over the private CtxC connector. The ordinary `context_compiler`
 import, Python API, and `ctxc` command do not import or require
 `localai-contracts`; required core dependencies remain empty. The `unified`
-extra pins the optional distribution version but does not authenticate wheel
-bytes. To use the reviewed identity, independently verify the exact wheel hash
-below, then install it with the provider wheel using
-`--no-index --no-deps --no-compile`.
+extra pins the optional distribution version, but installing that extra alone
+does not establish `contract_ready`. In particular, a transitive
+`provider.whl[unified] --find-links <directory>` install lacks the direct
+archive provenance required by this boundary and fails closed. To use the
+reviewed identity, independently verify the exact wheel hash below, then
+directly install that reviewed contracts wheel together with the provider
+wheel using `--no-index --no-deps --no-compile`.
 
 Adapter construction does not execute the first matching package and then
 inspect version strings. Before the adapter initiates an optional-package
@@ -760,21 +763,30 @@ requires exactly one reviewed-version distribution, an unset
 `sys.pycache_prefix`, and exact built-in module/spec/source-loader state bound to
 the recorded package. It rejects loader instance overrides, non-string
 namespace/module-registry keys, links/reparse points, unexpected tree entries,
-and file-set drift. Exact sizes plus a canonically framed SHA-256 bind the
-reviewed installed source/resource tree. Any package-local executable bytecode
-cache must match fresh compilation of those verified source bytes; external
-bytecode-cache prefixes fail closed. The complete file/origin gate is repeated
-after import, and the returned module must be the validated `sys.modules` root.
+and file-set drift. It requires the exact 35 immutable wheel `RECORD` rows,
+including their URL-safe SHA-256 values and sizes, plus the closed pip-generated
+set: an exact installer marker, exact-wheel PEP 610 direct-archive metadata, and
+one platform-canonical launcher whose bytes resolve the reviewed entry point.
+On Windows, that launcher must use the architecture-matched reviewed distlib
+0.3.9 console stub; another installer stub fails closed without making pip a
+runtime dependency. The empty `REQUESTED` marker is optional but exact when
+present. Exact sizes plus a canonically framed SHA-256 also bind the reviewed
+installed source/resource tree. Any package-local executable bytecode cache
+must match fresh compilation of those verified source bytes; external
+bytecode-cache prefixes fail closed. The complete `RECORD`, file, and origin
+gate is repeated after import, and the returned module must be the validated
+`sys.modules` root.
 
-These checks establish agreement for the installed tree at the observed
-checks. They do not authenticate the wheel archive, make check-and-import
-atomic against writable site-packages, or undo code that already ran through
-`.pth`, `sitecustomize`, a custom `meta_path`, or a preloaded module. A custom
-finder can run while Python resolves the preflight spec. A same-origin module
-object forged inside a compromised process remains outside this boundary.
-Independently hash the reviewed wheel before installation, unset
-`PYTHONPYCACHEPREFIX`, and use a clean environment that is not writable by
-untrusted actors while the connector runs.
+These checks establish agreement for the installed tree and its direct-archive
+claim at the observed checks. The PEP 610 claim does not independently
+authenticate the wheel bytes: they must still be hashed before installation.
+The checks also do not make check-and-import atomic against writable
+site-packages or undo code that already ran through `.pth`, `sitecustomize`, a
+custom `meta_path`, or a preloaded module. A custom finder can run while Python
+resolves the preflight spec. A same-origin module object forged inside a
+compromised process remains outside this boundary. Independently hash the
+reviewed wheel before installation, unset `PYTHONPYCACHEPREFIX`, and use a clean
+environment that is not writable by untrusted actors while the connector runs.
 
 The reviewed compatibility identity is:
 
