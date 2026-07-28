@@ -60,9 +60,16 @@ compromise, and arbitrary code execution remain outside this boundary.
 A scenario, soak, or crash-campaign JSON self-hash is not attestation.
 `verify-evidence` can pass only when it also reconciles the exact retained
 SQLite database; JSON-only scope is deliberately a failure. Evidence reports
-do not self-attest process isolation and retain false network-isolation fields.
-Preserve external runtime controls, every failed run, and each bound
-JSON/SQLite pair. See the
+and database-file hashes are still insufficient unless applicable report
+claims agree with database rows. Scenario and soak verification binds the
+ordered session, generation lineage, activation, source-count/head, bundle,
+semantic, and report-specific claims. Reports do not self-attest process
+isolation and retain false network-isolation fields. The 2026-07-27 scenario
+and soak pairs predate the strengthened row binding and remain hash-intact
+historical evidence with incomplete verifier proof. The campaign uses a
+separate verifier and was not affected by that finding, but remains historical
+temporary evidence rather than durable current-head proof. Preserve external
+runtime controls, every failed run, and each bound JSON/SQLite pair. See the
 [OpenHands runbook](integrations/openhands/docs/RUNBOOK.md).
 
 ## Boundaries that are not vulnerabilities by themselves

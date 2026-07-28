@@ -78,15 +78,19 @@ commit:
    contracts-wheel identity, 22-case non-inference conformance, provider-only
    installation, provider-plus-contracts subprocess handshake/compile round
    trip, and pre/post import validation of one exact-version distribution,
-   exact built-in module/spec/source-loader origin and state, an unset external
-   bytecode-cache prefix, exact bounded link-free installed source/resource
-   tree, unexpected importable entries, and package-local executable bytecode
-   against verified source. The archive hash remains an independent gate.
-   Clean lanes use `--no-index --no-deps --no-compile`; the shared module-form
-   child uses the harness interpreter exactly with
-   `PYTHONDONTWRITEBYTECODE=1`, followed by a provider/contracts package
-   no-`.pyc` check. The clean environment must unset `PYTHONPYCACHEPREFIX` and
-   remain non-writable by untrusted actors;
+   all 35 immutable `RECORD` rows plus the closed installer-generated set,
+   exact-wheel PEP 610 direct-archive metadata, exact built-in
+   module/spec/source-loader origin and state, an unset external bytecode-cache
+   prefix, exact bounded link-free installed source/resource tree, absence of
+   unexpected importable entries, and package-local executable bytecode against
+   verified source. The archive hash remains an independent gate.
+   All clean lanes use `--no-index --no-compile`. Provider-only and direct
+   provider-plus-contracts lanes also use `--no-deps`; the provenance-negative
+   transitive lane resolves only from its local `--find-links` directory and
+   must fail closed. The shared module-form child uses the harness interpreter
+   exactly with `PYTHONDONTWRITEBYTECODE=1`, followed by a provider/contracts
+   package no-`.pyc` check. The clean environment must unset
+   `PYTHONPYCACHEPREFIX` and remain non-writable by untrusted actors;
 8. frozen benchmark, protocol, and model-diagnostic replay without new model
    calls, with failed external runs retained as failures;
 9. the fixed performance gate;

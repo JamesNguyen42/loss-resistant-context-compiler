@@ -56,9 +56,15 @@ a production PyPI upload, or a broader product/evidence claim.
   regular single-link archives; retain any link or replacement rejection.
 - [ ] Confirm the installed core has no third-party runtime requirement.
 - [ ] If the `unified` extra is in the candidate, verify the reviewed
-  `localai-contracts==0.2.0a2` wheel SHA-256, source commit, exact 35-member
+  `localai-contracts==0.2.0a2` wheel SHA-256, source commit, exact 35-row
   `RECORD`, packaged MIT license bytes, zero-dependency metadata, and
   protocol/schema `1.0.0`.
+- [ ] Require all 35 immutable wheel `RECORD` rows exactly once: 34 hashed rows
+  with reviewed path, URL-safe SHA-256, size, and installed bytes, plus the
+  `RECORD` self-row with canonical empty hash/size fields. Require exact
+  `INSTALLER`, exact-wheel PEP 610 `direct_url.json`, and one
+  platform-canonical launcher. Permit an optional exact empty `REQUESTED`
+  marker and reject every other installer-generated row.
 - [ ] Before the adapter initiates optional-package import or exposes a
   preloaded root, require one unambiguous distribution, an unset
   `sys.pycache_prefix`, exact built-in module/spec/source-loader state bound to
@@ -75,16 +81,19 @@ a production PyPI upload, or a broader product/evidence claim.
   `passed_count: 22` and `inference_status: not_run`; do not substitute model
   execution or a synthetic response.
 - [ ] Run `scripts/validate_localai_contracts_install.py` against the candidate
-  provider wheel and exact contracts wheel. Require distinct provider-only and
-  provider-plus-contracts environments. The second must launch
+  provider wheel and exact contracts wheel. Require three distinct
+  environments: provider-only; transitive `provider[unified]` without direct
+  PEP 610 archive metadata, which must fail closed; and direct
+  provider-plus-contracts. The supported direct lane must launch
   `[clean-environment sys.executable, "-m",
   "context_compiler.localai_contracts_connector"]` (literal argv tail
   `-m context_compiler.localai_contracts_connector`) for a real
   handshake/compile NDJSON round trip and repeat the 22-case non-inference gate.
-  Install with `--no-index --no-deps --no-compile`; keep argv-level `-B` out of
-  the shared connector command, set `PYTHONDONTWRITEBYTECODE=1` in its
-  environment, and require the post-round-trip provider/contracts package
-  no-`.pyc` verifier.
+  All lanes use `--no-index --no-compile`. Provider-only and direct lanes also
+  use `--no-deps`; the transitive lane resolves only from its local
+  `--find-links` directory. Keep argv-level `-B` out of the shared connector
+  command, set `PYTHONDONTWRITEBYTECODE=1` in its environment, and require the
+  post-round-trip provider/contracts package no-`.pyc` verifier.
 - [ ] Provide a reviewed hash-pinned offline wheelhouse and exact requirements
   file for sdist build tools. Run `scripts/release_install_smoke.py` with both
   `--build-wheelhouse <directory>` and

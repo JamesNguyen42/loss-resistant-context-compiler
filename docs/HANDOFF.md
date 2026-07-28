@@ -35,7 +35,7 @@ live-readiness status.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | Core ordinary: 1,516 collected (1,495 passed, 21 skipped), plus 105 subtests; exact optional adapter: 55 collected (54 passed, 1 Windows symlink skip), plus 8 provider-only standalone tests; integration: 461 collected (456 passed, 5 skipped) |
+| Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; no local inference |
 | Canonical optional boundary | `localai-contracts==0.2.0a2`, protocol/schema `1.0.0`; `context.compile` only; non-inference |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
@@ -484,16 +484,22 @@ reviewed version and protocol. Before initiating optional-package import or
 exposing a preloaded root, the adapter requires one unambiguous distribution,
 an unset `sys.pycache_prefix`, exact built-in module/spec/source-loader state
 bound to the recorded package/initializer, an exact bounded link-free installed
-file set, and the reviewed source/resource tree digest. Loader instance
-overrides and non-string registry/namespace keys fail closed without invoking
-their hooks. Package-local executable bytecode must match compilation of
-verified source; external cache prefixes are refused. The gate repeats after
-import and binds the returned module object and every loaded contract-module
-path. Its fixed path-free failure does not imply wheel-archive authentication,
-an atomic import transaction, or containment of writable site-packages, code
-already run by startup/custom-finder/preload hooks, or arbitrary same-origin
-module forgery in a compromised process. The root API and ordinary `ctxc`
-behavior remain standalone.
+file set, and the reviewed source/resource tree digest. All 35 immutable wheel
+`RECORD` rows must appear exactly once: 34 hashed rows with exact URL-safe
+hashes, sizes, and installed bytes, plus the `RECORD` self-row with canonical
+empty hash/size fields. Required installer rows are the exact pip marker,
+exact-wheel PEP 610 archive metadata, and one platform-canonical launcher. An
+exact empty `REQUESTED` marker is optional; every other generated row fails
+closed. Loader instance overrides and
+non-string registry/namespace keys fail closed without invoking their hooks.
+Package-local executable bytecode must match compilation of verified source;
+external cache prefixes are refused. The complete `RECORD`, file, and origin
+gate repeats after import and binds the returned module object and every loaded
+contract-module path. Its fixed path-free failure does not imply independent
+wheel-archive authentication, an atomic import transaction, or containment of
+writable site-packages, code already run by startup/custom-finder/preload
+hooks, or arbitrary same-origin module forgery in a compromised process. The
+root API and ordinary `ctxc` behavior remain standalone.
 Custom token accounting requires both a callback and a stable
 `token_counter_id`. Artifact verification must receive the identical callback
 and id or fail with `unverifiable_token_counter`.
@@ -592,8 +598,11 @@ self-hashed, and bound to a checkpointed SQLite SHA-256 and byte length.
 `json-and-database` scope; omitting `--database` intentionally reports
 `passed: false`, scope `json-only`, and exits 2. Producers require absent
 WAL/SHM sidecars after the truncating checkpoint, and verification reconciles
-the retained source, generation, integrity, and request-ledger state before
-rehashing the original database. Preserve the JSON and SQLite file together.
+retained source/generation/integrity state and request ledgers before rehashing
+the original database. Scenario and soak verification additionally requires
+the exact one-session inventory, ordered generation lineage and activation
+transitions, and report-specific counts and digests. Preserve the JSON and
+SQLite file together.
 
 The report records only the producing subcommand argument vector (or an honest
 empty vector for a library call) and its parameters; it does not attest the
@@ -606,8 +615,8 @@ unless externally isolated. External enforcement such as
 to claim isolation.
 
 One post-freeze local candidate set completed at exclusive paths on 2026-07-27.
-Every producer and fresh database-backed verifier exited 0, stderr was empty,
-no WAL/SHM sidecar remained, and every report retained both
+Every producer and its then-current database-backed verifier exited 0, stderr
+was empty, no WAL/SHM sidecar remained, and every report retained both
 `network_isolation_enforced: false` and
 `semantic_completeness_claimed: false`:
 
@@ -637,11 +646,19 @@ no WAL/SHM sidecar remained, and every report retained both
   over 7,163,904 bytes, and verifier self-hash
   `485f555fefe9d53f133bea23695c1ccce2a60ddacfbe25169722d49ee67b60bd`.
 
-This candidate set remains local temporary evidence, not durable hosted
-retention. The hosted evidence artifact and six OS/Python package lanes remain
-pending. Three earlier failed campaign roots and the first failed clean-install
-root remain preserved under ignored `.artifacts` paths and were not deleted,
-overwritten, or relabeled. Also consult the
+Independent review subsequently proved that the historical scenario/soak
+verifier did not bind those report claims to the ordered generation rows in
+SQLite. Those two listed pairs remain hash-intact historical evidence, but
+they have not been rerun, rewritten, or reverified under the strengthened
+verifier; their current proof is incomplete. The campaign remains a separately
+verified historical pair and was not affected by the ordered-generation
+finding, but it was not rerun in this review cycle and is not durably hosted.
+New non-overwriting scenario/soak evidence under the strengthened verifier,
+campaign evidence under its applicable verifier, and durable hosted retention
+remain red gates. Three earlier failed campaign roots and the first failed
+clean-install root remain preserved under ignored
+`.artifacts` paths and were not deleted, overwritten, or relabeled. Also
+consult the
 [offline container demo](../integrations/openhands/demo/README.md),
 [compatibility policy](../integrations/openhands/compatibility/README.md), and
 [draft upstream hook RFC](../integrations/openhands/docs/UPSTREAM_RFC.md) for
@@ -751,19 +768,22 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- An exact copy of all 285 tracked working files outside the synchronized
-  workspace passed the ordinary provider-only suite: 1,516 collected,
-  1,495 passed, 21 platform/optional checks skipped on Windows, and 105 subtests
-  passed. The optional adapter module's single provider-only skip is the
-  intentionally absent contracts wheel. A path check confirmed imports came
-  from that exact tracked-file copy; no private copy path is retained here.
-- The separate immutable-a2 adapter lane collected 55 tests: 54 passed and one
-  local Windows symlink-privilege regression skipped. It covers origin/tree
-  binding, shadow/preload/substitution rejection, exact bytecode validation,
-  canonical roles, bounded serialization, authority separation, direct
-  ContextBundle shape, deterministic projection, binary I/O failures,
-  oversize drain/fatal behavior, and in-process/NDJSON equivalence. Eight
-  distinct provider-only standalone tests also passed.
+- At pipe-cleanup checkpoint `94c35cda`, the complete ordinary root suite passed
+  under `-W error`: 1,598 passed, 23 platform/optional checks skipped on
+  Windows, and 105 subtests passed. Root `testpaths` is `tests`, so this run did
+  not select the manual `retained_evidence` OpenHands campaign.
+- At ledger-I/O checkpoint `cded7e96`, all 29 warning-strict evidence tests
+  passed. Injected `sqlite3.OperationalError` and `OSError` failures during
+  final-request ledger replay return one structured red verification instead
+  of escaping.
+- At adapter checkpoint `da664387`, the separate immutable-a2 adapter lane
+  collected 106 tests: 103 passed and three local Windows symlink-privilege
+  regressions skipped. It covers exact installed `RECORD`, origin/tree binding,
+  shadow/preload/substitution rejection, exact bytecode validation, canonical
+  roles, bounded serialization, authority separation, direct ContextBundle
+  shape, deterministic projection, binary I/O failures, oversize drain/fatal
+  behavior, and in-process/NDJSON equivalence. Eleven distinct
+  provider-only/packaging tests also passed.
 - `assert_phase0_conformant` reported `passed_count: 22`, `failed_count: 0`,
   `inference_status: not_run`, and
   `observation_scope: connector_transport_conformance`.
@@ -783,20 +803,23 @@ audited. Any selected superseded item independently fails verification as
   passed its then-current conformance gate but is revoked as final evidence
   after central transport framing and I/O defects. No current acceptance claim
   relies on it.
-- The final local checkout-materialized provider candidate is 215,278 bytes
+- The canonical LF `git archive` provider wheel for adapter checkpoint
+  `da664387` is 222,661 bytes with SHA-256
+  `4366b4da11f85643be8f1a639dce1df495165a0c6af70f297579345e0465572d`.
+  The Windows checkout-materialized counterpart is 222,718 bytes with SHA-256
+  `f356ab0280f07ab3ac60a472cc80614bf273754b7fb8092b71a3298514431d9b`.
+  The latter is not exact-commit/source-archive-byte evidence; neither artifact
+  is tracked or published.
+- An earlier pre-RECORD-gate local checkpoint produced an 885,292-byte sdist
   with SHA-256
-  `ee36885fa45c6ba763732fdc222634b38bad4352257ab4d66040344766d1a62b`.
-  It is clean-install evidence for this dirty checkout, not exact
-  Git-commit/archive-byte evidence and not a tracked or published artifact.
-- The matching local sdist is 885,292 bytes with SHA-256
   `08140acb63e31083efdc41eb1b4274e423c12d8e9c1ea55ebe737d478d636ab4`.
   An offline `--no-index --no-deps --no-build-isolation` wheel build from that
   sdist reproduced the direct wheel byte-for-byte at
   `ee36885fa45c6ba763732fdc222634b38bad4352257ab4d66040344766d1a62b`;
-  that identical wheel passed the clean-install lane. This uses the already
-  reviewed local build environment and is not a hash-pinned clean build-tool
-  closure; the cross-platform offline build wheelhouse remains a red release
-  gate.
+  that historical identical wheel passed its then-current clean-install lane.
+  It is not current a2 RECORD-gate evidence. The build used the already
+  reviewed local environment and is not a hash-pinned clean build-tool closure;
+  the cross-platform offline build wheelhouse remains a red release gate.
 - Historical f590 provider provenance remains distinct: a Windows
   checkout-materialized wheel was 209,860 bytes with SHA-256
   `0d46899e8cf4c8eddf051137a9cae0a6036aa73da24b228d5ee52cc67a42e80b`,
@@ -805,8 +828,11 @@ audited. Any selected superseded item independently fails verification as
   with SHA-256
   `9965d16b888f17fd1624da7606db975fb7d74b82fe0f730bee1a18837b154db7`.
   Neither historical hash is presented as current a2 provider evidence.
-- The final offline a2 run passed distinct provider-only and
-  provider-plus-exact-contracts `--no-compile` lanes. The latter launched
+- The final offline a2 validator produced the required outcomes in three
+  `--no-compile` lanes: provider-only passed; a transitive provider-extra-only
+  install lacked exact-wheel `direct_url.json` provenance and failed closed;
+  and direct provider-plus-exact-contracts passed. The supported direct lane
+  launched
   `[clean-environment sys.executable, "-m",
   "context_compiler.localai_contracts_connector"]`; literal argv tail:
   `-m context_compiler.localai_contracts_connector`. It used
@@ -1276,16 +1302,22 @@ lower quantile before results are observed.
   ordinary matrix mistakenly selected the mission-size campaign. The focused
   follow-up marks that exact test `retained_evidence`, proves it is excluded
   from ordinary lanes, qualifies an unlinked `RUNNER_TEMP` descendant, and
-  leaves the fail-closed path guard unchanged. Replacement push run
-  `30307262723` and pull-request run `30307266578` both completed successfully;
-  all 12 ordinary Linux, Windows, and macOS Python 3.12/3.13 package jobs
-  passed.
+  leaves the fail-closed path guard unchanged. Frozen checkpoint
+  `4213410efb5c4e857819de3e831260ed2cd9f59a` then passed all 12 ordinary
+  Linux, Windows, and macOS Python 3.12/3.13 package jobs in push run
+  `30323957135` and pull-request run `30323958753`.
+- Those green jobs do not qualify the later RECORD, report-to-database, pipe,
+  ledger-I/O, and documentation review commits. Fresh hosted automatic lanes
+  are required before the current branch head is cross-platform qualified.
 - The hosted retained-evidence job is manual/default-off and has not run for
   this candidate. Local validation is not cross-platform release
   qualification.
-- The passing post-freeze scenario, soak, and campaign currently exist only in
-  a temporary local evidence root. They are not durably retained until the
-  hosted artifact upload succeeds.
+- The post-freeze scenario and soak are hash-intact historical local artifacts,
+  but their earlier verifier did not bind report claims to ordered database
+  generations. They are not reverified under the strengthened verifier. The
+  campaign remains a separately verified historical pair and was not affected
+  by that finding. None of the three is durably retained or current-head
+  release evidence.
 - The reviewed OpenHands distributions are not available as a complete local
   hash-pinned offline dependency closure. Real offline import and live
   execution remain blocked.

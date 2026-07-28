@@ -225,13 +225,15 @@ failed one. The [operator runbook](docs/RUNBOOK.md) records the exact canonical
 bounds, checkpoint/hash binding, command-argument scope, and filesystem
 assumptions.
 
-The 2026-07-27 post-freeze local candidate scenario, 10,000-event/
-100-compaction soak, and 1,024-schedule campaign each exited 0 and passed a
-fresh database-backed verifier against its exact checkpointed SQLite file.
-The campaign observed all 1,024 injected faults with zero failed schedules and
-six passing abrupt-process cases. These files remain temporary local evidence
-until the hosted retained-evidence artifact succeeds; this is not a live
-OpenHands or cross-platform release result.
+The 2026-07-27 scenario and 10,000-event/100-compaction soak are hash-intact
+historical artifacts that passed the then-current verifier. Independent review
+later found that verifier did not bind their ordered generation claims to
+database rows. Those pairs were not modified or relabeled and have not been
+reverified under the strengthened verifier. The 1,024-schedule campaign remains
+a separately verified historical pair; the ordered-generation finding did not
+apply to its verifier. It was not rerun in this review cycle. All three remain
+temporary rather than live, cross-platform, durable, or current-head release
+evidence.
 
 The mission-size pytest case is marked `retained_evidence` and is excluded from
 the automatic package matrix. Each ordinary lane proves that exact selection,
@@ -239,11 +241,16 @@ uses a path-guard-qualified descendant of `RUNNER_TEMP`, and keeps the bounded
 crash primitives. The 10,000/100 soak and 1,024-schedule campaign run only in
 the manual/default-off retained-evidence job.
 
-Candidate wheels repeated byte-identically, but the raw Setuptools sdists did
-not because generated gzip/member timestamps varied. Clean wheel/sdist
-installation passed at separate paths, but the build-tool wheelhouse was
-acquired online without a reviewed hash-pinned closure. Both limitations remain
-release red gates.
+Frozen checkpoint `4213410efb5c4e857819de3e831260ed2cd9f59a` passed all
+12 automatic Linux, Windows, and macOS Python 3.12/3.13 package jobs in push run
+`30323957135` and pull-request run `30323958753`. Later review commits require
+fresh hosted lanes, and the manual retained-evidence job remains pending.
+
+The 2026-07-27 candidate wheels repeated byte-identically, but the raw
+Setuptools sdists did not because generated gzip/member timestamps varied.
+Clean wheel/sdist installation passed at separate paths, but the build-tool
+wheelhouse was acquired online without a reviewed hash-pinned closure. Both
+limitations remain release red gates.
 
 ## Installation policy
 

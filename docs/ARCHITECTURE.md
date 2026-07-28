@@ -118,16 +118,26 @@ construction requires one exact-version distribution, an unset
 `sys.pycache_prefix`, and exact built-in module/spec/source-loader state bound
 to the distribution's recorded package and initializer. It rejects loader
 instance overrides, non-string namespace/module-registry keys, linked/reparse
-and unexpected package-tree entries, then checks exact sizes and a canonically
-framed SHA-256 over every reviewed source/resource file. Package-local
-executable bytecode is accepted only when its payload equals fresh compilation
-of verified source; external cache prefixes fail closed. After import the
-adapter repeats the file/origin gate, validates all loaded contract-module
-paths and loaders, and requires the returned object to be the validated
-`sys.modules` root. This is installed-environment checking, not an import
-sandbox or FD-pinned transaction. Writable-site-packages races, code already
-run by startup/custom-finder/preload hooks, and arbitrary same-origin object
-forgery in a compromised process remain host boundaries.
+and unexpected package-tree entries. All 35 immutable wheel `RECORD` rows must
+appear exactly once: 34 hashed rows with reviewed paths, URL-safe SHA-256
+values, sizes, and installed bytes, plus the `RECORD` self-row with canonical
+empty hash/size fields. Required generated rows are an exact pip marker,
+exact-wheel PEP 610 direct-archive document, and one platform-canonical
+launcher. An exact empty `REQUESTED` marker is optional; every other generated
+row fails closed. The adapter then checks exact sizes and a canonically framed
+SHA-256 over every reviewed source/resource file. Package-local executable
+bytecode is accepted only when its payload equals fresh compilation of verified
+source; external cache prefixes fail closed. After import the adapter repeats
+the complete `RECORD`, file, bytecode, and origin gate, validates all loaded
+contract-module paths and loaders, and requires the returned object to be the
+validated `sys.modules` root. This is installed-environment checking, not an
+import sandbox or FD-pinned transaction. The supported lane independently
+hashes and directly installs the reviewed wheel; transitive optional-extra
+resolution without PEP 610 archive binding is intentionally unavailable.
+PEP 610 is still a bound claim rather than independent archive
+authentication. Writable-site-packages races, code already run by
+startup/custom-finder/preload hooks, and arbitrary same-origin object forgery
+in a compromised process remain host boundaries.
 
 The typed `handle_request` and NDJSON surfaces use the wheel's stateful
 `ConnectorServer`, which exclusively handles `connector.handshake` and requires
@@ -430,6 +440,16 @@ committed, active, superseded, and verification-bearing rolled-back rows must
 reload all checkpoint, bundle, replay, and semantic bindings. These checks
 detect accidental or partial local corruption. They are self-consistency
 checks, not signatures, remote attestation, or a hostile-storage guarantee.
+
+Standalone scenario and soak verification uses one bounded SQLite read
+snapshot and requires exactly one session plus the exact ordered generation
+inventory. Generation count, parent/epoch lineage, terminal states,
+verification flags, activation transitions, captured source count/head, bundle
+and semantic digests, active pointer, and report-specific generation arrays
+must all agree before `json-and-database` scope can pass. The scenario recovery
+operation binds the durable recovery code path; it does not independently
+attest that an operating-system process crashed. A database file hash and a
+recomputable report self-hash are insufficient without these row bindings.
 
 Exact span rehydration reads retained source content, verifies the requested
 half-open character span and quote digest, and returns a self-hashed record

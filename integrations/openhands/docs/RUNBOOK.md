@@ -347,6 +347,14 @@ state and retained request ledgers, and rechecks the original database after
 the reconciliation. Never separate the JSON from its database, copy only the
 main file from a live WAL store, or overwrite either member of the pair.
 
+For scenario and soak, verification also cross-binds the sole session and
+ordered generation rows: count, epoch/parent lineage, state, passed-verification
+flag, activation transition, captured source count/head, bundle and semantic
+digests, active pointer, and report-specific arrays must match. A storage or
+I/O error during final-request ledger replay becomes a structured failed
+verification rather than escaping. The scenario recovery operation identifies
+the durable recovery path; it does not attest an operating-system crash.
+
 CLI-produced reports bind the argument vector beginning at the producing
 subcommand and reconcile each supported flag/value with the report parameters.
 This does not capture or attest the shell, executable path, parent process,
@@ -369,6 +377,14 @@ Any mismatch, missing database, unexpected sidecar, path race, malformed
 report, or unsupported schema exits 2. Preserve the verifier output and the
 original report/database as failed evidence. Do not rerun into the same paths,
 patch a report, or treat a later run as verification of earlier bytes.
+
+The 2026-07-27 scenario and soak pairs are hash-intact historical evidence, but
+their then-current verifier lacked the ordered report-to-generation bindings
+above. They were not rewritten or relabeled and have not been reverified under
+the strengthened verifier. The campaign remains a separately verified
+historical pair and was not affected by this finding, but it is not durably
+hosted or current-head proof. Future qualifying runs must use new
+non-overwriting paths and the applicable verifier for each report type.
 
 ## Callback failure and EventLog reconciliation
 

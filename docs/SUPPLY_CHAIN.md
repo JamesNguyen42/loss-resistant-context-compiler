@@ -54,11 +54,13 @@ exact-version distribution, an unset `sys.pycache_prefix`, and exact built-in
 module/spec/source-loader state bound to the distribution's recorded package
 and initializer. It rejects loader instance overrides, non-string
 registry/namespace keys, links/reparse points, and unexpected tree entries. It
-requires every immutable wheel `RECORD` row exactly once with the reviewed
-path, URL-safe SHA-256, size, and installed bytes. The only accepted
-installer-generated rows are the exact pip marker, exact-wheel PEP 610
-direct-archive metadata, one platform-canonical launcher bound to the reviewed
-entry point, and an optional exact empty `REQUESTED` marker. Windows additionally
+requires all 35 immutable wheel `RECORD` rows exactly once: 34 hashed rows with
+reviewed path, URL-safe SHA-256, size, and installed bytes, plus the `RECORD`
+self-row with canonical empty hash/size fields. Required installer-generated
+rows are the exact pip marker, exact-wheel PEP 610 direct-archive metadata, and
+one platform-canonical launcher bound to the reviewed entry point. An exact
+empty `REQUESTED` marker is optional; every other generated row is rejected.
+Windows additionally
 binds the native prefix to the architecture-matched reviewed distlib 0.3.9
 console stub without consulting an ambient pip installation at runtime. An
 installer that emits another native stub is unsupported and fails closed. The
@@ -76,6 +78,15 @@ must independently re-hash the wheel before a direct offline
 keep the environment non-writable by untrusted actors. The current local result
 is not a signature, independent source audit, vulnerability scan, or
 publication authorization.
+
+At adapter checkpoint `da664387`, the canonical LF `git archive` provider
+wheel was 222,661 bytes with SHA-256
+`4366b4da11f85643be8f1a639dce1df495165a0c6af70f297579345e0465572d`.
+The Windows checkout-materialized counterpart was 222,718 bytes with SHA-256
+`f356ab0280f07ab3ac60a472cc80614bf273754b7fb8092b71a3298514431d9b`.
+Only the first is exact-commit/source-archive-byte evidence. These
+checkpoint-specific artifacts are not tracked or published, their hashes are
+not interchangeable, and later source or metadata edits require new builds.
 
 The build and development extras currently use lower bounds and CI resolves
 compatible releases from the live package index. No cross-version, hash-pinned

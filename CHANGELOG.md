@@ -57,6 +57,18 @@ versioning and release rules in
   `ParseLimits` at every private serialization seam, retained binary-only
   handshake-first NDJSON, and distinguished recoverable bounded oversize
   draining from fatal over-ceiling and real I/O failures.
+- Bound the optional a2 install to all 35 immutable wheel `RECORD` rows and a
+  closed installer-generated set before and after import. A transitive
+  optional-extra install without exact-wheel PEP 610 archive metadata now
+  remains intentionally unavailable.
+- Cross-bound scenario and soak reports to the bounded ordered SQLite
+  generation inventory, lineage, activation transitions, source counts/heads,
+  bundle and semantic digests, active pointer, and report-specific arrays.
+- Converted SQLite and filesystem failures during evidence final-request ledger
+  replay into one structured failed verification, with focused warning-strict
+  regressions.
+- Closed connector subprocess pipes with `communicate()`. At `94c35cda`, the
+  complete ordinary suite passed under warning-strict execution.
 
 ### Added
 
@@ -86,7 +98,8 @@ versioning and release rules in
 - A deterministic canonical ContextBundle projection with exact UTF-8 source
   spans, explicit trust separation, provenance, omissions/overflow, truthful
   component-grain accounting, a 22-case non-inference conformance gate, and
-  distinct provider-only/provider-plus-contracts clean-install validation.
+  provider-only, expected-fail-closed transitive-extra, and direct
+  provider-plus-contracts clean-install validation.
 - Six strict natural-history evidence schemas with bounded self-hashed corpus,
   annotation, adjudication, repository/task-group split, gold-free export, and
   report contract fixtures. These fixtures are not a collected natural cohort.

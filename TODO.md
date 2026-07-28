@@ -64,12 +64,26 @@ raw evidence when completing benchmark work.
   only reconciliation against the exact checkpointed SQLite database can pass.
 - [x] Add deterministic 10,000-event/100-compaction and seeded 1,024-schedule
   offline producers with exclusive non-overwriting database/report paths.
-  One post-freeze local candidate set ran once and passed fresh DB-backed
-  verification: the three-compaction scenario, 10,000/100 soak, and
-  1,024-schedule campaign all exited 0 with no SQLite sidecars. The exact files
-  remain local temporary evidence until the hosted artifact is retained; every
-  earlier failed attempt remains a failed record. These runners are not live
-  OpenHands or production-readiness proof.
+  One post-freeze local candidate set ran once and its then-current verifiers
+  exited 0 for the three-compaction scenario, 10,000/100 soak, and
+  1,024-schedule campaign with no SQLite sidecars. Independent review later
+  found that the scenario/soak verifier did not bind report claims to ordered
+  database generations. Those two pairs remain hash-intact historical local
+  evidence and were not rerun, rewritten, or reverified under the strengthened
+  verifier. The campaign remains a separately verified historical pair; it was
+  not rerun in this review cycle, is not durably hosted, and was not affected by
+  the ordered-generation finding. These runners are not live OpenHands or
+  production-readiness proof.
+- [x] Strengthen the scenario/soak `verify-evidence` path with one bounded
+  SQLite read snapshot and exact report-to-database bindings for session
+  inventory, generation lineage, active epochs/states, source counts/heads,
+  bundle and semantic digests, activation transitions, scenario compaction
+  rows, and soak schedules. Synthetic and small-database regressions
+  individually reseal false claims.
+- [ ] Produce new non-overwriting scenario/soak evidence under the strengthened
+  report-to-database verifier and a campaign pair under its applicable
+  independent verifier. Do not overwrite, relabel, or infer a current pass for
+  the 2026-07-27 historical pairs.
 - [x] Keep ordinary API and CLI behavior independent of `localai-contracts`
   and every sibling project. The existing private six-operation connector
   accepts structural contract objects in-process and plain versioned JSON
@@ -83,14 +97,21 @@ raw evidence when completing benchmark work.
   fail closed unless exactly one reviewed-version distribution, its recorded
   package/initializer, exact built-in module/spec/source-loader state, the exact
   bounded installed file set, sizes, and canonically framed source/resource
-  digest agree. Reject external bytecode-cache prefixes, loader overrides,
-  non-string registry/namespace keys, and linked/reparse entries; bind any
-  package-local executable bytecode to fresh compilation of verified source.
-  Revalidate after import. Isolated regressions cover a marker-writing path
-  shadow, exact-size source and resource mutation, ambiguous distributions, an
-  unrecorded importable subpackage, external and forged package-local bytecode,
-  loader/module hooks, wrong-origin root/submodule preloads, post-import origin
-  mutation, and substituted import return objects. The gate does not
+  digest agree. Require all 35 immutable wheel `RECORD` rows exactly once:
+  34 hashed rows with exact URL-safe hashes, sizes, and installed bytes, plus
+  the `RECORD` self-row with canonical empty hash/size fields. Require an exact
+  pip marker, exact-wheel PEP 610 archive metadata, and one
+  platform-canonical launcher; permit an optional exact empty `REQUESTED`
+  marker and reject every other generated row. Reject external bytecode-cache
+  prefixes, loader
+  overrides, non-string registry/namespace keys, and linked/reparse entries;
+  bind package-local executable bytecode to fresh compilation of verified
+  source. Revalidate the complete gate after import. Isolated regressions cover
+  immutable/generated `RECORD` mutation, duplication and path drift, a
+  marker-writing path shadow, exact-size source/resource mutation, ambiguous
+  distributions, unexpected subpackages, external and forged bytecode,
+  loader/module hooks, wrong-origin preloads, post-import mutation, and
+  substituted import return objects. The gate does not independently
   authenticate the wheel archive, close writable-filesystem TOCTOU, or repair
   code already run through process startup/import hooks.
 - [x] Advertise only executed `context.compile`; leave
@@ -114,9 +135,12 @@ raw evidence when completing benchmark work.
   `localai-contracts==0.2.0a2`; no local model or runtime endpoint was loaded,
   called, or modified. The earlier a1 result remains historical but was revoked
   as final acceptance evidence after central framing and I/O defects.
-- [x] Run and report both distinct isolated install lanes: provider wheel only,
-  then provider plus the exact a2 contracts wheel. Installs are offline,
-  dependency-free, and no-compile. The second launches
+- [x] Run and report three distinct isolated install lanes: provider wheel
+  only; transitive `provider[unified]` without direct PEP 610 archive metadata,
+  which must fail closed; and direct provider plus the exact a2 contracts
+  wheel. All lanes are offline and no-compile. Provider-only and direct lanes
+  use `--no-deps`; the transitive lane resolves only from its local
+  `--find-links` directory. The supported direct lane launches
   `[clean-environment sys.executable, "-m",
   "context_compiler.localai_contracts_connector"]` (literal argv tail
   `-m context_compiler.localai_contracts_connector`) for the
@@ -128,9 +152,19 @@ raw evidence when completing benchmark work.
   and the next failed because a hand-applied fix omitted the child report-write
   line; neither was relabeled. A first a2 inspection install also remains a
   failure because pip-generated bytecode was path-dependent and failed the
-  exact source/bytecode gate. The final a2 no-compile run passed both lanes with
-  22 passed, zero failed, and no inference. Passing terminal output is reported
-  without tracking its private temporary interpreter path.
+  exact source/bytecode gate. The final a2 no-compile run produced the required
+  outcomes in all three lanes; the direct lane had 22 passed, zero failed, and
+  no inference. Passing terminal output is reported without tracking its
+  private temporary interpreter path.
+- [x] Keep the optional-extra-only transitive install fail-closed because it
+  lacks exact-wheel PEP 610 archive binding. The supported conformance lane
+  directly installs the independently hashed a2 wheel. At adapter checkpoint
+  `da664387`, the canonical LF `git archive` provider wheel was 222,661 bytes
+  with SHA-256
+  `4366b4da11f85643be8f1a639dce1df495165a0c6af70f297579345e0465572d`;
+  the Windows checkout-materialized counterpart was 222,718 bytes with SHA-256
+  `f356ab0280f07ab3ac60a472cc80614bf273754b7fb8092b71a3298514431d9b`.
+  Do not label the latter exact-commit/archive-byte evidence.
 - [x] Map connector SourceEvents into fresh immutable SourceRecords while
   preserving hashes, redaction/provenance metadata, and core role authority;
   default assistant/tool history to untrusted unless the host authenticates
@@ -716,10 +750,14 @@ evidence of sublinear compilation.
   remains open: the complete hash-pinned offline dependency closure and a
   stable public final-immutable-request/exact-tokenizer hook are absent, so
   real `run()`/`arun()` and the recorded live demonstration remain blocked.
-- [x] Run one post-freeze, DB-backed-verified scenario, deterministic
+- [x] Run one post-freeze scenario, deterministic
   10,000-event/100-compaction soak, and 1,024-schedule crash/concurrency
-  campaign at exclusive local paths. Do not replace the retained failed
-  attempts or infer live readiness from an offline pass.
+  campaign at exclusive local paths. The scenario/soak pairs are hash-intact
+  but are not reverified under the strengthened report-to-database verifier.
+  The campaign remains a separately verified historical pair and was not
+  affected by that finding. None is durably hosted or current-head release
+  evidence. Do not replace retained attempts or infer live readiness from an
+  offline run.
 - [ ] Complete the hosted Linux, Windows, and macOS Python 3.12/3.13 matrix and
   retain the passing evidence pair as a hosted artifact. Do not describe the
   candidate as cross-platform validated while any required lane is pending or
@@ -729,7 +767,11 @@ evidence of sublinear compilation.
   exposed its `/var` temporary-root alias during the mission-size campaign.
   The ordinary matrix now excludes the explicit `retained_evidence` test,
   qualifies an unlinked `RUNNER_TEMP` descendant, and retains fast crash
-  primitives; replacement hosted results are still required.
+  primitives. Frozen checkpoint
+  `4213410efb5c4e857819de3e831260ed2cd9f59a` passed all 12 automatic package
+  jobs in push run `30323957135` and pull-request run `30323958753`; the later
+  review fixes still require fresh hosted results. The manual/default-off
+  retained-evidence job remains pending.
 - [x] Pin and review one exact OpenHands identity and implement its closed
   top-level event, authority, atomicity, callback, recovery, and offline fake
   runtime contracts without importing OpenHands through the core package.

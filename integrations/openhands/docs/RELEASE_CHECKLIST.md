@@ -146,6 +146,12 @@ must continue to install and run without OpenHands.
       self-hashed report to the exact checkpointed SQLite SHA-256/size, absent
       WAL/SHM sidecars, retained source/generation/integrity state, and request
       ledgers where applicable.
+- [ ] Scenario and soak verification also binds the sole session and exact
+      ordered generation count/ids, epoch/parent lineage, terminal states,
+      passed-verification flags, activation transitions, source counts/heads,
+      bundle and semantic digests, active pointer, and report-specific arrays.
+- [ ] SQLite or filesystem failure during final-request replay returns one
+      structured failed verification and never escapes as an unhandled error.
 - [ ] Evidence report input/canonical output remains capped at 4 MiB, depth 64,
       250,000 structural items, and 1 MiB per string; scenario/soak SQLite is
       capped at 16 GiB and campaign SQLite at 512 MiB.
@@ -224,11 +230,15 @@ ordinary push or pull-request package lane.
 - [ ] Every failed attempt remains a failed record and was not retried into,
       replaced at, or reclassified under the same evidence path.
 
-A post-freeze local candidate set passed all three producers and fresh
-database-backed verifiers on 2026-07-27. Keep the release boxes above open
-until the exact JSON/SQLite pairs and outer runtime evidence are uploaded by
-the hosted retained-evidence job; temporary local files are not durable release
-retention.
+The 2026-07-27 scenario and soak pairs are hash-intact historical artifacts that
+passed the then-current verifier. Independent review later found that verifier
+lacked ordered report-to-generation row binding. Those pairs were not modified
+or relabeled and have not been reverified under the strengthened verifier. The
+campaign remains a separately verified historical pair and was not affected by
+that finding, but it was not rerun in this review cycle. Keep the release boxes
+open until new non-overwriting scenario/soak pairs pass the strengthened
+verifier, a campaign pair passes its applicable verifier, and the exact pairs
+plus outer runtime evidence are durably retained.
 
 ## 11. Documentation and supply-chain gates
 
@@ -262,14 +272,16 @@ retention.
 
 Record each unresolved gate; do not delete this section when it is non-empty.
 
-- Hosted qualification: the first push/pull-request package-matrix copies
-  remain failed results. Every platform exposed the stale symlink-error test
-  contract, and macOS also exposed its `/var` temporary-root alias when the
-  ordinary lane selected the mission-size campaign. The exact test-selection,
-  symlink-contract, and `RUNNER_TEMP` fixes require replacement green lanes.
-  The manual/default-off hosted retained-evidence job remains pending.
-- Evidence retention: the passing post-freeze scenario, soak, and campaign are
-  local temporary evidence until the hosted artifact upload succeeds.
+- Hosted qualification: the first failed package matrices remain retained.
+  Frozen checkpoint `4213410efb5c4e857819de3e831260ed2cd9f59a` passed all
+  12 automatic Linux, Windows, and macOS Python 3.12/3.13 jobs in push run
+  `30323957135` and pull-request run `30323958753`. Later review commits still
+  require fresh hosted lanes. The manual/default-off retained-evidence job
+  remains pending.
+- Evidence verification and retention: the hash-intact 2026-07-27 scenario and
+  soak pairs were not reverified under the strengthened report-to-database
+  verifier. The separately verified campaign pair was not affected by that
+  finding. None of the three is durably hosted or current-head release evidence.
 - Live OpenHands execution: blocked by `hash-pinned-wheelhouse-absent`. The
   exact dependency closure is not available in a local hash-pinned wheelhouse,
   and no supported immutable final-provider-request/exact-tokenizer accounting

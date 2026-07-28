@@ -763,10 +763,12 @@ requires exactly one reviewed-version distribution, an unset
 `sys.pycache_prefix`, and exact built-in module/spec/source-loader state bound to
 the recorded package. It rejects loader instance overrides, non-string
 namespace/module-registry keys, links/reparse points, unexpected tree entries,
-and file-set drift. It requires the exact 35 immutable wheel `RECORD` rows,
-including their URL-safe SHA-256 values and sizes, plus the closed pip-generated
-set: an exact installer marker, exact-wheel PEP 610 direct-archive metadata, and
-one platform-canonical launcher whose bytes resolve the reviewed entry point.
+and file-set drift. It requires the exact 35 immutable wheel `RECORD` rows:
+34 hashed rows with their URL-safe SHA-256 values, sizes, and installed bytes,
+plus the `RECORD` self-row with canonical empty hash/size fields. The required
+pip-generated rows are an exact installer marker, exact-wheel PEP 610
+direct-archive metadata, and one platform-canonical launcher whose bytes
+resolve the reviewed entry point.
 On Windows, that launcher must use the architecture-matched reviewed distlib
 0.3.9 console stub; another installer stub fails closed without making pip a
 runtime dependency. The empty `REQUESTED` marker is optional but exact when
@@ -874,14 +876,17 @@ assert report["passed_count"] == 22
 assert report["inference_status"] == "not_run"
 ```
 
-`scripts/validate_localai_contracts_install.py` runs two isolated offline
-`--no-index --no-deps --no-compile` lanes. Its repository-owned Python probes
-use `-B`; the shared-compatible connector argv does not. Instead, that module
-child receives `PYTHONDONTWRITEBYTECODE=1`, and the validator proves no provider
-or contracts package `.pyc` appeared before or after the round trip. The
-provider-only lane verifies ordinary core use and the installed console alias's
-fixed exit-2 failure while `localai_contracts` is absent. The
-provider-plus-exact-wheel lane launches
+`scripts/validate_localai_contracts_install.py` runs three isolated offline
+`--no-index --no-compile` lanes. Provider-only and direct lanes also use
+`--no-deps`; the transitive lane resolves only from its local `--find-links`
+directory. Repository-owned Python probes use `-B`; the shared-compatible
+connector argv does not. Instead, that module child receives
+`PYTHONDONTWRITEBYTECODE=1`, and the validator proves no provider or contracts
+package `.pyc` appeared before or after the round trip. The provider-only lane
+verifies ordinary core use and the installed console alias's fixed exit-2
+failure while `localai_contracts` is absent. A transitive `provider[unified]`
+lane without direct PEP 610 archive metadata must remain fail-closed. The
+supported direct provider-plus-exact-wheel lane launches
 `[clean-environment sys.executable, "-m",
 "context_compiler.localai_contracts_connector"]`; its literal argv tail is
 `-m context_compiler.localai_contracts_connector`. It sends a canonical
@@ -1147,16 +1152,32 @@ ctxc-openhands verify-evidence --report REPORT --database DATABASE
 ```
 
 can exit 0 after matching the frozen SQLite SHA-256/size, WAL-checkpoint
-binding, source/generation/integrity state, and retained request ledgers.
+binding, source/generation/integrity state, and retained request ledgers. For
+scenario and soak reports, it additionally binds the exact one-session
+inventory, ordered generation lineage and activation transitions, and
+report-specific counts and digests.
 Omitting the database is an intentional JSON-only diagnostic that reports
 `passed: false`, has scope `json-only`, and exits 2. Preserve each report and
 its exact SQLite database together at non-overwriting paths. The captured CLI
 argument vector is reconciled with report parameters; it does not attest the
 shell, executable, environment, container, or operator.
 
-Local offline validation does not establish release readiness. Hosted
-qualification and durable evidence retention remain pending. The integration
-wheel reproduced byte-identically in the local candidate build, but the raw
+The 2026-07-27 scenario and soak pairs are hash-intact historical artifacts,
+but they were accepted by an earlier verifier that did not bind report claims
+to the ordered database generations. They have not been rerun, rewritten, or
+reverified under the strengthened scenario/soak verifier; their current proof
+is incomplete. The crash-campaign pair remains separately verified historical
+temporary evidence and was not rerun in this review cycle; the
+ordered-generation finding did not apply to its separate verifier. None of
+these pairs is durably hosted or current-head release evidence.
+
+Local offline validation does not establish release readiness. Frozen
+checkpoint `4213410efb5c4e857819de3e831260ed2cd9f59a` passed all 12
+automatic Linux, Windows, and macOS Python 3.12/3.13 package jobs in push run
+`30323957135` and pull-request run `30323958753`, but the later review fixes
+require fresh hosted qualification. Durable retained-evidence hosting remains
+pending. The
+2026-07-27 integration candidate wheel reproduced byte-identically, but its raw
 Setuptools sdist did not; hash-pinned build-input closure, a candidate SBOM,
 signatures, and provenance attestations remain separate red gates.
 
