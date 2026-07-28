@@ -414,7 +414,8 @@ def test_ctxc_connector_stdio_round_trips_and_survives_protocol_error() -> None:
     assert inspected["result"]["trusted_memory_counts"]["constraints"] == 1
 
     process.stdin.close()
-    return_code = process.wait(timeout=15)
-    stderr = process.stderr.read()
-    assert return_code == 0
+    process.stdin = None
+    remaining_stdout, stderr = process.communicate(timeout=15)
+    assert process.returncode == 0
+    assert remaining_stdout == ""
     assert stderr == ""
