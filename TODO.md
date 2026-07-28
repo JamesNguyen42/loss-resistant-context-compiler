@@ -74,12 +74,14 @@ raw evidence when completing benchmark work.
   not rerun in this review cycle, is not durably hosted, and was not affected by
   the ordered-generation finding. These runners are not live OpenHands or
   production-readiness proof.
-- [x] Strengthen the scenario/soak `verify-evidence` path with one bounded
-  SQLite read snapshot and exact report-to-database bindings for session
-  inventory, generation lineage, active epochs/states, source counts/heads,
-  bundle and semantic digests, activation transitions, scenario compaction
-  rows, and soak schedules. Synthetic and small-database regressions
-  individually reseal false claims.
+- [x] Strengthen the scenario/soak `verify-evidence` path. One bounded
+  transaction reads the session/generation/activation inventory, followed by
+  separately bounded source, active-generation, integrity, and ledger reads
+  guarded by pre/post database hashes and WAL/SHM rejection. Exact
+  report-to-database bindings cover generation lineage, active epochs/states,
+  source counts/heads, bundle and semantic digests, activation transitions,
+  scenario compaction rows, and soak schedules. Synthetic and small-database
+  regressions individually reseal false claims.
 - [ ] Produce new non-overwriting scenario/soak evidence under the strengthened
   report-to-database verifier and a campaign pair under its applicable
   independent verifier. Do not overwrite, relabel, or infer a current pass for
@@ -758,20 +760,22 @@ evidence of sublinear compilation.
   affected by that finding. None is durably hosted or current-head release
   evidence. Do not replace retained attempts or infer live readiness from an
   offline run.
-- [ ] Complete the hosted Linux, Windows, and macOS Python 3.12/3.13 matrix and
-  retain the passing evidence pair as a hosted artifact. Do not describe the
-  candidate as cross-platform validated while any required lane is pending or
-  red, and do not call temporary local evidence durable retention.
+- [x] Complete the automatic hosted Linux, Windows, and macOS Python 3.12/3.13
+  package matrix for exact current head
+  `1f684d975005a7e552f62f36dfb7309a58b11799`. Do not describe a different
+  head as cross-platform validated while any required lane is pending or red.
   The first push/pull-request package lanes remain retained failures: every
   platform exposed a stale symlink-error expectation, and macOS additionally
   exposed its `/var` temporary-root alias during the mission-size campaign.
   The ordinary matrix now excludes the explicit `retained_evidence` test,
   qualifies an unlinked `RUNNER_TEMP` descendant, and retains fast crash
-  primitives. Frozen checkpoint
-  `4213410efb5c4e857819de3e831260ed2cd9f59a` passed all 12 automatic package
-  jobs in push run `30323957135` and pull-request run `30323958753`; the later
-  review fixes still require fresh hosted results. The manual/default-off
-  retained-evidence job remains pending.
+  primitives. Exact current head passed all six automatic package jobs in push
+  run `30331509718` and all six in pull-request run `30331512148`, covering
+  Linux, Windows, and macOS on Python 3.12/3.13. The retained-evidence jobs were
+  skipped/default-off.
+- [ ] Run and durably retain the manual/default-off retained-evidence job for a
+  future candidate without replacing the historical attempts. Temporary local
+  evidence is not durable retention.
 - [x] Pin and review one exact OpenHands identity and implement its closed
   top-level event, authority, atomicity, callback, recovery, and offline fake
   runtime contracts without importing OpenHands through the core package.

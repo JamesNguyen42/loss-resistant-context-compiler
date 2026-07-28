@@ -1171,12 +1171,12 @@ temporary evidence and was not rerun in this review cycle; the
 ordered-generation finding did not apply to its separate verifier. None of
 these pairs is durably hosted or current-head release evidence.
 
-Local offline validation does not establish release readiness. Frozen
-checkpoint `4213410efb5c4e857819de3e831260ed2cd9f59a` passed all 12
-automatic Linux, Windows, and macOS Python 3.12/3.13 package jobs in push run
-`30323957135` and pull-request run `30323958753`, but the later review fixes
-require fresh hosted qualification. Durable retained-evidence hosting remains
-pending. The
+Local offline validation does not establish release readiness. Exact current
+head `1f684d975005a7e552f62f36dfb7309a58b11799` passed all six automatic
+Linux, Windows, and macOS Python 3.12/3.13 package jobs in push run
+`30331509718` and all six in pull-request run `30331512148`. The
+retained-evidence jobs were skipped/default-off, and durable retained-evidence
+hosting remains pending. The
 2026-07-27 integration candidate wheel reproduced byte-identically, but its raw
 Setuptools sdist did not; hash-pinned build-input closure, a candidate SBOM,
 signatures, and provenance attestations remain separate red gates.

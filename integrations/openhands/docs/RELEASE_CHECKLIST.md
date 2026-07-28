@@ -272,12 +272,12 @@ plus outer runtime evidence are durably retained.
 
 Record each unresolved gate; do not delete this section when it is non-empty.
 
-- Hosted qualification: the first failed package matrices remain retained.
-  Frozen checkpoint `4213410efb5c4e857819de3e831260ed2cd9f59a` passed all
-  12 automatic Linux, Windows, and macOS Python 3.12/3.13 jobs in push run
-  `30323957135` and pull-request run `30323958753`. Later review commits still
-  require fresh hosted lanes. The manual/default-off retained-evidence job
-  remains pending.
+- Hosted retained evidence: the first failed package matrices remain retained.
+  Exact current head `1f684d975005a7e552f62f36dfb7309a58b11799` passed all
+  six automatic Linux, Windows, and macOS Python 3.12/3.13 package jobs in push
+  run `30331509718` and all six in pull-request run `30331512148`. The
+  retained-evidence jobs were skipped/default-off, so the manual durable
+  retained-evidence gate remains pending.
 - Evidence verification and retention: the hash-intact 2026-07-27 scenario and
   soak pairs were not reverified under the strengthened report-to-database
   verifier. The separately verified campaign pair was not affected by that

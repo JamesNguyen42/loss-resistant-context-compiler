@@ -441,15 +441,18 @@ reload all checkpoint, bundle, replay, and semantic bindings. These checks
 detect accidental or partial local corruption. They are self-consistency
 checks, not signatures, remote attestation, or a hostile-storage guarantee.
 
-Standalone scenario and soak verification uses one bounded SQLite read
-snapshot and requires exactly one session plus the exact ordered generation
-inventory. Generation count, parent/epoch lineage, terminal states,
-verification flags, activation transitions, captured source count/head, bundle
-and semantic digests, active pointer, and report-specific generation arrays
-must all agree before `json-and-database` scope can pass. The scenario recovery
-operation binds the durable recovery code path; it does not independently
-attest that an operating-system process crashed. A database file hash and a
-recomputable report self-hash are insufficient without these row bindings.
+Standalone scenario and soak verification uses one bounded transaction to read
+the session/generation/activation inventory, followed by separately bounded
+source, active-generation, integrity, and ledger reads guarded by pre/post
+database hashes and WAL/SHM rejection. It requires exactly one session plus the
+exact ordered generation inventory. Generation count, parent/epoch lineage,
+terminal states, verification flags, activation transitions, captured source
+count/head, bundle and semantic digests, active pointer, and report-specific
+generation arrays must all agree before `json-and-database` scope can pass. The
+scenario recovery operation binds the durable recovery code path; it does not
+independently attest that an operating-system process crashed. A database file
+hash and a recomputable report self-hash are insufficient without these row
+bindings.
 
 Exact span rehydration reads retained source content, verifies the requested
 half-open character span and quote digest, and returns a self-hashed record

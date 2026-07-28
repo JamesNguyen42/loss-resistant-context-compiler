@@ -1306,12 +1306,14 @@ lower quantile before results are observed.
   `4213410efb5c4e857819de3e831260ed2cd9f59a` then passed all 12 ordinary
   Linux, Windows, and macOS Python 3.12/3.13 package jobs in push run
   `30323957135` and pull-request run `30323958753`.
-- Those green jobs do not qualify the later RECORD, report-to-database, pipe,
-  ledger-I/O, and documentation review commits. Fresh hosted automatic lanes
-  are required before the current branch head is cross-platform qualified.
+- Exact current head `1f684d975005a7e552f62f36dfb7309a58b11799`, including
+  the later RECORD, report-to-database, pipe, ledger-I/O, and documentation
+  review commits, passed all six automatic Linux, Windows, and macOS Python
+  3.12/3.13 package jobs in push run `30331509718` and all six in pull-request
+  run `30331512148`.
 - The hosted retained-evidence job is manual/default-off and has not run for
-  this candidate. Local validation is not cross-platform release
-  qualification.
+  this candidate; both automatic runs skipped it. Local validation does not
+  replace that durable retained-evidence gate.
 - The post-freeze scenario and soak are hash-intact historical local artifacts,
   but their earlier verifier did not bind report claims to ordered database
   generations. They are not reverified under the strengthened verifier. The

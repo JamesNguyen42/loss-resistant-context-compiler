@@ -241,10 +241,11 @@ uses a path-guard-qualified descendant of `RUNNER_TEMP`, and keeps the bounded
 crash primitives. The 10,000/100 soak and 1,024-schedule campaign run only in
 the manual/default-off retained-evidence job.
 
-Frozen checkpoint `4213410efb5c4e857819de3e831260ed2cd9f59a` passed all
-12 automatic Linux, Windows, and macOS Python 3.12/3.13 package jobs in push run
-`30323957135` and pull-request run `30323958753`. Later review commits require
-fresh hosted lanes, and the manual retained-evidence job remains pending.
+Exact current head `1f684d975005a7e552f62f36dfb7309a58b11799` passed all
+six automatic Linux, Windows, and macOS Python 3.12/3.13 package jobs in push
+run `30331509718` and all six in pull-request run `30331512148`. The
+retained-evidence jobs were skipped/default-off, and the manual durable
+retained-evidence gate remains pending.
 
 The 2026-07-27 candidate wheels repeated byte-identically, but the raw
 Setuptools sdists did not because generated gzip/member timestamps varied.
