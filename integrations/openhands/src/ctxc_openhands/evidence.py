@@ -1174,6 +1174,200 @@ def validate_evidence_report(report: Mapping[str, Any]) -> dict[str, Any]:
     return detached
 
 
+def _bounded_database_inventory(
+    store: SQLiteGenerationStore,
+    *,
+    session_id: str,
+    expected_generation_count: int,
+) -> tuple[
+    tuple[str, ...],
+    tuple[dict[str, Any], ...],
+    tuple[dict[str, Any], ...],
+]:
+    """Read only the report-bounded session and generation inventory."""
+
+    connection = store._connect_read_only()
+    try:
+        connection.execute("BEGIN")
+        session_rows = connection.execute(
+            "SELECT session_id FROM sessions ORDER BY session_id LIMIT 2"
+        ).fetchall()
+        generation_rows = connection.execute(
+            """
+            SELECT generation_id, state, parent_generation_id,
+                   expected_active_epoch, captured_source_count,
+                   captured_source_head_sha256, bundle_sha256,
+                   semantic_result_sha256, verification_passed
+            FROM generations
+            WHERE session_id = ?
+            ORDER BY expected_active_epoch, generation_id
+            LIMIT ?
+            """,
+            (session_id, expected_generation_count + 1),
+        ).fetchall()
+        activation_rows = connection.execute(
+            """
+            SELECT transitions.generation_id, transitions.from_state,
+                   transitions.to_state, transitions.operation_id,
+                   transitions.reason_code, transitions.evidence_sha256
+            FROM generation_transitions AS transitions
+            JOIN generations
+              ON generations.generation_id = transitions.generation_id
+            WHERE generations.session_id = ?
+              AND transitions.to_state = 'active'
+            ORDER BY generations.expected_active_epoch, transitions.ordinal
+            LIMIT ?
+            """,
+            (session_id, expected_generation_count + 1),
+        ).fetchall()
+    finally:
+        connection.close()
+    return (
+        tuple(str(row["session_id"]) for row in session_rows),
+        tuple(dict(row) for row in generation_rows),
+        tuple(dict(row) for row in activation_rows),
+    )
+
+
+def _generation_lineage_issues(
+    generations: Sequence[Mapping[str, Any]],
+    *,
+    expected_count: int,
+) -> list[str]:
+    issues: list[str] = []
+    if len(generations) != expected_count:
+        return ["database generation count does not match report"]
+    for index, row in enumerate(generations):
+        expected_parent = (
+            None if index == 0 else generations[index - 1]["generation_id"]
+        )
+        expected_state = "active" if index == expected_count - 1 else "superseded"
+        if (
+            row["parent_generation_id"] != expected_parent
+            or row["expected_active_epoch"] != index
+        ):
+            issues.append("database ordered generation lineage is invalid")
+            break
+        if row["state"] != expected_state:
+            issues.append("database ordered generation states are invalid")
+            break
+        if row["verification_passed"] != 1:
+            issues.append("database generation lacks passed verification")
+            break
+    return issues
+
+
+def _scenario_generation_issues(
+    report: Mapping[str, Any],
+    generations: Sequence[Mapping[str, Any]],
+) -> list[str]:
+    if len(generations) != 3:
+        return []
+    issues: list[str] = []
+    fields = (
+        "ordinal",
+        "generation_id",
+        "active_epoch",
+        "source_count",
+        "source_head_sha256",
+        "bundle_sha256",
+        "semantic_result_digest",
+    )
+    actual = [
+        {
+            "ordinal": index + 1,
+            "generation_id": row["generation_id"],
+            "active_epoch": row["expected_active_epoch"] + 1,
+            "source_count": row["captured_source_count"],
+            "source_head_sha256": row["captured_source_head_sha256"],
+            "bundle_sha256": row["bundle_sha256"],
+            "semantic_result_digest": row["semantic_result_sha256"],
+        }
+        for index, row in enumerate(generations)
+    ]
+    expected = [
+        {field: compaction[field] for field in fields}
+        for compaction in report["compactions"]
+    ]
+    if actual != expected:
+        issues.append("database scenario compactions do not match report")
+    generation_ids = tuple(str(row["generation_id"]) for row in generations)
+    if tuple(row["captured_source_count"] for row in generations) != (1, 2, 3):
+        issues.append("database scenario compaction source counts are invalid")
+    if report["old_generation_visible_after_crash"] != generation_ids[1]:
+        issues.append("database scenario old-generation claim does not match")
+    if report["recovered_generation"] != generation_ids[2]:
+        issues.append("database scenario recovered-generation claim does not match")
+    return issues
+
+
+def _activation_transition_issues(
+    report: Mapping[str, Any],
+    generations: Sequence[Mapping[str, Any]],
+    activations: Sequence[Mapping[str, Any]],
+) -> list[str]:
+    expected_count = 3 if report["schema"] == OFFLINE_SCENARIO_SCHEMA else report[
+        "compaction_count"
+    ]
+    if len(generations) != expected_count or len(activations) != expected_count:
+        return ["database activation transition count does not match report"]
+    for index, (generation, activation) in enumerate(
+        zip(generations, activations, strict=True)
+    ):
+        generation_id = generation["generation_id"]
+        # This binds the durable recovery code path. It is not independent
+        # attestation that an operating-system process actually crashed.
+        operation_suffix = (
+            "scenario-recover"
+            if report["schema"] == OFFLINE_SCENARIO_SCHEMA and index == 2
+            else "activate"
+        )
+        if (
+            activation["generation_id"] != generation_id
+            or activation["from_state"] != "committed"
+            or activation["to_state"] != "active"
+            or activation["operation_id"] != f"{generation_id}:{operation_suffix}"
+            or activation["reason_code"] != "active-pointer-cas-won"
+            or activation["evidence_sha256"] != generation["bundle_sha256"]
+        ):
+            return ["database activation transitions do not match report contract"]
+    return []
+
+
+def _soak_generation_issues(
+    report: Mapping[str, Any],
+    generations: Sequence[Mapping[str, Any]],
+    *,
+    source_count: int,
+) -> list[str]:
+    issues: list[str] = []
+    event_count = report["event_count"]
+    compaction_count = report["compaction_count"]
+    if source_count != event_count:
+        issues.append("database soak event count does not match report")
+    if len(generations) != compaction_count:
+        return issues
+    expected_source_counts = tuple(
+        (ordinal * event_count + compaction_count - 1) // compaction_count
+        for ordinal in range(1, compaction_count + 1)
+    )
+    if (
+        tuple(row["captured_source_count"] for row in generations)
+        != expected_source_counts
+    ):
+        issues.append("database soak compaction schedule does not match report")
+    if [row["generation_id"] for row in generations] != report["generation_ids"]:
+        issues.append("database soak generation ids do not match report")
+    if [row["bundle_sha256"] for row in generations] != report["bundle_sha256s"]:
+        issues.append("database soak bundle digests do not match report")
+    if (
+        [row["semantic_result_sha256"] for row in generations]
+        != report["semantic_result_digests"]
+    ):
+        issues.append("database soak semantic digests do not match report")
+    return issues
+
+
 def _database_issues(
     report: Mapping[str, Any],
     *,
@@ -1199,13 +1393,31 @@ def _database_issues(
         store = SQLiteGenerationStore(database, require_existing=True)
         session = report["session"]
         session_id = session["session_id"]
+        expected_generation_count = (
+            3
+            if report["schema"] == OFFLINE_SCENARIO_SCHEMA
+            else report["compaction_count"]
+        )
+        session_ids, generations, activations = _bounded_database_inventory(
+            store,
+            session_id=session_id,
+            expected_generation_count=expected_generation_count,
+        )
         snapshot = store.snapshot(session_id)
         active = store.read_active(session_id)
-        generations = store.list_generations(session_id)
         integrity = store.integrity_report()
-    except (OSError, KeyError, TypeError, ValueError, RuntimeError) as exc:
+    except (
+        OSError,
+        KeyError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+        sqlite3.Error,
+    ) as exc:
         return [f"database integrity reconciliation failed: {exc}"]
 
+    if session_ids != (session_id,):
+        issues.append("database session inventory does not match report")
     if snapshot.source_count != session["source_count"]:
         issues.append("database source count does not match report")
     if snapshot.source_head_sha256 != session["source_head_sha256"]:
@@ -1228,6 +1440,10 @@ def _database_issues(
             issues.append("database active generation does not match report")
         if active.active_epoch != session["active_epoch"]:
             issues.append("database active epoch does not match report")
+        if active.active_epoch != expected_generation_count:
+            issues.append(
+                "database active epoch does not match ordered generation count"
+            )
         if active.semantic_result_digest != session["active_semantic_result_digest"]:
             issues.append("database active semantic digest does not match report")
         if active.covered_source_count != snapshot.source_count or active.tail:
@@ -1237,12 +1453,26 @@ def _database_issues(
     ]
     if actual_states != session["generation_states"]:
         issues.append("database generation states do not match report")
+    issues.extend(
+        _generation_lineage_issues(
+            generations,
+            expected_count=expected_generation_count,
+        )
+    )
+    issues.extend(
+        _activation_transition_issues(
+            report,
+            generations,
+            activations,
+        )
+    )
     if not integrity["passed"]:
         issues.append("database integrity report did not pass")
     if integrity["report_sha256"] != report["integrity_report_sha256"]:
         issues.append("database integrity report digest does not match report")
 
     if report["schema"] == OFFLINE_SCENARIO_SCHEMA:
+        issues.extend(_scenario_generation_issues(report, generations))
         constraints = report["constraints"]
         expected_ids = tuple(f"scenario-message-{index}" for index in range(len(constraints)))
         expected_events = tuple(
@@ -1300,6 +1530,14 @@ def _database_issues(
                 or receipt["component_counts"] != replay["component_counts"]
             ):
                 issues.append("fake dispatch receipt does not match database replay")
+    else:
+        issues.extend(
+            _soak_generation_issues(
+                report,
+                generations,
+                source_count=snapshot.source_count,
+            )
+        )
     if any(sidecar.exists() for sidecar in sidecars):
         issues.append("database WAL/SHM sidecars remained after verification")
     try:
