@@ -207,23 +207,50 @@ three final sdist byte strings to match. At exact packaging head
 Git-archive qualification also matched all three 232,006-byte artifacts at
 SHA-256
 `9a8f5035d8cbe904dc03142b3be54e3e15fae699153fb7630b4948b7415ac6be`.
-For each distribution, these checks close only the same-revision,
-same-platform, same-job-toolchain repeated-build defect under an explicit
-epoch. They do not prove equality across Python, Setuptools,
-operating-system, or compression-library versions, and they do not establish
-offline or hash-pinned inputs or independent reproduction.
+At `2f692484`, these checks closed only the same-revision, same-platform,
+same-job-toolchain repeated-build defect under an explicit epoch. That result
+did not prove equality across Python, Setuptools, operating-system, or
+compression-library versions, and it did not establish offline inputs,
+hash-pinned inputs, or independent reproduction.
 
 For exact packaging head `2f692484`, all six automatic package jobs passed in
 push run `30341548763` and all six passed in pull-request run `30341552866`,
-covering Linux, Windows, and macOS on Python 3.12/3.13. Each lane proves its
-own three-build equality; the runs do not compare one artifact digest across
-operating systems.
+covering Linux, Windows, and macOS on Python 3.12/3.13. Each lane proved its
+own three-build fixed point.
 
-The report establishes output equality only. The adjacent CI evidence records
-the selected Python and installed tool versions, but does not attest dependency
+Exact package-gate implementation head
+`f9ba3de6f0ab2ac7e861bd7da907e6949df1339e` then added a separate aggregate
+that compared the root wheel, integration wheel, and integration sdist from all
+six lanes. OpenHands push run `30355357305` and pull-request run `30355359105`
+each passed the six package jobs plus the aggregate; retained evidence was
+skipped/default-off. The push report is 16,681 bytes with raw SHA-256
+`e9203177989fab536e70febcf5316ba6ea21d2a39ea2d3f8dc2c46b146a6f743` and
+self-hash
+`9931d25167831dea6698e0794a93e1cc46a1fc23ed29126c94708aefe7efb35c`.
+It reports byte-identical 221,771-byte root wheels
+(`ffc60ecf166cc28563c2a5bc6597e1c4cb0a4c2be6c965d31bafbe3877d1c17c`),
+136,343-byte integration wheels
+(`ed846517d05b9a734754a9d893de84f23d807f9236c626f1791f9f6d215fa3a9`),
+and 240,187-byte integration sdists
+(`b8ee2f1f13c06cfe7de1343f9d765eb25aaf6bc1f7d03da7c6443b46eec0594a`)
+across Linux, macOS, and Windows on Python 3.12/3.13.
+
+Documentation checkpoint `f7b417a767abdd833dfeda9f4aa6518fe94b5cdd`
+also passed six package jobs plus the aggregate in OpenHands push run
+`30357985272` and pull-request run `30357993368`; retained evidence remained
+skipped/default-off. Its six lanes agreed on the 222,688-byte root wheel
+(`ec46f710169a95c21c54a28b941d2f5205104113c3e594fe6945ef68f633642f`),
+136,967-byte integration wheel
+(`16976fa84cebb2b35f1cc15db89a41f016a3a8385498fd2335adbc28c85aacf0`),
+and 241,931-byte integration sdist
+(`a061cfab2643404547c4d3375adaf0bd2e62d8c01cccd2ac14ac134ea8059629`).
+
+These aggregate reports establish equality only for the exact three outputs
+across their six recorded hosted lanes. The adjacent CI evidence records the
+selected Python and installed tool versions, but does not attest dependency
 hashes, the hosted platform image, or the complete build environment. Those
-inputs must be retained and independently checked before any broader
-reproducible-build claim.
+inputs must be retained and independently checked before any cross-toolchain,
+independently reproduced, or broader reproducible-build claim.
 
 Portable stdlib checks cannot atomically prevent a hostile same-user process
 from replacing a pathname after the final verification syscall. The wrapper
