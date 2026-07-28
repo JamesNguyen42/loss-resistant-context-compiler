@@ -773,6 +773,21 @@ evidence of sublinear compilation.
   jobs in push run `30331509718` and all six in pull-request run `30331512148`,
   covering Linux, Windows, and macOS on Python 3.12/3.13. The retained-evidence
   jobs were skipped/default-off.
+- [x] Add a package-local deterministic sdist boundary for `ctxc-openhands`.
+  At packaging implementation head
+  `2f692484272aa36bf267703cad2bb4d6926676ff`, two fresh exact Git archives
+  and an extracted-sdist rebuild produced identical final sdists under
+  `SOURCE_DATE_EPOCH=1785225894`, CPython 3.12.13, pip 25.0.1, build 1.5.0,
+  Setuptools 83.0.0, and wheel 0.47.0. The historical raw-Setuptools failures
+  remain failures. Initial wrapper head `cf8b8d3` also remains failed because
+  its extracted rebuild changed only `SOURCES.txt`; `2f692484` adds the exact
+  recursive regression and manifest fixed point. This does not establish
+  cross-platform equality, hash-pinned build inputs, independent reproduction,
+  or release readiness. Exact head `2f692484` passed all six automatic package
+  jobs in push run `30341548763` and all six in pull-request run
+  `30341552866`; retained evidence remained skipped/default-off. Root push CI
+  `30341549065` and pull-request CI `30341552713` each passed 7/7 jobs;
+  CodeQL `30341552714` and dependency review `30341553236` passed.
 - [ ] Run and durably retain the manual/default-off retained-evidence job for a
   future candidate without replacing the historical attempts. Temporary local
   evidence is not durable retention.
@@ -946,8 +961,8 @@ evidence of sublinear compilation.
   detection, no-overwrite outputs, a self-hashed manifest completion marker,
   and CI retention. This is substitution-detection groundwork, not provenance
   or signing.
-- [x] Make repeated clean candidate builds byte-for-byte reproducible within
-  one same-job, explicitly versioned toolchain. The project PEP 517 wrapper now
+- [x] Make repeated clean core candidate builds byte-for-byte reproducible
+  within one same-job, explicitly versioned toolchain. The project PEP 517 wrapper now
   validates the raw Setuptools sdist, normalizes its gzip/tar/PAX identity from
   an explicit `SOURCE_DATE_EPOCH`, preserves exact member content and
   structure, and leaves the separate byte comparator strict. CI compares wheel

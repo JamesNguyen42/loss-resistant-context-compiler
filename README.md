@@ -1176,10 +1176,29 @@ implementation head `1f684d975005a7e552f62f36dfb7309a58b11799` passed all
 six automatic Linux, Windows, and macOS Python 3.12/3.13 package jobs in push run
 `30331509718` and all six in pull-request run `30331512148`. The
 retained-evidence jobs were skipped/default-off, and durable retained-evidence
-hosting remains pending. The
-2026-07-27 integration candidate wheel reproduced byte-identically, but its raw
-Setuptools sdist did not; hash-pinned build-input closure, a candidate SBOM,
-signatures, and provenance attestations remain separate red gates.
+hosting remains pending. The 2026-07-27 raw Setuptools integration sdists
+remain a retained failed pair because 17 generated timestamps differed.
+Initial wrapper head `cf8b8d3911ef776ca015856f8df19ac47dae0628`
+made fresh source copies repeat but missed the extracted-sdist fixed point:
+its local 231,581-byte sdist at
+`b6f4ed61459b5ad9ffb1eb49428ca69be139ce865f7a01f9278ef7df4bffc004`
+rebuilt to 231,588 bytes at
+`873c1e5959f924a71fbaafb8d7a1a8133bc7c64f90210e9bc1675045eb37196e`
+because only `SOURCES.txt` changed. That result also remains failed.
+Packaging implementation head
+`2f692484272aa36bf267703cad2bb4d6926676ff` adds a package-local,
+parity-guarded backend and closes only same-platform, same-toolchain,
+same-epoch final-sdist repeatability. Two fresh exact Git archives and one
+extracted-sdist rebuild produced the same 232,006-byte sdist with SHA-256
+`9a8f5035d8cbe904dc03142b3be54e3e15fae699153fb7630b4948b7415ac6be`;
+clean wheel and recursive-sdist installs passed. Hash-pinned build-input
+closure, a candidate SBOM, signatures, and provenance attestations remain
+separate red gates. Exact packaging head `2f692484` also passed all six
+automatic Linux, Windows, and macOS Python 3.12/3.13 package jobs in push run
+`30341548763` and all six in pull-request run `30341552866`; both retained
+evidence jobs were skipped/default-off. Root push CI `30341549065` and
+pull-request CI `30341552713` each passed 7/7 jobs; CodeQL `30341552714` and
+dependency review `30341553236` passed.
 
 See the
 [operator runbook](integrations/openhands/docs/RUNBOOK.md),

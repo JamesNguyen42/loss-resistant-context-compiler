@@ -169,22 +169,55 @@ content, or installed bytes changed. A failed candidate pathname is retained
 rather than risking deletion of a concurrently substituted file. Without the
 epoch the hook preserves normal Setuptools behavior.
 
-That normalization applies only to the core distribution.
-`integrations/openhands` uses `setuptools.build_meta` directly. In the
-2026-07-27 local candidate diagnostic, repeated integration wheels were
-byte-identical but repeated sdists differed because gzip/member timestamps
-varied across 17 generated members. That result remains a failed
-integration-sdist reproducibility gate; no artifact was rewritten or relabeled
-to manufacture equality.
+That first normalization boundary applied only to the core distribution. In
+the 2026-07-27 local integration diagnostic, direct-Setuptools wheels were
+byte-identical but sdists differed because gzip/member timestamps varied
+across 17 generated members. That result remains a failed historical outcome;
+no artifact was rewritten or relabeled.
 
-CI fixes `SOURCE_DATE_EPOCH` and `PYTHONHASHSEED`, builds wheel and sdist from
-two clean checkouts in one job with pip 25.0.1, Setuptools 83.0.0, and wheel
-0.47.0, records Python and the installed tool inventory, and requires the
-separate exact comparator to report both archives byte-identical. That closes
-the same-revision, same-job-toolchain repeated-build defect. It does not prove
-equality across Python, Setuptools, operating-system, or compression-library
-versions, and it does not establish offline or hash-pinned inputs or independent
-reproduction.
+`ctxc-openhands` now has its own PEP 517 module with exact source-byte parity
+to the root backend. The module is packaged in the sdist, excluded from the
+wheel, and selected through the integration's `backend-path`. With a valid
+`SOURCE_DATE_EPOCH`, it applies the same bounded final-archive normalization;
+without an epoch, and for non-sdist hooks, it delegates normal Setuptools
+behavior. The integration manifest reserves generated `setup.cfg` from the
+source file list so an extracted sdist rebuild reaches the same
+`SOURCES.txt` fixed point instead of changing one member payload.
+
+The first wrapper checkpoint, `cf8b8d3911ef776ca015856f8df19ac47dae0628`,
+proved two fresh source copies but did not rebuild its own generated sdist.
+Independent review found that recursive build changed only
+`src/ctxc_openhands.egg-info/SOURCES.txt`: generated `setup.cfg` became a new
+file-list input. The local first/rebuilt pair remains failed at
+`b6f4ed61459b5ad9ffb1eb49428ca69be139ce865f7a01f9278ef7df4bffc004`
+and
+`873c1e5959f924a71fbaafb8d7a1a8133bc7c64f90210e9bc1675045eb37196e`.
+Commit `2f692484272aa36bf267703cad2bb4d6926676ff` adds the manifest fixed
+point and the exact extracted-sdist regression; it does not relabel the first
+checkpoint.
+
+Core CI fixes `SOURCE_DATE_EPOCH` and `PYTHONHASHSEED`, builds wheel and sdist
+from two clean checkouts in one job with pip 25.0.1, Setuptools 83.0.0, and
+wheel 0.47.0, records Python and the installed tool inventory, and requires
+the separate exact comparator to report both archives byte-identical.
+OpenHands ordinary package lanes independently build two fresh source copies
+and rebuild the first generated sdist from its extracted source, requiring all
+three final sdist byte strings to match. At exact packaging head
+`2f692484272aa36bf267703cad2bb4d6926676ff`, the corresponding local
+Git-archive qualification also matched all three 232,006-byte artifacts at
+SHA-256
+`9a8f5035d8cbe904dc03142b3be54e3e15fae699153fb7630b4948b7415ac6be`.
+For each distribution, these checks close only the same-revision,
+same-platform, same-job-toolchain repeated-build defect under an explicit
+epoch. They do not prove equality across Python, Setuptools,
+operating-system, or compression-library versions, and they do not establish
+offline or hash-pinned inputs or independent reproduction.
+
+For exact packaging head `2f692484`, all six automatic package jobs passed in
+push run `30341548763` and all six passed in pull-request run `30341552866`,
+covering Linux, Windows, and macOS on Python 3.12/3.13. Each lane proves its
+own three-build equality; the runs do not compare one artifact digest across
+operating systems.
 
 The report establishes output equality only. The adjacent CI evidence records
 the selected Python and installed tool versions, but does not attest dependency

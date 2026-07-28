@@ -23,9 +23,14 @@ versioning and release rules in
   replay.
 - Made archive-lock acquisition retry a post-open descriptor that was replaced
   or unlinked, preserving bounded single-link ownership across platforms.
-- Added an opt-in deterministic PEP 517 sdist boundary driven by
+- Added an opt-in deterministic PEP 517 core-sdist boundary driven by
   `SOURCE_DATE_EPOCH`, with bounded archive validation and a separate strict
   repeated-build comparator.
+- Added an integration-local, parity-guarded PEP 517 boundary for
+  `ctxc-openhands`. Under one explicit epoch and recorded toolchain, it
+  requires two fresh source builds and an extracted-sdist rebuild to produce
+  the same final sdist bytes while other hooks continue to delegate to
+  Setuptools.
 - Kept compile, exact-Qwen CLI, and external-runner POSIX leaders waitable until
   owned process-group signaling completes, and required either group
   disappearance or bounded stable all-zombie proof after final macOS

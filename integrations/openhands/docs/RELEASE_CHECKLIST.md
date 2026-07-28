@@ -191,10 +191,15 @@ ordinary push or pull-request package lane.
       evidence.
 - [ ] The core wheel builds with no dependencies.
 - [ ] The integration wheel and sdist build without the live extra.
+- [ ] Two fresh source builds and one extracted-sdist rebuild use the same
+      retained epoch/toolchain and produce one exact final sdist name, size,
+      and SHA-256 without overwriting any candidate.
 - [ ] Wheel contents include both self-hashed compatibility/tokenizer data
       resources and exclude OpenHands code.
 - [ ] Sdist contents include the license, README, direct-artifact live lock,
-      compatibility evidence, and packaged data resources.
+      compatibility evidence, packaged data resources, configured
+      `pyproject.toml`, manifest, and package-local PEP 517 backend. The
+      backend must remain absent from the wheel.
 - [ ] A fresh wheel environment installs core then integration with
       `--no-index --no-deps`.
 - [ ] A separate fresh sdist environment installs with no build isolation,
@@ -276,6 +281,12 @@ Record each unresolved gate; do not delete this section when it is non-empty.
   Exact implementation head `1f684d975005a7e552f62f36dfb7309a58b11799`
   passed all six automatic Linux, Windows, and macOS Python 3.12/3.13 package
   jobs in push run `30331509718` and all six in pull-request run `30331512148`.
+  Exact packaging head `2f692484272aa36bf267703cad2bb4d6926676ff`
+  later passed all six automatic package jobs in push run `30341548763` and
+  all six in pull-request run `30341552866`, including the recursive-sdist
+  regression. Root push CI `30341549065` and pull-request CI `30341552713`
+  each passed 7/7 jobs; CodeQL `30341552714` and dependency review
+  `30341553236` passed.
   The retained-evidence jobs were skipped/default-off, so the manual durable
   retained-evidence gate remains pending.
 - Evidence verification and retention: the hash-intact 2026-07-27 scenario and
@@ -286,7 +297,7 @@ Record each unresolved gate; do not delete this section when it is non-empty.
   exact dependency closure is not available in a local hash-pinned wheelhouse,
   and no supported immutable final-provider-request/exact-tokenizer accounting
   hook exists.
-- Integration sdist reproducibility: repeated wheels were byte-identical at
+- Historical integration sdist failures: repeated wheels were byte-identical at
   `8df8d4a0890daf149461205293d308329212a5c107c25ee4d1f0d068a2d88db1`,
   but repeated sdists differed:
   `40e6916ad15899a2a76549ce6b23967b39a242bb7357d3ee8386c012b823f91b`
@@ -294,6 +305,29 @@ Record each unresolved gate; do not delete this section when it is non-empty.
   `09d4b9263fb2c7cc32930cbb7f02ae20f94265ac8e3e800583a9d31683e7a12c`.
   Setuptools varied gzip/member timestamps across 17 generated members; the
   failed comparison remains a failure.
+- The later `1bb4ee2d` exact-archive pair remains retained separately:
+  wheel
+  `9b8782e0355e49e5412b3163fc4f69c287afa12294bc3e48034f0fd0111a699d`;
+  sdists
+  `09ae8db3ddc9805166b46881409add621bec02984a3ce3f6740ddef80853e3c3`
+  and
+  `145da6a021441e23dc5be6192e1a8b11afdff18901ece30d5f89a758b21a10d1`.
+  The two sdist payload inventories matched while 17 generated timestamps
+  differed.
+- Initial wrapper head `cf8b8d3` remains a failed recursive result:
+  231,581 bytes /
+  `b6f4ed61459b5ad9ffb1eb49428ca69be139ce865f7a01f9278ef7df4bffc004`
+  rebuilt to 231,588 bytes /
+  `873c1e5959f924a71fbaafb8d7a1a8133bc7c64f90210e9bc1675045eb37196e`
+  because only `SOURCES.txt` changed. Its hosted automatic jobs passed but did
+  not exercise that missing regression, so the checkpoint is historical.
+- Same-toolchain final-sdist repeatability is closed at packaging
+  implementation head `2f692484272aa36bf267703cad2bb4d6926676ff`:
+  two fresh exact Git archives and an extracted-sdist rebuild all produced
+  232,006 bytes at
+  `9a8f5035d8cbe904dc03142b3be54e3e15fae699153fb7630b4948b7415ac6be`
+  under epoch `1785225894` and the recorded toolchain. This does not close
+  build-input, cross-platform equality, or release gates.
 - Build-input closure: CI installs exact build-tool versions from the configured
   index without reviewed hashes. A later `--no-index` artifact install does not
   authenticate the online-acquired wheelhouse.

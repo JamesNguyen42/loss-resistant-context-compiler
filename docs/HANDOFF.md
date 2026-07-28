@@ -35,7 +35,7 @@ live-readiness status.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; no local inference |
+| Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; no local inference |
 | Canonical optional boundary | `localai-contracts==0.2.0a2`, protocol/schema `1.0.0`; `context.compile` only; non-inference |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
@@ -881,13 +881,41 @@ audited. Any selected superseded item independently fails verification as
   to accept both archives byte-for-byte. This is same-job-toolchain
   repeatability, not offline, hash-pinned-input, cross-toolchain, or independent
   reproduction evidence.
-- `ctxc-openhands` uses `setuptools.build_meta` directly. Its repeated candidate
-  wheels were byte-identical at
+- The historical direct-Setuptools `ctxc-openhands` candidate wheels were
+  byte-identical at
   `8df8d4a0890daf149461205293d308329212a5c107c25ee4d1f0d068a2d88db1`,
   but its repeated sdists differed because Setuptools varied gzip/member
   timestamps across 17 generated members. Integration-sdist reproducibility
-  remains a red gate; the failed comparison was retained, not normalized into
-  a pass.
+  remained failed at that checkpoint; the comparison is still retained as a
+  failure.
+- Initial wrapper head `cf8b8d3911ef776ca015856f8df19ac47dae0628`
+  passed its two-source-copy comparison and all automatic hosted jobs, but
+  independent review found the missing extracted-sdist fixed point. The local
+  first build was 231,581 bytes at
+  `b6f4ed61459b5ad9ffb1eb49428ca69be139ce865f7a01f9278ef7df4bffc004`;
+  its rebuild was 231,588 bytes at
+  `873c1e5959f924a71fbaafb8d7a1a8133bc7c64f90210e9bc1675045eb37196e`.
+  Only `src/ctxc_openhands.egg-info/SOURCES.txt` differed because generated
+  `setup.cfg` became a rebuild input. The hosted success and recursive local
+  failure are both retained, and `cf8b8d3` is not final evidence. Its six
+  automatic package jobs passed in push run `30340051113` and pull-request run
+  `30340054635`.
+- Packaging implementation head
+  `2f692484272aa36bf267703cad2bb4d6926676ff` uses the integration-local
+  backend, byte-parity guarded against the root backend, only when an explicit
+  epoch is present. Under `SOURCE_DATE_EPOCH=1785225894`, CPython 3.12.13,
+  pip 25.0.1, build 1.5.0, Setuptools 83.0.0, and wheel 0.47.0, two fresh
+  exact Git archives and an extracted-sdist rebuild produced the same
+  232,006-byte sdist at
+  `9a8f5035d8cbe904dc03142b3be54e3e15fae699153fb7630b4948b7415ac6be`.
+  The package-local backend is included in the sdist and excluded from the
+  wheel; clean installation from the recursive sdist passed. This closes only
+  the recorded same-platform, same-toolchain, same-epoch fixed point.
+  Exact head `2f692484` passed all six automatic Linux, Windows, and macOS
+  Python 3.12/3.13 package jobs in push run `30341548763` and all six in
+  pull-request run `30341552866`; the retained jobs were skipped/default-off.
+  Root push CI `30341549065` and pull-request CI `30341552713` each passed
+  7/7 jobs; CodeQL `30341552714` and dependency review `30341553236` passed.
 - CI enforces `ci-compile-v1` through a self-hashed
   `ctxc-performance-gate-0.1` report: three-trial medians at 128/256 events,
   doubling growth, and a separate exclusive `tracemalloc` peak.
@@ -1311,6 +1339,12 @@ lower quantile before results are observed.
   review commits, passed all six automatic Linux, Windows, and macOS Python
   3.12/3.13 package jobs in push run `30331509718` and all six in pull-request
   run `30331512148`.
+- Exact packaging head `2f692484272aa36bf267703cad2bb4d6926676ff`
+  passed all six automatic package jobs in push run `30341548763` and all six
+  in pull-request run `30341552866`. These lanes include two fresh source
+  builds, one extracted-sdist rebuild, clean wheel/sdist installation, Ruff,
+  compileall, and ordinary test selection on Linux, Windows, and macOS
+  Python 3.12/3.13.
 - The hosted retained-evidence job is manual/default-off and has not run for
   this candidate; both automatic runs skipped it. Local validation does not
   replace that durable retained-evidence gate.
@@ -1323,9 +1357,12 @@ lower quantile before results are observed.
 - The reviewed OpenHands distributions are not available as a complete local
   hash-pinned offline dependency closure. Real offline import and live
   execution remain blocked.
-- The integration wheel reproduced byte-identically, but the raw Setuptools
-  sdist did not. Build tools are version-pinned yet acquired online without a
-  reviewed hash-pinned input closure.
+- The historical raw Setuptools sdist failures remain retained. The later
+  package-local backend at `2f692484` produced byte-identical final sdists
+  across two exact source archives and an extracted-sdist rebuild under one
+  recorded Windows toolchain and epoch. Build tools are still acquired online
+  without a reviewed hash-pinned input closure, and no cross-platform artifact
+  equality is claimed.
 - No candidate SBOM, artifact signature, or provenance attestation exists.
   Checksums and self-hashes are substitution-detection groundwork, not
   authentication or release provenance.

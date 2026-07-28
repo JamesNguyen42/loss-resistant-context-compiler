@@ -247,11 +247,28 @@ in push run `30331509718` and all six in pull-request run `30331512148`. The
 retained-evidence jobs were skipped/default-off, and the manual durable
 retained-evidence gate remains pending.
 
-The 2026-07-27 candidate wheels repeated byte-identically, but the raw
-Setuptools sdists did not because generated gzip/member timestamps varied.
-Clean wheel/sdist installation passed at separate paths, but the build-tool
-wheelhouse was acquired online without a reviewed hash-pinned closure. Both
-limitations remain release red gates.
+The 2026-07-27 direct-Setuptools sdists remain a retained failure because
+generated gzip/member timestamps varied. Initial wrapper head `cf8b8d3`
+also remains a failed recursive result: its two source builds matched, but its
+extracted rebuild changed only `SOURCES.txt` when generated `setup.cfg` became
+an input. Packaging implementation head
+`2f692484272aa36bf267703cad2bb4d6926676ff` adds an integration-local
+backend whose source bytes are parity-checked against the root backend. With
+`SOURCE_DATE_EPOCH=1785225894` and the recorded CPython 3.12.13, pip 25.0.1,
+build 1.5.0, Setuptools 83.0.0, and wheel 0.47.0 toolchain, two fresh exact
+Git archives and an extracted-sdist rebuild produced the same 232,006-byte
+sdist at SHA-256
+`9a8f5035d8cbe904dc03142b3be54e3e15fae699153fb7630b4948b7415ac6be`.
+The backend is present in the sdist, absent from the runtime wheel, and normal
+Setuptools behavior remains when no epoch is supplied. Clean wheel and
+recursive-sdist installs passed. The build-tool wheelhouse was still acquired
+online without a reviewed hash-pinned closure, so that release gate remains
+open; no cross-platform artifact equality is claimed. Exact packaging head
+`2f692484` passed all six automatic Linux, Windows, and macOS Python
+3.12/3.13 jobs in push run `30341548763` and all six in pull-request run
+`30341552866`; retained evidence remained skipped/default-off. Root push CI
+`30341549065` and pull-request CI `30341552713` each passed 7/7 jobs;
+CodeQL `30341552714` and dependency review `30341553236` passed.
 
 ## Installation policy
 
