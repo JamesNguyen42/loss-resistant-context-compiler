@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import tomllib
 from pathlib import Path
@@ -119,8 +120,21 @@ def test_release_documents_freeze_name_versioning_and_support_boundaries() -> No
     )
     assert {
         "include CHANGELOG.md",
+        "include requirements-build.lock",
         "include SUPPORT.md",
         "recursive-include benchmarks *.json *.md *.py",
         "recursive-include conformance *.jsonl *.py",
         "recursive-include docs *.json *.md",
     } <= set(manifest.splitlines())
+
+
+def test_root_build_lock_is_the_reviewed_canonical_input_set() -> None:
+    payload = (ROOT / "requirements-build.lock").read_bytes()
+
+    assert len(payload) == 666
+    assert payload.endswith(b"\n")
+    assert b"\r" not in payload
+    assert len(payload.splitlines()) == 7
+    assert hashlib.sha256(payload).hexdigest() == (
+        "243f3ab977d82c04968cf4ea6474b7ef79c060d485aa3a3d67a383d1ef6fbbfe"
+    )

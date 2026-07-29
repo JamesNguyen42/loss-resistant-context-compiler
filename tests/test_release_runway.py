@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
 import sys
@@ -7,6 +8,22 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 FULL_ACTION_REF = re.compile(r"^\s*uses:\s+[^@\s]+@([0-9a-f]{40})(?:\s+#.*)?$")
+BUILD_LOCK_LINES = [
+    "build==1.5.0 --hash=sha256:"
+    "13f3eecb844759ab66efec90ca17639bbf14dc06cb2fdf37a9010322d9c50a6f",
+    "colorama==0.4.6 --hash=sha256:"
+    "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6",
+    "packaging==26.2 --hash=sha256:"
+    "5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e",
+    "pip==25.0.1 --hash=sha256:"
+    "c46efd13b6aa8279f33f2864459c8ce587ea6a1a59ee20de055868d8f7688f7f",
+    "pyproject-hooks==1.2.0 --hash=sha256:"
+    "9e5c6bfa8dcc30091c74b0cf803c81fdd29d94f01992a7707bc97babb1141913",
+    "setuptools==83.0.0 --hash=sha256:"
+    "29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3",
+    "wheel==0.47.0 --hash=sha256:"
+    "212281cab4dff978f6cedd499cd893e1f620791ca6ff7107cf270781e587eced",
+]
 
 
 def _workflow_action_lines(path: Path) -> list[str]:
@@ -40,7 +57,7 @@ def test_ci_covers_supported_python_and_platform_release_smokes() -> None:
     assert "conformance _ctxc_build_backend.py" in workflow
     assert "python -m ruff check" in workflow
     assert "scripts/release_install_smoke.py" in workflow
-    assert "python -m _ctxc_build_backend --sdist-dir" in workflow
+    assert "-m _ctxc_build_backend --sdist-dir" in workflow
     assert 'SOURCE_DATE_EPOCH: "1700000000"' in workflow
     assert "exact repeated release builds" in workflow
     assert "python -m scripts.release_reproducibility" in workflow
@@ -56,14 +73,45 @@ def test_ci_covers_supported_python_and_platform_release_smokes() -> None:
     assert "tests/test_deterministic_sdist.py" in workflow
     assert "tests/test_external_runner.py" in workflow
     assert "tests/test_release_install_smoke.py" in workflow
-    assert '"pip==25.0.1"' in workflow
-    assert '"setuptools==83.0.0"' in workflow
-    assert '"wheel==0.47.0"' in workflow
+    assert workflow.count(
+        "python -m pip --isolated download --no-deps --only-binary=:all:"
+    ) == 3
+    assert workflow.count("Provision the hash-bound release builder") == 2
+    assert "Provision and record the hash-bound same-job release builder" in workflow
+    assert workflow.count("len(distributions) == 7 and actual == expected") == 3
+    assert workflow.count(
+        "& $env:CTXC_BUILD_PYTHON -m pip --isolated wheel ."
+    ) == 4
+    assert workflow.count("--build-wheelhouse ci-build-wheelhouse") == 2
+    assert workflow.count("--build-requirements requirements-build.lock") == 2
+    assert workflow.count("release-install-smoke.json") >= 4
+    assert workflow.count("release-install-smoke.log") >= 4
+    assert workflow.count("hash-pinned-offline-wheelhouse") == 2
+    assert workflow.count("ci-build-wheelhouse/*.whl") == 3
+    assert "release-requirements-build.lock" in workflow
+    assert "root-release-smoke-${{ runner.os }}-python-3.13" in workflow
     assert "--no-build-isolation" in workflow
+    assert "--no-index" in workflow
+    assert "--only-binary=:all:" in workflow
+    assert "--require-hashes" in workflow
+    assert "--force-reinstall" in workflow
     assert "release-python.txt" in workflow
     assert "release-build-toolchain.txt" in workflow
     assert "if-no-files-found: error" in workflow
     assert "permissions:\n  contents: read" in workflow
+
+
+def test_root_build_lock_is_the_reviewed_exact_universal_wheel_set() -> None:
+    lock = ROOT / "requirements-build.lock"
+    payload = lock.read_bytes()
+
+    assert len(payload) == 666
+    assert hashlib.sha256(payload).hexdigest() == (
+        "243f3ab977d82c04968cf4ea6474b7ef79c060d485aa3a3d67a383d1ef6fbbfe"
+    )
+    assert b"\r" not in payload
+    assert payload.endswith(b"\n")
+    assert payload.decode("ascii").splitlines() == BUILD_LOCK_LINES
 
 
 def test_codeql_uses_a_pinned_python_analysis_with_narrow_permissions() -> None:
@@ -132,6 +180,7 @@ def test_source_distribution_manifest_includes_release_runway_assets() -> None:
         "include CONTRIBUTING.md",
         "include SECURITY.md",
         "include _ctxc_build_backend.py",
+        "include requirements-build.lock",
         "recursive-include scripts *.py",
     } <= manifest
 
