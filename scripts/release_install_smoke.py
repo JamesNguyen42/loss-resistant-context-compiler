@@ -232,12 +232,19 @@ def _build_tool_install_command(
     requirements, _fingerprint = requirements_snapshot
     return (
         [
-            *base,
+            str(python),
+            "-m",
+            "pip",
+            "--isolated",
+            "install",
+            "--disable-pip-version-check",
+            "--no-deps",
             "--no-index",
             "--find-links",
             str(wheelhouse),
             "--only-binary=:all:",
             "--require-hashes",
+            "--force-reinstall",
             "-r",
             str(requirements),
         ],
