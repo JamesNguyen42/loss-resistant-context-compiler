@@ -8,6 +8,7 @@ include TODO.md
 include _ctxc_build_backend.py
 include pyproject.toml
 include requirements-build.lock
+exclude setup.cfg
 
 recursive-include benchmarks *.json *.md *.py
 recursive-include conformance *.jsonl *.py

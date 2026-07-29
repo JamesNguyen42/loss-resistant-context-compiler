@@ -81,7 +81,7 @@ def test_ci_covers_supported_python_and_platform_release_smokes() -> None:
     assert workflow.count("len(distributions) == 7 and actual == expected") == 3
     assert workflow.count(
         "& $env:CTXC_BUILD_PYTHON -m pip --isolated wheel ."
-    ) == 4
+    ) == 5
     assert workflow.count("--build-wheelhouse ci-build-wheelhouse") == 2
     assert workflow.count("--build-requirements requirements-build.lock") == 2
     assert workflow.count("release-install-smoke.json") >= 4
@@ -90,6 +90,26 @@ def test_ci_covers_supported_python_and_platform_release_smokes() -> None:
     assert workflow.count("ci-build-wheelhouse/*.whl") == 3
     assert "release-requirements-build.lock" in workflow
     assert "root-release-smoke-${{ runner.os }}-python-3.13" in workflow
+    assert "Prepare the extracted-sdist candidate" in workflow
+    assert "_sdist_inventory(first_sdist)" in workflow
+    assert 'archive.extractall(extraction_parent, filter="data")' in workflow
+    assert workflow.index("_sdist_inventory(first_sdist)") < workflow.index(
+        'archive.extractall(extraction_parent, filter="data")'
+    )
+    assert "expected exactly one extracted source root" in workflow
+    roundtrip_step = workflow.split(
+        "- name: Build the extracted-sdist candidate",
+        maxsplit=1,
+    )[1].split("- name:", maxsplit=1)[0]
+    assert "& $env:CTXC_BUILD_PYTHON -m pip --isolated wheel ." in roundtrip_step
+    assert "--no-build-isolation" in roundtrip_step
+    assert "--no-index" in roundtrip_step
+    assert "--no-deps" in roundtrip_step
+    assert "-m _ctxc_build_backend" in roundtrip_step
+    assert "--sdist-dir ../../dist-roundtrip" in roundtrip_step
+    assert "release-roundtrip-reproducibility.json" in workflow
+    assert "dist-roundtrip/*.whl" in workflow
+    assert "dist-roundtrip/*.tar.gz" in workflow
     assert "--no-build-isolation" in workflow
     assert "--no-index" in workflow
     assert "--only-binary=:all:" in workflow

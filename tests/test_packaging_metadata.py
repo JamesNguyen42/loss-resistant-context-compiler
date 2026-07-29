@@ -126,6 +126,8 @@ def test_release_documents_freeze_name_versioning_and_support_boundaries() -> No
         "recursive-include conformance *.jsonl *.py",
         "recursive-include docs *.json *.md",
     } <= set(manifest.splitlines())
+    assert manifest.splitlines().count("exclude setup.cfg") == 1
+    assert not (ROOT / "setup.cfg").exists()
 
 
 def test_root_build_lock_is_the_reviewed_canonical_input_set() -> None:

@@ -314,7 +314,114 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "second source-distribution build failed with exit code $LASTEXITCODE"
           }
-      - name: Require byte-identical wheel and sdist outputs
+      - name: Prepare the extracted-sdist candidate
+        shell: pwsh
+        run: |
+          $extractScript = @'
+          from pathlib import Path
+          import os
+          import stat
+          import sys
+          import tarfile
+
+          source = Path("source-first").resolve(strict=True)
+          sys.path.insert(0, str(source))
+          sys.path.insert(0, str(source / "src"))
+          from scripts.release_reproducibility import _sdist_inventory
+
+          candidates = tuple(Path("dist-first").glob("*.tar.gz"))
+          if len(candidates) != 1:
+              raise RuntimeError(
+                  f"expected exactly one first source distribution, found {candidates!r}"
+              )
+          first_sdist = candidates[0].resolve(strict=True)
+          _sdist_inventory(first_sdist)
+          extraction_parent = Path("source-roundtrip")
+          roundtrip_dist = Path("dist-roundtrip")
+          if extraction_parent.exists() or roundtrip_dist.exists():
+              raise RuntimeError("roundtrip output paths must start absent")
+          extraction_parent.mkdir()
+          roundtrip_dist.mkdir()
+          with tarfile.open(first_sdist, mode="r:gz") as archive:
+              archive.extractall(extraction_parent, filter="data")
+          roots = tuple(extraction_parent.iterdir())
+          expected_name = first_sdist.name.removesuffix(".tar.gz")
+          if len(roots) != 1 or roots[0].name != expected_name:
+              raise RuntimeError(
+                  f"source distribution did not extract to its canonical root: {roots!r}"
+              )
+          root = roots[0]
+          root_stat = root.lstat()
+          reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+          is_junction = bool(
+              hasattr(os.path, "isjunction") and os.path.isjunction(root)
+          )
+          if (
+              not stat.S_ISDIR(root_stat.st_mode)
+              or stat.S_ISLNK(root_stat.st_mode)
+              or bool(getattr(root_stat, "st_file_attributes", 0) & reparse_flag)
+              or is_junction
+          ):
+              raise RuntimeError("extracted source root is not a real directory")
+          resolved_root = root.resolve(strict=True)
+          if resolved_root.parent != extraction_parent.resolve(strict=True):
+              raise RuntimeError("extracted source root escaped its destination")
+          for path in resolved_root.rglob("*"):
+              path_stat = path.lstat()
+              if (
+                  stat.S_ISLNK(path_stat.st_mode)
+                  or bool(
+                      getattr(path_stat, "st_file_attributes", 0) & reparse_flag
+                  )
+                  or (
+                      hasattr(os.path, "isjunction")
+                      and os.path.isjunction(path)
+                  )
+                  or not (
+                      stat.S_ISDIR(path_stat.st_mode)
+                      or stat.S_ISREG(path_stat.st_mode)
+                  )
+              ):
+                  raise RuntimeError(
+                      f"extracted source contains a link or special path: {path}"
+                  )
+              resolved = path.resolve(strict=True)
+              if resolved_root not in resolved.parents:
+                  raise RuntimeError(f"extracted path escaped its source root: {path}")
+          '@
+          $extractScript | & $env:CTXC_BUILD_PYTHON -B -
+          if ($LASTEXITCODE -ne 0) {
+            throw "source-distribution extraction failed with exit code $LASTEXITCODE"
+          }
+      - name: Build the extracted-sdist candidate
+        shell: pwsh
+        run: |
+          $roundtripRoots = @(
+            Get-ChildItem -LiteralPath source-roundtrip -Directory -Force
+          )
+          if ($roundtripRoots.Count -ne 1) {
+            throw "expected exactly one extracted source root"
+          }
+          Push-Location -LiteralPath $roundtripRoots[0].FullName
+          try {
+            & $env:CTXC_BUILD_PYTHON -m pip --isolated wheel . `
+              --no-build-isolation `
+              --no-index `
+              --no-deps `
+              --wheel-dir ../../dist-roundtrip
+            if ($LASTEXITCODE -ne 0) {
+              throw "roundtrip wheel build failed with exit code $LASTEXITCODE"
+            }
+            & $env:CTXC_BUILD_PYTHON -m _ctxc_build_backend `
+              --sdist-dir ../../dist-roundtrip
+            if ($LASTEXITCODE -ne 0) {
+              throw "roundtrip source-distribution build failed with exit code $LASTEXITCODE"
+            }
+          } finally {
+            Pop-Location
+          }
+      - name: Require byte-identical clean-checkout outputs
+        if: always()
         working-directory: source-first
         env:
           PYTHONPATH: src
@@ -323,6 +430,16 @@ jobs:
           --first-dist ../dist-first
           --second-dist ../dist-second
           --json-out ../release-reproducibility.json
+      - name: Require the extracted-sdist fixed point
+        if: always()
+        working-directory: source-first
+        env:
+          PYTHONPATH: src
+        run: >-
+          python -m scripts.release_reproducibility
+          --first-dist ../dist-first
+          --second-dist ../dist-roundtrip
+          --json-out ../release-roundtrip-reproducibility.json
       - name: Retain repeated-build evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -333,7 +450,10 @@ jobs:
             dist-first/*.tar.gz
             dist-second/*.whl
             dist-second/*.tar.gz
+            dist-roundtrip/*.whl
+            dist-roundtrip/*.tar.gz
             release-reproducibility.json
+            release-roundtrip-reproducibility.json
             release-python.txt
             release-build-toolchain.txt
             release-requirements-build.lock
