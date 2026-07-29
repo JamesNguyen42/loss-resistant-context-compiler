@@ -35,7 +35,7 @@ live-readiness status.
 | Package version | `0.1.0` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
-| Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; `0f20b8a`: exact seven-wheel build inputs, clean provider/a2 harness, and all automatic hosted gates passed; no local inference |
+| Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; `0f20b8a`: exact seven-wheel OpenHands build inputs, clean provider/a2 harness, and all automatic hosted gates passed; `7915beb`: exact seven-wheel root release inputs and post-acquisition offline build/smoke passed every automatic hosted gate; no local inference |
 | Canonical optional boundary | `localai-contracts==0.2.0a2`, protocol/schema `1.0.0`; `context.compile` only; non-inference |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
@@ -842,8 +842,10 @@ audited. Any selected superseded item independently fails verification as
   `ee36885fa45c6ba763732fdc222634b38bad4352257ab4d66040344766d1a62b`;
   that historical identical wheel passed its then-current clean-install lane.
   It is not current a2 RECORD-gate evidence. The build used the already
-  reviewed local environment and is not a hash-pinned clean build-tool closure;
-  the cross-platform offline build wheelhouse remains a red release gate.
+  reviewed local environment and is not a hash-pinned clean build-tool closure.
+  The later root `7915beb` automatic lane closes its separate seven-wheel
+  builder and post-acquisition offline smoke path, but does not retroactively
+  qualify this historical artifact or close OpenHands live dependencies.
 - Historical f590 provider provenance remains distinct: a Windows
   checkout-materialized wheel was 209,860 bytes with SHA-256
   `0d46899e8cf4c8eddf051137a9cae0a6036aa73da24b228d5ee52cc67a42e80b`,
@@ -899,12 +901,15 @@ audited. Any selected superseded item independently fails verification as
   `ctxc --help`, compile, trust-create, and trust-verify round trips.
 - CI runs connector golden/negative conformance, natural-history contract
   validation, external-candidate interchange, and external protocol checks.
-- Core CI builds wheel and deterministic sdist outputs from two clean checkouts with
-  a fixed timestamp/hash seed and explicit pip/Setuptools/wheel versions,
-  retains the Python/tool inventory, then requires the separate exact comparator
-  to accept both archives byte-for-byte. This is same-job-toolchain
-  repeatability, not offline, hash-pinned-input, cross-toolchain, or independent
-  reproduction evidence.
+- At root implementation head `7915beb`, Core CI acquires the seven exact
+  universal wheels authorized by the root `requirements-build.lock`, validates
+  their inventory, and installs a dedicated no-index builder. It builds wheel
+  and deterministic sdist outputs from two clean checkouts with a fixed
+  timestamp/hash seed, retains the exact inputs and Python/tool inventory, and
+  requires the separate comparator to accept both archives byte-for-byte. This
+  is post-acquisition offline, hash-bound, same-job-toolchain repeatability, not
+  cross-toolchain or independent reproduction, index-origin authentication, or
+  durable retention.
 - The historical direct-Setuptools `ctxc-openhands` candidate wheels were
   byte-identical at
   `8df8d4a0890daf149461205293d308329212a5c107c25ee4d1f0d068a2d88db1`,
@@ -1423,6 +1428,29 @@ lower quantile before results are observed.
   and `aba29437bf2ee4ba7d5876eea978bc1bf74cba321ebe047e5ff92acf80e69626`.
   This closes exact build-input byte identity for those automatic temporary
   lanes, not signed origin, durable retention, or a release authorization.
+- Exact root release-input implementation head
+  `7915beb15f6a3429c24871779c7cdab280d1ee04`, tree
+  `5fb61a9f0e9e00016acfd00d04e85e8ef04638f8`, adds the independent root
+  666-byte `requirements-build.lock` with the same SHA-256
+  `243f3ab977d82c04968cf4ea6474b7ef79c060d485aa3a3d67a383d1ef6fbbfe`.
+  The root platform-smoke, repeated-build, and LRCBench jobs acquire the seven
+  authorized universal wheels with `--require-hashes`, validate the exact
+  distribution/version inventory, create a dedicated no-index builder, and
+  use it for their release builds. Platform-smoke and LRCBench pass the
+  wheelhouse and lock through wheel/sdist clean-install smoke; the sdist result
+  must report `hash-pinned-offline-wheelhouse` and the wheel result reports
+  `not-applicable`. Repeated-build instead builds two exact-input candidates
+  and requires the strict byte comparator to accept both archives.
+- For exact implementation head `7915beb`, root CI push run `30429423660` and
+  pull-request run `30429426031` each passed all seven jobs, including Python
+  3.11/3.12/3.13, Windows and macOS release smoke, repeated release builds,
+  LRCBench, package installs, and the bounded performance gate. OpenHands push
+  run `30429423659` and pull-request run `30429426030` also passed; their
+  retained-evidence jobs remained manual/default-off. CodeQL `30429426038` and
+  dependency review `30429426044` passed. This is exact-head automatic hosted
+  evidence only; it does not authenticate the configured index or publishers,
+  make temporary Actions retention durable, authorize a release, or establish
+  live execution or inference.
 - The hosted retained-evidence job is manual/default-off and has not run for
   this candidate; both automatic runs skipped it. Local validation does not
   replace that durable retained-evidence gate.
@@ -1443,8 +1471,10 @@ lower quantile before results are observed.
   `2f692484` result by itself did not establish cross-platform artifact
   equality; the later `f9ba3de` aggregate closed only equality for its six
   recorded hosted package lanes. The later `0f20b8a` gate closes the exact
-  seven-wheel build-input bytes for its six recorded lanes while retaining
-  index-origin attestation and durable retention as separate work.
+  seven-wheel OpenHands build-input bytes for its six recorded lanes. The root
+  `7915beb` gate closes the same exact seven-wheel set for its automatic root
+  build and smoke paths. Index-origin attestation and durable retention remain
+  separate work.
 - No candidate SBOM, artifact signature, or provenance attestation exists.
   Checksums and self-hashes are substitution-detection groundwork, not
   authentication or release provenance.

@@ -94,15 +94,26 @@ a production PyPI upload, or a broader product/evidence claim.
   `--find-links` directory. Keep argv-level `-B` out of the shared connector
   command, set `PYTHONDONTWRITEBYTECODE=1` in its environment, and require the
   post-round-trip provider/contracts package no-`.pyc` verifier.
-- [ ] Provide a reviewed hash-pinned offline wheelhouse and exact requirements
-  file for sdist build tools. Run `scripts/release_install_smoke.py` with both
+- [ ] Provide the reviewed hash-pinned offline wheelhouse path for the release
+  candidate and its exact requirements file for sdist build tools. Exact
+  implementation head `7915beb15f6a3429c24871779c7cdab280d1ee04`
+  demonstrated this automatic path with the 666-byte root
+  `requirements-build.lock`, SHA-256
+  `243f3ab977d82c04968cf4ea6474b7ef79c060d485aa3a3d67a383d1ef6fbbfe`,
+  for seven universal wheels. Run `scripts/release_install_smoke.py` with both
   `--build-wheelhouse <directory>` and
   `--build-requirements <requirements.txt>`. Require the reported
   `hash-pinned-offline-wheelhouse` bootstrap; that path enforces no index,
-  binary-only build tools, and pip hash checking. This gate is red because the
-  repository does not yet retain the reviewed cross-platform wheelhouse and
-  requirements inputs. The default `online-lower-bounds` result remains only an
-  online diagnostic.
+  binary-only build tools, and pip hash checking. Root CI push run
+  `30429423660` and pull-request run `30429426031` passed this smoke path in the
+  platform-smoke and LRCBench jobs. Their repeated-build job used the same exact
+  builder inputs for two candidates and the strict comparator, without
+  reporting an install-smoke result. The workflow acquires hash-authorized
+  wheels from the configured index before the offline phase and retains its
+  wheelhouse only as a temporary Actions artifact. A future release candidate
+  must rerun and retain this gate. The default `online-lower-bounds` result
+  remains only an online diagnostic; authenticated origin, durable retention,
+  and release authorization remain separate gates.
 - [ ] Independently verify that the clean checkout, candidate commit, and
   archive inputs match the revision supplied to the evidence tool; the tool
   binds that value but does not discover or attest source provenance.
@@ -130,9 +141,11 @@ a production PyPI upload, or a broader product/evidence claim.
   <new-reproducibility-report.json>` and retain the report even when the command
   exits 1. Require status `passed` and byte-identical wheel and sdist results.
   CI exercises this from two clean checkouts in one job with explicit
-  pip/Setuptools/wheel versions and retains the Python/tool inventory. Do not
-  infer cross-platform, cross-toolchain, offline, hash-pinned-input, or
-  independent reproducibility from that result.
+  pip/Setuptools/wheel versions and retains the Python/tool inventory. At exact
+  implementation head `7915beb`, that job uses the root hash-bound wheelhouse
+  and no-index builder. Do not infer cross-platform artifact equality,
+  cross-toolchain or independent reproducibility, authenticated origin, or
+  durable retention from that result.
 - [ ] Public artifacts additionally require the external
   signatures/attestations specified by the release policy; their absence
   remains a red gate. The checksum manifest is not an SBOM or signature.

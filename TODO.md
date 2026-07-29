@@ -1025,12 +1025,27 @@ evidence of sublinear compilation.
   an explicit `SOURCE_DATE_EPOCH`, preserves exact member content and
   structure, and leaves the separate byte comparator strict. CI compares wheel
   and sdist outputs from two clean checkouts with pip 25.0.1, Setuptools 83.0.0,
-  and wheel 0.47.0, and retains the resolved Python/tool inventory. This does
-  not establish cross-toolchain, cross-platform, offline, hash-pinned-input, or
-  independently reproduced builds.
-- [ ] Replace the sdist smoke's online lower-bounded `setuptools`/`wheel`
-  bootstrap with a reviewed hash-pinned offline build wheelhouse and retain the
-  offline install evidence.
+  and wheel 0.47.0, and retains the resolved Python/tool inventory. Exact root
+  release-input implementation head
+  `7915beb15f6a3429c24871779c7cdab280d1ee04` additionally binds the root
+  platform-smoke, repeated-build, and LRCBench jobs to the 666-byte root
+  `requirements-build.lock`, SHA-256
+  `243f3ab977d82c04968cf4ea6474b7ef79c060d485aa3a3d67a383d1ef6fbbfe`,
+  and seven exact universal wheels. The lock is included in and verified from
+  the source distribution. Root CI push run `30429423660` and pull-request run
+  `30429426031` each passed all seven jobs. This does not establish
+  cross-toolchain or cross-platform artifact equality, independently reproduced
+  builds, authenticated index origin, or durable retention.
+- [x] Replace the automatic root sdist smoke's online lower-bounded
+  `setuptools`/`wheel` bootstrap with the reviewed hash-pinned wheelhouse path.
+  At exact implementation head `7915beb`, each affected job acquires only the
+  seven lock-authorized wheel bytes, validates the inventory, then uses a
+  dedicated no-index builder. Platform-smoke and LRCBench report
+  `hash-pinned-offline-wheelhouse` for the sdist smoke; repeated-build uses the
+  exact builder for two candidates and a strict byte comparator. The default
+  `online-lower-bounds` mode remains an explicit standalone diagnostic;
+  initial acquisition still uses the configured index, and temporary Actions
+  retention is not durable release evidence.
 - [ ] Add resolved locks plus vulnerability and license scanning for each
   optional external adapter.
 - [ ] Publish `0.2.0` only after the external runner and natural-history corpus

@@ -1284,6 +1284,33 @@ automatic lanes, not signed origin, durable retention, the complete live
 OpenHands dependency closure, live execution, SBOMs, signatures, provenance
 attestations, or release authorization.
 
+Exact root release-input implementation head
+`7915beb15f6a3429c24871779c7cdab280d1ee04`, tree
+`5fb61a9f0e9e00016acfd00d04e85e8ef04638f8`, adds the independent root
+666-byte `requirements-build.lock` with the same reviewed SHA-256
+`243f3ab977d82c04968cf4ea6474b7ef79c060d485aa3a3d67a383d1ef6fbbfe`
+and seven universal build wheels. The root platform-smoke, repeated-build, and
+LRCBench jobs acquire only those exact wheel bytes with `--require-hashes`,
+validate the seven-distribution inventory, create a dedicated no-index builder,
+and use it for their release builds. Platform-smoke and LRCBench pass the same
+wheelhouse and lock to the wheel/sdist clean-install smoke, which reports
+`hash-pinned-offline-wheelhouse` for the sdist and `not-applicable` for the
+already-built wheel. The repeated-build job instead builds two candidates with
+the exact builder and requires the strict comparator to accept both archives.
+
+For that exact implementation head, root CI push run `30429423660` and
+pull-request run `30429426031` each passed all seven jobs, including Python
+3.11/3.12/3.13, Windows and macOS release smoke, exact repeated release builds,
+LRCBench, packaged installs, and the bounded performance gate. OpenHands push
+run `30429423659` and pull-request run `30429426030` also passed; their retained
+evidence remained manual/default-off. CodeQL `30429426038` and dependency
+review `30429426044` passed. This closes only the exact root build-input and
+post-acquisition offline build/smoke path at `7915beb`. The configured index and
+publishers are not authenticated by the hashes, Actions artifacts are
+temporary rather than durably retained, the default online smoke remains a
+diagnostic, and live execution, inference, SBOMs, signatures, provenance
+attestations, publication, and release authorization remain open.
+
 See the
 [operator runbook](integrations/openhands/docs/RUNBOOK.md),
 [compatibility policy](integrations/openhands/compatibility/README.md), and

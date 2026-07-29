@@ -105,12 +105,11 @@ the hosted fixed-epoch root wheel below. The first Windows build from the long
 synchronized workspace path failed while creating a nested schema destination
 and produced no wheel; it remains a failed attempt.
 
-The build and development extras currently use lower bounds and CI resolves
-compatible releases from the live package index. No cross-version, hash-pinned
-dev/build lock or offline wheelhouse is retained. A credible replacement needs
-resolver output for CPython 3.11-3.13 and every CI platform, hashes for each
-allowed distribution, a documented update cadence, and an offline installation
-check; a single host-generated lock would overstate portability.
+The general build and development extras still use lower bounds, and ordinary
+development installation resolves compatible releases from the live package
+index. There is no general developer-environment lock, cross-version resolved
+dependency lock, or offline dependency mirror. The two narrow automatic
+release-build exceptions below do not change that boundary.
 
 The OpenHands automatic package workflow has a narrower reviewed exception at
 exact implementation head `0f20b8a`: its tracked 666-byte
@@ -123,16 +122,31 @@ clean-install modes. This does not create a general core/dev lock, authenticate
 the configured index or publishers, or make temporary Actions retention
 durable.
 
-By default, the standalone sdist install smoke bootstraps the lower-bounded
-`setuptools>=77` and `wheel>=0.41` requirements from the configured package
-index. That path is an explicitly reported online clean-environment diagnostic,
-not proof of an offline or reproducible source install. An alternate mode
-requires both `--build-wheelhouse` and `--build-requirements`, rejects linked
-inputs, and invokes pip with `--no-index`, `--only-binary=:all:`, and
-`--require-hashes`; the artifact installation itself always uses `--no-index`.
-The repository does not yet retain a reviewed requirements file and matching
-hash-pinned build wheelhouse for every supported platform. That offline smoke
-therefore remains a red gate rather than an inferred pass.
+Exact root release-input implementation head
+`7915beb15f6a3429c24871779c7cdab280d1ee04`, tree
+`5fb61a9f0e9e00016acfd00d04e85e8ef04638f8`, adds an independent root
+`requirements-build.lock` with the same 666 bytes and SHA-256. The root
+platform-smoke, repeated-build, and LRCBench jobs acquire only those seven wheel
+bytes under `--require-hashes`, validate the exact distribution inventory,
+install a dedicated builder with `--no-index --no-deps --only-binary=:all:`,
+and use it for their release builds. Platform-smoke and LRCBench pass the same
+wheelhouse and lock to the clean wheel/sdist smoke. Repeated-build instead
+builds two exact-input candidates and requires the strict comparator to accept
+both archives. Root CI push run `30429423660` and pull-request run
+`30429426031` passed all seven jobs at that head.
+
+By default, the standalone sdist install smoke still bootstraps the
+lower-bounded `setuptools>=77` and `wheel>=0.41` requirements from the
+configured package index. That mode is an explicitly reported online
+clean-environment diagnostic. The automatic root release lanes at `7915beb`
+instead supply both `--build-wheelhouse` and `--build-requirements`; this path
+rejects linked inputs and invokes pip with `--no-index`,
+`--only-binary=:all:`, and `--require-hashes` after acquisition. The artifact
+installation itself always uses `--no-index`. This proves exact input-byte
+binding and post-acquisition offline build/smoke for those runs, not offline
+acquisition, index or publisher authentication, a general development lock, or
+durable wheel retention. The automatic runs construct and temporarily retain
+this hash-pinned build wheelhouse; the wheel files are not tracked in Git.
 
 Every claim-bearing external adapter has a stricter boundary: retain and hash
 its dependency lock, source tree, entrypoint, runtime executable, portable
@@ -224,10 +238,14 @@ Commit `2f692484272aa36bf267703cad2bb4d6926676ff` adds the manifest fixed
 point and the exact extracted-sdist regression; it does not relabel the first
 checkpoint.
 
-Core CI fixes `SOURCE_DATE_EPOCH` and `PYTHONHASHSEED`, builds wheel and sdist
-from two clean checkouts in one job with pip 25.0.1, Setuptools 83.0.0, and
-wheel 0.47.0, records Python and the installed tool inventory, and requires
-the separate exact comparator to report both archives byte-identical.
+At root implementation head `7915beb`, Core CI acquires the seven exact wheels
+authorized by the root `requirements-build.lock`, validates their distribution
+inventory, and installs a dedicated no-index builder. It fixes
+`SOURCE_DATE_EPOCH` and `PYTHONHASHSEED`.
+It builds wheel and sdist from two clean checkouts in one job with pip 25.0.1,
+Setuptools 83.0.0, and wheel 0.47.0. It records the exact input wheels, Python,
+and installed tool inventory, and requires the separate comparator to report
+both archives byte-identical.
 OpenHands ordinary package lanes independently build two fresh source copies
 and rebuild the first generated sdist from its extracted source, requiring all
 three final sdist byte strings to match. At exact packaging head
@@ -298,6 +316,17 @@ lanes. They still do not attest the hosted platform image, publisher identity,
 or complete build environment. Temporary artifacts must be retained durably
 and independently checked before any cross-toolchain, independently
 reproduced, or broader reproducible-build claim.
+
+The separate root release-input implementation head
+`7915beb15f6a3429c24871779c7cdab280d1ee04` passed root CI push run
+`30429423660` and pull-request run `30429426031`, each with all seven jobs.
+Those jobs bind the same seven input wheels to root platform smoke, repeated
+release builds, and LRCBench package builds; their clean sdist smoke reports
+`hash-pinned-offline-wheelhouse`. OpenHands push `30429423659` and pull-request
+`30429426030`, CodeQL `30429426038`, and dependency review `30429426044` also
+passed at that exact head. The retained-evidence job remained
+manual/default-off, no model or runtime inference was run, and the successful
+automatic lanes do not authorize release or publication.
 
 Portable stdlib checks cannot atomically prevent a hostile same-user process
 from replacing a pathname after the final verification syscall. The wrapper
