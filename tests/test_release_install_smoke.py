@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
+import json
 import os
 import subprocess
 import sys
@@ -12,17 +13,59 @@ from pathlib import Path
 import pytest
 
 from scripts.release_install_smoke import (
+    MATERIALIZED_WITNESS_SCHEMA,
     _artifact_install_command,
     _assert_artifact_snapshot,
     _build_tool_install_command,
+    _decode_materialized_witness,
+    _materialized_context_probe_command,
+    _materialized_context_witness,
     _offline_build_inputs,
     _release_artifacts,
+    _release_report,
+    _require_matching_materialized_witnesses,
+    _source_module_root,
+    _subprocess_environment,
     _venv_python,
     _verified_artifact_snapshot,
 )
 
 WHEEL = "loss_resistant_context_compiler-0.1.0-py3-none-any.whl"
 SDIST = "loss_resistant_context_compiler-0.1.0.tar.gz"
+
+
+def _sample_materialized_witness() -> dict[str, object]:
+    digest = "0" * 64
+    return {
+        "schema": MATERIALIZED_WITNESS_SCHEMA,
+        "allocation_plan_sha256": digest,
+        "context_bundle_sha256": digest,
+        "current_turn_id": "message-4",
+        "current_turn_sha256": digest,
+        "final_provider_recount_required": True,
+        "fixed_input_sha256": digest,
+        "materialization_sha256": digest,
+        "protected_state_sha256": digest,
+        "provider_execution_ready": False,
+        "prototype_sha256": digest,
+        "recent_message_ids": ["message-3"],
+        "recent_messages_sha256": digest,
+        "retrieval_result_sha256": None,
+        "runtime_sha256": digest,
+    }
+
+
+def _encoded_witness(value: object) -> str:
+    return (
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        + "\n"
+    )
 
 
 def _create_test_environment_with_current_pip(path: Path) -> Path:
@@ -182,9 +225,7 @@ def test_release_smoke_offline_bootstrap_replaces_modified_same_version_package(
     members = {
         "sentinel_pkg/__init__.py": b'MARKER = "wheel"\n',
         "sentinel_pkg-1.0.dist-info/METADATA": (
-            b"Metadata-Version: 2.4\n"
-            b"Name: sentinel-pkg\n"
-            b"Version: 1.0\n\n"
+            b"Metadata-Version: 2.4\nName: sentinel-pkg\nVersion: 1.0\n\n"
         ),
         "sentinel_pkg-1.0.dist-info/WHEEL": (
             b"Wheel-Version: 1.0\n"
@@ -199,9 +240,7 @@ def test_release_smoke_offline_bootstrap_replaces_modified_same_version_package(
         encoded = digest.rstrip(b"=").decode("ascii")
         record_rows.append(f"{name},sha256={encoded},{len(payload)}\n")
     record_rows.append("sentinel_pkg-1.0.dist-info/RECORD,,\n")
-    members["sentinel_pkg-1.0.dist-info/RECORD"] = "".join(record_rows).encode(
-        "ascii"
-    )
+    members["sentinel_pkg-1.0.dist-info/RECORD"] = "".join(record_rows).encode("ascii")
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as output:
         for name, payload in members.items():
@@ -210,8 +249,7 @@ def test_release_smoke_offline_bootstrap_replaces_modified_same_version_package(
 
     requirements = tmp_path / "requirements-build.lock"
     requirements.write_text(
-        "sentinel-pkg==1.0 --hash=sha256:"
-        f"{hashlib.sha256(wheel.read_bytes()).hexdigest()}\n",
+        f"sentinel-pkg==1.0 --hash=sha256:{hashlib.sha256(wheel.read_bytes()).hexdigest()}\n",
         encoding="ascii",
         newline="\n",
     )
@@ -278,5 +316,136 @@ def test_release_smoke_artifact_install_never_contacts_an_index(tmp_path: Path) 
     assert "--no-index" in sdist
     assert "--no-deps" in wheel
     assert "--no-deps" in sdist
+    assert wheel.count("--no-compile") == 1
+    assert sdist.count("--no-compile") == 1
     assert "--no-build-isolation" not in wheel
     assert "--no-build-isolation" in sdist
+
+
+def test_release_smoke_subprocess_environment_is_standalone_and_no_bytecode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYTHONHOME", "private-home")
+    monkeypatch.setenv("PYTHONPATH", "private-path")
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "0")
+
+    environment = _subprocess_environment()
+
+    assert "PYTHONHOME" not in environment
+    assert "PYTHONPATH" not in environment
+    assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert os.environ["PYTHONHOME"] == "private-home"
+    assert os.environ["PYTHONPATH"] == "private-path"
+
+
+def test_materialized_context_probe_command_is_isolated_and_module_qualified(
+    tmp_path: Path,
+) -> None:
+    python = tmp_path / "python"
+    command = _materialized_context_probe_command(
+        python,
+        module_root=tmp_path / "src",
+        require_standalone=True,
+    )
+
+    assert command[:4] == [str(python), "-I", "-B", "-c"]
+    assert command[-2:] == ["1", str(tmp_path / "src")]
+    script = command[4]
+    assert "from context_compiler.context_window import" in script
+    assert "from context_compiler.materialized_window import" in script
+    assert "from context_compiler.connector import" in script
+    assert "from context_compiler.models import" in script
+    assert "from context_compiler import" not in script
+    assert "__pycache__" in script
+
+
+def test_materialized_context_source_witness_is_byte_deterministic() -> None:
+    source_root = _source_module_root()
+
+    first = _materialized_context_witness(
+        Path(sys.executable),
+        module_root=source_root,
+        require_standalone=False,
+    )
+    second = _materialized_context_witness(
+        Path(sys.executable),
+        module_root=source_root,
+        require_standalone=False,
+    )
+
+    assert first == second
+    assert first["schema"] == MATERIALIZED_WITNESS_SCHEMA
+    assert first["current_turn_id"] == "message-4"
+    assert first["recent_message_ids"] == ["message-3"]
+    assert first["final_provider_recount_required"] is True
+    assert first["provider_execution_ready"] is False
+    assert first["retrieval_result_sha256"] is None
+
+
+def test_materialized_context_witness_requires_canonical_exact_fields() -> None:
+    valid = _sample_materialized_witness()
+
+    assert _decode_materialized_witness(_encoded_witness(valid)) == valid
+
+    unknown = dict(valid)
+    unknown["unexpected"] = None
+    with pytest.raises(ValueError, match="fields are invalid"):
+        _decode_materialized_witness(_encoded_witness(unknown))
+
+    noncanonical = json.dumps(valid, sort_keys=False) + "\n"
+    with pytest.raises(ValueError, match="not canonical"):
+        _decode_materialized_witness(noncanonical)
+
+    bool_substitution = dict(valid)
+    bool_substitution["final_provider_recount_required"] = 1
+    with pytest.raises(ValueError, match="final provider recount"):
+        _decode_materialized_witness(_encoded_witness(bool_substitution))
+
+    with pytest.raises(ValueError, match="byte limit"):
+        _decode_materialized_witness("x" * (4 * 1024 + 1))
+
+
+def test_release_smoke_compares_source_wheel_and_sdist_witnesses() -> None:
+    source = _sample_materialized_witness()
+    _require_matching_materialized_witnesses(
+        source,
+        [dict(source), dict(source)],
+    )
+
+    changed = dict(source)
+    changed["prototype_sha256"] = "1" * 64
+    with pytest.raises(RuntimeError, match="differs from source"):
+        _require_matching_materialized_witnesses(
+            source,
+            [dict(source), changed],
+        )
+    with pytest.raises(ValueError, match="exactly two"):
+        _require_matching_materialized_witnesses(source, [dict(source)])
+
+
+def test_release_smoke_report_shape_remains_compatible() -> None:
+    artifacts = [
+        {
+            "artifact": WHEEL,
+            "kind": "wheel",
+            "status": "passed",
+            "build_bootstrap": "not-applicable",
+        },
+        {
+            "artifact": SDIST,
+            "kind": "sdist",
+            "status": "passed",
+            "build_bootstrap": "hash-pinned-offline-wheelhouse",
+        },
+    ]
+
+    report = _release_report(13, artifacts)
+
+    assert set(report) == {"schema", "schema_count", "artifacts"}
+    assert report["schema"] == "ctxc-release-install-smoke-0.1"
+    assert report["schema_count"] == 13
+    assert report["artifacts"] == artifacts
+    assert all(
+        set(value) == {"artifact", "kind", "status", "build_bootstrap"}
+        for value in report["artifacts"]
+    )
