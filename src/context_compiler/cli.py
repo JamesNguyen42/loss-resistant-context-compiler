@@ -14,6 +14,8 @@ from .artifact_diff import diff_artifacts
 from .artifact_inspection import render_artifact_text, summarize_artifact
 from .atomic import atomic_write_text
 from .compiler import ContextCompiler
+from .connector import ExactTokenCounterAdapter
+from .context_window import ContextWindowBudget, ContextWindowError
 from .io import (
     load_artifact_path,
     load_sources,
@@ -32,6 +34,7 @@ from .limits import (
     SourceLimitError,
     SourceLimits,
 )
+from .materialized_window import materialize_context
 from .models import CompilationPolicy, CompiledMemory
 from .path_safety import PathBoundaryError
 from .redaction import (
@@ -49,6 +52,7 @@ from .trust import (
 
 _DIAGNOSTIC_SCHEMA = "ctxc-diagnostic-0.1"
 _EVENT_SCHEMA = "ctxc-event-0.1"
+_MATERIALIZE_TOKENIZER_PROFILE = "unicode-codepoint-count-v1"
 _CLI_MASK_CHARACTERS = frozenset({"*", "#", "█", "■"})
 
 
@@ -398,6 +402,55 @@ def _compile(args: argparse.Namespace) -> int:
         _write_error(args, exc)
         return 2
     return exit_code
+
+
+def _materialize(args: argparse.Namespace) -> int:
+    try:
+        source_limits = _source_limits(args)
+        sources = _input_sources(args.input, source_limits)
+        budget = ContextWindowBudget(
+            hard_limit_tokens=args.hard_limit_tokens,
+            memory_budget_tokens=args.memory_budget_tokens,
+            reserved_output_tokens=args.reserved_output_tokens,
+            safety_margin_tokens=args.safety_margin_tokens,
+            fixed_input_tokens=args.fixed_input_tokens,
+            minimum_recent_messages=args.minimum_recent_messages,
+            maximum_recent_messages=args.maximum_recent_messages,
+            per_message_overhead_tokens=args.per_message_overhead_tokens,
+        )
+        result = materialize_context(
+            sources,
+            current_turn_id=args.current_turn_id,
+            budget=budget,
+            token_counter=ExactTokenCounterAdapter(
+                args.tokenizer_profile,
+                len,
+            ),
+            allocation_plan_sha256=args.allocation_plan_sha256,
+            fixed_input_sha256=args.fixed_input_sha256,
+            source_limits=source_limits,
+            compilation_limits=_compilation_limits(args),
+        )
+        rendered = json.dumps(
+            result,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        _write_output(rendered, args.output)
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        TimeoutError,
+    ) as exc:
+        code = exc.reason if isinstance(exc, ContextWindowError) else None
+        _write_error(args, exc, code=code)
+        return 2
+    return 0
 
 
 def _archive_append(args: argparse.Namespace) -> int:
@@ -986,6 +1039,40 @@ def build_parser() -> argparse.ArgumentParser:
     _add_compilation_limit_arguments(compile_parser)
     _add_error_format_argument(compile_parser)
     compile_parser.set_defaults(handler=_compile)
+
+    materialize_parser = subparsers.add_parser(
+        "materialize",
+        help="emit a bounded materialized context, runtime payload, and receipt",
+    )
+    materialize_parser.add_argument("input", help="history path or - for stdin")
+    materialize_parser.add_argument("-o", "--output")
+    materialize_parser.add_argument("--current-turn-id", required=True)
+    materialize_parser.add_argument("--hard-limit-tokens", type=int, required=True)
+    materialize_parser.add_argument("--memory-budget-tokens", type=int, required=True)
+    materialize_parser.add_argument("--reserved-output-tokens", type=int, default=1_024)
+    materialize_parser.add_argument("--safety-margin-tokens", type=int, default=256)
+    materialize_parser.add_argument("--fixed-input-tokens", type=int, default=0)
+    materialize_parser.add_argument(
+        "--fixed-input-sha256",
+        help="digest of fixed host input; required exactly when its count is nonzero",
+    )
+    materialize_parser.add_argument("--minimum-recent-messages", type=int, default=0)
+    materialize_parser.add_argument("--maximum-recent-messages", type=int, default=4_096)
+    materialize_parser.add_argument("--per-message-overhead-tokens", type=int, default=0)
+    materialize_parser.add_argument("--allocation-plan-sha256", required=True)
+    materialize_parser.add_argument(
+        "--tokenizer-profile",
+        choices=(_MATERIALIZE_TOKENIZER_PROFILE,),
+        required=True,
+        help=(
+            "exact Unicode code-point planning units only; this is not a "
+            "provider tokenizer and final provider recount remains required"
+        ),
+    )
+    _add_source_limit_arguments(materialize_parser)
+    _add_compilation_limit_arguments(materialize_parser)
+    _add_error_format_argument(materialize_parser)
+    materialize_parser.set_defaults(handler=_materialize)
 
     verify_parser = subparsers.add_parser(
         "verify", help="re-verify an artifact against immutable source history"

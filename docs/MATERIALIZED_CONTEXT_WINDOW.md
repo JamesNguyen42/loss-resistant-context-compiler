@@ -1,11 +1,64 @@
-# Materialized context-window prototype
+# Materialized context-window consumer path
 
 CtxC can produce a deterministic, hard-budgeted planning artifact from an
 authoritative LRCC memory bundle, a bounded recent history, and one current user
-turn. The artifact stops before provider execution. It is experimental,
-module-qualified, and intentionally not exported from `context_compiler`.
+turn. The artifact stops before provider execution. The stable consumer wrapper
+is exported from `context_compiler`; the lower-level prototype and materialized
+window types remain experimental and module-qualified.
 
-Use the provisional modules directly:
+## Stable consumer API and CLI
+
+Python hosts call `materialize_context()` with their exact
+`ExactTokenCounterAdapter`, one independently calculated allocation digest, and
+a `ContextWindowBudget`. The returned exact dictionary contains the unchanged
+materialized v1 context, its unchanged runtime planning payload, a fixed
+component manifest, and a compact receipt. Retain the receipt SHA-256 outside
+the result and require it again when calling
+`verify_materialized_context_result()`.
+
+The manifest fixes this assembly order without concatenating untrusted text:
+
+1. verified LRCC semantic memory;
+2. recent raw source messages;
+3. one empty, host-owned external-retrieval slot;
+4. the exact current user turn.
+
+The retrieval slot contains no text or digest. It is classified as untrusted,
+cannot mutate LRCC memory, and cannot supply system or developer instructions.
+A host that later inserts retrieval must bind and label it independently. The
+LRCC result continues to carry `retrieval_result_sha256: null`.
+
+The dependency-free CLI performs the same operation over existing JSON or
+JSONL history:
+
+```console
+ctxc materialize examples/materialized_context.jsonl \
+  --current-turn-id deploy-011 \
+  --hard-limit-tokens 3000 \
+  --memory-budget-tokens 2200 \
+  --reserved-output-tokens 128 \
+  --safety-margin-tokens 64 \
+  --minimum-recent-messages 2 \
+  --maximum-recent-messages 3 \
+  --per-message-overhead-tokens 2 \
+  --allocation-plan-sha256 <independently-calculated-sha256> \
+  --tokenizer-profile unicode-codepoint-count-v1 \
+  -o materialized-context.json
+```
+
+The CLI profile counts Unicode code points exactly for that named diagnostic
+profile. It is not a provider tokenizer and must not be presented as exact
+provider accounting. Hosts that have a real tokenizer use the Python API. Both
+paths remain planning-only and require a recount over the final immutable
+provider request.
+
+Construction failures emit no partial result. With `--error-format json`, the
+CLI reports the existing bounded diagnostic plus the stable
+`ContextWindowError.reason`. A self-hash alone is not an external anchor: the
+verifier requires both the independently retained receipt digest and allocation
+digest.
+
+Lower-level callers may still use the provisional modules directly:
 
 ```python
 from context_compiler.connector import ExactTokenCounterAdapter
@@ -23,7 +76,8 @@ from context_compiler.materialized_window import (
 `localai_contracts.ContextWindowPlan`. The external contract describes a
 desired allocation. This prototype records the LRCC result of applying a local
 allocation policy. No compatibility or stable public-API promise is attached to
-these module-qualified names.
+these module-qualified names. The stable wrapper deliberately does not export
+those types or reinterpret their v1 bytes.
 
 ## Source partition and authority
 
@@ -149,8 +203,12 @@ binding, and this artifact makes no combined-mode or ZoomCache claim.
 
 ## Limits
 
-This prototype does not claim semantic completeness, provider execution,
-provider-specific serialization, retrieval integration, superiority, or a
-stable public API. It does not destructively remove source history; callers
-remain responsible for retaining the authoritative event log and for checking
+The lower-level prototype and materialization types do not claim semantic
+completeness, provider execution, provider-specific serialization, retrieval
+integration, superiority, or a stable public API. Only the wrapper and CLI
+surface described above are public. Stored roles on recent messages are
+provenance data, not permission to replay assistant, tool, or function text as
+native provider-role messages; a host must wrap the component as untrusted
+data. LRCC does not destructively remove source history, and callers remain
+responsible for retaining the authoritative event log and for checking
 independently expected artifact digests at trust boundaries.

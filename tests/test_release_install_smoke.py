@@ -30,8 +30,8 @@ from scripts.release_install_smoke import (
     _verified_artifact_snapshot,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.1a1-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a1.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a2-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a2.tar.gz"
 
 
 def _sample_materialized_witness() -> dict[str, object]:
@@ -39,6 +39,7 @@ def _sample_materialized_witness() -> dict[str, object]:
     return {
         "schema": MATERIALIZED_WITNESS_SCHEMA,
         "allocation_plan_sha256": digest,
+        "component_manifest_sha256": digest,
         "context_bundle_sha256": digest,
         "current_turn_id": "message-4",
         "current_turn_sha256": digest,
@@ -50,6 +51,7 @@ def _sample_materialized_witness() -> dict[str, object]:
         "prototype_sha256": digest,
         "recent_message_ids": ["message-3"],
         "recent_messages_sha256": digest,
+        "receipt_sha256": digest,
         "retrieval_result_sha256": None,
         "runtime_sha256": digest,
     }
@@ -351,11 +353,14 @@ def test_materialized_context_probe_command_is_isolated_and_module_qualified(
     assert command[:4] == [str(python), "-I", "-B", "-c"]
     assert command[-2:] == ["1", str(tmp_path / "src")]
     script = command[4]
+    assert "from context_compiler import" in script
+    assert "materialize_context" in script
+    assert "verify_materialized_context_result" in script
+    assert "MATERIALIZED_CONTEXT_RESULT_SCHEMA" in script
     assert "from context_compiler.context_window import" in script
     assert "from context_compiler.materialized_window import" in script
     assert "from context_compiler.connector import" in script
     assert "from context_compiler.models import" in script
-    assert "from context_compiler import" not in script
     assert "__pycache__" in script
 
 
@@ -380,6 +385,8 @@ def test_materialized_context_source_witness_is_byte_deterministic() -> None:
     assert first["final_provider_recount_required"] is True
     assert first["provider_execution_ready"] is False
     assert first["retrieval_result_sha256"] is None
+    assert len(first["component_manifest_sha256"]) == 64
+    assert len(first["receipt_sha256"]) == 64
 
 
 def test_materialized_context_witness_requires_canonical_exact_fields() -> None:

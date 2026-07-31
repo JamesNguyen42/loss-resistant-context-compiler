@@ -150,7 +150,7 @@ def test_phrase_evaluation_replays_the_committed_baseline() -> None:
     }
 
 
-@pytest.mark.parametrize("package_version", ["0.1.0", "0.1.1a1"])
+@pytest.mark.parametrize("package_version", ["0.1.0", "0.1.1a1", "0.1.1a2"])
 def test_phrase_evaluation_replays_each_supported_package_identity(
     package_version: str,
 ) -> None:

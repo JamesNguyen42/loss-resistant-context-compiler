@@ -24,7 +24,7 @@ meaning can be compressed without loss.
 
 | Area | Current state |
 | --- | --- |
-| Release | Alpha research implementation, package version `0.1.1a1` |
+| Release | Alpha research implementation, package version `0.1.1a2` |
 | Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts, optional LocalAI connector |
@@ -39,7 +39,7 @@ meaning can be compressed without loss.
 | External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
-| OpenHands integration | Separately packaged `ctxc-openhands` `0.1.0a2` draft alpha; reviewed offline fake-runtime foundation only; live execution blocked |
+| OpenHands integration | Separately packaged `ctxc-openhands` `0.1.0a3` draft alpha; reviewed offline fake-runtime foundation only; live execution blocked |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
 | Production readiness | Not production-ready |
@@ -161,6 +161,10 @@ The repository currently includes:
   terminates the Windows Job on timeout, and reconstructs successful output
   from bounded strict JSON;
 - a portable JSON artifact, compact prompt renderer, and 25 installed JSON Schemas;
+- a stable `materialize_context()` consumer wrapper and `ctxc materialize`
+  command that emit the existing materialized v1 plan, structured runtime
+  payload, fixed untrusted-retrieval insertion marker, and independently
+  verifiable receipt without constructing a provider request;
 - an optional standard-library LocalAI connector with six framework-neutral
   operations, a strict versioned JSONL process boundary, immutable
   `SourceEvent` mapping, self-hashed `ContextBundle` output, and deterministic
@@ -431,6 +435,28 @@ ctxc verify compiled-memory.json examples/auth_timeout.jsonl
 ctxc inspect compiled-memory.json
 ctxc inspect compiled-memory.json --format text --show-items
 ```
+
+Materialize a bounded consumer result from the included correction-bearing
+history:
+
+```console
+ctxc materialize examples/materialized_context.jsonl \
+  --current-turn-id deploy-011 \
+  --hard-limit-tokens 3000 --memory-budget-tokens 2200 \
+  --reserved-output-tokens 128 --safety-margin-tokens 64 \
+  --minimum-recent-messages 2 --maximum-recent-messages 3 \
+  --per-message-overhead-tokens 2 \
+  --allocation-plan-sha256 <independently-calculated-sha256> \
+  --tokenizer-profile unicode-codepoint-count-v1 \
+  -o materialized-context.json
+```
+
+The CLI profile counts its named Unicode code-point units exactly; it is not a
+provider tokenizer. The result keeps verified memory, recent raw messages, one
+empty untrusted external-retrieval slot, and the current user turn in a fixed
+order. It remains provider-not-ready and requires a final recount. Python hosts
+with an exact tokenizer should use `materialize_context()` and retain the
+receipt digest independently for `verify_materialized_context_result()`.
 
 JSON remains the default inspection format. The terminal view bounds displayed
 items, per-item provenance/state links, and raw string length through
@@ -1094,7 +1120,7 @@ bundle authenticates its producer.
 ## Separately packaged OpenHands alpha
 
 [`ctxc-openhands`](integrations/openhands/README.md) is an isolated
-`0.1.0a2` package under `integrations/openhands/`. Ordinary
+`0.1.0a3` package under `integrations/openhands/`. Ordinary
 `loss-resistant-context-compiler` installation and every standalone `ctxc`
 Python/CLI path remain dependency-free and do not import OpenHands. Importing
 `ctxc_openhands` also defers all host imports until its exact compatibility

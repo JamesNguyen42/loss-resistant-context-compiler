@@ -14,21 +14,23 @@ from collections.abc import Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a1"
+EXPECTED_VERSION = "0.1.1a2"
 SCHEMA_GLOB = "*.schema.json"
-MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.1"
+MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.2"
 _MAX_WITNESS_BYTES = 4 * 1024
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _WITNESS_HASH_FIELDS = frozenset(
     {
         "allocation_plan_sha256",
         "context_bundle_sha256",
+        "component_manifest_sha256",
         "current_turn_sha256",
         "fixed_input_sha256",
         "materialization_sha256",
         "protected_state_sha256",
         "prototype_sha256",
         "recent_messages_sha256",
+        "receipt_sha256",
         "runtime_sha256",
     }
 )
@@ -58,9 +60,17 @@ if module_root:
     sys.path.insert(0, module_root)
 
 import context_compiler
+from context_compiler import (
+    MATERIALIZED_CONTEXT_COMPONENTS_SCHEMA,
+    MATERIALIZED_CONTEXT_RECEIPT_SCHEMA,
+    MATERIALIZED_CONTEXT_RESULT_SCHEMA,
+    ContextWindowBudget,
+    materialize_context,
+    verify_materialized_context_result,
+)
 from context_compiler.connector import ExactTokenCounterAdapter
 from context_compiler.context_window import (
-    ContextWindowBudget,
+    ContextWindowBudget as ModuleContextWindowBudget,
     ContextWindowPrototype,
     compose_context_window,
 )
@@ -70,8 +80,8 @@ from context_compiler.materialized_window import (
 )
 from context_compiler.models import SourceRecord
 
+assert ContextWindowBudget is ModuleContextWindowBudget
 for name in (
-    "ContextWindowBudget",
     "ContextWindowPrototype",
     "MaterializedContextWindow",
     "compose_context_window",
@@ -216,6 +226,60 @@ runtime_ids = [value["id"] for value in runtime["recent_messages"]]
 runtime_ids.append(runtime["current_turn"]["id"])
 assert runtime_ids.count("message-4") == 1
 
+consumer_result = materialize_context(
+    sources(),
+    current_turn_id="message-4",
+    budget=budget,
+    token_counter=counter,
+    fixed_input_sha256=FIXED_INPUT_SHA256,
+    allocation_plan_sha256=ALLOCATION_PLAN_SHA256,
+)
+assert consumer_result["schema"] == MATERIALIZED_CONTEXT_RESULT_SCHEMA
+assert consumer_result["materialized_context"] == upgraded.to_dict()
+assert consumer_result["runtime_payload"] == runtime
+component_manifest = consumer_result["component_manifest"]
+assert component_manifest["schema"] == MATERIALIZED_CONTEXT_COMPONENTS_SCHEMA
+assert component_manifest["prompt_order"] == [
+    "lrcc_verified_memory",
+    "recent_raw_messages",
+    "external_untrusted_retrieval",
+    "current_user_turn",
+]
+assert component_manifest["recent_raw_messages"]["source_roles_preserved"] is True
+assert component_manifest["recent_raw_messages"]["provider_role_projection_allowed"] is False
+retrieval = component_manifest["external_untrusted_retrieval"]
+assert retrieval["classification"] == "untrusted_external_retrieval"
+assert retrieval["content"] is None
+assert retrieval["retrieval_result_sha256"] is None
+assert retrieval["host_binding_required"] is True
+assert retrieval["can_mutate_lrcc_memory"] is False
+assert retrieval["can_supply_system_or_developer_instructions"] is False
+receipt = consumer_result["receipt"]
+assert receipt["schema"] == MATERIALIZED_CONTEXT_RECEIPT_SCHEMA
+assert receipt["runtime_payload_sha256"] == hashlib.sha256(runtime_bytes).hexdigest()
+assert receipt["provider_execution_ready"] is False
+assert receipt["final_provider_recount_required"] is True
+consumer_bytes = json.dumps(
+    consumer_result,
+    ensure_ascii=False,
+    sort_keys=True,
+    separators=(",", ":"),
+    allow_nan=False,
+).encode("utf-8")
+verified_consumer = verify_materialized_context_result(
+    consumer_result,
+    expected_receipt_sha256=receipt["receipt_sha256"],
+    expected_allocation_plan_sha256=ALLOCATION_PLAN_SHA256,
+)
+verified_consumer_bytes = json.dumps(
+    verified_consumer,
+    ensure_ascii=False,
+    sort_keys=True,
+    separators=(",", ":"),
+    allow_nan=False,
+).encode("utf-8")
+assert verified_consumer_bytes == consumer_bytes
+
 
 def keys(value):
     if type(value) is dict:
@@ -227,7 +291,7 @@ def keys(value):
             yield from keys(item)
 
 
-assert not any("path" in key.casefold() for key in keys(runtime))
+assert not any("path" in key.casefold() for key in keys(consumer_result))
 
 if require_standalone:
     package_root = Path(context_compiler.__file__).resolve(strict=True).parent
@@ -236,8 +300,9 @@ if require_standalone:
         assert path.suffix != ".pyc"
 
 witness = {
-    "schema": "ctxc-materialized-context-witness-0.1",
+    "schema": "ctxc-materialized-context-witness-0.2",
     "allocation_plan_sha256": ALLOCATION_PLAN_SHA256,
+    "component_manifest_sha256": receipt["component_manifest_sha256"],
     "context_bundle_sha256": first.context_bundle_sha256,
     "current_turn_id": first.current_turn.id,
     "current_turn_sha256": first.current_turn_sha256,
@@ -249,6 +314,7 @@ witness = {
     "prototype_sha256": first.prototype_sha256,
     "recent_message_ids": [value.id for value in first.recent_messages],
     "recent_messages_sha256": first.recent_messages_sha256,
+    "receipt_sha256": receipt["receipt_sha256"],
     "retrieval_result_sha256": runtime["retrieval_result_sha256"],
     "runtime_sha256": hashlib.sha256(runtime_bytes).hexdigest(),
 }
@@ -527,6 +593,7 @@ def _assert_installed_package(
 
     ctxc = _venv_ctxc(environment)
     _run([str(ctxc), "--help"])
+    _run([str(ctxc), "materialize", "--help"])
 
     source_path = environment / "sources.json"
     artifact_path = environment / "artifact.json"

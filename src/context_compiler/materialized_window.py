@@ -28,6 +28,9 @@ from .limits import CompilationLimits, SourceLimits
 from .models import CompilationPolicy, SourceRecord
 
 MATERIALIZED_CONTEXT_WINDOW_SCHEMA = "loss-resistant-materialized-context-window-v1"
+MATERIALIZED_CONTEXT_RESULT_SCHEMA = "loss-resistant-materialized-context-result-v1"
+MATERIALIZED_CONTEXT_RECEIPT_SCHEMA = "loss-resistant-materialized-context-receipt-v1"
+MATERIALIZED_CONTEXT_COMPONENTS_SCHEMA = "loss-resistant-materialized-context-components-v1"
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _FIELDS = frozenset(
     {
@@ -36,6 +39,53 @@ _FIELDS = frozenset(
         "prototype",
         "materialization_sha256",
     }
+)
+_RESULT_FIELDS = frozenset(
+    {
+        "schema",
+        "materialized_context",
+        "runtime_payload",
+        "component_manifest",
+        "receipt",
+    }
+)
+_RECEIPT_FIELDS = frozenset(
+    {
+        "schema",
+        "result_schema",
+        "materialized_context_schema",
+        "runtime_payload_schema",
+        "component_manifest_schema",
+        "allocation_plan_sha256",
+        "prototype_sha256",
+        "materialization_sha256",
+        "context_bundle_sha256",
+        "rendered_memory_sha256",
+        "protected_state_sha256",
+        "recent_messages_sha256",
+        "current_turn_sha256",
+        "recent_tail_omissions_sha256",
+        "fixed_input_sha256",
+        "runtime_payload_sha256",
+        "component_manifest_sha256",
+        "accounting_sha256",
+        "tokenizer_identity",
+        "source_message_count",
+        "compiled_prefix_message_count",
+        "recent_tail_message_count",
+        "current_turn_message_count",
+        "retrieval_result_sha256",
+        "provider_execution_ready",
+        "final_provider_recount_required",
+        "refusal_reason",
+        "receipt_sha256",
+    }
+)
+_PROMPT_COMPONENT_ORDER = (
+    "lrcc_verified_memory",
+    "recent_raw_messages",
+    "external_untrusted_retrieval",
+    "current_user_turn",
 )
 
 
@@ -276,6 +326,216 @@ class MaterializedContextWindow:
         )
 
 
+def _component_manifest(runtime_payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema": MATERIALIZED_CONTEXT_COMPONENTS_SCHEMA,
+        "prompt_order": list(_PROMPT_COMPONENT_ORDER),
+        "lrcc_verified_memory": {
+            "runtime_field": "verified_context",
+            "classification": "lrcc_verified_semantic_memory",
+            "content_sha256": runtime_payload["rendered_memory_sha256"],
+            "can_supply_system_or_developer_instructions": False,
+        },
+        "recent_raw_messages": {
+            "runtime_field": "recent_messages",
+            "classification": "untrusted_recent_history",
+            "ordered_set_sha256": runtime_payload["recent_messages_sha256"],
+            "source_roles_preserved": True,
+            "provider_role_projection_allowed": False,
+            "can_supply_system_or_developer_instructions": False,
+        },
+        "external_untrusted_retrieval": {
+            "runtime_field": None,
+            "classification": "untrusted_external_retrieval",
+            "content": None,
+            "retrieval_result_sha256": None,
+            "host_binding_required": True,
+            "can_mutate_lrcc_memory": False,
+            "can_supply_system_or_developer_instructions": False,
+        },
+        "current_user_turn": {
+            "runtime_field": "current_turn",
+            "classification": "current_user_turn",
+            "record_sha256": runtime_payload["current_turn_sha256"],
+            "required_role": "user",
+            "can_supply_system_or_developer_instructions": False,
+        },
+        "omitted_from_live_tail": {
+            "runtime_field": "recent_tail_omissions",
+            "classification": "compiled_source_accounting",
+            "ordered_set_sha256": runtime_payload["recent_tail_omissions_sha256"],
+            "contains_raw_content": False,
+        },
+        "refusal": {
+            "runtime_field": "refusal_reason",
+            "value": runtime_payload["refusal_reason"],
+        },
+    }
+
+
+def _receipt(
+    materialized_context: dict[str, Any],
+    runtime_payload: dict[str, Any],
+    component_manifest: dict[str, Any],
+) -> dict[str, Any]:
+    prototype = materialized_context["prototype"]
+    accounting = runtime_payload["accounting"]
+    unsigned = {
+        "schema": MATERIALIZED_CONTEXT_RECEIPT_SCHEMA,
+        "result_schema": MATERIALIZED_CONTEXT_RESULT_SCHEMA,
+        "materialized_context_schema": materialized_context["schema"],
+        "runtime_payload_schema": runtime_payload["schema"],
+        "component_manifest_schema": component_manifest["schema"],
+        "allocation_plan_sha256": runtime_payload["allocation_plan_sha256"],
+        "prototype_sha256": runtime_payload["prototype_sha256"],
+        "materialization_sha256": runtime_payload["materialization_sha256"],
+        "context_bundle_sha256": runtime_payload["context_bundle_sha256"],
+        "rendered_memory_sha256": runtime_payload["rendered_memory_sha256"],
+        "protected_state_sha256": runtime_payload["protected_state_sha256"],
+        "recent_messages_sha256": runtime_payload["recent_messages_sha256"],
+        "current_turn_sha256": runtime_payload["current_turn_sha256"],
+        "recent_tail_omissions_sha256": runtime_payload["recent_tail_omissions_sha256"],
+        "fixed_input_sha256": runtime_payload["fixed_input_sha256"],
+        "runtime_payload_sha256": _digest(runtime_payload),
+        "component_manifest_sha256": _digest(component_manifest),
+        "accounting_sha256": _digest(accounting),
+        "tokenizer_identity": runtime_payload["tokenizer_identity"],
+        "source_message_count": accounting["source_message_count"],
+        "compiled_prefix_message_count": accounting["compiled_prefix_message_count"],
+        "recent_tail_message_count": accounting["recent_tail_message_count"],
+        "current_turn_message_count": accounting["current_turn_message_count"],
+        "retrieval_result_sha256": runtime_payload["retrieval_result_sha256"],
+        "provider_execution_ready": runtime_payload["provider_execution_ready"],
+        "final_provider_recount_required": runtime_payload["final_provider_recount_required"],
+        "refusal_reason": runtime_payload["refusal_reason"],
+    }
+    if prototype["prototype_sha256"] != unsigned["prototype_sha256"]:
+        raise ContextWindowError("receipt prototype digest mismatch")
+    return {**unsigned, "receipt_sha256": _digest(unsigned)}
+
+
+def materialize_context(
+    sources: Iterable[SourceRecord | Mapping[str, Any]],
+    *,
+    current_turn_id: str,
+    budget: ContextWindowBudget,
+    token_counter: ExactTokenCounterAdapter,
+    allocation_plan_sha256: str,
+    fixed_input_sha256: str | None = None,
+    policy: CompilationPolicy | None = None,
+    source_limits: SourceLimits | None = None,
+    compilation_limits: CompilationLimits | None = None,
+) -> dict[str, Any]:
+    """Build one canonical consumer result without constructing a provider request."""
+
+    materialized = compose_materialized_context_window(
+        sources,
+        current_turn_id=current_turn_id,
+        budget=budget,
+        token_counter=token_counter,
+        fixed_input_sha256=fixed_input_sha256,
+        allocation_plan_sha256=allocation_plan_sha256,
+        policy=policy,
+        source_limits=source_limits,
+        compilation_limits=compilation_limits,
+    )
+    materialized_value = materialized.to_dict()
+    runtime_payload = materialized.runtime_payload(
+        expected_allocation_plan_sha256=allocation_plan_sha256,
+    )
+    component_manifest = _component_manifest(runtime_payload)
+    receipt = _receipt(materialized_value, runtime_payload, component_manifest)
+    result = {
+        "schema": MATERIALIZED_CONTEXT_RESULT_SCHEMA,
+        "materialized_context": materialized_value,
+        "runtime_payload": runtime_payload,
+        "component_manifest": component_manifest,
+        "receipt": receipt,
+    }
+    return verify_materialized_context_result(
+        result,
+        expected_receipt_sha256=receipt["receipt_sha256"],
+        expected_allocation_plan_sha256=allocation_plan_sha256,
+    )
+
+
+def verify_materialized_context_result(
+    value: Mapping[str, Any],
+    *,
+    expected_receipt_sha256: str,
+    expected_allocation_plan_sha256: str,
+) -> dict[str, Any]:
+    """Validate a consumer result against independent receipt and allocation digests."""
+
+    if type(value) is not dict:
+        raise TypeError("materialized context result must be an exact object")
+    _canonical_bytes(value)
+    actual = frozenset(value)
+    if actual != _RESULT_FIELDS:
+        unknown = sorted(actual - _RESULT_FIELDS)
+        missing = sorted(_RESULT_FIELDS - actual)
+        raise ContextWindowError(
+            f"materialized context result fields are invalid; unknown={unknown}, missing={missing}"
+        )
+    raw = _detached(value)
+    if raw["schema"] != MATERIALIZED_CONTEXT_RESULT_SCHEMA:
+        raise ContextWindowError("materialized context result schema is unsupported")
+
+    receipt_value = raw["receipt"]
+    if type(receipt_value) is not dict:
+        raise TypeError("materialized context receipt must be an exact object")
+    receipt_fields = frozenset(receipt_value)
+    if receipt_fields != _RECEIPT_FIELDS:
+        unknown = sorted(receipt_fields - _RECEIPT_FIELDS)
+        missing = sorted(_RECEIPT_FIELDS - receipt_fields)
+        raise ContextWindowError(
+            f"materialized context receipt fields are invalid; unknown={unknown}, missing={missing}"
+        )
+    expected_receipt = _sha256_or_none(
+        expected_receipt_sha256,
+        label="expected_receipt_sha256",
+    )
+    if expected_receipt is None:
+        raise ContextWindowError("an independently expected receipt digest is required")
+    expected_allocation = _sha256_or_none(
+        expected_allocation_plan_sha256,
+        label="expected_allocation_plan_sha256",
+    )
+    if expected_allocation is None:
+        raise ContextWindowError("an independently expected allocation digest is required")
+    claimed_receipt = receipt_value["receipt_sha256"]
+    if type(claimed_receipt) is not str or _SHA256.fullmatch(claimed_receipt) is None:
+        raise ContextWindowError("materialized context receipt has an invalid digest")
+    if claimed_receipt != expected_receipt:
+        raise ContextWindowError("materialized context result does not match the expected receipt")
+    receipt_unsigned = {
+        key: entry for key, entry in receipt_value.items() if key != "receipt_sha256"
+    }
+    if _digest(receipt_unsigned) != claimed_receipt:
+        raise ContextWindowError("materialized context receipt digest mismatch")
+
+    materialized_value = raw["materialized_context"]
+    if type(materialized_value) is not dict:
+        raise TypeError("materialized_context must be an exact object")
+    claimed_materialization = materialized_value.get("materialization_sha256")
+    materialized = MaterializedContextWindow.from_dict(
+        materialized_value,
+        expected_materialization_sha256=claimed_materialization,
+    )
+    runtime_payload = materialized.runtime_payload(
+        expected_allocation_plan_sha256=expected_allocation,
+    )
+    if _canonical_bytes(raw["runtime_payload"]) != _canonical_bytes(runtime_payload):
+        raise ContextWindowError("runtime payload does not match the materialized context")
+    component_manifest = _component_manifest(runtime_payload)
+    if _canonical_bytes(raw["component_manifest"]) != _canonical_bytes(component_manifest):
+        raise ContextWindowError("component manifest does not match the runtime payload")
+    receipt = _receipt(materialized.to_dict(), runtime_payload, component_manifest)
+    if _canonical_bytes(receipt_value) != _canonical_bytes(receipt):
+        raise ContextWindowError("receipt does not match the materialized context result")
+    return raw
+
+
 def compose_materialized_context_window(
     sources: Iterable[SourceRecord | Mapping[str, Any]],
     *,
@@ -307,7 +567,12 @@ def compose_materialized_context_window(
 
 
 __all__ = [
+    "MATERIALIZED_CONTEXT_COMPONENTS_SCHEMA",
+    "MATERIALIZED_CONTEXT_RECEIPT_SCHEMA",
+    "MATERIALIZED_CONTEXT_RESULT_SCHEMA",
     "MATERIALIZED_CONTEXT_WINDOW_SCHEMA",
     "MaterializedContextWindow",
     "compose_materialized_context_window",
+    "materialize_context",
+    "verify_materialized_context_result",
 ]

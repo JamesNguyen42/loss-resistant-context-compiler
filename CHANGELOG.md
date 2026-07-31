@@ -166,6 +166,40 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a2 - 2026-07-31
+
+### Added
+
+- Added the stable, standard-library-only `materialize_context` consumer entry
+  point and `ctxc materialize` command. One bounded call now returns the
+  existing materialized-context artifact, its existing runtime projection, an
+  explicit four-part component manifest, and a receipt that can be checked
+  against independently supplied allocation-plan and receipt digests.
+- Added a naturalistic offline fixture covering corrected retry policy, exact
+  request identifiers, role-shaped untrusted text, recent-message retention,
+  current-turn uniqueness, and digest-only omissions.
+
+### Changed
+
+- Exported only the consumer budget, wrapper, verifier, and result schema
+  identifiers from the package root. The lower-level prototype and
+  materialization types remain module-level provisional APIs, and their v1
+  serialized schemas are unchanged.
+- Kept external retrieval as an empty, explicitly untrusted host insertion
+  point outside LRCC memory. The result remains planning-only, requires a
+  final provider recount, and makes no provider-readiness, completeness, or
+  comparative claim.
+- Advanced the separately packaged OpenHands integration to `0.1.0a3` only to
+  retain its exact dependency on this core package identity. Host behavior and
+  the live-execution blocker are unchanged.
+
+The CLI's built-in `unicode-codepoint-count-v1` profile reports exact Unicode
+code-point planning units, not provider tokens. Provider execution still
+requires the host's immutable final-request recount with its exact tokenizer.
+
+This is an archive-qualified alpha package candidate, not a package-index
+release or a production-readiness claim.
+
 ## 0.1.1a1 - 2026-07-31
 
 ### Changed

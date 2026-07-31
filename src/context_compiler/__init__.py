@@ -34,6 +34,7 @@ from .connector import (
     serve_stdio,
     source_event_to_record,
 )
+from .context_window import ContextWindowBudget
 from .extractors import (
     CompositeExtractor,
     DomainLabelExtractor,
@@ -54,6 +55,13 @@ from .limits import (
     SourceLimits,
 )
 from .local_qwen import LmsQwenCompletion, LocalQwenError
+from .materialized_window import (
+    MATERIALIZED_CONTEXT_COMPONENTS_SCHEMA,
+    MATERIALIZED_CONTEXT_RECEIPT_SCHEMA,
+    MATERIALIZED_CONTEXT_RESULT_SCHEMA,
+    materialize_context,
+    verify_materialized_context_result,
+)
 from .models import (
     COMPILATION_METRICS_SCHEMA,
     MAX_SOURCE_ID_CHARS,
@@ -117,6 +125,9 @@ __all__ = [
     "CONNECTOR_REQUEST_SCHEMA",
     "CONNECTOR_RESPONSE_SCHEMA",
     "CONTEXT_BUNDLE_SCHEMA",
+    "MATERIALIZED_CONTEXT_COMPONENTS_SCHEMA",
+    "MATERIALIZED_CONTEXT_RECEIPT_SCHEMA",
+    "MATERIALIZED_CONTEXT_RESULT_SCHEMA",
     "MAX_SOURCE_ID_CHARS",
     "MAX_SOURCE_ROLE_CHARS",
     "MAX_SOURCE_TIMESTAMP_CHARS",
@@ -129,6 +140,7 @@ __all__ = [
     "CompositeExtractor",
     "ContextCompiler",
     "ContextBundle",
+    "ContextWindowBudget",
     "DomainLabelExtractor",
     "ExtractionResult",
     "Extractor",
@@ -173,6 +185,7 @@ __all__ = [
     "diff_artifacts",
     "load_trust_manifest",
     "load_trust_manifest_path",
+    "materialize_context",
     "render_artifact_text",
     "redact_sources",
     "summarize_artifact",
@@ -183,7 +196,8 @@ __all__ = [
     "validate_trust_manifest",
     "verify_redaction_report_hash",
     "verify_redaction_result",
+    "verify_materialized_context_result",
     "verify_trust_manifest",
 ]
 
-__version__ = "0.1.1a1"
+__version__ = "0.1.1a2"
