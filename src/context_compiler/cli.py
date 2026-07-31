@@ -34,6 +34,10 @@ from .limits import (
     SourceLimitError,
     SourceLimits,
 )
+from .materialized_evaluation import (
+    evaluate_materialization_retention,
+    load_materialization_retention_report,
+)
 from .materialized_window import materialize_context
 from .models import CompilationPolicy, CompiledMemory
 from .path_safety import PathBoundaryError
@@ -115,6 +119,21 @@ def _write_output(value: str, path: str | None) -> None:
         atomic_write_text(Path(path), rendered)
     else:
         sys.stdout.write(rendered)
+
+
+def _write_new_output(value: str, path: str | None) -> None:
+    rendered = value + ("" if value.endswith("\n") else "\n")
+    if path:
+        atomic_write_text(Path(path), rendered, overwrite=False)
+    else:
+        payload = rendered.encode("utf-8", errors="strict")
+        output = getattr(sys.stdout, "buffer", None)
+        if output is None:
+            raise RuntimeError("standard output does not expose a binary buffer")
+        written = output.write(payload)
+        if type(written) is not int or written != len(payload):
+            raise OSError("standard output did not accept the complete canonical report")
+        output.flush()
 
 
 def _command_name(args: argparse.Namespace) -> str:
@@ -449,6 +468,49 @@ def _materialize(args: argparse.Namespace) -> int:
     ) as exc:
         code = exc.reason if isinstance(exc, ContextWindowError) else None
         _write_error(args, exc, code=code)
+        return 2
+    return 0
+
+
+def _evaluate_materialization(args: argparse.Namespace) -> int:
+    try:
+        if args.verify_report is None:
+            if args.expected_report_sha256 is not None:
+                raise ValueError(
+                    "--expected-report-sha256 requires --verify-report"
+                )
+            report = evaluate_materialization_retention(
+                selected_split=args.split or "heldout",
+            )
+        else:
+            if args.split is not None:
+                raise ValueError("--split cannot be combined with --verify-report")
+            if args.expected_report_sha256 is None:
+                raise ValueError(
+                    "--verify-report requires --expected-report-sha256"
+                )
+            report = load_materialization_retention_report(
+                args.verify_report,
+                expected_report_sha256=args.expected_report_sha256,
+            )
+        rendered = json.dumps(
+            report,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        _write_new_output(rendered, args.output)
+        return 0 if report["integrity_passed"] is True else 3
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        TimeoutError,
+    ) as exc:
+        _write_error(args, exc)
         return 2
     return 0
 
@@ -1073,6 +1135,29 @@ def build_parser() -> argparse.ArgumentParser:
     _add_compilation_limit_arguments(materialize_parser)
     _add_error_format_argument(materialize_parser)
     materialize_parser.set_defaults(handler=_materialize)
+
+    evaluation_parser = subparsers.add_parser(
+        "evaluate-materialization",
+        help=(
+            "run or verify the bundled offline structural-retention diagnostic"
+        ),
+    )
+    evaluation_parser.add_argument(
+        "--split",
+        choices=("heldout", "development", "train", "all"),
+        help="bundled grouped split to evaluate; defaults to heldout",
+    )
+    evaluation_parser.add_argument(
+        "--verify-report",
+        help="verify one previously emitted report instead of running the diagnostic",
+    )
+    evaluation_parser.add_argument(
+        "--expected-report-sha256",
+        help="independently retained report digest required for verification",
+    )
+    evaluation_parser.add_argument("-o", "--output")
+    _add_error_format_argument(evaluation_parser)
+    evaluation_parser.set_defaults(handler=_evaluate_materialization)
 
     verify_parser = subparsers.add_parser(
         "verify", help="re-verify an artifact against immutable source history"

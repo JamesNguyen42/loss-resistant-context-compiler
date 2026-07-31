@@ -21,7 +21,7 @@ def test_distribution_identity_matches_the_public_release_contract() -> None:
     configuration = project_configuration()
     project = configuration["project"]
 
-    assert __version__ == "0.1.1a2"
+    assert __version__ == "0.1.1a3"
     assert project["name"] == STABLE_DISTRIBUTION
     assert project["version"] == __version__
     assert project["requires-python"] == ">=3.11"
@@ -99,6 +99,42 @@ def test_schema_install_path_matches_the_distribution_and_all_schemas_parse() ->
     )
 
 
+def test_materialized_retention_pack_is_explicit_package_data() -> None:
+    configuration = project_configuration()
+
+    assert configuration["tool"]["setuptools"]["package-data"] == {
+        "context_compiler": ["data/materialized_retention_pack_v1.json"]
+    }
+    fixture = (
+        ROOT
+        / "src"
+        / "context_compiler"
+        / "data"
+        / "materialized_retention_pack_v1.json"
+    )
+    assert fixture.is_file()
+    payload = fixture.read_bytes()
+    assert len(payload) == 192_498
+    assert payload.endswith(b"\n")
+    assert b"\r" not in payload
+    assert hashlib.sha256(payload).hexdigest() == (
+        "a17dc61a05ddb0d20811e8ec64c7a2da5f0262e98f24a734189550abb6f7f466"
+    )
+    value = json.loads(payload)
+    assert value["schema"] == "ctxc-materialized-retention-pack-0.1"
+    assert value["pack_id"] == "ctxc-materialized-retention-naturalistic-v1"
+    assert len(value["cases"]) == 30
+    assert value["split_policy"] == {
+        "development_case_count": 6,
+        "fixture_change_requires_new_pack_id": True,
+        "group_disjoint": True,
+        "heldout_case_count": 20,
+        "name": "task-group-disjoint-4-6-20-v1",
+        "result_tuning_prohibited": True,
+        "train_case_count": 4,
+    }
+
+
 def test_release_documents_freeze_name_versioning_and_support_boundaries() -> None:
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     release_policy = (
@@ -126,6 +162,7 @@ def test_release_documents_freeze_name_versioning_and_support_boundaries() -> No
         "recursive-include benchmarks *.json *.md *.py",
         "recursive-include conformance *.jsonl *.py",
         "recursive-include docs *.json *.md",
+        "include src/context_compiler/data/materialized_retention_pack_v1.json",
     } <= set(manifest.splitlines())
     assert manifest.splitlines().count("exclude setup.cfg") == 1
     assert not (ROOT / "setup.cfg").exists()

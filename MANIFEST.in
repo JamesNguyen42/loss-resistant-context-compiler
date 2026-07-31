@@ -17,4 +17,5 @@ recursive-include examples *.jsonl
 recursive-include schemas *.json
 recursive-include scripts *.py
 recursive-include src *.py
+include src/context_compiler/data/materialized_retention_pack_v1.json
 recursive-include tests *.py

@@ -47,7 +47,7 @@ raw evidence when completing benchmark work.
   `capabilities`, `ingest_source_events`, `compile_memory`, `render_context`,
   `verify_memory`, and `inspect_memory` over one strict shared versioned
   request/response JSONL envelope and `ctxc connector --stdio`.
-- [x] Add the separately packaged `ctxc-openhands` `0.1.0a3` draft-alpha
+- [x] Add the separately packaged `ctxc-openhands` `0.1.0a4` draft-alpha
   foundation without adding OpenHands or another dependency to the ordinary
   core installation or import path. The implemented evidence is offline-only;
   it is not a successful live integration claim.
@@ -568,6 +568,23 @@ Acceptance:
   independent annotators, complete adjudication, repository/task-group splits,
   gold-free export, complete accounting, and reports. These synthetic fixtures
   prove the contract only; they are not a collected natural cohort.
+- [x] Add the installed, dependency-free
+  [`ctxc evaluate-materialization`](docs/MATERIALIZATION_RETENTION_EVALUATION.md)
+  structural diagnostic. Its immutable project-authored synthetic-naturalistic
+  pack contains 30 cases grouped into 4 train, 6 development, and 20 held-out
+  cases. It compares full raw history, a bounded tail, and
+  `materialize_context()` under `unicode-codepoint-count-v1`, retaining exact
+  integer correction, identifier, path, number, detail, current-turn,
+  omission/refusal, and authority-boundary measurements. It runs no model,
+  retrieval, or provider and does **not** close P0-E3 or establish a collected,
+  licensed, consented, privacy-reviewed natural cohort, blind gold, semantic
+  completeness, task completion, provider-token/readiness, or comparative
+  superiority claim.
+- [ ] Resolve the current deterministic red structural outcome without changing
+  the frozen pack or its predeclared expectations: 28 accepted cases currently
+  refuse with `compiled_memory_not_verified`; both intentional hard-limit
+  refusals match. The emitted report has `integrity_passed=false` and the CLI
+  exits 3.
 - [ ] Approve and apply a privacy and licensing policy to real trajectories.
 - [ ] Collect public or explicitly consented coding-agent histories from
   multiple repositories, task types, and history lengths.

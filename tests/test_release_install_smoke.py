@@ -13,16 +13,26 @@ from pathlib import Path
 import pytest
 
 from scripts.release_install_smoke import (
+    MATERIALIZED_EVALUATION_REPORT_SCHEMA,
+    MATERIALIZED_RETENTION_PACK_BYTES,
+    MATERIALIZED_RETENTION_PACK_ID,
+    MATERIALIZED_RETENTION_PACK_RAW_SHA256,
+    MATERIALIZED_RETENTION_PACK_SCHEMA,
+    MATERIALIZED_RETENTION_PACK_SHA256,
     MATERIALIZED_WITNESS_SCHEMA,
     _artifact_install_command,
     _assert_artifact_snapshot,
     _build_tool_install_command,
+    _decode_materialized_evaluation_report,
     _decode_materialized_witness,
     _materialized_context_probe_command,
     _materialized_context_witness,
+    _materialized_evaluation_command,
+    _materialized_evaluation_report,
     _offline_build_inputs,
     _release_artifacts,
     _release_report,
+    _require_matching_materialized_evaluation_reports,
     _require_matching_materialized_witnesses,
     _source_module_root,
     _subprocess_environment,
@@ -30,8 +40,8 @@ from scripts.release_install_smoke import (
     _verified_artifact_snapshot,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.1a2-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a2.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a3-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a3.tar.gz"
 
 
 def _sample_materialized_witness() -> dict[str, object]:
@@ -67,6 +77,66 @@ def _encoded_witness(value: object) -> str:
             allow_nan=False,
         )
         + "\n"
+    )
+
+
+def _sample_evaluation_report_bytes() -> bytes:
+    case_ids = [f"retention-case-{index:03d}" for index in range(1, 21)]
+    unsigned = {
+        "schema": MATERIALIZED_EVALUATION_REPORT_SCHEMA,
+        "evaluator_package_version": "0.1.1a3",
+        "pack": {
+            "schema": MATERIALIZED_RETENTION_PACK_SCHEMA,
+            "pack_id": MATERIALIZED_RETENTION_PACK_ID,
+            "corpus_kind": "repository-authored-synthetic-naturalistic-fixture",
+            "raw_bytes": MATERIALIZED_RETENTION_PACK_BYTES,
+            "raw_sha256": MATERIALIZED_RETENTION_PACK_RAW_SHA256,
+            "pack_sha256": MATERIALIZED_RETENTION_PACK_SHA256,
+            "planning_unit_profile": "unicode-codepoint-count-v1",
+        },
+        "selection": {
+            "split": "heldout",
+            "case_count": 20,
+            "case_ids": case_ids,
+        },
+        "budget": {},
+        "cases": [{"case_id": case_id} for case_id in case_ids],
+        "summary": {"unexpected_case_ids": [case_ids[0]]},
+        "claim_boundaries": {
+            "structural_retention_only": True,
+            "natural_history_claimed": False,
+            "semantic_completeness_claimed": False,
+            "model_answer_superiority_claimed": False,
+            "task_completion_measured": False,
+            "provider_token_accounting": False,
+            "retrieval_included": False,
+            "retrieval_status": "not_run",
+            "inference_status": "not_run",
+            "provider_execution_ready": False,
+            "final_provider_recount_required": True,
+        },
+        "integrity_passed": False,
+    }
+    unsigned_bytes = json.dumps(
+        unsigned,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    value = {
+        **unsigned,
+        "report_sha256": hashlib.sha256(unsigned_bytes).hexdigest(),
+    }
+    return (
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n"
     )
 
 
@@ -361,7 +431,127 @@ def test_materialized_context_probe_command_is_isolated_and_module_qualified(
     assert "from context_compiler.materialized_window import" in script
     assert "from context_compiler.connector import" in script
     assert "from context_compiler.models import" in script
+    assert "materialized_retention_pack_v1.json" in script
+    assert MATERIALIZED_RETENTION_PACK_RAW_SHA256 in script
     assert "__pycache__" in script
+
+
+def test_materialized_evaluation_commands_bind_source_and_installed_cli(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    python = tmp_path / "python"
+    report = tmp_path / "report.json"
+    source = _materialized_evaluation_command(
+        python,
+        report,
+        module_root=source_root,
+    )
+
+    assert source[:5] == [str(python), "-I", "-P", "-B", "-c"]
+    assert source[6] == str(source_root.resolve())
+    assert source[-5:] == [
+        "evaluate-materialization",
+        "--split",
+        "heldout",
+        "--output",
+        str(report),
+    ]
+    assert "context_compiler.cli" in source[5]
+
+    ctxc = tmp_path / "ctxc"
+    verified = tmp_path / "verified.json"
+    installed = _materialized_evaluation_command(
+        ctxc,
+        verified,
+        module_root=None,
+        verify_report=report,
+        expected_report_sha256="a" * 64,
+    )
+    assert installed == [
+        str(ctxc),
+        "evaluate-materialization",
+        "--verify-report",
+        str(report),
+        "--expected-report-sha256",
+        "a" * 64,
+        "--output",
+        str(verified),
+    ]
+
+    with pytest.raises(ValueError, match="requires both"):
+        _materialized_evaluation_command(
+            ctxc,
+            verified,
+            module_root=None,
+            verify_report=report,
+        )
+
+
+def test_materialized_evaluation_report_decoder_preserves_red_result() -> None:
+    raw = _sample_evaluation_report_bytes()
+    report = _decode_materialized_evaluation_report(raw)
+
+    assert report["integrity_passed"] is False
+    assert report["selection"]["split"] == "heldout"
+    assert report["summary"]["unexpected_case_ids"]
+    assert report["claim_boundaries"]["inference_status"] == "not_run"
+    assert report["claim_boundaries"]["retrieval_status"] == "not_run"
+
+    noncanonical = json.dumps(json.loads(raw), sort_keys=False).encode("utf-8") + b"\n"
+    with pytest.raises(ValueError, match="not canonical"):
+        _decode_materialized_evaluation_report(noncanonical)
+
+    with pytest.raises(ValueError, match="duplicate fields"):
+        _decode_materialized_evaluation_report(b'{"schema":1,"schema":2}\n')
+
+    digest_mismatch = json.loads(raw)
+    digest_mismatch["report_sha256"] = "0" * 64
+    digest_mismatch_raw = (
+        json.dumps(
+            digest_mismatch,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n"
+    )
+    with pytest.raises(ValueError, match="self-digest mismatch"):
+        _decode_materialized_evaluation_report(digest_mismatch_raw)
+
+    green = json.loads(raw)
+    green["integrity_passed"] = True
+    green_raw = (
+        json.dumps(
+            green,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n"
+    )
+    with pytest.raises(ValueError, match="retain its failed"):
+        _decode_materialized_evaluation_report(green_raw)
+
+
+def test_materialized_evaluation_source_smoke_replays_exact_red_report(
+    tmp_path: Path,
+) -> None:
+    raw = _materialized_evaluation_report(
+        Path(sys.executable),
+        tmp_path,
+        module_root=_source_module_root(),
+    )
+    report = _decode_materialized_evaluation_report(raw)
+
+    assert report["integrity_passed"] is False
+    assert report["claim_boundaries"]["inference_status"] == "not_run"
+    assert report["claim_boundaries"]["retrieval_status"] == "not_run"
+    assert (tmp_path / "materialized-retention-report.json").read_bytes() == raw
+    assert (tmp_path / "materialized-retention-report-verified.json").read_bytes() == raw
 
 
 def test_materialized_context_source_witness_is_byte_deterministic() -> None:
@@ -430,6 +620,45 @@ def test_release_smoke_compares_source_wheel_and_sdist_witnesses() -> None:
         _require_matching_materialized_witnesses(source, [dict(source)])
 
 
+def test_release_smoke_compares_source_wheel_and_sdist_evaluation_reports() -> None:
+    source = _sample_evaluation_report_bytes()
+    report = _require_matching_materialized_evaluation_reports(
+        source,
+        [bytes(source), bytes(source)],
+    )
+    assert report["integrity_passed"] is False
+
+    changed = json.loads(source)
+    changed["summary"]["unexpected_case_ids"].append(changed["selection"]["case_ids"][1])
+    unsigned = {key: value for key, value in changed.items() if key != "report_sha256"}
+    changed["report_sha256"] = hashlib.sha256(
+        json.dumps(
+            unsigned,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    changed_raw = (
+        json.dumps(
+            changed,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n"
+    )
+    with pytest.raises(RuntimeError, match="differs from source"):
+        _require_matching_materialized_evaluation_reports(
+            source,
+            [bytes(source), changed_raw],
+        )
+    with pytest.raises(ValueError, match="exactly two"):
+        _require_matching_materialized_evaluation_reports(source, [bytes(source)])
+
+
 def test_release_smoke_report_shape_remains_compatible() -> None:
     artifacts = [
         {
@@ -446,13 +675,33 @@ def test_release_smoke_report_shape_remains_compatible() -> None:
         },
     ]
 
-    report = _release_report(13, artifacts)
+    evaluation = _decode_materialized_evaluation_report(_sample_evaluation_report_bytes())
+    report = _release_report(13, artifacts, evaluation)
 
-    assert set(report) == {"schema", "schema_count", "artifacts"}
-    assert report["schema"] == "ctxc-release-install-smoke-0.1"
+    assert set(report) == {
+        "schema",
+        "schema_count",
+        "artifacts",
+        "materialized_evaluation",
+    }
+    assert report["schema"] == "ctxc-release-install-smoke-0.2"
     assert report["schema_count"] == 13
     assert report["artifacts"] == artifacts
     assert all(
         set(value) == {"artifact", "kind", "status", "build_bootstrap"}
         for value in report["artifacts"]
     )
+    assert report["materialized_evaluation"] == {
+        "exit_code": 3,
+        "inference_status": "not_run",
+        "integrity_passed": False,
+        "report_sha256": evaluation["report_sha256"],
+        "retrieval_status": "not_run",
+        "source_wheel_sdist_report_bytes_identical": True,
+        "status": "failed",
+    }
+
+    green = dict(evaluation)
+    green["integrity_passed"] = True
+    with pytest.raises(ValueError, match="cannot relabel"):
+        _release_report(13, artifacts, green)

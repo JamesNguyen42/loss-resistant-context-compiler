@@ -24,7 +24,7 @@ meaning can be compressed without loss.
 
 | Area | Current state |
 | --- | --- |
-| Release | Alpha research implementation, package version `0.1.1a2` |
+| Release | Alpha research implementation, package version `0.1.1a3` |
 | Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts, optional LocalAI connector |
@@ -39,7 +39,8 @@ meaning can be compressed without loss.
 | External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
-| OpenHands integration | Separately packaged `ctxc-openhands` `0.1.0a3` draft alpha; reviewed offline fake-runtime foundation only; live execution blocked |
+| Materialization retention diagnostic | 30 project-authored synthetic-naturalistic structural cases; 20 held out; no model or natural-cohort claim |
+| OpenHands integration | Separately packaged `ctxc-openhands` `0.1.0a4` draft alpha; reviewed offline fake-runtime foundation only; live execution blocked |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
 | Production readiness | Not production-ready |
@@ -457,6 +458,29 @@ empty untrusted external-retrieval slot, and the current user turn in a fixed
 order. It remains provider-not-ready and requires a final recount. Python hosts
 with an exact tokenizer should use `materialize_context()` and retain the
 receipt digest independently for `verify_materialized_context_result()`.
+
+Run the installed structural retention diagnostic over its 20-case held-out
+split:
+
+```console
+ctxc evaluate-materialization --split heldout -o retention-report.json
+```
+
+It compares complete raw history, a bounded recent tail, and the verified
+materialized result under one fixed Unicode code-point planning-unit profile.
+The canonical self-hashed report retains every refusal and measures exact
+correction, identifier, path, number, detail, current-turn, omission, and
+authority-boundary outcomes. The bundled histories are visible,
+project-authored synthetic-naturalistic fixtures rather than a collected or
+operationally blinded natural cohort. The command makes no provider-token,
+model-answer, task-completion, semantic-completeness, retrieval, or comparative
+claim. See [Materialization retention evaluation](docs/MATERIALIZATION_RETENTION_EVALUATION.md).
+
+The frozen pack's current deterministic all-split outcome is red: all 28
+predeclared accepted cases refuse with `compiled_memory_not_verified`, while
+both predeclared hard-limit refusals match. The command still writes the
+complete canonical report and returns 3; neither the fixtures nor their
+expectations were changed after observing that result.
 
 JSON remains the default inspection format. The terminal view bounds displayed
 items, per-item provenance/state links, and raw string length through
@@ -1120,7 +1144,7 @@ bundle authenticates its producer.
 ## Separately packaged OpenHands alpha
 
 [`ctxc-openhands`](integrations/openhands/README.md) is an isolated
-`0.1.0a3` package under `integrations/openhands/`. Ordinary
+`0.1.0a4` package under `integrations/openhands/`. Ordinary
 `loss-resistant-context-compiler` installation and every standalone `ctxc`
 Python/CLI path remain dependency-free and do not import OpenHands. Importing
 `ctxc_openhands` also defers all host imports until its exact compatibility

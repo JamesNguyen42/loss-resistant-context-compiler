@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -10,15 +11,45 @@ import stat
 import subprocess
 import sys
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a2"
+EXPECTED_VERSION = "0.1.1a3"
 SCHEMA_GLOB = "*.schema.json"
 MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.2"
+MATERIALIZED_EVALUATION_REPORT_SCHEMA = "ctxc-materialized-retention-report-0.1"
+MATERIALIZED_RETENTION_PACK_ID = "ctxc-materialized-retention-naturalistic-v1"
+MATERIALIZED_RETENTION_PACK_SCHEMA = "ctxc-materialized-retention-pack-0.1"
+MATERIALIZED_RETENTION_PACK_BYTES = 192_498
+MATERIALIZED_RETENTION_PACK_RAW_SHA256 = (
+    "a17dc61a05ddb0d20811e8ec64c7a2da5f0262e98f24a734189550abb6f7f466"
+)
+MATERIALIZED_RETENTION_PACK_SHA256 = (
+    "b8ec4619c86c526293ce26ee3c7f9f5c2ef5ac8637e1d76d8f846f57f222b1cd"
+)
 _MAX_WITNESS_BYTES = 4 * 1024
+_MAX_EVALUATION_REPORT_BYTES = 2 * 1024 * 1024
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_EVALUATION_CLAIM_BOUNDARIES = {
+    "final_provider_recount_required": True,
+    "inference_status": "not_run",
+    "model_answer_superiority_claimed": False,
+    "natural_history_claimed": False,
+    "provider_execution_ready": False,
+    "provider_token_accounting": False,
+    "retrieval_included": False,
+    "retrieval_status": "not_run",
+    "semantic_completeness_claimed": False,
+    "structural_retention_only": True,
+    "task_completion_measured": False,
+}
+_EVALUATION_SOURCE_RUNNER = (
+    "import sys; "
+    "sys.path.insert(0, sys.argv[1]); "
+    "from context_compiler.cli import main; "
+    "raise SystemExit(main(sys.argv[2:]))"
+)
 _WITNESS_HASH_FIELDS = frozenset(
     {
         "allocation_plan_sha256",
@@ -47,9 +78,11 @@ _WITNESS_FIELDS = frozenset(
 )
 _MATERIALIZED_CONTEXT_PROBE = r"""
 import hashlib
+from importlib import resources
 import importlib.util
 import json
 from pathlib import Path
+import stat
 import sys
 
 if len(sys.argv) != 3 or sys.argv[1] not in {"0", "1"}:
@@ -79,6 +112,30 @@ from context_compiler.materialized_window import (
     compose_materialized_context_window,
 )
 from context_compiler.models import SourceRecord
+
+package_root = Path(context_compiler.__file__).resolve(strict=True).parent
+fixture = Path(
+    resources.files("context_compiler").joinpath(
+        "data", "materialized_retention_pack_v1.json"
+    )
+)
+fixture_resolved = fixture.resolve(strict=True)
+assert fixture_resolved.parent == (package_root / "data").resolve(strict=True)
+fixture_bytes = fixture_resolved.read_bytes()
+assert len(fixture_bytes) == 192498
+assert (
+    hashlib.sha256(fixture_bytes).hexdigest()
+    == "a17dc61a05ddb0d20811e8ec64c7a2da5f0262e98f24a734189550abb6f7f466"
+)
+if require_standalone:
+    fixture_stat = fixture.lstat()
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    assert stat.S_ISREG(fixture_stat.st_mode)
+    assert not stat.S_ISLNK(fixture_stat.st_mode)
+    assert fixture_stat.st_nlink == 1
+    assert not bool(
+        getattr(fixture_stat, "st_file_attributes", 0) & reparse_flag
+    )
 
 assert ContextWindowBudget is ModuleContextWindowBudget
 for name in (
@@ -294,7 +351,6 @@ def keys(value):
 assert not any("path" in key.casefold() for key in keys(consumer_result))
 
 if require_standalone:
-    package_root = Path(context_compiler.__file__).resolve(strict=True).parent
     for path in package_root.rglob("*"):
         assert path.name != "__pycache__"
         assert path.suffix != ".pyc"
@@ -453,6 +509,264 @@ def _verified_distribution_directory(directory: Path) -> Path:
     return resolved
 
 
+def _materialized_evaluation_command(
+    executable: Path,
+    output: Path,
+    *,
+    module_root: Path | None,
+    verify_report: Path | None = None,
+    expected_report_sha256: str | None = None,
+) -> list[str]:
+    if (verify_report is None) != (expected_report_sha256 is None):
+        raise ValueError("evaluation verification requires both report and expected digest")
+    if module_root is None:
+        command = [str(executable)]
+    else:
+        verified_root = _verified_distribution_directory(module_root)
+        command = [
+            str(executable),
+            "-I",
+            "-P",
+            "-B",
+            "-c",
+            _EVALUATION_SOURCE_RUNNER,
+            str(verified_root),
+        ]
+    command.append("evaluate-materialization")
+    if verify_report is None:
+        command.extend(("--split", "heldout"))
+    else:
+        command.extend(
+            (
+                "--verify-report",
+                str(verify_report),
+                "--expected-report-sha256",
+                str(expected_report_sha256),
+            )
+        )
+    command.extend(("--output", str(output)))
+    return command
+
+
+def _read_stable_evaluation_report(path: Path) -> bytes:
+    snapshot = _verified_artifact_snapshot(path)
+    resolved, fingerprint = snapshot
+    size = fingerprint[4]
+    if size < 1 or size > _MAX_EVALUATION_REPORT_BYTES:
+        raise ValueError("materialized evaluation report is outside its byte limit")
+    with resolved.open("rb", buffering=0) as stream:
+        opened = _artifact_fingerprint(os.fstat(stream.fileno()))
+        if opened[:-1] != fingerprint[:-1]:
+            raise ValueError("materialized evaluation report changed before reading")
+        raw = stream.read(_MAX_EVALUATION_REPORT_BYTES + 1)
+        if _artifact_fingerprint(os.fstat(stream.fileno()))[:-1] != opened[:-1]:
+            raise ValueError("materialized evaluation report changed while reading")
+    _assert_artifact_snapshot(path, snapshot)
+    if len(raw) != size:
+        raise ValueError("materialized evaluation report size changed while reading")
+    return raw
+
+
+def _decode_materialized_evaluation_report(raw: bytes) -> dict[str, object]:
+    if type(raw) is not bytes:
+        raise TypeError("materialized evaluation report must be exact bytes")
+    if not raw or len(raw) > _MAX_EVALUATION_REPORT_BYTES:
+        raise ValueError("materialized evaluation report is outside its byte limit")
+    try:
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError("materialized evaluation report must be valid UTF-8") from exc
+    if not text.endswith("\n") or text.count("\n") != 1:
+        raise ValueError("materialized evaluation report must be exactly one JSON line")
+
+    def exact_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        value: dict[str, object] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("materialized evaluation report has duplicate fields")
+            value[key] = item
+        return value
+
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"materialized evaluation report contains {value}")
+
+    try:
+        value = json.loads(
+            text[:-1],
+            object_pairs_hook=exact_object,
+            parse_constant=reject_constant,
+        )
+    except (RecursionError, json.JSONDecodeError) as exc:
+        raise ValueError("materialized evaluation report is not valid JSON") from exc
+    if type(value) is not dict:
+        raise TypeError("materialized evaluation report must be an exact object")
+    canonical = (
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n"
+    )
+    if canonical != raw:
+        raise ValueError("materialized evaluation report is not canonical JSON")
+    expected_fields = {
+        "budget",
+        "cases",
+        "claim_boundaries",
+        "evaluator_package_version",
+        "integrity_passed",
+        "pack",
+        "report_sha256",
+        "schema",
+        "selection",
+        "summary",
+    }
+    if set(value) != expected_fields:
+        raise ValueError("materialized evaluation report fields are invalid")
+    if value["schema"] != MATERIALIZED_EVALUATION_REPORT_SCHEMA:
+        raise ValueError("materialized evaluation report schema is unsupported")
+    if value["evaluator_package_version"] != EXPECTED_VERSION:
+        raise ValueError("materialized evaluation package version is unsupported")
+    if value["integrity_passed"] is not False:
+        raise ValueError("materialized evaluation must retain its failed integrity result")
+    report_sha256 = value["report_sha256"]
+    if type(report_sha256) is not str or _SHA256.fullmatch(report_sha256) is None:
+        raise ValueError("materialized evaluation report digest is invalid")
+    unsigned = {key: item for key, item in value.items() if key != "report_sha256"}
+    calculated = hashlib.sha256(
+        json.dumps(
+            unsigned,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    if calculated != report_sha256:
+        raise ValueError("materialized evaluation report self-digest mismatch")
+    pack = value["pack"]
+    if type(pack) is not dict or pack != {
+        "corpus_kind": "repository-authored-synthetic-naturalistic-fixture",
+        "pack_id": MATERIALIZED_RETENTION_PACK_ID,
+        "pack_sha256": MATERIALIZED_RETENTION_PACK_SHA256,
+        "planning_unit_profile": "unicode-codepoint-count-v1",
+        "raw_bytes": MATERIALIZED_RETENTION_PACK_BYTES,
+        "raw_sha256": MATERIALIZED_RETENTION_PACK_RAW_SHA256,
+        "schema": MATERIALIZED_RETENTION_PACK_SCHEMA,
+    }:
+        raise ValueError("materialized evaluation pack identity is invalid")
+    selection = value["selection"]
+    if type(selection) is not dict:
+        raise TypeError("materialized evaluation selection must be an exact object")
+    case_ids = selection.get("case_ids")
+    if (
+        selection.get("split") != "heldout"
+        or type(selection.get("case_count")) is not int
+        or selection["case_count"] != 20
+        or type(case_ids) is not list
+        or len(case_ids) != 20
+        or any(type(case_id) is not str or not case_id for case_id in case_ids)
+        or len(set(case_ids)) != 20
+    ):
+        raise ValueError("materialized evaluation held-out selection is invalid")
+    cases = value["cases"]
+    if type(cases) is not list or len(cases) != 20:
+        raise ValueError("materialized evaluation held-out cases are invalid")
+    summary = value["summary"]
+    if type(summary) is not dict:
+        raise TypeError("materialized evaluation summary must be an exact object")
+    unexpected = summary.get("unexpected_case_ids")
+    if (
+        type(unexpected) is not list
+        or not unexpected
+        or any(type(case_id) is not str or case_id not in case_ids for case_id in unexpected)
+    ):
+        raise ValueError("materialized evaluation must retain its red case outcomes")
+    if value["claim_boundaries"] != _EVALUATION_CLAIM_BOUNDARIES:
+        raise ValueError("materialized evaluation claim boundaries changed")
+    return value
+
+
+def _materialized_evaluation_report(
+    executable: Path,
+    directory: Path,
+    *,
+    module_root: Path | None,
+) -> bytes:
+    verified_directory = _verified_distribution_directory(directory)
+    report_path = verified_directory / "materialized-retention-report.json"
+    verified_path = verified_directory / "materialized-retention-report-verified.json"
+    if report_path.exists() or verified_path.exists():
+        raise ValueError("materialized evaluation output paths must be absent")
+    completed = subprocess.run(
+        _materialized_evaluation_command(
+            executable,
+            report_path,
+            module_root=module_root,
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+        env=_subprocess_environment(),
+        timeout=300,
+    )
+    if completed.returncode != 3:
+        raise RuntimeError(
+            f"materialized evaluation did not retain exit code 3; observed {completed.returncode}"
+        )
+    if completed.stdout or completed.stderr:
+        raise RuntimeError("materialized evaluation emitted unexpected console output")
+    raw = _read_stable_evaluation_report(report_path)
+    report = _decode_materialized_evaluation_report(raw)
+    verified = subprocess.run(
+        _materialized_evaluation_command(
+            executable,
+            verified_path,
+            module_root=module_root,
+            verify_report=report_path,
+            expected_report_sha256=str(report["report_sha256"]),
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+        env=_subprocess_environment(),
+        timeout=300,
+    )
+    if verified.returncode != 3:
+        raise RuntimeError(
+            "materialized evaluation verification did not retain exit code 3; "
+            f"observed {verified.returncode}"
+        )
+    if verified.stdout or verified.stderr:
+        raise RuntimeError("materialized evaluation verification emitted unexpected console output")
+    verified_raw = _read_stable_evaluation_report(verified_path)
+    _decode_materialized_evaluation_report(verified_raw)
+    if verified_raw != raw:
+        raise RuntimeError("materialized evaluation verification changed report bytes")
+    return raw
+
+
+def _require_matching_materialized_evaluation_reports(
+    source_report: bytes,
+    installed_reports: Sequence[bytes],
+) -> dict[str, object]:
+    source = _decode_materialized_evaluation_report(source_report)
+    if len(installed_reports) != 2:
+        raise ValueError("release smoke requires exactly two installed evaluation reports")
+    for report in installed_reports:
+        _decode_materialized_evaluation_report(report)
+        if report != source_report:
+            raise RuntimeError("installed materialized evaluation report differs from source")
+    return source
+
+
 def _materialized_context_probe_command(
     python: Path,
     *,
@@ -577,7 +891,7 @@ def _assert_installed_package(
     python: Path,
     environment: Path,
     expected_schema_names: list[str],
-) -> dict[str, object]:
+) -> tuple[dict[str, object], bytes]:
     probe = (
         "import importlib.metadata as m, json, pathlib, sys; "
         f"assert m.version('{DISTRIBUTION}') == '{EXPECTED_VERSION}'; "
@@ -594,6 +908,7 @@ def _assert_installed_package(
     ctxc = _venv_ctxc(environment)
     _run([str(ctxc), "--help"])
     _run([str(ctxc), "materialize", "--help"])
+    _run([str(ctxc), "evaluate-materialization", "--help"])
 
     source_path = environment / "sources.json"
     artifact_path = environment / "artifact.json"
@@ -645,10 +960,16 @@ def _assert_installed_package(
         and all(report.get("checks", {}).values())
     ):
         raise RuntimeError(f"installed trust round trip failed: {report}")
-    return _materialized_context_witness(
+    evaluation_report = _materialized_evaluation_report(
+        ctxc,
+        environment.parent,
+        module_root=None,
+    )
+    witness = _materialized_context_witness(
         python,
         require_standalone=True,
     )
+    return witness, evaluation_report
 
 
 def _temporary_root() -> Path:
@@ -721,7 +1042,7 @@ def _smoke_artifact(
     expected_schema_names: list[str],
     *,
     offline_build_inputs: tuple[Path, tuple[Path, tuple[int, ...]]] | None,
-) -> tuple[dict[str, str], dict[str, object]]:
+) -> tuple[dict[str, str], dict[str, object], bytes]:
     artifact_snapshot = _verified_artifact_snapshot(path)
     artifact, _ = artifact_snapshot
     kind = _artifact_kind(artifact)
@@ -747,7 +1068,7 @@ def _smoke_artifact(
         _assert_artifact_snapshot(path, artifact_snapshot)
         _run(_artifact_install_command(python, artifact, kind=kind))
         _assert_artifact_snapshot(path, artifact_snapshot)
-        witness = _assert_installed_package(
+        witness, evaluation_report = _assert_installed_package(
             python,
             environment,
             expected_schema_names,
@@ -760,6 +1081,7 @@ def _smoke_artifact(
             "build_bootstrap": build_bootstrap,
         },
         witness,
+        evaluation_report,
     )
 
 
@@ -791,11 +1113,28 @@ def build_parser() -> argparse.ArgumentParser:
 def _release_report(
     schema_count: int,
     artifacts: Sequence[dict[str, str]],
+    materialized_evaluation: Mapping[str, object],
 ) -> dict[str, object]:
+    if type(materialized_evaluation) is not dict:
+        raise TypeError("materialized evaluation must be an exact object")
+    if materialized_evaluation["integrity_passed"] is not False:
+        raise ValueError("release report cannot relabel the materialized evaluation green")
+    claims = materialized_evaluation["claim_boundaries"]
+    if claims != _EVALUATION_CLAIM_BOUNDARIES:
+        raise ValueError("release report materialized evaluation claims changed")
     return {
-        "schema": "ctxc-release-install-smoke-0.1",
+        "schema": "ctxc-release-install-smoke-0.2",
         "schema_count": schema_count,
         "artifacts": [dict(value) for value in artifacts],
+        "materialized_evaluation": {
+            "exit_code": 3,
+            "inference_status": claims["inference_status"],
+            "integrity_passed": False,
+            "report_sha256": materialized_evaluation["report_sha256"],
+            "retrieval_status": claims["retrieval_status"],
+            "source_wheel_sdist_report_bytes_identical": True,
+            "status": "failed",
+        },
     }
 
 
@@ -813,6 +1152,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         module_root=_source_module_root(),
         require_standalone=False,
     )
+    with tempfile.TemporaryDirectory(
+        prefix="ctxc-source-evaluation-",
+        dir=_temporary_root(),
+    ) as directory:
+        source_evaluation_report = _materialized_evaluation_report(
+            Path(sys.executable),
+            Path(directory),
+            module_root=_source_module_root(),
+        )
     smoke_results = [
         _smoke_artifact(
             path,
@@ -821,15 +1169,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         for path in _release_artifacts(args.dist_dir)
     ]
-    results = [result for result, _witness in smoke_results]
-    installed_witnesses = [witness for _result, witness in smoke_results]
+    results = [result for result, _witness, _evaluation in smoke_results]
+    installed_witnesses = [witness for _result, witness, _evaluation in smoke_results]
+    installed_evaluation_reports = [evaluation for _result, _witness, evaluation in smoke_results]
     _require_matching_materialized_witnesses(
         source_witness,
         installed_witnesses,
     )
+    materialized_evaluation = _require_matching_materialized_evaluation_reports(
+        source_evaluation_report,
+        installed_evaluation_reports,
+    )
     print(
         json.dumps(
-            _release_report(len(expected_schema_names), results),
+            _release_report(
+                len(expected_schema_names),
+                results,
+                materialized_evaluation,
+            ),
             sort_keys=True,
         )
     )

@@ -86,6 +86,14 @@ def test_ci_covers_supported_python_and_platform_release_smokes() -> None:
     assert workflow.count("--build-requirements requirements-build.lock") == 2
     assert workflow.count("release-install-smoke.json") >= 4
     assert workflow.count("release-install-smoke.log") >= 4
+    assert workflow.count("ctxc-release-install-smoke-0.2") == 2
+    assert "ctxc-release-install-smoke-0.1" not in workflow
+    assert workflow.count(
+        "evaluation['source_wheel_sdist_report_bytes_identical'] is True"
+    ) == 2
+    assert workflow.count("evaluation['integrity_passed'] is False") == 2
+    assert workflow.count("evaluation['inference_status']=='not_run'") == 2
+    assert workflow.count("evaluation['retrieval_status']=='not_run'") == 2
     assert workflow.count("hash-pinned-offline-wheelhouse") == 2
     assert workflow.count("ci-build-wheelhouse/*.whl") == 3
     assert "release-requirements-build.lock" in workflow

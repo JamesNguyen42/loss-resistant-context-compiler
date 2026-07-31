@@ -82,7 +82,7 @@ class PhraseEvaluationError(ValueError):
     """Phrase corpus or report evidence is invalid."""
 
 
-_READABLE_PACKAGE_VERSIONS = frozenset({"0.1.0", "0.1.1a1", "0.1.1a2"})
+_READABLE_PACKAGE_VERSIONS = frozenset({"0.1.0", "0.1.1a1", "0.1.1a2", "0.1.1a3"})
 
 
 def _validated_package_version(value: Any) -> str:

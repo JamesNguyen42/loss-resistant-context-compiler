@@ -16,9 +16,12 @@ changing or interpreting the recorded comparison. Read the
 [external comparison protocol](../benchmarks/protocols/external-comparison-v1.md)
 and its [strict JSON manifest](../benchmarks/protocols/external-comparison-v1.json)
 before changing candidate selection, adapter identity, resources, datasets, or
-claim rules. Read [natural-history evidence contracts](NATURAL_HISTORY_EVIDENCE.md)
+claim rules. Read [natural-history evidence contracts](NATURAL_HISTORY_EVIDENCE.md),
+the separate
+[materialization retention evaluation](MATERIALIZATION_RETENTION_EVALUATION.md),
 and [result-blind compatibility records](../benchmarks/compatibility/README.md)
-before collecting histories or rerunning an external diagnostic.
+before collecting histories, interpreting structural retention measurements,
+or rerunning an external diagnostic.
 Read the separate [OpenHands package README](../integrations/openhands/README.md),
 [event and authority map](../integrations/openhands/docs/EVENT_AUTHORITY_MAP.md),
 [operator runbook](../integrations/openhands/docs/RUNBOOK.md), and
@@ -32,7 +35,7 @@ live-readiness status.
 | --- | --- |
 | Repository | [`JamesNguyen42/loss-resistant-context-compiler`](https://github.com/JamesNguyen42/loss-resistant-context-compiler) |
 | Default branch | `main` |
-| Package version | `0.1.1a2` |
+| Package version | `0.1.1a3` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
 | Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; `0f20b8a`: exact seven-wheel OpenHands build inputs, clean provider/a2 harness, and all automatic hosted gates passed; `7915beb`: exact seven-wheel root release inputs and post-acquisition offline build/smoke passed every automatic hosted gate; no local inference |
@@ -51,7 +54,8 @@ live-readiness status.
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
-| OpenHands integration | Separate `ctxc-openhands` `0.1.0a3` draft alpha; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
+| Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
+| OpenHands integration | Separate `ctxc-openhands` `0.1.0a4` draft alpha; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
 | Installed JSON Schemas | 25 (7 historical ids, 18 current-namespace ids) |
 | External 50%-better claim | Not established |
 | Downstream task completion evidence | None yet |
@@ -675,10 +679,10 @@ operations, validation, and unresolved host requirements.
 | Python distribution | `loss-resistant-context-compiler` |
 | Import package | `context_compiler` |
 | CLI command | `ctxc` |
-| Package version | `0.1.1a2` |
+| Package version | `0.1.1a3` |
 | OpenHands distribution | `ctxc-openhands` (separate package) |
 | OpenHands import / CLI | `ctxc_openhands` / `ctxc-openhands` |
-| OpenHands integration version | `0.1.0a3` draft alpha |
+| OpenHands integration version | `0.1.0a4` draft alpha |
 | Reviewed OpenHands host | `1.8.0` at `bc26df351dd5d833a95131556dbe2da69af82253` |
 | Reviewed OpenHands SDK/tools/agent-server | `1.27.0` at `904279edf2df5fa12d7caecc7576f62659b2e2dd` |
 | Compiled artifact schema | `1.0` |
@@ -1497,6 +1501,24 @@ lower quantile before results are observed.
 
 ### Evaluation
 
+- The installed `ctxc evaluate-materialization` command runs a deterministic,
+  dependency-free structural diagnostic over 30 project-authored
+  synthetic-naturalistic coding histories grouped into 4 train, 6 development,
+  and 20 held-out cases. It compares full raw history, a bounded recent tail,
+  and `materialize_context()` under `unicode-codepoint-count-v1`. Its canonical
+  report uses exact integers for planning units, correction, identifier, path,
+  number, detail, current-turn, omission/refusal, and authority-boundary
+  measurements. It performs no model, retrieval, or provider execution. The
+  pack is visible rather than blind gold and is not a collected, licensed,
+  consented, privacy-reviewed natural cohort; it does not establish semantic
+  completeness, task completion, provider tokens/readiness, or comparative
+  superiority. See
+  [the evaluation protocol](MATERIALIZATION_RETENTION_EVALUATION.md).
+- The frozen pack's current deterministic all-split outcome is a red gate. All
+  28 predeclared accepted cases refuse with `compiled_memory_not_verified`;
+  the two intentional hard-limit refusals match. The complete report is emitted
+  with `integrity_passed=false` and the command returns 3. Do not change the
+  pack or its expectations to remove this result.
 - The recorded histories are generated templates, not natural production
   prevalence. The separate natural-history records are linked synthetic contract
   fixtures, not collected trajectories or performance evidence.
@@ -1662,6 +1684,7 @@ python -m compileall -q integrations/openhands/src integrations/openhands/tests 
 python -m ctxc_openhands.cli doctor
 python conformance/run_connector_conformance.py
 python -m benchmarks.natural_history
+ctxc evaluate-materialization --split heldout -o retention-report.json
 python -m pytest -q tests/test_external_compatibility.py
 python -m benchmarks --self-test
 python -m benchmarks.external_protocol --verify benchmarks/protocols/external-comparison-v1.json

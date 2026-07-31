@@ -166,6 +166,38 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a3 - 2026-07-31
+
+### Added
+
+- Added a dependency-free `ctxc evaluate-materialization` structural
+  diagnostic that compares complete raw history, a bounded recent tail, and
+  the existing `materialize_context()` result under one fixed Unicode
+  code-point planning-unit profile.
+- Added one immutable, package-resident set of 30 project-authored
+  synthetic-naturalistic coding histories. The grouped split contains 20
+  held-out, six development, and four train cases with explicit corrections,
+  superseded values, exact identifiers, paths, numbers, recent details, and
+  untrusted role-shaped content.
+- Added canonical self-hashed reports with exact integer retention,
+  accounting, omission, refusal, current-turn, and authority-boundary
+  measurements. Report verification requires an independently supplied digest.
+
+### Changed
+
+- Advanced the separately packaged OpenHands integration to `0.1.0a4` solely
+  to retain its exact dependency on the new core package identity. No host,
+  authority, retrieval, or live-execution behavior changed.
+
+The diagnostic uses no model or retrieval system and does not measure model
+answers or task completion. Its packaged gold is visible rather than sealed,
+and the histories are project-authored fixtures rather than a collected,
+licensed, consented, privacy-reviewed natural cohort. It makes no semantic
+completeness, comparative, provider-readiness, or retrieval-authority claim.
+Its current deterministic all-split outcome is red: 28 predeclared accepted
+cases refuse with `compiled_memory_not_verified`; the two intentional
+hard-limit refusals match, and the CLI writes the report before returning 3.
+
 ## 0.1.1a2 - 2026-07-31
 
 ### Added

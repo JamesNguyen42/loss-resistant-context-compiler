@@ -590,6 +590,39 @@ reduction or 1.5x successful completions per total token or cost on matched
 downstream runs. It must also show zero observed protected and exact misses on
 the frozen claim cohorts and at least 5x real-token compression per cohort.
 
+## Materialization retention structural diagnostic
+
+The installed `ctxc evaluate-materialization` command compares three
+representations of each ordered coding history: full raw history, a bounded
+recent tail, and the existing `materialize_context()` output. Its immutable
+package-resident pack contains 30 project-authored synthetic-naturalistic cases
+in grouped splits of 4 train, 6 development, and 20 held out. Every arm uses
+`unicode-codepoint-count-v1`; these are exact Unicode code-point planning units,
+not provider-token counts.
+
+The canonical report retains exact integer correction, identifier, path,
+number, detail, current-turn, omission/refusal, and authority-boundary
+measurements. Every refusal remains in the report. The runner performs no model,
+retrieval, or provider execution, and retrieval text is neither simulated nor
+promoted into authoritative LRCC memory.
+
+The frozen pack's current deterministic all-split outcome is red: its 28
+predeclared accepted cases return `compiled_memory_not_verified`; its two
+predeclared hard-limit refusals match. A report is still emitted, with
+`integrity_passed=false`, and the CLI returns 3. This outcome was not used to
+retune the fixtures or expectations.
+
+```console
+ctxc evaluate-materialization --split heldout -o retention-report.json
+```
+
+The fixtures are visible, project-authored test material rather than blind gold
+or a collected, licensed, consented, privacy-reviewed natural cohort. Results
+therefore do not establish semantic completeness, downstream task completion,
+provider-token accounting/readiness, or comparative superiority, and they do
+not close P0-E3. The pack and report contract are described in
+[Materialization retention evaluation](MATERIALIZATION_RETENTION_EVALUATION.md).
+
 ## Natural-history evidence contracts
 
 `benchmarks.natural_history` independently validates six bounded Draft 2020-12

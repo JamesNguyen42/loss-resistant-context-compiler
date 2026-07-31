@@ -338,7 +338,7 @@ connector instance.
 
 ## Isolated OpenHands integration package
 
-`integrations/openhands/` builds the separate `ctxc-openhands` `0.1.0a3`
+`integrations/openhands/` builds the separate `ctxc-openhands` `0.1.0a4`
 draft-alpha package. Neither the core distribution nor an ordinary
 `ctxc_openhands` import imports OpenHands; host imports occur only behind the
 exact compatibility gate. The only reviewed identity is OpenHands `1.8.0` at
@@ -1220,6 +1220,23 @@ manifest is a verified failure with no candidate because dependency-lock,
 enforced network-isolation, inference-service, exact Python, source-checkout,
 and local-model prerequisites were absent. Failed preflight and runner evidence
 is never upgraded into a valid result.
+
+The installed `ctxc evaluate-materialization` command is a dependency-free
+structural diagnostic over an immutable package-resident pack of 30
+project-authored synthetic-naturalistic coding histories. Grouped splits contain
+4 train, 6 development, and 20 held-out cases. The runner compares full raw
+history, a bounded recent tail, and the existing `materialize_context()` result
+under `unicode-codepoint-count-v1`; it records exact integer planning-unit,
+correction, identifier, path, number, detail, current-turn, omission/refusal,
+and authority-boundary measurements. It never calls a model, retrieval system,
+or provider. Retrieved text is not placed in authoritative memory or simulated
+by this diagnostic. See
+[Materialization retention evaluation](MATERIALIZATION_RETENTION_EVALUATION.md).
+
+This pack is visible project-authored input, not blind gold or a collected,
+licensed, consented, privacy-reviewed natural cohort. Its structural report
+does not establish semantic completeness, task completion, provider-token
+accounting/readiness, or comparative superiority, and it does not close P0-E3.
 
 `benchmarks/natural_history.py` defines a separate strict evidence pipeline.
 Six schemas and seven self-hashed fixtures cover bounded corpus intake,

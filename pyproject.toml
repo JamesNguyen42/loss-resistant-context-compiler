@@ -5,7 +5,7 @@ backend-path = ["."]
 
 [project]
 name = "loss-resistant-context-compiler"
-version = "0.1.1a2"
+version = "0.1.1a3"
 description = "A model-agnostic, provenance-preserving context compiler for long-running agents"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -47,6 +47,9 @@ where = ["src"]
 
 [tool.setuptools.data-files]
 "share/loss-resistant-context-compiler/schemas" = ["schemas/*.json"]
+
+[tool.setuptools.package-data]
+context_compiler = ["data/materialized_retention_pack_v1.json"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

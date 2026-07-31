@@ -58,6 +58,30 @@ CLI reports the existing bounded diagnostic plus the stable
 verifier requires both the independently retained receipt digest and allocation
 digest.
 
+## Installed structural retention diagnostic
+
+`ctxc evaluate-materialization` exercises this same public consumer path over
+an immutable package-resident pack of 30 project-authored synthetic-naturalistic
+coding histories. Grouped splits contain 4 train, 6 development, and 20
+held-out cases. The command compares full raw history, a bounded recent tail,
+and `materialize_context()` under `unicode-codepoint-count-v1`, and writes a
+canonical report with exact integer planning-unit, correction, identifier,
+path, number, detail, current-turn, omission/refusal, and authority-boundary
+measurements.
+
+```console
+ctxc evaluate-materialization --split heldout -o retention-report.json
+```
+
+No arm calls or simulates a model, retrieval system, or provider. Zoom or other
+retrieval remains outside authoritative LRCC memory. The fixtures are visible,
+project-authored test material rather than blind gold or a collected, licensed,
+consented, privacy-reviewed natural cohort. This structural diagnostic does not
+establish semantic completeness, downstream task completion, provider-token
+accounting/readiness, or comparative superiority, and it does not close P0-E3.
+See [Materialization retention evaluation](MATERIALIZATION_RETENTION_EVALUATION.md)
+for the exact pack, split, report, and claim boundaries.
+
 Lower-level callers may still use the provisional modules directly:
 
 ```python
