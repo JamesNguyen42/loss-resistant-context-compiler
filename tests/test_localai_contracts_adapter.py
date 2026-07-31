@@ -50,6 +50,13 @@ EXPECTED_LAUNCHER_BODY = (
     b"    sys.argv[0] = re.sub(r'(-script\\.pyw|\\.exe)?$', '', sys.argv[0])\n"
     b"    sys.exit(main())\n"
 )
+REMOVESUFFIX_LAUNCHER_BODY = (
+    b"import sys\n"
+    b"from localai_contracts.integration import main\n"
+    b"if __name__ == '__main__':\n"
+    b"    sys.argv[0] = sys.argv[0].removesuffix('.exe')\n"
+    b"    sys.exit(main())\n"
+)
 
 
 def _record_path(install_root: Path) -> Path:
@@ -207,9 +214,14 @@ def test_posix_launcher_record_path_is_platform_canonical(
     }
 
 
+@pytest.mark.parametrize(
+    "launcher_body",
+    [EXPECTED_LAUNCHER_BODY, REMOVESUFFIX_LAUNCHER_BODY],
+)
 def test_posix_safe_shebang_launcher_is_accepted(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    launcher_body: bytes,
 ) -> None:
     executable = tmp_path / "ctxc venv" / "bin" / "python"
     encoded = os.fsencode(str(executable))
@@ -220,10 +232,26 @@ def test_posix_safe_shebang_launcher_is_accepted(
         + encoded
         + b'" "$0" "$@"\n'
         + b"' '''\n"
-        + EXPECTED_LAUNCHER_BODY
+        + launcher_body
     )
 
     adapter_module._validate_launcher_contents(launcher)
+
+
+def test_pip_launcher_body_variants_remain_exact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(adapter_module.sys, "platform", "linux")
+    monkeypatch.setattr(adapter_module.sys, "executable", "/opt/ctxc/bin/python")
+
+    for body in (EXPECTED_LAUNCHER_BODY, REMOVESUFFIX_LAUNCHER_BODY):
+        adapter_module._validate_launcher_contents(b"#!/opt/ctxc/bin/python\n" + body)
+
+    changed = REMOVESUFFIX_LAUNCHER_BODY.replace(b".exe", b".EXE")
+    with pytest.raises(ValueError, match="entry point mismatch"):
+        adapter_module._validate_launcher_contents(
+            b"#!/opt/ctxc/bin/python\n" + changed
+        )
 
 
 def test_posix_launcher_uses_utf8_for_non_ascii_interpreter(

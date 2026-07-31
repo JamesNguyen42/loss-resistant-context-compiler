@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import platform
+import stat
 import subprocess
 import sys
 import textwrap
@@ -19,9 +20,9 @@ from packaging.markers import default_environment
 from packaging.requirements import InvalidRequirement, Requirement
 
 CORE_DISTRIBUTION = "loss-resistant-context-compiler"
-CORE_VERSION = "0.1.1a3"
+CORE_VERSION = "0.1.1a4"
 INTEGRATION_DISTRIBUTION = "ctxc-openhands"
-INTEGRATION_VERSION = "0.1.0a4"
+INTEGRATION_VERSION = "0.1.0a5"
 LIVE_DISTRIBUTIONS = (
     "openhands-ai",
     "openhands-sdk",
@@ -177,6 +178,7 @@ def _entrypoint_for(python: Path) -> Path:
 def _clean_environment() -> dict[str, str]:
     environment = dict(os.environ)
     environment.pop("PYTHONPATH", None)
+    environment.pop("PYTHONPYCACHEPREFIX", None)
     environment.pop("VIRTUAL_ENV", None)
     environment["PYTHONNOUSERSITE"] = "1"
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -207,6 +209,28 @@ def _build_input_install_command(
         "--requirement",
         str(build_lock),
     ]
+
+
+def _package_install_command(
+    python: Path,
+    artifact: Path,
+    *,
+    no_build_isolation: bool,
+) -> list[str]:
+    command = [
+        str(python),
+        "-m",
+        "pip",
+        "--isolated",
+        "install",
+        "--no-index",
+        "--no-deps",
+        "--no-compile",
+    ]
+    if no_build_isolation:
+        command.append("--no-build-isolation")
+    command.append(str(artifact))
+    return command
 
 
 def _verify_build_inputs(
@@ -273,6 +297,86 @@ def _installed_package_path(value: object, prefix: object) -> bool:
     except (OSError, ValueError):
         return False
     return any(part.casefold() == "site-packages" for part in candidate.parts)
+
+
+def _is_link_or_reparse(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    is_junction = getattr(path, "is_junction", None)
+    if callable(is_junction) and is_junction():
+        return True
+    try:
+        status = path.lstat()
+    except FileNotFoundError:
+        return False
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    if bool(getattr(status, "st_file_attributes", 0) & reparse_flag):
+        return True
+    reparse_tag = getattr(status, "st_reparse_tag", 0)
+    return bool(reparse_tag)
+
+
+def _assert_no_package_bytecode(environment: Path, *, label: str) -> None:
+    package_names = ("context_compiler", "ctxc_openhands")
+    roots: dict[str, list[Path]] = {name: [] for name in package_names}
+
+    def raise_walk_error(error: OSError) -> None:
+        raise error
+
+    try:
+        for current, directories, _files in os.walk(
+            environment,
+            topdown=True,
+            onerror=raise_walk_error,
+            followlinks=False,
+        ):
+            current_path = Path(current)
+            if current_path.name.casefold() != "site-packages":
+                continue
+            for package_name in package_names:
+                package_root = current_path / package_name
+                if _is_link_or_reparse(package_root):
+                    raise CleanInstallError(
+                        f"{label} installed package root must not be linked"
+                    )
+                if package_root.is_dir():
+                    roots[package_name].append(package_root)
+            directories[:] = []
+    except OSError as exc:
+        raise CleanInstallError(f"{label} package bytecode scan failed") from exc
+
+    if any(len(matches) != 1 for matches in roots.values()):
+        raise CleanInstallError(
+            f"{label} must contain exactly one installed root for each package"
+        )
+
+    try:
+        for package_name in package_names:
+            package_root = roots[package_name][0]
+            for current, directories, files in os.walk(
+                package_root,
+                topdown=True,
+                onerror=raise_walk_error,
+                followlinks=False,
+            ):
+                current_path = Path(current)
+                if any(
+                    _is_link_or_reparse(current_path / name)
+                    for name in (*directories, *files)
+                ):
+                    raise CleanInstallError(
+                        f"{label} installed package tree contains a linked entry"
+                    )
+                if any(name.casefold() == "__pycache__" for name in directories):
+                    raise CleanInstallError(
+                        f"{label} contains an installed package bytecode cache"
+                    )
+                if any(name.casefold().endswith(".pyc") for name in files):
+                    raise CleanInstallError(
+                        f"{label} contains an installed package bytecode file"
+                    )
+    except OSError as exc:
+        raise CleanInstallError(f"{label} package bytecode scan failed") from exc
 
 
 def _active_requirements(value: object, *, label: str) -> tuple[str, ...]:
@@ -428,31 +532,22 @@ def _validate_mode(
     ):
         raise CleanInstallError("installed build-input inventory did not remain exact")
     _run(
-        [
-            str(python),
-            "-m",
-            "pip",
-            "--isolated",
-            "install",
-            "--no-index",
-            "--no-deps",
-            str(core_wheel),
-        ],
+        _package_install_command(
+            python,
+            core_wheel,
+            no_build_isolation=False,
+        ),
         environment=environment,
     )
-    install = [
-        str(python),
-        "-m",
-        "pip",
-        "--isolated",
-        "install",
-        "--no-index",
-        "--no-deps",
-    ]
-    if mode == "sdist":
-        install.append("--no-build-isolation")
-    install.append(str(integration_artifact))
-    _run(install, environment=environment)
+    _run(
+        _package_install_command(
+            python,
+            integration_artifact,
+            no_build_isolation=mode == "sdist",
+        ),
+        environment=environment,
+    )
+    _assert_no_package_bytecode(environment_path, label=f"{mode} post-install")
 
     probe = _json_stdout(
         _run([str(python), "-c", _PROBE], environment=environment),
@@ -475,6 +570,7 @@ def _validate_mode(
     )
     _assert_doctor(live_doctor, require_live=True)
     manifest_digest = _assert_manifest_evidence(probe, doctor, live_doctor)
+    _assert_no_package_bytecode(environment_path, label=f"{mode} post-probe")
     final_build_inputs = _verify_build_inputs(build_lock, wheelhouse)
     if final_build_inputs != initial_build_inputs:
         raise CleanInstallError("build-input inventory changed during clean-install validation")

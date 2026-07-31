@@ -166,6 +166,30 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a4 - 2026-07-31
+
+### Changed
+
+- Extended `verify_materialized_context_result(...)` to accept the exact
+  canonical, bounded UTF-8 JSON-line bytes written by `ctxc materialize -o`,
+  while retaining the independent receipt and allocation-plan digest checks.
+  Duplicate keys, noncanonical framing or encoding, excessive nesting, and
+  oversized serialized results are rejected before result verification.
+- Advanced the separately packaged OpenHands integration to `0.1.0a5` solely
+  to retain its exact dependency on the new core package identity. No host,
+  authority, retrieval, or live-execution behavior changed.
+- Recognized the two exact pip-generated `localai-integration` entry-point
+  bodies observed across supported Python installers while retaining the
+  existing launcher path, interpreter, native stub, archive-shape, `RECORD`,
+  and installed-byte checks.
+- Required OpenHands clean-install validation to disable pip bytecode
+  compilation and to reject core or integration package bytecode both after
+  installation and after the import and doctor probes.
+
+The materialized schemas remain v1, provider execution remains not ready, and
+a final immutable provider-request recount is still required. This change
+makes no semantic-completeness, retrieval-authority, or comparative claim.
+
 ## 0.1.1a3 - 2026-07-31
 
 ### Added

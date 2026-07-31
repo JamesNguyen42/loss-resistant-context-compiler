@@ -630,6 +630,137 @@ def test_clean_install_report_is_exclusive_and_import_paths_are_bound(
     assert destination.read_bytes() == retained
 
 
+def test_clean_install_disables_and_rejects_package_bytecode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clean_install = _load_clean_install_script()
+    python = tmp_path / "python"
+    wheel = tmp_path / "package.whl"
+    sdist = tmp_path / "package.tar.gz"
+
+    wheel_command = clean_install._package_install_command(
+        python,
+        wheel,
+        no_build_isolation=False,
+    )
+    sdist_command = clean_install._package_install_command(
+        python,
+        sdist,
+        no_build_isolation=True,
+    )
+    assert wheel_command.count("--no-compile") == 1
+    assert sdist_command.count("--no-compile") == 1
+    assert "--no-build-isolation" not in wheel_command
+    assert sdist_command.count("--no-build-isolation") == 1
+    assert wheel_command[-2:] == ["--no-compile", str(wheel)]
+    assert sdist_command[-3:] == ["--no-compile", "--no-build-isolation", str(sdist)]
+    monkeypatch.setenv("PYTHONPYCACHEPREFIX", str(tmp_path / "external-cache"))
+    assert "PYTHONPYCACHEPREFIX" not in clean_install._clean_environment()
+
+    site_packages = tmp_path / "environment" / "lib" / "site-packages"
+    core = site_packages / "context_compiler"
+    integration = site_packages / "ctxc_openhands"
+    core.mkdir(parents=True)
+    integration.mkdir()
+    (core / "__init__.py").write_text("", encoding="utf-8")
+    (integration / "__init__.py").write_text("", encoding="utf-8")
+    (core / "__pycache__data").mkdir()
+    (integration / "module.pyc.txt").write_bytes(b"not bytecode")
+    clean_install._assert_no_package_bytecode(
+        tmp_path / "environment",
+        label="test",
+    )
+
+    cache = core / "__PYCACHE__"
+    cache.mkdir()
+    with pytest.raises(clean_install.CleanInstallError, match="bytecode cache"):
+        clean_install._assert_no_package_bytecode(
+            tmp_path / "environment",
+            label="test",
+        )
+    cache.rmdir()
+
+    bytecode = integration / "module.PYC"
+    bytecode.write_bytes(b"not bytecode")
+    with pytest.raises(clean_install.CleanInstallError, match="bytecode file"):
+        clean_install._assert_no_package_bytecode(
+            tmp_path / "environment",
+            label="test",
+        )
+    bytecode.unlink()
+
+    duplicate = (
+        tmp_path
+        / "environment"
+        / "duplicate"
+        / "site-packages"
+        / "context_compiler"
+    )
+    duplicate.mkdir(parents=True)
+    with pytest.raises(clean_install.CleanInstallError, match="exactly one"):
+        clean_install._assert_no_package_bytecode(
+            tmp_path / "environment",
+            label="test",
+        )
+    duplicate.rmdir()
+
+    original_is_symlink = Path.is_symlink
+
+    def package_root_is_symlink(path: Path) -> bool:
+        return path.name == "ctxc_openhands" or original_is_symlink(path)
+
+    with monkeypatch.context() as symbolic:
+        symbolic.setattr(Path, "is_symlink", package_root_is_symlink)
+        with pytest.raises(clean_install.CleanInstallError, match="must not be linked"):
+            clean_install._assert_no_package_bytecode(
+                tmp_path / "environment",
+                label="test",
+            )
+
+    original_lstat = Path.lstat
+
+    def package_root_lstat(path: Path):
+        status = original_lstat(path)
+        if path.name != "ctxc_openhands":
+            return status
+
+        class ReparseStatus:
+            st_file_attributes = getattr(
+                stat,
+                "FILE_ATTRIBUTE_REPARSE_POINT",
+                0x400,
+            )
+            st_reparse_tag = 0x9000001A
+
+        return ReparseStatus()
+
+    with monkeypatch.context() as reparse:
+        reparse.setattr(Path, "is_symlink", lambda _path: False)
+        if hasattr(Path, "is_junction"):
+            reparse.setattr(Path, "is_junction", lambda _path: False)
+        reparse.setattr(Path, "lstat", package_root_lstat)
+        with pytest.raises(clean_install.CleanInstallError, match="must not be linked"):
+            clean_install._assert_no_package_bytecode(
+                tmp_path / "environment",
+                label="test",
+            )
+
+    nested = core / "linked-subtree"
+    nested.mkdir()
+    original_link_check = clean_install._is_link_or_reparse
+    monkeypatch.setattr(
+        clean_install,
+        "_is_link_or_reparse",
+        lambda path: path == nested or original_link_check(path),
+    )
+    with pytest.raises(clean_install.CleanInstallError, match="tree contains a linked"):
+        clean_install._assert_no_package_bytecode(
+            tmp_path / "environment",
+            label="test",
+        )
+
+
 def test_clean_install_probe_distinguishes_dev_extras_from_runtime_dependencies(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -643,11 +774,11 @@ def test_clean_install_probe_distinguishes_dev_extras_from_runtime_dependencies(
     ) == ()
     assert clean_install._active_requirements(
         [
-            "loss-resistant-context-compiler==0.1.1a3",
+            "loss-resistant-context-compiler==0.1.1a4",
             'openhands-ai==1.8.0; extra == "live"',
         ],
         label="integration",
-    ) == ("loss-resistant-context-compiler==0.1.1a3",)
+    ) == ("loss-resistant-context-compiler==0.1.1a4",)
 
     monkeypatch.setattr(
         clean_install,
@@ -662,7 +793,7 @@ def test_clean_install_probe_distinguishes_dev_extras_from_runtime_dependencies(
         "sys_prefix": "environment",
         "core_requirements": ['pytest>=8.0; extra == "dev"'],
         "integration_requirements": [
-            "loss-resistant-context-compiler==0.1.1a3",
+            "loss-resistant-context-compiler==0.1.1a4",
             'openhands-ai==1.8.0; extra == "live"',
         ],
         "openhands_modules_before": [],

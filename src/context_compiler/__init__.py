@@ -200,4 +200,4 @@ __all__ = [
     "verify_trust_manifest",
 ]
 
-__version__ = "0.1.1a3"
+__version__ = "0.1.1a4"

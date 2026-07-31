@@ -202,6 +202,14 @@ methods require the caller's independently expected allocation digest and
 refuse a different, missing, or malformed value. Projection remains
 path-neutral.
 
+`verify_materialized_context_result(...)` accepts either an exact decoded
+object or the exact output-file bytes emitted by `ctxc materialize -o ...`.
+Serialized input must be one bounded canonical UTF-8 JSON line; duplicate keys,
+noncanonical whitespace or key order, alternate line endings, trailing data,
+invalid Unicode, excessive nesting, and oversized input are rejected before
+the existing receipt and allocation checks. The caller must still retain and
+supply both expected digests independently of the serialized result.
+
 ## Final provider recount
 
 `runtime_payload(expected_allocation_plan_sha256=...)` is a planning payload,

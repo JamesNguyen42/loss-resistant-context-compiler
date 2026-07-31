@@ -49,7 +49,7 @@ def test_public_api_is_explicit() -> None:
         "validate_final_request_ledger",
         "verify_pin_manifest",
     }
-    assert ctxc_openhands.__version__ == "0.1.0a4"
+    assert ctxc_openhands.__version__ == "0.1.0a5"
 
 
 def test_core_and_integration_imports_do_not_load_openhands() -> None:
@@ -89,7 +89,7 @@ print(json.dumps({
     report = json.loads(completed.stdout)
 
     assert report == {
-        "core": "0.1.1a3",
-        "integration": "0.1.0a4",
+        "core": "0.1.1a4",
+        "integration": "0.1.0a5",
         "openhands": [],
     }

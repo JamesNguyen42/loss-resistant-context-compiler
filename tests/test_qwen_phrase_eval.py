@@ -218,7 +218,7 @@ def test_perfect_captured_model_is_scored_separately_and_replays(
     }
 
 
-@pytest.mark.parametrize("package_version", ["0.1.0", "0.1.1a1", "0.1.1a2", "0.1.1a3"])
+@pytest.mark.parametrize("package_version", ["0.1.0", "0.1.1a1", "0.1.1a2", "0.1.1a3", "0.1.1a4"])
 def test_qwen_phrase_reader_accepts_only_recorded_supported_versions(
     package_version: str,
     corpus: PhraseCorpus,

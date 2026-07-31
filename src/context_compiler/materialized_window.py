@@ -13,8 +13,10 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from .connector import ExactTokenCounterAdapter
+from .connector import ExactTokenCounterAdapter, decode_connector_request
 from .context_window import (
+    _MAX_CONTEXT_WINDOW_BYTES,
+    _MAX_JSON_DEPTH,
     ContextWindowBudget,
     ContextWindowError,
     ContextWindowPrototype,
@@ -87,6 +89,7 @@ _PROMPT_COMPONENT_ORDER = (
     "external_untrusted_retrieval",
     "current_user_turn",
 )
+_MAX_SERIALIZED_RESULT_BYTES = _MAX_CONTEXT_WINDOW_BYTES + 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -459,16 +462,48 @@ def materialize_context(
     )
 
 
+def _decode_materialized_context_result(value: bytes) -> dict[str, Any]:
+    if type(value) is not bytes:
+        raise TypeError("serialized materialized context result must be exact bytes")
+    if len(value) > _MAX_SERIALIZED_RESULT_BYTES:
+        raise ContextWindowError("serialized materialized context result exceeds the byte limit")
+    if not value.endswith(b"\n"):
+        raise ContextWindowError(
+            "serialized materialized context result must be one canonical JSON line"
+        )
+    try:
+        text = value[:-1].decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ContextWindowError(
+            "serialized materialized context result must be canonical UTF-8 JSON"
+        ) from exc
+    try:
+        decoded = decode_connector_request(
+            text,
+            max_request_bytes=_MAX_CONTEXT_WINDOW_BYTES,
+            max_json_depth=_MAX_JSON_DEPTH,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ContextWindowError(
+            "serialized materialized context result must be strict JSON"
+        ) from exc
+    if _canonical_bytes(decoded) + b"\n" != value:
+        raise ContextWindowError("serialized materialized context result is not canonical")
+    return decoded
+
+
 def verify_materialized_context_result(
-    value: Mapping[str, Any],
+    value: Mapping[str, Any] | bytes,
     *,
     expected_receipt_sha256: str,
     expected_allocation_plan_sha256: str,
 ) -> dict[str, Any]:
     """Validate a consumer result against independent receipt and allocation digests."""
 
-    if type(value) is not dict:
-        raise TypeError("materialized context result must be an exact object")
+    if type(value) is bytes:
+        value = _decode_materialized_context_result(value)
+    elif type(value) is not dict:
+        raise TypeError("materialized context result must be an exact object or exact bytes")
     _canonical_bytes(value)
     actual = frozenset(value)
     if actual != _RESULT_FIELDS:

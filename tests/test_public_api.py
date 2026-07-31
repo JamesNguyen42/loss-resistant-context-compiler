@@ -120,7 +120,7 @@ EXPECTED_SIGNATURES = {
     "serve_stdio": "(*, connector: 'LocalAIConnector | None' = None, input_stream: 'Any', output_stream: 'Any', max_request_bytes: 'int' = 8388608, max_json_depth: 'int' = 128) -> 'int'",
     "source_event_to_record": "(event: 'SourceEvent | Mapping[str, Any] | Any', *, default_sequence: 'int') -> 'SourceRecord'",
     "validate_artifact_envelope": "(artifact: 'Any', *, limits: 'ArtifactLimits | None' = None) -> 'dict[str, Any]'",
-    "verify_materialized_context_result": "(value: 'Mapping[str, Any]', *, expected_receipt_sha256: 'str', expected_allocation_plan_sha256: 'str') -> 'dict[str, Any]'",
+    "verify_materialized_context_result": "(value: 'Mapping[str, Any] | bytes', *, expected_receipt_sha256: 'str', expected_allocation_plan_sha256: 'str') -> 'dict[str, Any]'",
     "verify_trust_manifest": "(manifest: 'Any', artifact: 'Any', sources: 'list[SourceRecord]', *, expected_manifest_sha256: 'str | None', archive_chain_head_sha256: 'str | None' = None, source_limits: 'SourceLimits | None' = None, artifact_limits: 'ArtifactLimits | None' = None) -> 'dict[str, Any]'",
     "ContextCompiler.compile": "(self, sources: 'Iterable[SourceRecord | dict]', *, timeout_seconds: 'float | None' = None) -> 'CompiledMemory'",
     "CompiledMemory.to_dict": "(self, *, include_all_items: 'bool' = True) -> 'dict[str, Any]'",
@@ -159,8 +159,6 @@ def test_critical_public_signatures_are_exact() -> None:
 
 
 def test_compilation_policy_preserves_legacy_positional_order() -> None:
-    policy = context_compiler.CompilationPolicy(
-        4_000, 5.0, False, False, True, True, True, 3.5
-    )
+    policy = context_compiler.CompilationPolicy(4_000, 5.0, False, False, True, True, True, 3.5)
     assert policy.chars_per_token == 3.5
     assert policy.fail_on_primary_extractor_error is False

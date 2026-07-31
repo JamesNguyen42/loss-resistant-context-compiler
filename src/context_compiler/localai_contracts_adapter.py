@@ -293,6 +293,16 @@ _CONTRACTS_LAUNCHER_BODY = (
     b"    sys.argv[0] = re.sub(r'(-script\\.pyw|\\.exe)?$', '', sys.argv[0])\n"
     b"    sys.exit(main())\n"
 )
+_CONTRACTS_LAUNCHER_BODY_REMOVESUFFIX = (
+    b"import sys\n"
+    b"from localai_contracts.integration import main\n"
+    b"if __name__ == '__main__':\n"
+    b"    sys.argv[0] = sys.argv[0].removesuffix('.exe')\n"
+    b"    sys.exit(main())\n"
+)
+_CONTRACTS_LAUNCHER_BODIES = frozenset(
+    {_CONTRACTS_LAUNCHER_BODY, _CONTRACTS_LAUNCHER_BODY_REMOVESUFFIX}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -879,7 +889,7 @@ def _validate_launcher_contents(contents: bytes) -> None:
             raise ValueError("contracts launcher archive has trailing bytes")
     else:
         payload = _split_posix_launcher(contents)
-    if _normalized_launcher_body(payload) != _CONTRACTS_LAUNCHER_BODY:
+    if _normalized_launcher_body(payload) not in _CONTRACTS_LAUNCHER_BODIES:
         raise ValueError("contracts launcher entry point mismatch")
 
 

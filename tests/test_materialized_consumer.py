@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+import context_compiler.context_window as context_window_module
+import context_compiler.materialized_window as materialized_window_module
 from context_compiler import (
     MATERIALIZED_CONTEXT_COMPONENTS_SCHEMA,
     MATERIALIZED_CONTEXT_RECEIPT_SCHEMA,
@@ -161,6 +163,157 @@ def test_result_is_byte_deterministic_and_requires_two_independent_digests() -> 
         )
 
 
+def test_serialized_result_round_trip_is_canonical_and_detached() -> None:
+    value = result()
+    serialized = canonical_bytes(value) + b"\n"
+
+    restored = verify_materialized_context_result(
+        serialized,
+        expected_receipt_sha256=value["receipt"]["receipt_sha256"],
+        expected_allocation_plan_sha256=ALLOCATION_SHA256,
+    )
+
+    assert restored == value
+    assert canonical_bytes(restored) + b"\n" == serialized
+    restored["runtime_payload"]["current_turn"]["content"] = "detached mutation"
+    assert canonical_bytes(value) + b"\n" == serialized
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda raw: raw[:-1],
+        lambda raw: raw[:-1] + b"\r\n",
+        lambda raw: raw + b"\n",
+        lambda raw: raw + b"{}\n",
+        lambda raw: b" " + raw,
+        lambda raw: b"\xef\xbb\xbf" + raw,
+    ],
+)
+def test_serialized_result_rejects_noncanonical_framing(mutate) -> None:
+    value = result()
+    raw = canonical_bytes(value) + b"\n"
+
+    with pytest.raises(ContextWindowError, match="canonical|JSON line|strict JSON"):
+        verify_materialized_context_result(
+            mutate(raw),
+            expected_receipt_sha256=value["receipt"]["receipt_sha256"],
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"schema":"first","schema":"second"}\n',
+        b'{"outer":{"value":1,"value":2}}\n',
+        b'{"value":NaN}\n',
+        b'{"value":1e9999}\n',
+        b'{"value":"\\ud800"}\n',
+        b'{"value":"\xff"}\n',
+        b'{"value":' + (b"1" * 641) + b"}\n",
+        b'{"value":' + (b"[" * 129) + b"0" + (b"]" * 129) + b"}\n",
+    ],
+)
+def test_serialized_result_rejects_ambiguous_or_unbounded_json(raw: bytes) -> None:
+    with pytest.raises(ContextWindowError, match="strict JSON|canonical UTF-8"):
+        verify_materialized_context_result(
+            raw,
+            expected_receipt_sha256="f" * 64,
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
+
+
+def test_serialized_result_enforces_byte_and_node_limits(monkeypatch) -> None:
+    value = result()
+    raw = canonical_bytes(value) + b"\n"
+
+    monkeypatch.setattr(
+        materialized_window_module,
+        "_MAX_SERIALIZED_RESULT_BYTES",
+        len(raw),
+    )
+    assert (
+        verify_materialized_context_result(
+            raw,
+            expected_receipt_sha256=value["receipt"]["receipt_sha256"],
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
+        == value
+    )
+
+    monkeypatch.setattr(
+        materialized_window_module,
+        "_MAX_SERIALIZED_RESULT_BYTES",
+        len(raw) - 1,
+    )
+    with pytest.raises(ContextWindowError, match="byte limit"):
+        verify_materialized_context_result(
+            raw,
+            expected_receipt_sha256=value["receipt"]["receipt_sha256"],
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
+
+    monkeypatch.setattr(
+        materialized_window_module,
+        "_MAX_SERIALIZED_RESULT_BYTES",
+        16 * 1024 * 1024 + 1,
+    )
+    monkeypatch.setattr(context_window_module, "_MAX_JSON_NODES", 8)
+    with pytest.raises(ContextWindowError, match="node limit"):
+        verify_materialized_context_result(
+            raw,
+            expected_receipt_sha256=value["receipt"]["receipt_sha256"],
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
+
+
+def test_serialized_result_rejects_noncanonical_key_order_escapes_and_numbers() -> None:
+    value = result()
+    value["runtime_payload"]["current_turn"]["content"] = "café"
+    reordered = {key: value[key] for key in reversed(tuple(value))}
+    variants = [
+        json.dumps(
+            reordered,
+            ensure_ascii=False,
+            sort_keys=False,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n",
+        json.dumps(
+            value,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n",
+        b'{"value":1e0}\n',
+    ]
+
+    for raw in variants:
+        with pytest.raises(ContextWindowError, match="canonical"):
+            verify_materialized_context_result(
+                raw,
+                expected_receipt_sha256="f" * 64,
+                expected_allocation_plan_sha256=ALLOCATION_SHA256,
+            )
+
+
+def test_serialized_result_rejects_bytes_subclasses_before_use() -> None:
+    class ExplosiveBytes(bytes):
+        def endswith(self, *_args, **_kwargs):  # type: ignore[override]
+            raise AssertionError("bytes subclass was invoked")
+
+    with pytest.raises(TypeError, match="exact object or exact bytes"):
+        verify_materialized_context_result(
+            ExplosiveBytes(b"{}\n"),
+            expected_receipt_sha256="f" * 64,
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
+
+
 def test_runtime_and_retrieval_substitution_fail_even_after_receipt_resealing() -> None:
     changed_runtime = result()
     changed_runtime["runtime_payload"]["current_turn"]["content"] = "substituted"
@@ -230,10 +383,11 @@ def test_verifier_rejects_unknown_fields_bool_counts_and_mapping_subclasses() ->
 def test_concurrent_verification_returns_detached_byte_identical_results() -> None:
     value = result()
     expected = value["receipt"]["receipt_sha256"]
+    serialized = canonical_bytes(value) + b"\n"
 
     def verify_once() -> bytes:
         restored = verify_materialized_context_result(
-            value,
+            serialized,
             expected_receipt_sha256=expected,
             expected_allocation_plan_sha256=ALLOCATION_SHA256,
         )
