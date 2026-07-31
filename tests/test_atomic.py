@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 import context_compiler.atomic as atomic_module
-from context_compiler.atomic import atomic_write_text
+from context_compiler.atomic import AtomicDestinationExistsError, atomic_write_text
 
 
 def test_atomic_writer_requires_text_and_boolean_overwrite(tmp_path: Path) -> None:
@@ -33,7 +33,7 @@ def test_exclusive_atomic_install_preserves_existing_file(tmp_path: Path) -> Non
     output = tmp_path / "output.json"
     output.write_text("committed", encoding="utf-8")
 
-    with pytest.raises(FileExistsError):
+    with pytest.raises(AtomicDestinationExistsError):
         atomic_write_text(output, "replacement", overwrite=False)
 
     assert output.read_text(encoding="utf-8") == "committed"
@@ -73,11 +73,35 @@ def test_exclusive_atomic_install_loses_race_without_clobbering(
 
     monkeypatch.setattr(atomic_module.os, "link", create_racer_then_link)
 
-    with pytest.raises(FileExistsError):
+    with pytest.raises(AtomicDestinationExistsError):
         atomic_write_text(output, "ours", overwrite=False)
 
     assert output.read_text(encoding="utf-8") == "racer"
     assert list(tmp_path.glob(".ctxc-*.tmp")) == []
+
+
+def test_temporary_allocation_file_exists_is_not_a_destination_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "output.json"
+    if atomic_module.supports_atomic_directory_fds():
+        collision = tmp_path / ".ctxc-collision.tmp"
+        collision.write_text("occupied", encoding="utf-8")
+        monkeypatch.setattr(atomic_module.secrets, "token_hex", lambda _size: "collision")
+    else:
+
+        def fail_allocation(*_args: object, **_kwargs: object) -> tuple[int, str]:
+            raise FileExistsError("injected temporary allocation exhaustion")
+
+        monkeypatch.setattr(atomic_module.tempfile, "mkstemp", fail_allocation)
+
+    with pytest.raises(FileExistsError) as raised:
+        atomic_write_text(output, "uncommitted", overwrite=False)
+
+    assert type(raised.value) is FileExistsError
+    assert not isinstance(raised.value, AtomicDestinationExistsError)
+    assert not output.exists()
 
 
 def test_exclusive_atomic_install_cleans_temp_after_link_failure(

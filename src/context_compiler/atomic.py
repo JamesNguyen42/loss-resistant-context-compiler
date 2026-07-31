@@ -15,6 +15,10 @@ from .path_safety import (
 )
 
 
+class AtomicDestinationExistsError(FileExistsError):
+    """An exclusive atomic install lost the destination creation race."""
+
+
 def fsync_directory(path: str | Path) -> None:
     """Persist a directory entry update when the host exposes that primitive."""
 
@@ -156,13 +160,18 @@ def atomic_write_text(
                     )
                     temporary_present = False
                 else:
-                    os.link(
-                        temporary_name,
-                        output_path.name,
-                        src_dir_fd=parent_descriptor,
-                        dst_dir_fd=parent_descriptor,
-                        follow_symlinks=False,
-                    )
+                    try:
+                        os.link(
+                            temporary_name,
+                            output_path.name,
+                            src_dir_fd=parent_descriptor,
+                            dst_dir_fd=parent_descriptor,
+                            follow_symlinks=False,
+                        )
+                    except FileExistsError as exc:
+                        raise AtomicDestinationExistsError(
+                            "atomic output destination already exists"
+                        ) from exc
                     os.unlink(
                         temporary_name,
                         dir_fd=parent_descriptor,
@@ -174,7 +183,12 @@ def atomic_write_text(
                     os.replace(temporary_path, output_path)
                     temporary_present = False
                 else:
-                    os.link(temporary_path, output_path)
+                    try:
+                        os.link(temporary_path, output_path)
+                    except FileExistsError as exc:
+                        raise AtomicDestinationExistsError(
+                            "atomic output destination already exists"
+                        ) from exc
                     temporary_path.unlink()
                     temporary_present = False
                 fsync_directory(output_path.parent)

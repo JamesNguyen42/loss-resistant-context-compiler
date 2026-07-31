@@ -12,7 +12,7 @@ from pathlib import Path
 from .archive import SourceArchive
 from .artifact_diff import diff_artifacts
 from .artifact_inspection import render_artifact_text, summarize_artifact
-from .atomic import atomic_write_text
+from .atomic import AtomicDestinationExistsError, atomic_write_text
 from .compiler import ContextCompiler
 from .connector import ExactTokenCounterAdapter
 from .context_window import ContextWindowBudget, ContextWindowError
@@ -124,7 +124,10 @@ def _write_output(value: str, path: str | None) -> None:
 def _write_new_output(value: str, path: str | None) -> None:
     rendered = value + ("" if value.endswith("\n") else "\n")
     if path:
-        atomic_write_text(Path(path), rendered, overwrite=False)
+        try:
+            atomic_write_text(Path(path), rendered, overwrite=False)
+        except AtomicDestinationExistsError as exc:
+            raise FileExistsError("output already exists") from exc
     else:
         payload = rendered.encode("utf-8", errors="strict")
         output = getattr(sys.stdout, "buffer", None)

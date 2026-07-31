@@ -112,7 +112,7 @@ def test_evaluate_materialization_cli_create_new_and_verify_round_trip(
     assert main(args) == 2
     refused = capsys.readouterr()
     assert refused.out == ""
-    assert "already exists" in refused.err.lower()
+    assert refused.err == "ctxc: output already exists\n"
     assert report_path.read_bytes() == retained
 
     assert (
@@ -130,6 +130,33 @@ def test_evaluate_materialization_cli_create_new_and_verify_round_trip(
     verified = capsys.readouterr()
     assert verified.err == ""
     assert verified.out.encode("utf-8") == retained
+
+
+def test_evaluate_materialization_does_not_relabel_temporary_allocation_failure(
+    tmp_path: Path,
+    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_temporary_allocation(*_args: object, **_kwargs: object) -> None:
+        raise FileExistsError("injected temporary allocation exhaustion")
+
+    monkeypatch.setattr(cli_module, "atomic_write_text", fail_temporary_allocation)
+
+    assert (
+        main(
+            [
+                "evaluate-materialization",
+                "--split",
+                "development",
+                "--output",
+                str(tmp_path / "report.json"),
+            ]
+        )
+        == 2
+    )
+    refused = capsys.readouterr()
+    assert refused.out == ""
+    assert refused.err == "ctxc: injected temporary allocation exhaustion\n"
 
 
 def test_evaluate_materialization_cli_verification_fails_closed(
