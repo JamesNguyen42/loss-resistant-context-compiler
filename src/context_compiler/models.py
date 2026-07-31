@@ -1194,6 +1194,28 @@ def source_digest(sources: Iterable[SourceRecord]) -> str:
     ordered_sources = sorted(sources, key=lambda value: value.sequence)
     for source in ordered_sources:
         source.ensure_integrity()
+    # Exact SourceRecord values have already validated and rechecked these
+    # fields. Feed the same compact JSON row bytes to the digest incrementally
+    # so very large histories do not require a parallel row list and one large
+    # canonical string. Preserve the legacy encoder for subclasses or altered
+    # field types, whose access and serialization behavior may be caller-owned.
+    if all(
+        type(source) is SourceRecord
+        and type(source.sequence) is int
+        and type(source.id) is str
+        and type(source.record_sha256) is str
+        for source in ordered_sources
+    ):
+        digest = hashlib.sha256()
+        digest.update(b"[")
+        for index, source in enumerate(ordered_sources):
+            if index:
+                digest.update(b",")
+            encoded_id = json.encoder.encode_basestring(source.id)
+            row = f'[{source.sequence},{encoded_id},"{source.record_sha256}"]'
+            digest.update(row.encode("utf-8"))
+        digest.update(b"]")
+        return digest.hexdigest()
     canonical = json.dumps(
         [
             [source.sequence, source.id, source.record_sha256]

@@ -494,6 +494,31 @@ class ContextCompiler:
                 limits=limits,
             )
             prepared.append(source)
+        # Exact SourceRecord instances have immutable, validated string IDs and
+        # integer sequences.  Validate them without materializing parallel ID
+        # and sequence lists, then sort the local list in place and detect
+        # adjacent duplicate sequences.  Preserve the legacy access pattern for
+        # subclasses, whose attribute reads may be caller-controlled.
+        if all(
+            type(source) is SourceRecord
+            and type(source.id) is str
+            and type(source.sequence) is int
+            for source in prepared
+        ):
+            seen_ids: set[str] = set()
+            for source in prepared:
+                if source.id in seen_ids:
+                    raise ValueError("source ids must be unique")
+                seen_ids.add(source.id)
+            del seen_ids
+            prepared.sort(key=lambda source: source.sequence)
+            if any(
+                prepared[index - 1].sequence == prepared[index].sequence
+                for index in range(1, len(prepared))
+            ):
+                raise ValueError("source sequences must be unique")
+            return prepared
+
         ids = [source.id for source in prepared]
         if len(ids) != len(set(ids)):
             raise ValueError("source ids must be unique")
