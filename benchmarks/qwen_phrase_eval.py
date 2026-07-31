@@ -118,6 +118,20 @@ class QwenPhraseEvaluationError(ValueError):
     """Qwen phrase-evaluation input or evidence is invalid."""
 
 
+_READABLE_PACKAGE_VERSIONS = frozenset({"0.1.0", "0.1.1a1"})
+
+
+def _validate_qwen_package_version(
+    value: Any,
+    *,
+    label: str,
+    error_type: type[ValueError] = QwenPhraseEvaluationError,
+) -> str:
+    if type(value) is not str or value not in _READABLE_PACKAGE_VERSIONS:
+        raise error_type(f"{label} is unsupported")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class CompletionCapture:
     """One model call bound to its exact ModelExtractor prompt."""
@@ -909,10 +923,10 @@ def _validate_run(document: Any) -> dict[str, Any]:
         }
     )
     run = _object(document, fields=fields, label="Qwen phrase run")
-    if run["package_version"] != __version__:
-        raise QwenPhraseEvaluationError(
-            "Qwen phrase package_version is unsupported"
-        )
+    _validate_qwen_package_version(
+        run["package_version"],
+        label="Qwen phrase package_version",
+    )
     commit = run["repository_commit"]
     if not isinstance(commit, str) or _GIT_OBJECT_ID.fullmatch(commit) is None:
         raise QwenPhraseEvaluationError(

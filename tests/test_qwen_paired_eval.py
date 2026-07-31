@@ -37,6 +37,10 @@ from context_compiler import __version__
 from context_compiler.local_qwen import QWEN_Q4_VARIANT
 
 
+class _StringSubclass(str):
+    pass
+
+
 def preflight() -> dict[str, Any]:
     return {
         "model_id": QWEN_Q4_VARIANT,
@@ -284,6 +288,7 @@ def test_perfect_paired_oracle_is_sequential_and_replays(
         "network_model_api": False,
         "model_service_cost_usd": 0.0,
     }
+
     assert report["metrics"]["comparison"][
         "literal_minus_coordinate"
     ]["model_only"] == {
@@ -315,6 +320,36 @@ def test_perfect_paired_oracle_is_sequential_and_replays(
         "network_model_api": False,
         "model_service_cost_usd": 0.0,
     }
+
+
+@pytest.mark.parametrize("package_version", ["0.1.0", "0.1.1a1"])
+def test_qwen_paired_reader_accepts_only_recorded_supported_versions(
+    package_version: str,
+    corpus: PhraseCorpus,
+    perfect_report: dict[str, Any],
+) -> None:
+    report = copy.deepcopy(perfect_report)
+    report["run"]["package_version"] = package_version
+    resign(report)
+
+    assert verify_qwen_paired_report(report, corpus)["verified"] is True
+
+
+@pytest.mark.parametrize(
+    "package_version",
+    [True, 1, 0.1, None, "0.1.1", "0.1.1a1 ", _StringSubclass("0.1.1a1")],
+)
+def test_qwen_paired_reader_rejects_other_package_versions(
+    package_version: object,
+    corpus: PhraseCorpus,
+    perfect_report: dict[str, Any],
+) -> None:
+    report = copy.deepcopy(perfect_report)
+    report["run"]["package_version"] = package_version
+    resign(report)
+
+    with pytest.raises(QwenPairedEvaluationError, match="package version is unsupported"):
+        verify_qwen_paired_report(report, corpus)
 
 
 def test_bad_coordinate_oracle_exposes_literal_delta(

@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.0"
+EXPECTED_VERSION = "0.1.1a1"
 SCHEMA_GLOB = "*.schema.json"
 MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.1"
 _MAX_WITNESS_BYTES = 4 * 1024

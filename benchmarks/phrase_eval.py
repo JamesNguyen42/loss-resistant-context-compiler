@@ -82,6 +82,17 @@ class PhraseEvaluationError(ValueError):
     """Phrase corpus or report evidence is invalid."""
 
 
+_READABLE_PACKAGE_VERSIONS = frozenset({"0.1.0", "0.1.1a1"})
+
+
+def _validated_package_version(value: Any) -> str:
+    if type(value) is not str or value not in _READABLE_PACKAGE_VERSIONS:
+        raise PhraseEvaluationError(
+            "phrase evaluation package version is unsupported"
+        )
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class PhraseAuthoring:
     """Frozen provenance and tuning policy for one phrase corpus."""
@@ -522,11 +533,16 @@ def _f1(precision: float, recall: float) -> float:
     return round(2 * precision * recall / (precision + recall), 6)
 
 
-def run_phrase_evaluation(corpus: PhraseCorpus) -> dict[str, Any]:
+def run_phrase_evaluation(
+    corpus: PhraseCorpus,
+    *,
+    package_version: str = __version__,
+) -> dict[str, Any]:
     """Evaluate a validated corpus through the default deterministic compiler."""
 
     if not isinstance(corpus, PhraseCorpus):
         raise TypeError("corpus must be a PhraseCorpus value")
+    package_version = _validated_package_version(package_version)
     compiler = ContextCompiler(policy=_POLICY)
     case_reports: list[dict[str, Any]] = []
     total_expected: Counter[_AtomKey] = Counter()
@@ -639,7 +655,7 @@ def run_phrase_evaluation(corpus: PhraseCorpus) -> dict[str, Any]:
         },
         "system": {
             "name": "default-deterministic-compiler",
-            "package_version": __version__,
+            "package_version": package_version,
             "extractor_revision": "rules-v1",
             "model_id": "deterministic-no-model",
             "network_model_api": False,
@@ -723,7 +739,17 @@ def verify_phrase_report(
         raise PhraseEvaluationError(
             "phrase evaluation report SHA-256 mismatch"
         )
-    replay = run_phrase_evaluation(corpus)
+    system = document.get("system")
+    if type(system) is not dict:
+        raise PhraseEvaluationError(
+            "phrase evaluation report system is invalid"
+        )
+    replay = run_phrase_evaluation(
+        corpus,
+        package_version=_validated_package_version(
+            system.get("package_version")
+        ),
+    )
     if document != replay:
         raise PhraseEvaluationError(
             "phrase evaluation report does not match deterministic replay"

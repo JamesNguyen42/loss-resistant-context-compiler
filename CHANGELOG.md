@@ -166,6 +166,26 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a1 - 2026-07-31
+
+### Changed
+
+- Added a distinct prerelease package identity for the accepted huge-history
+  compilation optimization. Exact built-in source records now avoid parallel
+  ordering lists, canonical source-digest rows are streamed, and bounded
+  printable-ASCII JSON accounting uses one bounded update when the complete
+  string fits the remaining limit.
+- Preserved byte-identical compiler artifacts, prompts, source digests,
+  ordering, omission and refusal behavior, replay, public APIs, and all stored
+  schema versions. This package identity does not relabel the earlier `0.1.0`
+  wheel or widen any completeness or comparative claim.
+- Advanced the separately packaged OpenHands integration to `0.1.0a2` solely
+  to retain its exact dependency on this core package identity. Its host pin,
+  authority mapping, live blocker, and claim boundaries are unchanged.
+
+This is an archive-qualified alpha package candidate, not a package-index
+release or a production-readiness claim.
+
 ## 0.1.0 - 2026-07-23
 
 ### Added

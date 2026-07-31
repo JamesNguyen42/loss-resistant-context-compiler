@@ -30,8 +30,8 @@ from scripts.release_install_smoke import (
     _verified_artifact_snapshot,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.0-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.0.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a1-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a1.tar.gz"
 
 
 def _sample_materialized_witness() -> dict[str, object]:

@@ -31,6 +31,10 @@ from context_compiler import __version__
 from context_compiler.local_qwen import QWEN_Q4_VARIANT
 
 
+class _StringSubclass(str):
+    pass
+
+
 def preflight() -> dict[str, Any]:
     return {
         "model_id": QWEN_Q4_VARIANT,
@@ -212,6 +216,36 @@ def test_perfect_captured_model_is_scored_separately_and_replays(
         "network_model_api": False,
         "model_service_cost_usd": 0.0,
     }
+
+
+@pytest.mark.parametrize("package_version", ["0.1.0", "0.1.1a1"])
+def test_qwen_phrase_reader_accepts_only_recorded_supported_versions(
+    package_version: str,
+    corpus: PhraseCorpus,
+    perfect_report: dict[str, Any],
+) -> None:
+    report = copy.deepcopy(perfect_report)
+    report["run"]["package_version"] = package_version
+    resign(report)
+
+    assert verify_qwen_phrase_report(report, corpus)["verified"] is True
+
+
+@pytest.mark.parametrize(
+    "package_version",
+    [True, 1, 0.1, None, "0.1.1", "0.1.1a1 ", _StringSubclass("0.1.1a1")],
+)
+def test_qwen_phrase_reader_rejects_other_package_versions(
+    package_version: object,
+    corpus: PhraseCorpus,
+    perfect_report: dict[str, Any],
+) -> None:
+    report = copy.deepcopy(perfect_report)
+    report["run"]["package_version"] = package_version
+    resign(report)
+
+    with pytest.raises(QwenPhraseEvaluationError, match="package_version is unsupported"):
+        verify_qwen_phrase_report(report, corpus)
 
 
 def test_empty_model_exposes_deterministic_recovery_contribution(
