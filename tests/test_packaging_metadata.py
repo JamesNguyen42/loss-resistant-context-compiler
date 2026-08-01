@@ -21,7 +21,7 @@ def test_distribution_identity_matches_the_public_release_contract() -> None:
     configuration = project_configuration()
     project = configuration["project"]
 
-    assert __version__ == "0.1.1a9"
+    assert __version__ == "0.1.1a10"
     assert project["name"] == STABLE_DISTRIBUTION
     assert project["version"] == __version__
     assert project["requires-python"] == ">=3.11"

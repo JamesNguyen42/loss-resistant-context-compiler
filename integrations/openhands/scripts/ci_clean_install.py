@@ -20,9 +20,9 @@ from packaging.markers import default_environment
 from packaging.requirements import InvalidRequirement, Requirement
 
 CORE_DISTRIBUTION = "loss-resistant-context-compiler"
-CORE_VERSION = "0.1.1a9"
+CORE_VERSION = "0.1.1a10"
 INTEGRATION_DISTRIBUTION = "ctxc-openhands"
-INTEGRATION_VERSION = "0.1.0a10"
+INTEGRATION_VERSION = "0.1.0a11"
 LIVE_DISTRIBUTIONS = (
     "openhands-ai",
     "openhands-sdk",

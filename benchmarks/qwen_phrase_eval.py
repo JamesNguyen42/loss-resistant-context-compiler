@@ -130,6 +130,7 @@ _READABLE_PACKAGE_VERSIONS = frozenset(
         "0.1.1a7",
         "0.1.1a8",
         "0.1.1a9",
+        "0.1.1a10",
     }
 )
 

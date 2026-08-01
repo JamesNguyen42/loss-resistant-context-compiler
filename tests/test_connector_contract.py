@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
@@ -14,6 +15,7 @@ from context_compiler import (
     LocalAIConnector,
     decode_connector_request,
 )
+from context_compiler.cli import main
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -419,3 +421,129 @@ def test_ctxc_connector_stdio_round_trips_and_survives_protocol_error() -> None:
     assert process.returncode == 0
     assert remaining_stdout == ""
     assert stderr == ""
+
+
+def test_ctxc_connector_stdio_does_not_close_host_binary_stdin(
+    monkeypatch,
+    capsys,
+) -> None:
+    value = request("binary-host", "capabilities")
+    binary_input = io.BytesIO((json.dumps(value, separators=(",", ":")) + "\n").encode("utf-8"))
+
+    class BinaryStdin:
+        buffer = binary_input
+
+        def readline(self, *_args: object, **_kwargs: object) -> str:
+            raise AssertionError("connector must not use the locale text stream")
+
+    monkeypatch.setattr(sys, "stdin", BinaryStdin())
+
+    assert main(["connector", "--stdio"]) == 0
+    assert binary_input.closed is False
+    response = json.loads(capsys.readouterr().out)
+    assert_response_envelope(
+        response,
+        request_id="binary-host",
+        operation="capabilities",
+        ok=True,
+    )
+
+
+def test_ctxc_connector_stdio_uses_strict_utf8_bytes_outside_utf8_mode() -> None:
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(ROOT / "src")
+    environment["PYTHONUTF8"] = "0"
+    environment["PYTHONIOENCODING"] = "cp1252:strict"
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    content = "constraint: preserve caf\u00e9, \U0001f680, and e\u0301 exactly"
+    value = request(
+        "unicode-stdio",
+        "compile_memory",
+        {
+            "events": [
+                {
+                    "schema": "localai-source-event-0.1",
+                    "id": "unicode-event",
+                    "sequence": 0,
+                    "role": "user",
+                    "content": content,
+                }
+            ]
+        },
+    )
+    input_bytes = (json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n").encode(
+        "utf-8"
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-m",
+            "context_compiler",
+            "connector",
+            "--stdio",
+        ],
+        cwd=ROOT,
+        env=environment,
+        input=input_bytes,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0
+    assert completed.stderr == b""
+    assert completed.stdout.endswith(b"\n")
+    assert len(completed.stdout.splitlines()) == 1
+    response = json.loads(completed.stdout)
+    serialized = json.dumps(
+        response,
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    assert response["ok"] is True
+    assert content in serialized
+    assert "caf\u00c3\u00a9" not in serialized
+    verification = LocalAIConnector().verify_memory(
+        response["result"]["bundle"],
+        events=value["payload"]["events"],
+    )
+    assert verification["passed"] is True
+
+
+def test_ctxc_connector_stdio_rejects_invalid_utf8_before_dispatch() -> None:
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(ROOT / "src")
+    environment["PYTHONUTF8"] = "0"
+    environment["PYTHONIOENCODING"] = "cp1252:strict"
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-m",
+            "context_compiler",
+            "connector",
+            "--stdio",
+            "--error-format",
+            "json",
+        ],
+        cwd=ROOT,
+        env=environment,
+        input=b'{"schema":"ctxc-connector-request-0.1","payload":"\xff"}\n',
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 2
+    assert completed.stdout == b""
+    assert completed.stderr.endswith(b"\n")
+    assert len(completed.stderr.splitlines()) == 1
+    diagnostic = json.loads(completed.stderr.decode("ascii"))
+    assert diagnostic["category"] == "invalid_input"
+    assert diagnostic["code"] == "invalid_encoding"
+    assert diagnostic["exception_type"] == "UnicodeError"
+    assert diagnostic["message"] == "connector input must be valid UTF-8 text"

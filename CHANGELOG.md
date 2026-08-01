@@ -166,6 +166,23 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a10 - 2026-08-01
+
+### Fixed
+
+- Made `ctxc connector --stdio` decode strict UTF-8 bytes from binary standard
+  input instead of inheriting the host locale. Valid non-ASCII request content
+  now retains its exact text and digest bindings, while malformed UTF-8 fails
+  before connector dispatch.
+
+### Changed
+
+- Advanced the separately packaged OpenHands integration to `0.1.0a11` solely
+  to preserve its exact dependency on core `0.1.1a10`.
+- Retained materialized-context schema v1, default-strict behavior, null
+  retrieval and capability identities, `provider_execution_ready=false`, and
+  the required final provider recount. No provider or model execution was run.
+
 ## 0.1.1a9 - 2026-08-01
 
 ### Fixed

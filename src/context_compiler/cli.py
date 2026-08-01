@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import codecs
+import io
 import json
 import os
 import sys
@@ -885,12 +886,29 @@ def _connector(args: argparse.Namespace) -> int:
     # Keep connector startup out of every ordinary command path.
     from .connector import serve_stdio
 
-    return serve_stdio(
-        input_stream=sys.stdin,
-        output_stream=sys.stdout,
-        max_request_bytes=args.max_request_bytes,
-        max_json_depth=args.max_request_json_depth,
+    binary_input = getattr(sys.stdin, "buffer", None)
+    decoder = (
+        None
+        if binary_input is None
+        else io.TextIOWrapper(
+            binary_input,
+            encoding="utf-8",
+            errors="strict",
+            newline="",
+        )
     )
+    try:
+        return serve_stdio(
+            input_stream=sys.stdin if decoder is None else decoder,
+            output_stream=sys.stdout,
+            max_request_bytes=args.max_request_bytes,
+            max_json_depth=args.max_request_json_depth,
+        )
+    except UnicodeDecodeError as exc:
+        raise UnicodeError("connector input must be valid UTF-8 text") from exc
+    finally:
+        if decoder is not None:
+            decoder.detach()
 
 
 def _paths_alias(first: str, second: str) -> bool:
