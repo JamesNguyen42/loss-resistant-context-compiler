@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a16"
+EXPECTED_VERSION = "0.1.1a17"
 SCHEMA_GLOB = "*.schema.json"
 MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.3"
 MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA = "ctxc-materialized-prompt-assembly-golden-0.1"
@@ -25,6 +25,15 @@ MATERIALIZED_REFUSAL_GOLDEN_SCHEMA = "ctxc-materialization-refusal-golden-0.1"
 MATERIALIZED_EVALUATION_REPORT_SCHEMA = "ctxc-materialized-retention-report-0.1"
 MATERIALIZED_DEGRADATION_REPORT_SCHEMA = "ctxc-materialized-degradation-report-0.2"
 MATERIALIZED_DEGRADATION_POLICY = "lossless-compact-then-reallocate-v1"
+_INSTALLED_MANDATORY_REFUSAL_MESSAGE = (
+    "mandatory_components_do_not_fit: "
+    "cause=current_turn_and_minimum_recent_tail_exceed_tail_capacity; "
+    "available_dynamic_planning_units=3; "
+    "memory_allocation_planning_units=2; tail_capacity_planning_units=1; "
+    "current_turn_planning_units=1; minimum_recent_message_count=1; "
+    "minimum_recent_tail_planning_units=1; required_tail_planning_units=2; "
+    "shortfall_planning_units=1"
+)
 MATERIALIZED_DEGRADATION_RECEIPT_SHA256 = (
     "b03b83a6fddeeaead17cf716918b183ae6c1625299b36846c2618cf2f71654e5"
 )
@@ -2031,6 +2040,99 @@ def _assert_installed_materialize_degradation(
     )
 
 
+def _assert_installed_materialize_refusal(ctxc: Path, environment: Path) -> None:
+    verified_environment = _verified_distribution_directory(environment)
+    history = verified_environment / "materialized-mandatory-refusal.jsonl"
+    output = verified_environment / "materialized-mandatory-refusal-output.json"
+    if history.exists() or output.exists():
+        raise ValueError("installed materialization refusal paths must be absent")
+    sources = (
+        {"content": "\u03b1", "id": "installed-old", "role": "assistant", "sequence": 0},
+        {
+            "content": "\u03b2",
+            "id": "installed-recent",
+            "role": "assistant",
+            "sequence": 1,
+        },
+        {"content": "\u03b3", "id": "installed-current", "role": "user", "sequence": 2},
+    )
+    history_raw = b"".join(_canonical_json_bytes(source) + b"\n" for source in sources)
+    with history.open("xb") as stream:
+        if stream.write(history_raw) != len(history_raw):
+            raise OSError("installed materialization refusal history write was incomplete")
+        stream.flush()
+    sentinel = b"previous-complete-result\n"
+    with output.open("xb") as stream:
+        if stream.write(sentinel) != len(sentinel):
+            raise OSError("installed materialization refusal sentinel write was incomplete")
+        stream.flush()
+    history_snapshot = _verified_artifact_snapshot(history)
+    output_snapshot = _verified_artifact_snapshot(output)
+    command = [
+        str(ctxc),
+        "materialize",
+        str(history),
+        "--current-turn-id",
+        "installed-current",
+        "--hard-limit-tokens",
+        "5",
+        "--memory-budget-tokens",
+        "2",
+        "--reserved-output-tokens",
+        "1",
+        "--safety-margin-tokens",
+        "1",
+        "--fixed-input-tokens",
+        "0",
+        "--minimum-recent-messages",
+        "1",
+        "--maximum-recent-messages",
+        "1",
+        "--per-message-overhead-tokens",
+        "0",
+        "--allocation-plan-sha256",
+        "a" * 64,
+        "--tokenizer-profile",
+        "unicode-codepoint-count-v1",
+        "--error-format",
+        "json",
+        "--output",
+        str(output),
+    ]
+    subprocess_environment = _subprocess_environment()
+    subprocess_environment["PYTHONUTF8"] = "0"
+    subprocess_environment["PYTHONIOENCODING"] = "utf-16:strict"
+    completed = subprocess.run(
+        command,
+        capture_output=True,
+        env=subprocess_environment,
+        check=False,
+        timeout=30,
+    )
+    expected = {
+        "category": "invalid_input",
+        "code": "mandatory_components_do_not_fit",
+        "command": "materialize",
+        "exception_type": "ContextWindowError",
+        "exit_code": 2,
+        "message": _INSTALLED_MANDATORY_REFUSAL_MESSAGE,
+        "schema": "ctxc-diagnostic-0.1",
+    }
+    if completed.returncode != 2:
+        raise RuntimeError(
+            "installed materialization refusal did not retain exit code 2; "
+            f"observed {completed.returncode}"
+        )
+    if completed.stdout:
+        raise RuntimeError("installed materialization refusal emitted unexpected stdout")
+    if completed.stderr != _canonical_json_bytes(expected) + b"\n":
+        raise ValueError("installed materialization refusal diagnostic changed")
+    _assert_artifact_snapshot(history, history_snapshot)
+    _assert_artifact_snapshot(output, output_snapshot)
+    if output.read_bytes() != sentinel:
+        raise RuntimeError("installed materialization refusal changed prior output")
+
+
 def _assert_installed_package(
     python: Path,
     environment: Path,
@@ -2064,6 +2166,7 @@ def _assert_installed_package(
     )
     _run([str(ctxc), "evaluate-materialization", "--help"])
     _run([str(ctxc), "evaluate-materialization-degradation", "--help"])
+    _assert_installed_materialize_refusal(ctxc, environment)
     _assert_installed_materialize_degradation(ctxc, python, environment)
     _assert_connector_utf8_output(ctxc)
 

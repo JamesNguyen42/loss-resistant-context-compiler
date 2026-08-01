@@ -287,10 +287,7 @@ def test_exact_fit_passes_and_one_token_over_refuses_without_clamping() -> None:
 
     assert exact.accounting["occupied_tokens"] == 20
     assert exact.accounting["remaining_tokens"] == 0
-    with pytest.raises(
-        ContextWindowError,
-        match="cannot fit|exceeds",
-    ) as caught:
+    with pytest.raises(ContextWindowError) as caught:
         compose_context_window(
             messages,
             current_turn_id="message-0",
@@ -306,10 +303,181 @@ def test_exact_fit_passes_and_one_token_over_refuses_without_clamping() -> None:
             token_counter=TOKEN_COUNTER,
             fixed_input_sha256=FIXED_DIGEST,
         )
-    assert caught.value.reason in {
-        "mandatory_components_do_not_fit",
-        "hard_limit_overflow",
-    }
+    assert caught.value.reason == "mandatory_components_do_not_fit"
+    assert caught.value.diagnostic is None
+    assert str(caught.value) == (
+        "mandatory_components_do_not_fit: "
+        "cause=current_turn_and_minimum_recent_tail_exceed_tail_capacity; "
+        "available_dynamic_planning_units=4; "
+        "memory_allocation_planning_units=1; tail_capacity_planning_units=3; "
+        "current_turn_planning_units=5; minimum_recent_message_count=0; "
+        "minimum_recent_tail_planning_units=0; required_tail_planning_units=5; "
+        "shortfall_planning_units=2"
+    )
+
+
+@pytest.mark.parametrize(
+    ("hard_limit", "shortfall"),
+    [(15, 2), (14, 3)],
+)
+def test_fixed_allocation_refusal_reports_exact_planning_units(
+    hard_limit: int,
+    shortfall: int,
+) -> None:
+    with pytest.raises(ContextWindowError) as caught:
+        ContextWindowBudget(
+            hard_limit_tokens=hard_limit,
+            memory_budget_tokens=1,
+            reserved_output_tokens=5,
+            safety_margin_tokens=5,
+            fixed_input_tokens=5,
+        )
+
+    assert caught.value.reason == "mandatory_components_do_not_fit"
+    assert caught.value.diagnostic is None
+    assert str(caught.value) == (
+        "mandatory_components_do_not_fit: "
+        "cause=fixed_allocation_exhausts_current_turn_capacity; "
+        f"hard_limit_planning_units={hard_limit}; "
+        "fixed_input_planning_units=5; reserved_output_planning_units=5; "
+        "safety_margin_planning_units=5; fixed_allocation_planning_units=15; "
+        "memory_allocation_planning_units=1; "
+        "minimum_current_turn_planning_units=1; "
+        "required_hard_limit_planning_units=17; "
+        f"shortfall_planning_units={shortfall}"
+    )
+    corrected = ContextWindowBudget(
+        hard_limit_tokens=hard_limit + shortfall,
+        memory_budget_tokens=1,
+        reserved_output_tokens=5,
+        safety_margin_tokens=5,
+        fixed_input_tokens=5,
+    )
+    assert corrected.hard_limit_tokens == 17
+
+
+def test_fixed_allocation_refusal_retains_exact_arithmetic_at_the_count_bound() -> None:
+    maximum = (1 << 63) - 1
+    with pytest.raises(ContextWindowError) as caught:
+        ContextWindowBudget(
+            hard_limit_tokens=maximum - 1,
+            memory_budget_tokens=1,
+            fixed_input_tokens=maximum - 1,
+            reserved_output_tokens=0,
+            safety_margin_tokens=0,
+        )
+
+    assert caught.value.reason == "mandatory_components_do_not_fit"
+    assert (
+        f"required_hard_limit_planning_units={maximum + 1}; "
+        "shortfall_planning_units=2"
+    ) in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    ("hard_limit", "memory_allocation", "available_dynamic", "shortfall"),
+    [(16, 1, 1, 1), (20, 5, 5, 1), (20, 6, 5, 2)],
+)
+def test_memory_allocation_refusal_reports_exact_planning_units(
+    hard_limit: int,
+    memory_allocation: int,
+    available_dynamic: int,
+    shortfall: int,
+) -> None:
+    with pytest.raises(ContextWindowError) as caught:
+        ContextWindowBudget(
+            hard_limit_tokens=hard_limit,
+            memory_budget_tokens=memory_allocation,
+            reserved_output_tokens=5,
+            safety_margin_tokens=5,
+            fixed_input_tokens=5,
+        )
+
+    assert caught.value.reason == "mandatory_components_do_not_fit"
+    assert caught.value.diagnostic is None
+    assert str(caught.value) == (
+        "mandatory_components_do_not_fit: "
+        "cause=memory_allocation_exhausts_current_turn_capacity; "
+        f"hard_limit_planning_units={hard_limit}; "
+        "fixed_input_planning_units=5; reserved_output_planning_units=5; "
+        "safety_margin_planning_units=5; fixed_allocation_planning_units=15; "
+        f"available_dynamic_planning_units={available_dynamic}; "
+        f"memory_allocation_planning_units={memory_allocation}; "
+        "minimum_current_turn_planning_units=1; "
+        f"required_dynamic_planning_units={memory_allocation + 1}; "
+        f"shortfall_planning_units={shortfall}"
+    )
+
+    corrected = ContextWindowBudget(
+        hard_limit_tokens=hard_limit + shortfall,
+        memory_budget_tokens=memory_allocation,
+        reserved_output_tokens=5,
+        safety_margin_tokens=5,
+        fixed_input_tokens=5,
+    )
+    assert corrected.available_dynamic_tokens == memory_allocation + 1
+
+    one_under = ContextWindowBudget(
+        hard_limit_tokens=20,
+        memory_budget_tokens=4,
+        reserved_output_tokens=5,
+        safety_margin_tokens=5,
+        fixed_input_tokens=5,
+    )
+    assert one_under.available_dynamic_tokens == 5
+
+
+def test_mandatory_tail_refusal_reports_exact_shortfall_at_the_boundary() -> None:
+    messages = [
+        source(0, "assistant", "old"),
+        source(1, "assistant", "recent"),
+        source(2, "user", "current"),
+    ]
+    counter = ExactTokenCounterAdapter("constant-one-v1", lambda _text: 1)
+
+    with pytest.raises(ContextWindowError) as caught:
+        compose_context_window(
+            messages,
+            current_turn_id="message-2",
+            budget=ContextWindowBudget(
+                hard_limit_tokens=5,
+                memory_budget_tokens=2,
+                reserved_output_tokens=1,
+                safety_margin_tokens=1,
+                minimum_recent_messages=1,
+                maximum_recent_messages=1,
+            ),
+            token_counter=counter,
+        )
+
+    assert caught.value.reason == "mandatory_components_do_not_fit"
+    assert caught.value.diagnostic is None
+    assert str(caught.value) == (
+        "mandatory_components_do_not_fit: "
+        "cause=current_turn_and_minimum_recent_tail_exceed_tail_capacity; "
+        "available_dynamic_planning_units=3; "
+        "memory_allocation_planning_units=2; tail_capacity_planning_units=1; "
+        "current_turn_planning_units=1; minimum_recent_message_count=1; "
+        "minimum_recent_tail_planning_units=1; required_tail_planning_units=2; "
+        "shortfall_planning_units=1"
+    )
+
+    for hard_limit in (6, 7):
+        accepted = compose_context_window(
+            messages,
+            current_turn_id="message-2",
+            budget=ContextWindowBudget(
+                hard_limit_tokens=hard_limit,
+                memory_budget_tokens=2,
+                reserved_output_tokens=1,
+                safety_margin_tokens=1,
+                minimum_recent_messages=1,
+                maximum_recent_messages=1,
+            ),
+            token_counter=counter,
+        )
+        assert accepted.current_turn.id == "message-2"
+        assert [message.id for message in accepted.recent_messages] == ["message-1"]
 
 
 def test_recent_tail_count_limit_produces_explicit_compiled_omissions() -> None:

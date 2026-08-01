@@ -914,13 +914,39 @@ class ContextWindowBudget:
             label="fixed allocation",
         )
         if fixed >= self.hard_limit_tokens:
+            required_hard_limit = fixed + self.memory_budget_tokens + 1
             raise ContextWindowError(
-                "fixed input, reserved output, and safety margin leave no current-turn capacity",
+                "mandatory_components_do_not_fit: "
+                "cause=fixed_allocation_exhausts_current_turn_capacity; "
+                f"hard_limit_planning_units={self.hard_limit_tokens}; "
+                f"fixed_input_planning_units={self.fixed_input_tokens}; "
+                f"reserved_output_planning_units={self.reserved_output_tokens}; "
+                f"safety_margin_planning_units={self.safety_margin_tokens}; "
+                f"fixed_allocation_planning_units={fixed}; "
+                f"memory_allocation_planning_units={self.memory_budget_tokens}; "
+                "minimum_current_turn_planning_units=1; "
+                f"required_hard_limit_planning_units={required_hard_limit}; "
+                "shortfall_planning_units="
+                f"{required_hard_limit - self.hard_limit_tokens}",
                 reason="mandatory_components_do_not_fit",
             )
-        if self.memory_budget_tokens >= self.available_dynamic_tokens:
+        available_dynamic = self.available_dynamic_tokens
+        if self.memory_budget_tokens >= available_dynamic:
+            required_dynamic = self.memory_budget_tokens + 1
             raise ContextWindowError(
-                "memory_budget_tokens must leave capacity for the current turn",
+                "mandatory_components_do_not_fit: "
+                "cause=memory_allocation_exhausts_current_turn_capacity; "
+                f"hard_limit_planning_units={self.hard_limit_tokens}; "
+                f"fixed_input_planning_units={self.fixed_input_tokens}; "
+                f"reserved_output_planning_units={self.reserved_output_tokens}; "
+                f"safety_margin_planning_units={self.safety_margin_tokens}; "
+                f"fixed_allocation_planning_units={fixed}; "
+                f"available_dynamic_planning_units={available_dynamic}; "
+                f"memory_allocation_planning_units={self.memory_budget_tokens}; "
+                "minimum_current_turn_planning_units=1; "
+                f"required_dynamic_planning_units={required_dynamic}; "
+                "shortfall_planning_units="
+                f"{required_dynamic - available_dynamic}",
                 reason="mandatory_components_do_not_fit",
             )
 
@@ -1543,8 +1569,19 @@ def _compose_context_window_once(
             label="mandatory recent and current tokens",
         )
         if retained_tokens > tail_capacity:
+            minimum_recent_tokens = retained_tokens - current_tokens
             raise ContextWindowError(
-                "mandatory current turn and minimum recent tail cannot fit beside protected memory",
+                "mandatory_components_do_not_fit: "
+                "cause=current_turn_and_minimum_recent_tail_exceed_tail_capacity; "
+                f"available_dynamic_planning_units={available}; "
+                f"memory_allocation_planning_units={budget.memory_budget_tokens}; "
+                f"tail_capacity_planning_units={tail_capacity}; "
+                f"current_turn_planning_units={current_tokens}; "
+                f"minimum_recent_message_count={minimum_count}; "
+                "minimum_recent_tail_planning_units="
+                f"{minimum_recent_tokens}; "
+                f"required_tail_planning_units={retained_tokens}; "
+                f"shortfall_planning_units={retained_tokens - tail_capacity}",
                 reason="mandatory_components_do_not_fit",
             )
         while recent_start > 0 and len(history) - recent_start < budget.maximum_recent_messages:

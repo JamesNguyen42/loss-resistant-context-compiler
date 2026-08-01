@@ -72,6 +72,14 @@ does not contain source IDs, source text, paths, timestamps, partial compiled
 memory, or exception internals. Other compile or replay failures retain the
 generic reason without invented numeric details.
 
+The existing `mandatory_components_do_not_fit` reason is the one bounded
+exception: its generic `ctxc-diagnostic-0.1` message now distinguishes fixed
+allocation, protected-memory allocation, and current-turn-plus-minimum-tail
+capacity failures. It reports only exact integer planning-unit components,
+the required total, and the shortfall. It has no nested `details`, source IDs,
+source text, paths, timestamps, or partial compiled memory. Strict and
+degradation-enabled calls emit the same refusal and do not change the budget.
+
 These counts describe the named materialization counter, not provider tokens.
 Default Python and CLI calls do not retry with a larger budget or silently
 clamp the refusal. A Python host may explicitly provide

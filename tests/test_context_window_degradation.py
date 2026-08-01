@@ -259,8 +259,15 @@ def test_twenty_frozen_synthetic_heldout_histories_compare_without_tuning() -> N
         if expected == "mandatory_components_do_not_fit":
             with pytest.raises(ContextWindowError) as degraded_caught:
                 accepted_result(case, budget=budget)
+            assert strict_caught.value.reason == expected
             assert degraded_caught.value.reason == expected
+            assert str(degraded_caught.value) == str(strict_caught.value)
+            assert strict_caught.value.diagnostic is None
             assert degraded_caught.value.diagnostic is None
+            assert "cause=" in str(degraded_caught.value)
+            assert "planning_units=" in str(degraded_caught.value)
+            for source in case["sources"]:
+                assert source["id"] not in str(degraded_caught.value)
             mandatory_refusals += 1
             assert case["sources"] == sources_before
             continue

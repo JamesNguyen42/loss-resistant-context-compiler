@@ -30,6 +30,7 @@ from scripts.release_install_smoke import (
     _artifact_install_command,
     _assert_artifact_snapshot,
     _assert_connector_utf8_output,
+    _assert_installed_materialize_refusal,
     _assert_report_utf8_output,
     _build_tool_install_command,
     _decode_materialized_degradation_evaluation_report,
@@ -55,8 +56,8 @@ from scripts.release_install_smoke import (
     _verified_artifact_snapshot,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.1a16-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a16.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a17-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a17.tar.gz"
 
 
 def test_release_smoke_uses_the_exact_materialization_degradation_policy() -> None:
@@ -319,7 +320,7 @@ def _sample_evaluation_report_bytes() -> bytes:
     case_ids = [f"retention-case-{index:03d}" for index in range(1, 21)]
     unsigned = {
         "schema": MATERIALIZED_EVALUATION_REPORT_SCHEMA,
-        "evaluator_package_version": "0.1.1a16",
+        "evaluator_package_version": "0.1.1a17",
         "pack": {
             "schema": MATERIALIZED_RETENTION_PACK_SCHEMA,
             "pack_id": MATERIALIZED_RETENTION_PACK_ID,
@@ -677,6 +678,64 @@ def test_installed_connector_probe_forces_and_verifies_exact_utf8(
     _assert_connector_utf8_output(ctxc)
 
     assert observed["arguments"] == [str(ctxc), "connector", "--stdio"]
+    assert observed["check"] is False
+    assert observed["timeout"] == 30
+    environment = observed["env"]
+    assert type(environment) is dict
+    assert environment["PYTHONUTF8"] == "0"
+    assert environment["PYTHONIOENCODING"] == "utf-16:strict"
+    assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert "PYTHONHOME" not in environment
+    assert "PYTHONPATH" not in environment
+
+
+def test_installed_materialize_refusal_is_exact_and_preserves_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: dict[str, object] = {}
+
+    def run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        observed["arguments"] = arguments
+        observed.update(kwargs)
+        diagnostic = {
+            "category": "invalid_input",
+            "code": "mandatory_components_do_not_fit",
+            "command": "materialize",
+            "exception_type": "ContextWindowError",
+            "exit_code": 2,
+            "message": (
+                "mandatory_components_do_not_fit: "
+                "cause=current_turn_and_minimum_recent_tail_exceed_tail_capacity; "
+                "available_dynamic_planning_units=3; "
+                "memory_allocation_planning_units=2; "
+                "tail_capacity_planning_units=1; current_turn_planning_units=1; "
+                "minimum_recent_message_count=1; "
+                "minimum_recent_tail_planning_units=1; "
+                "required_tail_planning_units=2; shortfall_planning_units=1"
+            ),
+            "schema": "ctxc-diagnostic-0.1",
+        }
+        raw = _canonical_bytes(diagnostic) + b"\n"
+        return subprocess.CompletedProcess(arguments, 2, stdout=b"", stderr=raw)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    ctxc = tmp_path / "ctxc"
+
+    _assert_installed_materialize_refusal(ctxc, tmp_path)
+
+    history = tmp_path / "materialized-mandatory-refusal.jsonl"
+    output = tmp_path / "materialized-mandatory-refusal-output.json"
+    assert history.read_bytes() == (
+        b'{"content":"\xce\xb1","id":"installed-old","role":"assistant","sequence":0}\n'
+        b'{"content":"\xce\xb2","id":"installed-recent","role":"assistant","sequence":1}\n'
+        b'{"content":"\xce\xb3","id":"installed-current","role":"user","sequence":2}\n'
+    )
+    assert output.read_bytes() == b"previous-complete-result\n"
+    arguments = observed["arguments"]
+    assert type(arguments) is list
+    assert arguments[:3] == [str(ctxc), "materialize", str(history)]
+    assert arguments[-4:] == ["--error-format", "json", "--output", str(output)]
     assert observed["check"] is False
     assert observed["timeout"] == 30
     environment = observed["env"]

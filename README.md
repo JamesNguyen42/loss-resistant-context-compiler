@@ -24,7 +24,7 @@ meaning can be compressed without loss.
 
 | Area | Current state |
 | --- | --- |
-| Release | Alpha research implementation, package version `0.1.1a16` |
+| Release | Alpha research implementation, package version `0.1.1a17` |
 | Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts, optional LocalAI connector |
@@ -473,6 +473,16 @@ receipt digest independently for `verify_materialized_context_result()`. CLI
 hosts can use `verify-materialization` with both independent digests; it
 boundedly verifies and re-emits the original canonical result bytes without
 creating a second receipt or readiness claim.
+
+When mandatory fixed inputs, protected memory, the current turn, and the
+minimum recent tail cannot fit, the existing
+`mandatory_components_do_not_fit` reason remains a generic
+`ctxc-diagnostic-0.1` error. Its deterministic content-free message names the
+failed capacity boundary and reports the exact integer planning-unit inputs,
+required total, and shortfall. It contains no source IDs, text, paths, or
+partial memory, and it does not add a `details` object. The counts are for the
+named planning counter, not provider tokens. Strict and degradation-enabled
+calls refuse identically; neither path clamps or silently changes a budget.
 
 Python callers facing an exact compiled-memory overflow may explicitly supply
 `ContextWindowDegradationPolicy()`. The ladder compares the exact

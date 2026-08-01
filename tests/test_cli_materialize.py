@@ -643,6 +643,16 @@ def test_materialize_refusal_is_reason_coded_and_writes_no_partial_output(
     assert diagnostic["schema"] == "ctxc-diagnostic-0.1"
     assert diagnostic["command"] == "materialize"
     assert diagnostic["code"] == "mandatory_components_do_not_fit"
+    assert diagnostic["message"] == (
+        "mandatory_components_do_not_fit: "
+        "cause=current_turn_and_minimum_recent_tail_exceed_tail_capacity; "
+        "available_dynamic_planning_units=208; "
+        "memory_allocation_planning_units=200; "
+        "tail_capacity_planning_units=8; current_turn_planning_units=104; "
+        "minimum_recent_message_count=2; "
+        "minimum_recent_tail_planning_units=170; "
+        "required_tail_planning_units=274; shortfall_planning_units=266"
+    )
     assert "details" not in diagnostic
     assert "req-1700" not in diagnostic["message"]
     assert output.read_text(encoding="utf-8") == "previous-complete-result\n"

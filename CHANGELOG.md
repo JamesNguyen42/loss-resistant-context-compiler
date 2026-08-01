@@ -166,6 +166,19 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a17 - 2026-08-01
+
+### Changed
+
+- Made all three `mandatory_components_do_not_fit` boundaries report a
+  deterministic content-free cause, exact planning-unit components, required
+  total, and shortfall without changing the reason, diagnostic schema, or
+  default strict refusal behavior.
+- Added strict/degradation parity, exact boundary arithmetic, atomic CLI
+  output, and clean-installed wheel/sdist regressions for those refusals.
+- Advanced the separately packaged OpenHands integration to `0.1.0a18` with
+  an exact dependency on core `0.1.1a17`.
+
 ## 0.1.1a16 - 2026-08-01
 
 ### Added
