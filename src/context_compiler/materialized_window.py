@@ -574,6 +574,22 @@ def verify_materialized_context_result(
     return raw
 
 
+def serialize_materialized_context_result(
+    value: Mapping[str, Any] | bytes,
+    *,
+    expected_receipt_sha256: str,
+    expected_allocation_plan_sha256: str,
+) -> bytes:
+    """Verify a materialized result and emit its canonical one-line bytes."""
+
+    verified = verify_materialized_context_result(
+        value,
+        expected_receipt_sha256=expected_receipt_sha256,
+        expected_allocation_plan_sha256=expected_allocation_plan_sha256,
+    )
+    return _canonical_bytes(verified) + b"\n"
+
+
 def compose_materialized_context_window(
     sources: Iterable[SourceRecord | Mapping[str, Any]],
     *,
@@ -614,5 +630,6 @@ __all__ = [
     "MaterializedContextWindow",
     "compose_materialized_context_window",
     "materialize_context",
+    "serialize_materialized_context_result",
     "verify_materialized_context_result",
 ]

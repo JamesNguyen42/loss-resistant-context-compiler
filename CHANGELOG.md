@@ -166,6 +166,21 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a19 - 2026-08-01
+
+### Added
+
+- Added `serialize_materialized_context_result(...)` to the stable package
+  root. It verifies independently supplied receipt and allocation-plan digests
+  before emitting one canonical UTF-8 JSON line from a detached result.
+- Added canonical framing, mutation, subclass, concurrency, CLI-parity, and
+  clean-installed wheel/sdist regressions for the serializer.
+
+### Changed
+
+- Advanced the separately packaged OpenHands integration to `0.1.0a20` with
+  an exact dependency on core `0.1.1a19`.
+
 ## 0.1.1a18 - 2026-08-01
 
 ### Added

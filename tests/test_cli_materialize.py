@@ -10,7 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from context_compiler import verify_materialized_context_result
+from context_compiler import (
+    serialize_materialized_context_result,
+    verify_materialized_context_result,
+)
 from context_compiler.cli import (
     _MAX_SERIALIZED_RESULT_BYTES,
     _write_exact_utf8_output,
@@ -84,6 +87,11 @@ def test_materialize_cli_emits_one_canonical_verifiable_result(
 
     raw = captured.out[:-1]
     value = json.loads(raw)
+    assert captured.out.encode("utf-8") == serialize_materialized_context_result(
+        value,
+        expected_receipt_sha256=value["receipt"]["receipt_sha256"],
+        expected_allocation_plan_sha256=ALLOCATION_SHA256,
+    )
     assert raw == json.dumps(
         value,
         ensure_ascii=False,

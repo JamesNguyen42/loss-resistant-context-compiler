@@ -54,6 +54,7 @@ from .materialized_evaluation import (
 from .materialized_window import (
     _MAX_SERIALIZED_RESULT_BYTES,
     materialize_context,
+    serialize_materialized_context_result,
     verify_materialized_context_result,
 )
 from .models import CompilationPolicy, CompiledMemory
@@ -596,13 +597,11 @@ def _materialize(args: argparse.Namespace) -> int:
             compilation_limits=_compilation_limits(args),
             degradation_policy=degradation_policy,
         )
-        rendered = json.dumps(
+        rendered = serialize_materialized_context_result(
             result,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        )
+            expected_receipt_sha256=result["receipt"]["receipt_sha256"],
+            expected_allocation_plan_sha256=args.allocation_plan_sha256,
+        ).decode("utf-8")
         _write_exact_utf8_output(rendered, args.output)
     except (
         OSError,

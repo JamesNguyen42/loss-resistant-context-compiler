@@ -24,7 +24,7 @@ meaning can be compressed without loss.
 
 | Area | Current state |
 | --- | --- |
-| Release | Alpha research implementation, package version `0.1.1a18` |
+| Release | Alpha research implementation, package version `0.1.1a19` |
 | Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts, optional LocalAI connector |
@@ -469,10 +469,12 @@ provider tokenizer. The result keeps verified memory, recent raw messages, one
 empty untrusted external-retrieval slot, and the current user turn in a fixed
 order. It remains provider-not-ready and requires a final recount. Python hosts
 with an exact tokenizer should use `materialize_context()` and retain the
-receipt digest independently for `verify_materialized_context_result()`. CLI
-hosts can use `verify-materialization` with both independent digests; it
-boundedly verifies and re-emits the original canonical result bytes without
-creating a second receipt or readiness claim.
+receipt digest independently for `verify_materialized_context_result()` or
+`serialize_materialized_context_result()`. The serializer verifies both
+independent anchors and emits exactly one canonical UTF-8 JSON line. CLI hosts
+can use `verify-materialization` with both independent digests; it boundedly
+verifies and re-emits the original canonical result bytes without creating a
+second receipt or readiness claim.
 
 When mandatory fixed inputs, protected memory, the current turn, and the
 minimum recent tail cannot fit, the existing

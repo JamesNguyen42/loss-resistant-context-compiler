@@ -14,16 +14,26 @@ a `ContextWindowBudget`. The returned exact dictionary contains the unchanged
 materialized v1 context, its unchanged runtime planning payload, a fixed
 component manifest, and a compact receipt. Retain the receipt SHA-256 outside
 the result and require it again when calling
-`verify_materialized_context_result()`.
+`verify_materialized_context_result()` or
+`serialize_materialized_context_result()`.
 
 Hosts can import `ContextWindowError` from the same stable package root and
 branch on its reason without parsing message text:
 
 ```python
-from context_compiler import ContextWindowError, materialize_context
+from context_compiler import (
+    ContextWindowError,
+    materialize_context,
+    serialize_materialized_context_result,
+)
 
 try:
     result = materialize_context(...)
+    canonical_line = serialize_materialized_context_result(
+        result,
+        expected_receipt_sha256=independently_retained_receipt_sha256,
+        expected_allocation_plan_sha256=independently_calculated_allocation_sha256,
+    )
 except ContextWindowError as exc:
     if exc.reason == "mandatory_components_do_not_fit":
         # Keep the exact refusal; select a different host-owned budget or stop.
@@ -304,6 +314,14 @@ invalid Unicode, excessive nesting, and oversized input are rejected before
 the existing receipt and allocation checks. The caller must still retain and
 supply both expected digests independently of the serialized result.
 
+`serialize_materialized_context_result(...)` applies that same verifier and
+only then emits compact canonical UTF-8 bytes with exactly one trailing LF.
+It serializes the verifier's detached result rather than the caller-owned
+object, so a post-verification caller mutation cannot change the emitted
+record. It rejects noncanonical serialized input instead of normalizing it.
+For a result supplied across a storage or process boundary, both expected
+digests must come from independent trusted state.
+
 The installed CLI exposes the same closed verification boundary without a new
 schema or receipt:
 
@@ -318,6 +336,9 @@ The command performs a bounded stable-file or binary-stdin read, refuses
 linked or changing inputs, verifies both independent anchors, and only then
 re-emits the original canonical bytes. It does not infer either trusted digest
 from the result, alter v1 claims, or make the payload provider-ready.
+`ctxc materialize` uses the serializer as an internal integrity check over its
+freshly created result and the allocation digest supplied on that command; it
+does not turn the generated receipt into an independently retained anchor.
 
 ## Final provider recount
 

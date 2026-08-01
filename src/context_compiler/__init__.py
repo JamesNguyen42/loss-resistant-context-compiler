@@ -64,6 +64,7 @@ from .materialized_window import (
     MATERIALIZED_CONTEXT_RECEIPT_SCHEMA,
     MATERIALIZED_CONTEXT_RESULT_SCHEMA,
     materialize_context,
+    serialize_materialized_context_result,
     verify_materialized_context_result,
 )
 from .models import (
@@ -196,6 +197,7 @@ __all__ = [
     "redact_sources",
     "summarize_artifact",
     "serve_stdio",
+    "serialize_materialized_context_result",
     "source_event_to_record",
     "trust_manifest_sha256",
     "validate_artifact_envelope",
@@ -206,4 +208,4 @@ __all__ = [
     "verify_trust_manifest",
 ]
 
-__version__ = "0.1.1a18"
+__version__ = "0.1.1a19"

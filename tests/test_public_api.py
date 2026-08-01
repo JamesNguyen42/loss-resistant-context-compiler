@@ -4,6 +4,7 @@ from __future__ import annotations
 import inspect
 
 import context_compiler
+import context_compiler.materialized_window as materialized_window_module
 from context_compiler.context_window import ContextWindowError as ModuleContextWindowError
 from context_compiler.context_window import compose_context_window
 from context_compiler.materialized_window import compose_materialized_context_window
@@ -92,6 +93,7 @@ EXPECTED_EXPORTS = (
     "redact_sources",
     "summarize_artifact",
     "serve_stdio",
+    "serialize_materialized_context_result",
     "source_event_to_record",
     "trust_manifest_sha256",
     "validate_artifact_envelope",
@@ -124,6 +126,7 @@ EXPECTED_SIGNATURES = {
     "diff_artifacts": "(before: 'Any', after: 'Any', *, include_item_details: 'bool' = True, limits: 'ArtifactLimits | None' = None) -> 'dict[str, Any]'",
     "redact_sources": "(sources: 'Iterable[SourceRecord]', *, policy: 'RedactionPolicy | None' = None) -> 'RedactionResult'",
     "materialize_context": "(sources: 'Iterable[SourceRecord | Mapping[str, Any]]', *, current_turn_id: 'str', budget: 'ContextWindowBudget', token_counter: 'ExactTokenCounterAdapter', allocation_plan_sha256: 'str', fixed_input_sha256: 'str | None' = None, policy: 'CompilationPolicy | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None, degradation_policy: 'ContextWindowDegradationPolicy | None' = None) -> 'dict[str, Any]'",
+    "serialize_materialized_context_result": "(value: 'Mapping[str, Any] | bytes', *, expected_receipt_sha256: 'str', expected_allocation_plan_sha256: 'str') -> 'bytes'",
     "serve_stdio": "(*, connector: 'LocalAIConnector | None' = None, input_stream: 'Any', output_stream: 'Any', max_request_bytes: 'int' = 8388608, max_json_depth: 'int' = 128) -> 'int'",
     "source_event_to_record": "(event: 'SourceEvent | Mapping[str, Any] | Any', *, default_sequence: 'int') -> 'SourceRecord'",
     "validate_artifact_envelope": "(artifact: 'Any', *, limits: 'ArtifactLimits | None' = None) -> 'dict[str, Any]'",
@@ -146,6 +149,18 @@ EXPECTED_SIGNATURES = {
     "SourceArchive.verify": "(self, *, expected_chain_head: 'str | None' = None) -> 'ArchiveReport'",
 }
 
+EXPECTED_MATERIALIZED_WINDOW_EXPORTS = (
+    "MATERIALIZED_CONTEXT_COMPONENTS_SCHEMA",
+    "MATERIALIZED_CONTEXT_RECEIPT_SCHEMA",
+    "MATERIALIZED_CONTEXT_RESULT_SCHEMA",
+    "MATERIALIZED_CONTEXT_WINDOW_SCHEMA",
+    "MaterializedContextWindow",
+    "compose_materialized_context_window",
+    "materialize_context",
+    "serialize_materialized_context_result",
+    "verify_materialized_context_result",
+)
+
 EXPECTED_MODULE_SIGNATURES = {
     "compose_context_window": "(sources: 'Iterable[SourceRecord | Mapping[str, Any]]', *, current_turn_id: 'str', budget: 'ContextWindowBudget', token_counter: 'ExactTokenCounterAdapter', fixed_input_sha256: 'str | None' = None, policy: 'CompilationPolicy | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None, degradation_policy: 'ContextWindowDegradationPolicy | None' = None) -> 'ContextWindowPrototype'",
     "compose_materialized_context_window": "(sources: 'Iterable[SourceRecord | Mapping[str, Any]]', *, current_turn_id: 'str', budget: 'ContextWindowBudget', token_counter: 'ExactTokenCounterAdapter', fixed_input_sha256: 'str | None' = None, allocation_plan_sha256: 'str | None' = None, policy: 'CompilationPolicy | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None, degradation_policy: 'ContextWindowDegradationPolicy | None' = None) -> 'MaterializedContextWindow'",
@@ -163,6 +178,11 @@ def test_public_exports_are_exact_and_resolvable() -> None:
     assert tuple(context_compiler.__all__) == EXPECTED_EXPORTS
     assert len(EXPECTED_EXPORTS) == len(set(EXPECTED_EXPORTS))
     assert all(hasattr(context_compiler, name) for name in EXPECTED_EXPORTS)
+    assert tuple(materialized_window_module.__all__) == EXPECTED_MATERIALIZED_WINDOW_EXPORTS
+    assert (
+        context_compiler.serialize_materialized_context_result
+        is materialized_window_module.serialize_materialized_context_result
+    )
 
 
 def test_critical_public_signatures_are_exact() -> None:

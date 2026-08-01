@@ -17,6 +17,7 @@ from context_compiler import (
     ContextWindowBudget,
     ExactTokenCounterAdapter,
     materialize_context,
+    serialize_materialized_context_result,
     verify_materialized_context_result,
 )
 from context_compiler.context_window import ContextWindowError
@@ -141,6 +142,15 @@ def test_result_is_byte_deterministic_and_requires_two_independent_digests() -> 
     expected_receipt = first["receipt"]["receipt_sha256"]
 
     assert canonical_bytes(first) == canonical_bytes(second)
+    assert serialize_materialized_context_result(
+        first,
+        expected_receipt_sha256=expected_receipt,
+        expected_allocation_plan_sha256=ALLOCATION_SHA256,
+    ) == serialize_materialized_context_result(
+        second,
+        expected_receipt_sha256=expected_receipt,
+        expected_allocation_plan_sha256=ALLOCATION_SHA256,
+    )
     assert (
         verify_materialized_context_result(
             first,
@@ -165,8 +175,17 @@ def test_result_is_byte_deterministic_and_requires_two_independent_digests() -> 
 
 def test_serialized_result_round_trip_is_canonical_and_detached() -> None:
     value = result()
-    serialized = canonical_bytes(value) + b"\n"
+    snapshot = copy.deepcopy(value)
+    serialized = serialize_materialized_context_result(
+        value,
+        expected_receipt_sha256=value["receipt"]["receipt_sha256"],
+        expected_allocation_plan_sha256=ALLOCATION_SHA256,
+    )
 
+    assert type(serialized) is bytes
+    assert serialized.endswith(b"\n")
+    assert serialized.count(b"\n") == 1
+    assert value == snapshot
     restored = verify_materialized_context_result(
         serialized,
         expected_receipt_sha256=value["receipt"]["receipt_sha256"],
@@ -177,6 +196,113 @@ def test_serialized_result_round_trip_is_canonical_and_detached() -> None:
     assert canonical_bytes(restored) + b"\n" == serialized
     restored["runtime_payload"]["current_turn"]["content"] = "detached mutation"
     assert canonical_bytes(value) + b"\n" == serialized
+
+
+def test_serializer_rejects_anchor_mismatch_before_emitting_bytes() -> None:
+    value = result()
+    expected_receipt = value["receipt"]["receipt_sha256"]
+
+    with pytest.raises(ContextWindowError, match="expected receipt"):
+        serialize_materialized_context_result(
+            value,
+            expected_receipt_sha256="f" * 64,
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
+    with pytest.raises(ContextWindowError, match="allocation"):
+        serialize_materialized_context_result(
+            value,
+            expected_receipt_sha256=expected_receipt,
+            expected_allocation_plan_sha256="f" * 64,
+        )
+
+
+def test_serializer_rejects_subclasses_without_invoking_them() -> None:
+    class Explosive(dict[str, object]):
+        def items(self):  # type: ignore[override]
+            raise AssertionError("mapping subclass was invoked")
+
+    with pytest.raises(TypeError, match="exact object"):
+        serialize_materialized_context_result(
+            Explosive(result()),
+            expected_receipt_sha256="f" * 64,
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
+
+
+def test_serializer_uses_the_verified_detached_snapshot(monkeypatch) -> None:
+    value = result()
+    expected = canonical_bytes(value) + b"\n"
+    receipt_sha256 = value["receipt"]["receipt_sha256"]
+    real_verify = materialized_window_module.verify_materialized_context_result
+
+    def verify_then_mutate(*args, **kwargs):
+        verified = real_verify(*args, **kwargs)
+        value["runtime_payload"]["current_turn"]["content"] = "changed after verify"
+        return verified
+
+    monkeypatch.setattr(
+        materialized_window_module,
+        "verify_materialized_context_result",
+        verify_then_mutate,
+    )
+
+    assert (
+        serialize_materialized_context_result(
+            value,
+            expected_receipt_sha256=receipt_sha256,
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
+        == expected
+    )
+
+
+@pytest.mark.parametrize("anchor", [True, 1, "A" * 64])
+def test_serializer_rejects_non_exact_or_noncanonical_anchors(anchor: object) -> None:
+    value = result()
+    expected_receipt = value["receipt"]["receipt_sha256"]
+
+    with pytest.raises(ContextWindowError, match="expected_receipt_sha256"):
+        serialize_materialized_context_result(
+            value,
+            expected_receipt_sha256=anchor,  # type: ignore[arg-type]
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
+    with pytest.raises(ContextWindowError, match="expected_allocation_plan_sha256"):
+        serialize_materialized_context_result(
+            value,
+            expected_receipt_sha256=expected_receipt,
+            expected_allocation_plan_sha256=anchor,  # type: ignore[arg-type]
+        )
+
+
+def test_serializer_rejects_string_subclasses_without_invoking_them() -> None:
+    class ExplosiveString(str):
+        def __str__(self) -> str:
+            raise AssertionError("string subclass was invoked")
+
+    value = result()
+    with pytest.raises(ContextWindowError, match="expected_receipt_sha256"):
+        serialize_materialized_context_result(
+            value,
+            expected_receipt_sha256=ExplosiveString("a" * 64),
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
+
+
+def test_serializer_rejects_nested_scalar_subclasses_without_coercion() -> None:
+    class ExplosiveInt(int):
+        def __int__(self) -> int:
+            raise AssertionError("integer subclass was coerced")
+
+    value = result()
+    value["runtime_payload"]["accounting"]["input_tokens"] = ExplosiveInt(1)
+
+    with pytest.raises(ContextWindowError, match="exact JSON values"):
+        serialize_materialized_context_result(
+            value,
+            expected_receipt_sha256=value["receipt"]["receipt_sha256"],
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
 
 
 @pytest.mark.parametrize(
@@ -312,6 +438,12 @@ def test_serialized_result_rejects_bytes_subclasses_before_use() -> None:
             expected_receipt_sha256="f" * 64,
             expected_allocation_plan_sha256=ALLOCATION_SHA256,
         )
+    with pytest.raises(TypeError, match="exact object or exact bytes"):
+        serialize_materialized_context_result(
+            ExplosiveBytes(b"{}\n"),
+            expected_receipt_sha256="f" * 64,
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
 
 
 def test_runtime_and_retrieval_substitution_fail_even_after_receipt_resealing() -> None:
@@ -397,3 +529,15 @@ def test_concurrent_verification_returns_detached_byte_identical_results() -> No
         outputs = list(executor.map(lambda _index: verify_once(), range(16)))
 
     assert outputs == [canonical_bytes(value)] * 16
+
+    def serialize_once() -> bytes:
+        return serialize_materialized_context_result(
+            serialized,
+            expected_receipt_sha256=expected,
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        serialized_outputs = list(executor.map(lambda _index: serialize_once(), range(16)))
+
+    assert serialized_outputs == [serialized] * 16

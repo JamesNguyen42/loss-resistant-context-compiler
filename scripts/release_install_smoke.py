@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a18"
+EXPECTED_VERSION = "0.1.1a19"
 SCHEMA_GLOB = "*.schema.json"
 MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.3"
 MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA = "ctxc-materialized-prompt-assembly-golden-0.1"
@@ -322,6 +322,7 @@ from context_compiler import (
     ContextWindowDegradationPolicy,
     ContextWindowError,
     materialize_context,
+    serialize_materialized_context_result,
     verify_materialized_context_result,
 )
 from context_compiler.connector import ExactTokenCounterAdapter
@@ -569,25 +570,23 @@ assert receipt["schema"] == MATERIALIZED_CONTEXT_RECEIPT_SCHEMA
 assert receipt["runtime_payload_sha256"] == hashlib.sha256(runtime_bytes).hexdigest()
 assert receipt["provider_execution_ready"] is False
 assert receipt["final_provider_recount_required"] is True
-consumer_bytes = json.dumps(
+consumer_bytes = serialize_materialized_context_result(
     consumer_result,
-    ensure_ascii=False,
-    sort_keys=True,
-    separators=(",", ":"),
-    allow_nan=False,
-).encode("utf-8")
+    expected_receipt_sha256=receipt["receipt_sha256"],
+    expected_allocation_plan_sha256=ALLOCATION_PLAN_SHA256,
+)
+assert consumer_bytes.endswith(b"\n")
+assert consumer_bytes.count(b"\n") == 1
 verified_consumer = verify_materialized_context_result(
     consumer_result,
     expected_receipt_sha256=receipt["receipt_sha256"],
     expected_allocation_plan_sha256=ALLOCATION_PLAN_SHA256,
 )
-verified_consumer_bytes = json.dumps(
+verified_consumer_bytes = serialize_materialized_context_result(
     verified_consumer,
-    ensure_ascii=False,
-    sort_keys=True,
-    separators=(",", ":"),
-    allow_nan=False,
-).encode("utf-8")
+    expected_receipt_sha256=receipt["receipt_sha256"],
+    expected_allocation_plan_sha256=ALLOCATION_PLAN_SHA256,
+)
 assert verified_consumer_bytes == consumer_bytes
 
 prompt_assembly_unsigned = {
