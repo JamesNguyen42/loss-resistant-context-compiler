@@ -166,6 +166,23 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a9 - 2026-08-01
+
+### Fixed
+
+- Made source-history standard input decode strict UTF-8 bytes from the binary
+  stream instead of inheriting the host locale. Valid non-ASCII JSON/JSONL is
+  now portable across ordinary Windows console environments, and malformed
+  UTF-8 still fails before materialization.
+
+### Changed
+
+- Advanced the separately packaged OpenHands integration to `0.1.0a10` solely
+  to preserve its exact dependency on core `0.1.1a9`.
+- Retained materialized-context schema v1, default-strict behavior, null
+  retrieval and capability identities, `provider_execution_ready=false`, and
+  the required final provider recount. No provider or model execution was run.
+
 ## 0.1.1a8 - 2026-08-01
 
 ### Fixed

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import subprocess
 import sys
 from importlib.resources import files
 from pathlib import Path
@@ -89,6 +91,138 @@ def test_materialize_cli_stdin_is_byte_identical(
     )
     assert main(materialize_args("-")) == 0
     assert capsys.readouterr().out == expected
+
+
+def test_materialize_cli_stdin_uses_strict_utf8_binary_input(
+    monkeypatch,
+    capsys,
+) -> None:
+    payload = HISTORY.read_bytes()
+
+    class BinaryOnlyStdin:
+        def __init__(self) -> None:
+            self.buffer = io.BytesIO(payload)
+
+        def read(self, *_args: object, **_kwargs: object) -> str:
+            raise AssertionError("materialize stdin must not use the locale text stream")
+
+    monkeypatch.setattr(sys, "stdin", BinaryOnlyStdin())
+    assert main(materialize_args("-")) == 0
+    value = json.loads(capsys.readouterr().out)
+    assert value["runtime_payload"]["current_turn"]["id"] == "deploy-011"
+
+
+def test_materialize_cli_stdin_rejects_invalid_utf8_before_materialization(
+    monkeypatch,
+    capsys,
+) -> None:
+    class InvalidUtf8Stdin:
+        buffer = io.BytesIO(b'{"role":"user","content":"\xff"}\n')
+
+        def read(self, *_args: object, **_kwargs: object) -> str:
+            raise AssertionError("invalid binary input must not reach the locale text stream")
+
+    monkeypatch.setattr(sys, "stdin", InvalidUtf8Stdin())
+    assert main(materialize_args("-")) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "source input must be valid UTF-8 text" in captured.err
+
+
+def test_materialize_cli_stdin_reports_invalid_utf8_as_encoding_error(
+    monkeypatch,
+    capsys,
+) -> None:
+    class InvalidUtf8Stdin:
+        buffer = io.BytesIO(b'{"role":"user","content":"\xff"}\n')
+
+        def read(self, *_args: object, **_kwargs: object) -> str:
+            raise AssertionError("invalid binary input must not reach the locale text stream")
+
+    monkeypatch.setattr(sys, "stdin", InvalidUtf8Stdin())
+    args = materialize_args("-")
+    args.extend(["--error-format", "json"])
+
+    assert main(args) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    diagnostic = json.loads(captured.err)
+    assert diagnostic["category"] == "invalid_input"
+    assert diagnostic["code"] == "invalid_encoding"
+    assert diagnostic["exception_type"] == "UnicodeError"
+    assert diagnostic["message"] == "source input must be valid UTF-8 text"
+
+
+def test_materialize_cli_subprocess_reads_utf8_stdin_without_utf8_mode() -> None:
+    current_content = "continue with caf\u00e9, \U0001f680, and e\u0301 exactly once"
+    payload = b"".join(
+        json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
+        for value in (
+            {
+                "id": "subprocess-0",
+                "sequence": 0,
+                "role": "assistant",
+                "content": "retain the exact UTF-8 stdin bytes",
+            },
+            {
+                "id": "subprocess-1",
+                "sequence": 1,
+                "role": "user",
+                "content": current_content,
+            },
+        )
+    )
+    environment = os.environ.copy()
+    environment["PYTHONUTF8"] = "0"
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment.pop("PYTHONIOENCODING", None)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        value for value in (str(ROOT / "src"), environment.get("PYTHONPATH")) if value
+    )
+    args = [
+        sys.executable,
+        "-B",
+        "-m",
+        "context_compiler.cli",
+        "materialize",
+        "-",
+        "--current-turn-id",
+        "subprocess-1",
+        "--hard-limit-tokens",
+        "512",
+        "--memory-budget-tokens",
+        "128",
+        "--reserved-output-tokens",
+        "32",
+        "--safety-margin-tokens",
+        "16",
+        "--minimum-recent-messages",
+        "1",
+        "--maximum-recent-messages",
+        "1",
+        "--allocation-plan-sha256",
+        ALLOCATION_SHA256,
+        "--tokenizer-profile",
+        "unicode-codepoint-count-v1",
+    ]
+
+    completed = subprocess.run(
+        args,
+        input=payload,
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr.decode("utf-8", "replace")
+    assert completed.stderr == b""
+    assert completed.stdout.endswith(b"\n")
+    assert completed.stdout.count(b"\n") == 1
+    assert current_content.encode("utf-8") in completed.stdout
+    value = json.loads(completed.stdout)
+    assert value["runtime_payload"]["current_turn"]["id"] == "subprocess-1"
 
 
 def test_materialize_cli_unicode_profile_counts_code_points_not_utf8_bytes(

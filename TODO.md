@@ -47,7 +47,7 @@ raw evidence when completing benchmark work.
   `capabilities`, `ingest_source_events`, `compile_memory`, `render_context`,
   `verify_memory`, and `inspect_memory` over one strict shared versioned
   request/response JSONL envelope and `ctxc connector --stdio`.
-- [x] Add the separately packaged `ctxc-openhands` `0.1.0a9` draft-alpha
+- [x] Add the separately packaged `ctxc-openhands` `0.1.0a10` draft-alpha
   foundation without adding OpenHands or another dependency to the ordinary
   core installation or import path. The implemented evidence is offline-only;
   it is not a successful live integration claim.

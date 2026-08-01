@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a8"
+EXPECTED_VERSION = "0.1.1a9"
 SCHEMA_GLOB = "*.schema.json"
 MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.3"
 MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA = "ctxc-materialized-prompt-assembly-golden-0.1"

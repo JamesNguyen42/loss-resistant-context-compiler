@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import codecs
 import json
 import os
 import sys
@@ -114,7 +115,16 @@ def _artifact_limits(args: argparse.Namespace) -> ArtifactLimits:
 
 def _input_sources(path: str, limits: SourceLimits) -> list:
     if path == "-":
-        return load_sources(sys.stdin, limits=limits)
+        binary_input = getattr(sys.stdin, "buffer", None)
+        if binary_input is None:
+            return load_sources(sys.stdin, limits=limits)
+        try:
+            return load_sources(
+                codecs.getreader("utf-8")(binary_input, errors="strict"),
+                limits=limits,
+            )
+        except UnicodeDecodeError as exc:
+            raise UnicodeError("source input must be valid UTF-8 text") from exc
     return load_sources_path(path, limits=limits)
 
 

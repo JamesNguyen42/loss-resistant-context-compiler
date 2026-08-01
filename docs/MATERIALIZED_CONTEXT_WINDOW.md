@@ -50,6 +50,10 @@ Without `--output`, the command writes one canonical UTF-8 JSON line through
 the binary standard-output stream and refuses a missing or incomplete binary
 write. `--output` retains its atomic UTF-8 overwrite behavior.
 
+With `-` as the input path, the command decodes strict UTF-8 bytes from binary
+standard input instead of inheriting the host text-stream locale. Invalid
+UTF-8 is refused before materialization.
+
 The CLI profile counts Unicode code points exactly for that named diagnostic
 profile. It is not a provider tokenizer and must not be presented as exact
 provider accounting. Hosts that have a real tokenizer use the Python API. Both

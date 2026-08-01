@@ -230,6 +230,7 @@ def test_perfect_captured_model_is_scored_separately_and_replays(
         "0.1.1a6",
         "0.1.1a7",
         "0.1.1a8",
+        "0.1.1a9",
     ],
 )
 def test_qwen_phrase_reader_accepts_only_recorded_supported_versions(
