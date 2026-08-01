@@ -16,6 +16,7 @@ from context_compiler import (
 )
 from context_compiler.cli import (
     _MAX_SERIALIZED_RESULT_BYTES,
+    _emit_materialized_receipt_sha256,
     _write_exact_utf8_output,
     main,
 )
@@ -608,12 +609,16 @@ def test_exact_utf8_stdout_fails_closed_without_a_complete_binary_write(
 
 def test_materialize_output_file_remains_atomic_utf8_and_overwritable(
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     output = tmp_path / "materialized.json"
     output.write_bytes(b"previous-result\n")
     args = [*materialize_args(str(HISTORY)), "--output", str(output)]
 
     assert main(args) == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
     raw = output.read_bytes()
     assert raw.endswith(b"\n")
     value = json.loads(raw)
@@ -629,6 +634,210 @@ def test_materialize_output_file_remains_atomic_utf8_and_overwritable(
     )
 
 
+@pytest.mark.parametrize("output_args", [[], ["--output", ""]])
+def test_materialize_receipt_flag_requires_nonempty_output_before_reading_sources(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    output_args: list[str],
+) -> None:
+    def fail_if_read(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("receipt flag relation must fail before source input")
+
+    monkeypatch.setattr("context_compiler.cli._input_sources", fail_if_read)
+    args = [
+        *materialize_args("unread.jsonl"),
+        *output_args,
+        "--emit-receipt-sha256",
+        "--error-format",
+        "json",
+    ]
+
+    assert main(args) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    diagnostic = json.loads(captured.err)
+    assert diagnostic["message"] == "--emit-receipt-sha256 requires --output"
+
+
+def test_materialize_input_failure_emits_no_receipt_or_output_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class UntouchedBuffer:
+        def write(self, _value: bytes) -> int:
+            raise AssertionError("failed source input must not emit a receipt")
+
+        def flush(self) -> None:
+            raise AssertionError("failed source input must not flush receipt stdout")
+
+    class ReceiptStdout:
+        buffer = UntouchedBuffer()
+
+    output = tmp_path / "materialized.json"
+    output.write_bytes(b"previous-complete-result\n")
+    missing = tmp_path / "missing-history.jsonl"
+    monkeypatch.setattr(sys, "stdout", ReceiptStdout())
+    args = [
+        *materialize_args(str(missing)),
+        "--output",
+        str(output),
+        "--emit-receipt-sha256",
+    ]
+
+    assert main(args) == 2
+    assert output.read_bytes() == b"previous-complete-result\n"
+    assert "missing-history.jsonl" in capsys.readouterr().err
+
+
+def test_materialize_receipt_flag_emits_verified_anchor_after_result_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "materialized.json"
+    writes: list[bytes] = []
+    flushes = 0
+
+    class ReceiptBuffer:
+        def write(self, value: bytes) -> int:
+            assert output.is_file()
+            parsed = json.loads(output.read_bytes())
+            assert parsed["receipt"]["receipt_sha256"].encode("ascii") in value
+            writes.append(value)
+            return len(value)
+
+        def flush(self) -> None:
+            nonlocal flushes
+            flushes += 1
+
+    class BinaryOnlyStdout:
+        buffer = ReceiptBuffer()
+
+        def write(self, _value: str) -> int:
+            raise AssertionError("receipt emission must not use locale text stdout")
+
+    monkeypatch.setattr(sys, "stdout", BinaryOnlyStdout())
+    args = [
+        *materialize_args(str(HISTORY)),
+        "--output",
+        str(output),
+        "--emit-receipt-sha256",
+    ]
+
+    assert main(args) == 0
+    raw = output.read_bytes()
+    value = json.loads(raw)
+    receipt = value["receipt"]["receipt_sha256"]
+    assert raw.endswith(b"\n")
+    assert raw.count(b"\n") == 1
+    assert writes == [receipt.encode("ascii") + b"\n"]
+    assert flushes == 1
+    assert value["runtime_payload"]["provider_execution_ready"] is False
+    assert value["runtime_payload"]["final_provider_recount_required"] is True
+    assert value["runtime_payload"]["retrieval_result_sha256"] is None
+
+
+@pytest.mark.parametrize("mode", ["missing", "short", "write", "flush"])
+def test_materialize_receipt_emission_failure_is_single_attempt_and_unanchored(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mode: str,
+) -> None:
+    output = tmp_path / f"materialized-{mode}.json"
+    write_calls = 0
+    flush_calls = 0
+    observed = bytearray()
+
+    class ReceiptBuffer:
+        def write(self, value: bytes) -> int:
+            nonlocal write_calls
+            write_calls += 1
+            if mode == "write":
+                raise OSError("injected receipt write failure")
+            observed.extend(value)
+            return len(value) - 1 if mode == "short" else len(value)
+
+        def flush(self) -> None:
+            nonlocal flush_calls
+            flush_calls += 1
+            if mode == "flush":
+                raise OSError("injected receipt flush failure")
+
+    class ReceiptStdout:
+        if mode != "missing":
+            buffer = ReceiptBuffer()
+
+    monkeypatch.setattr(sys, "stdout", ReceiptStdout())
+    args = [
+        *materialize_args(str(HISTORY)),
+        "--output",
+        str(output),
+        "--emit-receipt-sha256",
+    ]
+
+    assert main(args) == 2
+    assert output.is_file()
+    value = json.loads(output.read_bytes())
+    assert value["receipt"]["receipt_sha256"]
+    assert write_calls == (0 if mode == "missing" else 1)
+    assert flush_calls == (1 if mode == "flush" else 0)
+    if mode == "flush":
+        assert bytes(observed) == value["receipt"]["receipt_sha256"].encode("ascii") + b"\n"
+    captured = capsys.readouterr()
+    assert "unanchored and unusable" in captured.err
+
+
+def test_materialize_result_write_failure_emits_no_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class UntouchedBuffer:
+        def write(self, _value: bytes) -> int:
+            raise AssertionError("failed result write must not emit a receipt")
+
+        def flush(self) -> None:
+            raise AssertionError("failed result write must not flush receipt stdout")
+
+    class ReceiptStdout:
+        buffer = UntouchedBuffer()
+
+    def fail_result_write(*_args: object, **_kwargs: object) -> None:
+        raise OSError("injected result write failure")
+
+    output = tmp_path / "materialized.json"
+    monkeypatch.setattr(sys, "stdout", ReceiptStdout())
+    monkeypatch.setattr("context_compiler.cli.atomic_write_text", fail_result_write)
+    args = [
+        *materialize_args(str(HISTORY)),
+        "--output",
+        str(output),
+        "--emit-receipt-sha256",
+    ]
+
+    assert main(args) == 2
+    assert not output.exists()
+    assert "injected result write failure" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("value", [True, 1, "A" * 64, "a" * 63])
+def test_receipt_emitter_rejects_noncanonical_values_before_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+    value: object,
+) -> None:
+    class UntouchedBuffer:
+        def write(self, _value: bytes) -> int:
+            raise AssertionError("invalid receipt must not reach stdout")
+
+    class ReceiptStdout:
+        buffer = UntouchedBuffer()
+
+    monkeypatch.setattr(sys, "stdout", ReceiptStdout())
+    with pytest.raises(ValueError, match="receipt SHA-256 is invalid"):
+        _emit_materialized_receipt_sha256(value)  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize("use_degradation_policy", [False, True])
 def test_materialize_refusal_is_reason_coded_and_writes_no_partial_output(
     tmp_path: Path,
@@ -642,7 +851,15 @@ def test_materialize_refusal_is_reason_coded_and_writes_no_partial_output(
     args[args.index("2200")] = "200"
     if use_degradation_policy:
         args.extend(["--degradation-policy", CONTEXT_WINDOW_DEGRADATION_MODE])
-    args.extend(["--error-format", "json", "--output", str(output)])
+    args.extend(
+        [
+            "--error-format",
+            "json",
+            "--output",
+            str(output),
+            "--emit-receipt-sha256",
+        ]
+    )
 
     assert main(args) == 2
     captured = capsys.readouterr()

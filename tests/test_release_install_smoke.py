@@ -56,8 +56,8 @@ from scripts.release_install_smoke import (
     _verified_artifact_snapshot,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.1a19-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a19.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a20-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a20.tar.gz"
 
 
 def test_release_smoke_uses_the_exact_materialization_degradation_policy() -> None:
@@ -320,7 +320,7 @@ def _sample_evaluation_report_bytes() -> bytes:
     case_ids = [f"retention-case-{index:03d}" for index in range(1, 21)]
     unsigned = {
         "schema": MATERIALIZED_EVALUATION_REPORT_SCHEMA,
-        "evaluator_package_version": "0.1.1a19",
+        "evaluator_package_version": "0.1.1a20",
         "pack": {
             "schema": MATERIALIZED_RETENTION_PACK_SCHEMA,
             "pack_id": MATERIALIZED_RETENTION_PACK_ID,
@@ -903,6 +903,22 @@ def test_materialized_context_probe_output_is_bounded_before_decoding() -> None:
         "-B",
         "-c",
         "import sys; sys.stdout.buffer.write(b'x' * (16 * 1024 + 1))",
+    ]
+    with pytest.raises(ValueError, match="stdout exceeds the byte limit"):
+        _run_bounded_materialized_probe(command)
+
+
+def test_installed_receipt_probe_rejects_oversized_output_boundedly() -> None:
+    command = [
+        sys.executable,
+        "-I",
+        "-B",
+        "-c",
+        (
+            "import sys; "
+            "sys.stdout.buffer.write(b'a' * (16 * 1024 + 1)); "
+            "sys.stdout.buffer.flush()"
+        ),
     ]
     with pytest.raises(ValueError, match="stdout exceeds the byte limit"):
         _run_bounded_materialized_probe(command)

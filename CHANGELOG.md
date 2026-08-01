@@ -166,6 +166,24 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a20 - 2026-08-01
+
+### Added
+
+- Added opt-in `ctxc materialize --emit-receipt-sha256`, valid only with
+  `--output`, so installed CLI hosts can retain the verified receipt digest in
+  separate trusted state without parsing the result. The canonical result is
+  written first; incomplete receipt output fails once and leaves the result
+  explicitly unanchored and unusable.
+- Added ordering, exact framing, default-byte compatibility, pre-input
+  validation, refusal, result-write, short-write, and flush regressions plus
+  clean-installed wheel/sdist coverage.
+
+### Changed
+
+- Advanced the separately packaged OpenHands integration to `0.1.0a21` with
+  an exact dependency on core `0.1.1a20`.
+
 ## 0.1.1a19 - 2026-08-01
 
 ### Added

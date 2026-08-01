@@ -227,6 +227,22 @@ def _write_binary_stdout(rendered: str) -> None:
     output.flush()
 
 
+def _emit_materialized_receipt_sha256(receipt_sha256: str) -> None:
+    if (
+        type(receipt_sha256) is not str
+        or len(receipt_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in receipt_sha256)
+    ):
+        raise ValueError("materialized receipt SHA-256 is invalid")
+    try:
+        _write_binary_stdout(receipt_sha256 + "\n")
+    except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise OSError(
+            "materialized result was written, but its receipt SHA-256 was not "
+            "emitted completely; treat the result as unanchored and unusable"
+        ) from exc
+
+
 def _write_binary_stderr(rendered: str) -> None:
     payload = rendered.encode("utf-8", errors="strict")
     output = getattr(sys.stderr, "buffer", None)
@@ -566,6 +582,10 @@ def _compile(args: argparse.Namespace) -> int:
 
 def _materialize(args: argparse.Namespace) -> int:
     try:
+        if args.emit_receipt_sha256 and (
+            type(args.output) is not str or not args.output
+        ):
+            raise ValueError("--emit-receipt-sha256 requires --output")
         degradation_policy = (
             None
             if args.degradation_policy is None
@@ -597,12 +617,15 @@ def _materialize(args: argparse.Namespace) -> int:
             compilation_limits=_compilation_limits(args),
             degradation_policy=degradation_policy,
         )
+        receipt_sha256 = result["receipt"]["receipt_sha256"]
         rendered = serialize_materialized_context_result(
             result,
-            expected_receipt_sha256=result["receipt"]["receipt_sha256"],
+            expected_receipt_sha256=receipt_sha256,
             expected_allocation_plan_sha256=args.allocation_plan_sha256,
         ).decode("utf-8")
         _write_exact_utf8_output(rendered, args.output)
+        if args.emit_receipt_sha256:
+            _emit_materialized_receipt_sha256(receipt_sha256)
     except (
         OSError,
         RuntimeError,
@@ -1347,6 +1370,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     materialize_parser.add_argument("input", help="history path or - for stdin")
     materialize_parser.add_argument("-o", "--output")
+    materialize_parser.add_argument(
+        "--emit-receipt-sha256",
+        action="store_true",
+        help=(
+            "after --output succeeds, emit the verified receipt SHA-256 to "
+            "standard output for separate retention"
+        ),
+    )
     materialize_parser.add_argument("--current-turn-id", required=True)
     materialize_parser.add_argument("--hard-limit-tokens", type=int, required=True)
     materialize_parser.add_argument("--memory-budget-tokens", type=int, required=True)

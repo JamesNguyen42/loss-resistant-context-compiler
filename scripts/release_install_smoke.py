@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a19"
+EXPECTED_VERSION = "0.1.1a20"
 SCHEMA_GLOB = "*.schema.json"
 MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.3"
 MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA = "ctxc-materialized-prompt-assembly-golden-0.1"
@@ -2008,11 +2008,29 @@ def _assert_installed_materialize_degradation(
         MATERIALIZED_DEGRADATION_POLICY,
     ]
     _run([*command, "--output", str(first)])
-    _run([*command, "--output", str(second)])
+    anchored_output = _run_bounded_materialized_probe(
+        [
+            *command,
+            "--output",
+            str(second),
+            "--emit-receipt-sha256",
+        ]
+    )
+    expected_anchor = MATERIALIZED_DEGRADATION_RECEIPT_SHA256 + "\n"
+    if anchored_output != expected_anchor:
+        raise RuntimeError("installed materialization receipt anchor changed")
     first_raw = _read_stable_evaluation_report(first)
     second_raw = _read_stable_evaluation_report(second)
     if first_raw != second_raw:
         raise RuntimeError("installed materialization degradation output is nondeterministic")
+    second_value = json.loads(second_raw)
+    second_receipt = second_value.get("receipt") if type(second_value) is dict else None
+    if (
+        type(second_receipt) is not dict
+        or second_receipt.get("receipt_sha256")
+        != MATERIALIZED_DEGRADATION_RECEIPT_SHA256
+    ):
+        raise RuntimeError("installed materialization receipt anchor is not result-bound")
     _run(
         [
             str(ctxc),

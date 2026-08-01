@@ -24,7 +24,7 @@ meaning can be compressed without loss.
 
 | Area | Current state |
 | --- | --- |
-| Release | Alpha research implementation, package version `0.1.1a19` |
+| Release | Alpha research implementation, package version `0.1.1a20` |
 | Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts, optional LocalAI connector |
@@ -456,7 +456,8 @@ ctxc materialize examples/materialized_context.jsonl \
   --per-message-overhead-tokens 2 \
   --allocation-plan-sha256 <independently-calculated-sha256> \
   --tokenizer-profile unicode-codepoint-count-v1 \
-  -o materialized-context.json
+  -o materialized-context.json \
+  --emit-receipt-sha256 > materialized-receipt.sha256
 
 ctxc verify-materialization materialized-context.json \
   --expected-receipt-sha256 <independently-retained-receipt-sha256> \
@@ -472,8 +473,12 @@ with an exact tokenizer should use `materialize_context()` and retain the
 receipt digest independently for `verify_materialized_context_result()` or
 `serialize_materialized_context_result()`. The serializer verifies both
 independent anchors and emits exactly one canonical UTF-8 JSON line. CLI hosts
-can use `verify-materialization` with both independent digests; it boundedly
-verifies and re-emits the original canonical result bytes without creating a
+can pair `--output` with `--emit-receipt-sha256` to retain the verified receipt
+digest separately. The result file is atomically completed first; stdout is
+then exactly the lowercase digest plus one LF. A nonzero exit leaves that file
+unanchored and unusable. Without the flag, established stdout and output-file
+bytes are unchanged. `verify-materialization` accepts both independent digests
+and boundedly re-emits the original canonical result bytes without creating a
 second receipt or readiness claim.
 
 When mandatory fixed inputs, protected memory, the current turn, and the

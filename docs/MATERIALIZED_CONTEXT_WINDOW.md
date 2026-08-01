@@ -72,12 +72,22 @@ ctxc materialize examples/materialized_context.jsonl \
   --per-message-overhead-tokens 2 \
   --allocation-plan-sha256 <independently-calculated-sha256> \
   --tokenizer-profile unicode-codepoint-count-v1 \
-  -o materialized-context.json
+  -o materialized-context.json \
+  --emit-receipt-sha256 > materialized-receipt.sha256
 ```
 
 Without `--output`, the command writes one canonical UTF-8 JSON line through
 the binary standard-output stream and refuses a missing or incomplete binary
 write. `--output` retains its atomic UTF-8 overwrite behavior.
+
+`--emit-receipt-sha256` is an opt-in valid only with `--output`. The command
+first completes the canonical result file and then writes exactly its verified
+lowercase receipt SHA-256 plus one LF through binary standard output for
+separate host retention. Missing, short, failed, or unflushed stdout returns
+exit code 2 without retry. The complete result file remains on disk, but a host
+must treat it as unanchored and unusable after any nonzero exit. Compilation,
+refusal, and result-write failures emit no receipt. Without the flag, existing
+stdout and output-file bytes are unchanged.
 
 With `-` as the input path, the command decodes strict UTF-8 bytes from binary
 standard input instead of inheriting the host text-stream locale. Invalid
@@ -338,7 +348,10 @@ re-emits the original canonical bytes. It does not infer either trusted digest
 from the result, alter v1 claims, or make the payload provider-ready.
 `ctxc materialize` uses the serializer as an internal integrity check over its
 freshly created result and the allocation digest supplied on that command; it
-does not turn the generated receipt into an independently retained anchor.
+does not by itself turn the embedded receipt into independently retained
+state. Hosts may use `--emit-receipt-sha256` with `--output` to capture that
+verified receipt in separate trusted custody, and must reject the result when
+the command exits nonzero.
 
 ## Final provider recount
 

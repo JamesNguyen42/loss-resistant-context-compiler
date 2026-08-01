@@ -294,7 +294,7 @@ def test_heldout_report_is_deterministic_detached_and_resource_read_only() -> No
         "summary",
     }
     assert first["schema"] == "ctxc-materialized-retention-report-0.1"
-    assert first["evaluator_package_version"] == "0.1.1a19"
+    assert first["evaluator_package_version"] == "0.1.1a20"
     assert first["integrity_passed"] is False
     assert first["pack"] == {
         "corpus_kind": "repository-authored-synthetic-naturalistic-fixture",
