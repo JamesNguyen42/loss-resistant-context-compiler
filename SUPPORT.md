@@ -61,7 +61,7 @@ in-process module forgery are not reversible by the adapter.
 | Artifact inspection | `ctxc-artifact-inspection-0.1` |
 | Artifact diff | `ctxc-artifact-diff-0.1` |
 | Detached trust manifests | `ctxc-trust-manifest-0.1`; verification reports use `ctxc-trust-verification-0.1` |
-| CLI diagnostics/events | `ctxc-diagnostic-0.1` / `ctxc-event-0.1` |
+| CLI diagnostics/events | Generic errors use `ctxc-diagnostic-0.1`; materialization overflow details use `ctxc-diagnostic-0.2` with nested `loss-resistant-materialization-refusal-diagnostic-v1`; completion events use `ctxc-event-0.1` |
 | Connector wire contracts | Seventeen Draft 2020-12 schemas for request/response, source event, bundle, checkpoint, and six payload/result pairs; runtime semantic verification remains authoritative |
 | Canonical optional connector | `localai-contracts` protocol, SourceEvent, ContextBundle, request/response, error, and manifest `1.0.0`; only `context.compile` is executed |
 | LRCBench reports | Current `lrcbench-0.2` plus the explicit retained local-only `0.1` replay path |

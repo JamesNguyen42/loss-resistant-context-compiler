@@ -118,7 +118,9 @@ class QwenPhraseEvaluationError(ValueError):
     """Qwen phrase-evaluation input or evidence is invalid."""
 
 
-_READABLE_PACKAGE_VERSIONS = frozenset({"0.1.0", "0.1.1a1", "0.1.1a2", "0.1.1a3", "0.1.1a4"})
+_READABLE_PACKAGE_VERSIONS = frozenset(
+    {"0.1.0", "0.1.1a1", "0.1.1a2", "0.1.1a3", "0.1.1a4", "0.1.1a5"}
+)
 
 
 def _validate_qwen_package_version(

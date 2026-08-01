@@ -54,9 +54,30 @@ provider request.
 
 Construction failures emit no partial result. With `--error-format json`, the
 CLI reports the existing bounded diagnostic plus the stable
-`ContextWindowError.reason`. A self-hash alone is not an external anchor: the
-verifier requires both the independently retained receipt digest and allocation
+`ContextWindowError.reason`. When strict memory compilation computes an
+over-budget candidate before independent verification, the CLI emits the
+versioned `ctxc-diagnostic-0.2` envelope with a closed
+`loss-resistant-materialization-refusal-diagnostic-v1` details object. It binds
+the tokenizer identity, memory budget, required and overflow planning units,
+compiled-prefix count, and a content-free ordered prefix-manifest digest. It
+does not contain source IDs, source text, paths, timestamps, partial compiled
+memory, or exception internals. Other compile or replay failures retain the
+generic reason without invented numeric details.
+
+These counts describe the named materialization counter, not provider tokens.
+They do not prove that a smaller rendering would preserve all required facts,
+and the implementation does not retry with a larger budget or silently clamp
+the refusal. A self-hash alone is not an external anchor: an installed-package
+witness binds its domain-separated refusal wrapper inside an independently
+retained canonical witness-line digest, while an accepted result verifier
+still requires both the independently retained receipt digest and allocation
 digest.
+
+The digest embedded beside a release-smoke witness is descriptive, not its own
+authority. A consumer must pin the canonical-line SHA-256 outside that report
+and supply it through
+`scripts/release_install_smoke.py --expected-materialized-witness-sha256`
+when it revalidates the exact wheel and sdist pair.
 
 ## Installed structural retention diagnostic
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import sys
+from importlib.resources import files
 from pathlib import Path
 
 from context_compiler import verify_materialized_context_result
@@ -170,6 +171,7 @@ def test_materialize_refusal_is_reason_coded_and_writes_no_partial_output(
     assert diagnostic["schema"] == "ctxc-diagnostic-0.1"
     assert diagnostic["command"] == "materialize"
     assert diagnostic["code"] == "mandatory_components_do_not_fit"
+    assert "details" not in diagnostic
     assert "req-1700" not in diagnostic["message"]
     assert output.read_text(encoding="utf-8") == "previous-complete-result\n"
 
@@ -186,3 +188,96 @@ def test_materialize_cli_requires_matching_fixed_input_digest(
     assert captured.out == ""
     assert diagnostic["code"] == "invalid_context_window"
     assert "fixed_input_sha256" in diagnostic["message"]
+    assert "details" not in diagnostic
+
+
+def test_materialize_cli_emits_exact_content_free_overflow_diagnostic(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    pack = json.loads(
+        files("context_compiler")
+        .joinpath("data/materialized_retention_pack_v1.json")
+        .read_text(encoding="utf-8")
+    )
+    case = next(value for value in pack["cases"] if value["case_id"] == "case-021")
+    history = tmp_path / "heldout.jsonl"
+    history.write_text(
+        "".join(
+            json.dumps(source, ensure_ascii=False, separators=(",", ":")) + "\n"
+            for source in case["sources"]
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    output = tmp_path / "result.json"
+    output.write_text("previous-complete-result\n", encoding="utf-8")
+    args = [
+        "materialize",
+        str(history),
+        "--current-turn-id",
+        case["current_turn_id"],
+        "--hard-limit-tokens",
+        "2200",
+        "--memory-budget-tokens",
+        "1200",
+        "--reserved-output-tokens",
+        "128",
+        "--safety-margin-tokens",
+        "64",
+        "--minimum-recent-messages",
+        "2",
+        "--maximum-recent-messages",
+        "3",
+        "--per-message-overhead-tokens",
+        "2",
+        "--allocation-plan-sha256",
+        ALLOCATION_SHA256,
+        "--tokenizer-profile",
+        "unicode-codepoint-count-v1",
+        "--error-format",
+        "json",
+        "--output",
+        str(output),
+    ]
+
+    assert main(args) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.count("\n") == 1
+    raw = captured.err[:-1]
+    diagnostic = json.loads(raw)
+    assert raw == json.dumps(
+        diagnostic,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    assert diagnostic["schema"] == "ctxc-diagnostic-0.2"
+    assert diagnostic["command"] == "materialize"
+    assert diagnostic["category"] == "invalid_input"
+    assert diagnostic["code"] == "compiled_memory_not_verified"
+    assert diagnostic["exit_code"] == 2
+    assert diagnostic["details"] == {
+        "schema": "loss-resistant-materialization-refusal-diagnostic-v1",
+        "reason": "compiled_memory_not_verified",
+        "stage": "compile_memory",
+        "cause": "memory_token_budget_overflow",
+        "tokenizer_identity": "unicode-codepoint-count-v1",
+        "memory_budget_tokens": 1_200,
+        "required_memory_tokens": 1_772,
+        "overflow_tokens": 572,
+        "compiled_prefix_message_count": 14,
+        "compiled_prefix_manifest_sha256": (
+            "0d681e92657fdddffa8c37de63aa5428d68d126b0a2e8a930e1a87354feae6b2"
+        ),
+        "retrieval_result_sha256": None,
+        "provider_execution_ready": False,
+        "final_provider_recount_required": True,
+    }
+    for source in case["sources"]:
+        assert source["id"] not in raw
+        assert source["content"] not in raw
+    assert str(tmp_path) not in raw
+    assert output.read_text(encoding="utf-8") == "previous-complete-result\n"

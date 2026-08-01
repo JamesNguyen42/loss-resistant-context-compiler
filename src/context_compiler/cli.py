@@ -55,6 +55,7 @@ from .trust import (
 )
 
 _DIAGNOSTIC_SCHEMA = "ctxc-diagnostic-0.1"
+_DETAIL_DIAGNOSTIC_SCHEMA = "ctxc-diagnostic-0.2"
 _EVENT_SCHEMA = "ctxc-event-0.1"
 _MATERIALIZE_TOKENIZER_PROFILE = "unicode-codepoint-count-v1"
 _CLI_MASK_CHARACTERS = frozenset({"*", "#", "█", "■"})
@@ -210,8 +211,11 @@ def _write_error(
 ) -> None:
     if getattr(args, "error_format", "text") == "json":
         inferred_category, inferred_code = _error_identity(exc)
+        details = exc.diagnostic if type(exc) is ContextWindowError else None
         diagnostic = {
-            "schema": _DIAGNOSTIC_SCHEMA,
+            "schema": (
+                _DETAIL_DIAGNOSTIC_SCHEMA if details is not None else _DIAGNOSTIC_SCHEMA
+            ),
             "command": _command_name(args),
             "category": category or inferred_category,
             "code": code or inferred_code,
@@ -219,6 +223,8 @@ def _write_error(
             "exception_type": type(exc).__name__,
             "message": str(exc),
         }
+        if details is not None:
+            diagnostic["details"] = details
         sys.stderr.write(
             json.dumps(
                 diagnostic,

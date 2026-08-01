@@ -338,7 +338,7 @@ connector instance.
 
 ## Isolated OpenHands integration package
 
-`integrations/openhands/` builds the separate `ctxc-openhands` `0.1.0a5`
+`integrations/openhands/` builds the separate `ctxc-openhands` `0.1.0a6`
 draft-alpha package. Neither the core distribution nor an ordinary
 `ctxc_openhands` import imports OpenHands; host imports occur only behind the
 exact compatibility gate. The only reviewed identity is OpenHands `1.8.0` at
@@ -1250,7 +1250,10 @@ collected, private fields were removed, or annotations are correct.
 Every runtime-error path calls one formatter. The default remains
 `ctxc: <message>` on stderr. `--error-format json` instead emits one compact
 `ctxc-diagnostic-0.1` object with command, stable category/code, exit status,
-exception type, and message. Classification order is explicit so resource
+exception type, and message. A materialization budget overflow with exact
+bounded accounting instead emits `ctxc-diagnostic-0.2` with a nested
+`loss-resistant-materialization-refusal-diagnostic-v1` object; other errors do
+not fabricate those details. Classification order is explicit so resource
 limits, timeouts, missing/denied paths, malformed JSON/encoding, type/value
 errors, hash/digest failures, and budget/compression policy failures do not
 collapse into one undifferentiated string. Argparse usage failures occur before

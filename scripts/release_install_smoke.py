@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -11,13 +12,16 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a4"
+EXPECTED_VERSION = "0.1.1a5"
 SCHEMA_GLOB = "*.schema.json"
-MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.2"
+MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.3"
+MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA = "ctxc-materialized-prompt-assembly-golden-0.1"
+MATERIALIZED_REFUSAL_GOLDEN_SCHEMA = "ctxc-materialization-refusal-golden-0.1"
 MATERIALIZED_EVALUATION_REPORT_SCHEMA = "ctxc-materialized-retention-report-0.1"
 MATERIALIZED_RETENTION_PACK_ID = "ctxc-materialized-retention-naturalistic-v1"
 MATERIALIZED_RETENTION_PACK_SCHEMA = "ctxc-materialized-retention-pack-0.1"
@@ -28,7 +32,7 @@ MATERIALIZED_RETENTION_PACK_RAW_SHA256 = (
 MATERIALIZED_RETENTION_PACK_SHA256 = (
     "b8ec4619c86c526293ce26ee3c7f9f5c2ef5ac8637e1d76d8f846f57f222b1cd"
 )
-_MAX_WITNESS_BYTES = 4 * 1024
+_MAX_WITNESS_BYTES = 16 * 1024
 _MAX_EVALUATION_REPORT_BYTES = 2 * 1024 * 1024
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _EVALUATION_CLAIM_BOUNDARIES = {
@@ -72,10 +76,123 @@ _WITNESS_FIELDS = frozenset(
         "current_turn_id",
         "final_provider_recount_required",
         "provider_execution_ready",
+        "prompt_assembly",
         "recent_message_ids",
         "retrieval_result_sha256",
+        "overflow_refusal",
+        "witness_sha256",
     }
 )
+_PROMPT_ASSEMBLY_FIELDS = frozenset(
+    {
+        "schema",
+        "component_manifest",
+        "runtime_payload",
+        "prompt_assembly_sha256",
+    }
+)
+_REFUSAL_GOLDEN_FIELDS = frozenset(
+    {
+        "schema",
+        "reason",
+        "diagnostic",
+        "refusal_sha256",
+    }
+)
+_REFUSAL_DIAGNOSTIC_FIELDS = frozenset(
+    {
+        "schema",
+        "reason",
+        "stage",
+        "cause",
+        "tokenizer_identity",
+        "memory_budget_tokens",
+        "required_memory_tokens",
+        "overflow_tokens",
+        "compiled_prefix_message_count",
+        "compiled_prefix_manifest_sha256",
+        "retrieval_result_sha256",
+        "provider_execution_ready",
+        "final_provider_recount_required",
+    }
+)
+_RUNTIME_PAYLOAD_FIELDS = frozenset(
+    {
+        "schema",
+        "allocation_plan_sha256",
+        "prototype_sha256",
+        "materialization_sha256",
+        "tokenizer_identity",
+        "accounting_scope",
+        "fixed_input_sha256",
+        "context_bundle_sha256",
+        "rendered_memory_sha256",
+        "protected_state_sha256",
+        "recent_messages_sha256",
+        "current_turn_sha256",
+        "recent_tail_omissions_sha256",
+        "retrieval_result_sha256",
+        "verified_context",
+        "recent_messages",
+        "current_turn",
+        "recent_tail_omissions",
+        "accounting",
+        "provider_execution_ready",
+        "final_provider_recount_required",
+        "refusal_reason",
+    }
+)
+_COMPONENT_MANIFEST_FIELDS = frozenset(
+    {
+        "schema",
+        "prompt_order",
+        "lrcc_verified_memory",
+        "recent_raw_messages",
+        "external_untrusted_retrieval",
+        "current_user_turn",
+        "omitted_from_live_tail",
+        "refusal",
+    }
+)
+_RUNTIME_MESSAGE_FIELDS = frozenset(
+    {"id", "sequence", "role", "content", "content_sha256", "record_sha256"}
+)
+_RUNTIME_OMISSION_FIELDS = frozenset(
+    {
+        "id",
+        "sequence",
+        "role",
+        "content_sha256",
+        "source_record_sha256",
+        "compiled_record_sha256",
+        "reason",
+    }
+)
+_RUNTIME_ACCOUNTING_FIELDS = frozenset(
+    {
+        "hard_limit_tokens",
+        "reserved_output_tokens",
+        "safety_margin_tokens",
+        "fixed_input_tokens",
+        "memory_budget_tokens",
+        "memory_tokens",
+        "recent_tail_tokens",
+        "current_turn_tokens",
+        "source_message_count",
+        "compiled_prefix_message_count",
+        "recent_tail_message_count",
+        "current_turn_message_count",
+        "input_tokens",
+        "occupied_tokens",
+        "remaining_tokens",
+        "per_message_overhead_tokens",
+        "minimum_recent_messages",
+        "maximum_recent_messages",
+    }
+)
+_PROMPT_ASSEMBLY_DOMAIN = b"ctxc-materialized-prompt-assembly-golden-v1\0"
+_REFUSAL_GOLDEN_DOMAIN = b"ctxc-materialization-refusal-golden-v1\0"
+_WITNESS_DOMAIN = b"ctxc-materialized-context-witness-v0.3\0"
 _MATERIALIZED_CONTEXT_PROBE = r"""
 import hashlib
 from importlib import resources
@@ -103,7 +220,9 @@ from context_compiler import (
 )
 from context_compiler.connector import ExactTokenCounterAdapter
 from context_compiler.context_window import (
+    MATERIALIZATION_REFUSAL_DIAGNOSTIC_SCHEMA,
     ContextWindowBudget as ModuleContextWindowBudget,
+    ContextWindowError,
     ContextWindowPrototype,
     compose_context_window,
 )
@@ -114,6 +233,10 @@ from context_compiler.materialized_window import (
 from context_compiler.models import SourceRecord
 
 package_root = Path(context_compiler.__file__).resolve(strict=True).parent
+if module_root:
+    assert package_root.parent == Path(module_root).resolve(strict=True)
+else:
+    package_root.relative_to(Path(sys.prefix).resolve(strict=True))
 fixture = Path(
     resources.files("context_compiler").joinpath(
         "data", "materialized_retention_pack_v1.json"
@@ -127,6 +250,7 @@ assert (
     hashlib.sha256(fixture_bytes).hexdigest()
     == "a17dc61a05ddb0d20811e8ec64c7a2da5f0262e98f24a734189550abb6f7f466"
 )
+fixture_value = json.loads(fixture_bytes.decode("utf-8"))
 if require_standalone:
     fixture_stat = fixture.lstat()
     reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
@@ -151,6 +275,20 @@ if require_standalone:
 
 FIXED_INPUT_SHA256 = "1" * 64
 ALLOCATION_PLAN_SHA256 = "a" * 64
+
+
+def canonical_bytes(value):
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def domain_sha256(domain, value):
+    return hashlib.sha256(domain + canonical_bytes(value)).hexdigest()
 
 
 def sources():
@@ -337,6 +475,73 @@ verified_consumer_bytes = json.dumps(
 ).encode("utf-8")
 assert verified_consumer_bytes == consumer_bytes
 
+prompt_assembly_unsigned = {
+    "schema": "ctxc-materialized-prompt-assembly-golden-0.1",
+    "component_manifest": component_manifest,
+    "runtime_payload": runtime,
+}
+prompt_assembly = {
+    **prompt_assembly_unsigned,
+    "prompt_assembly_sha256": domain_sha256(
+        b"ctxc-materialized-prompt-assembly-golden-v1\0",
+        prompt_assembly_unsigned,
+    ),
+}
+
+heldout = next(
+    value for value in fixture_value["cases"] if value["case_id"] == "case-021"
+)
+heldout_budget = ContextWindowBudget(**fixture_value["budget"])
+heldout_counter = ExactTokenCounterAdapter(
+    fixture_value["planning_unit_profile"],
+    len,
+)
+try:
+    compose_context_window(
+        heldout["sources"],
+        current_turn_id=heldout["current_turn_id"],
+        budget=heldout_budget,
+        token_counter=heldout_counter,
+    )
+except ContextWindowError as exc:
+    assert exc.reason == "compiled_memory_not_verified"
+    overflow_diagnostic = exc.diagnostic
+else:
+    raise AssertionError("held-out overflow probe unexpectedly materialized")
+assert overflow_diagnostic == {
+    "schema": MATERIALIZATION_REFUSAL_DIAGNOSTIC_SCHEMA,
+    "reason": "compiled_memory_not_verified",
+    "stage": "compile_memory",
+    "cause": "memory_token_budget_overflow",
+    "tokenizer_identity": "unicode-codepoint-count-v1",
+    "memory_budget_tokens": 1200,
+    "required_memory_tokens": 1772,
+    "overflow_tokens": 572,
+    "compiled_prefix_message_count": 14,
+    "compiled_prefix_manifest_sha256": (
+        "0d681e92657fdddffa8c37de63aa5428d68d126b0a2e8a930e1a87354feae6b2"
+    ),
+    "retrieval_result_sha256": None,
+    "provider_execution_ready": False,
+    "final_provider_recount_required": True,
+}
+overflow_encoded = canonical_bytes(overflow_diagnostic).decode("utf-8")
+for heldout_source in heldout["sources"]:
+    assert heldout_source["id"] not in overflow_encoded
+    assert heldout_source["content"] not in overflow_encoded
+overflow_refusal_unsigned = {
+    "schema": "ctxc-materialization-refusal-golden-0.1",
+    "reason": "compiled_memory_not_verified",
+    "diagnostic": overflow_diagnostic,
+}
+overflow_refusal = {
+    **overflow_refusal_unsigned,
+    "refusal_sha256": domain_sha256(
+        b"ctxc-materialization-refusal-golden-v1\0",
+        overflow_refusal_unsigned,
+    ),
+}
+
 
 def keys(value):
     if type(value) is dict:
@@ -355,8 +560,8 @@ if require_standalone:
         assert path.name != "__pycache__"
         assert path.suffix != ".pyc"
 
-witness = {
-    "schema": "ctxc-materialized-context-witness-0.2",
+witness_unsigned = {
+    "schema": "ctxc-materialized-context-witness-0.3",
     "allocation_plan_sha256": ALLOCATION_PLAN_SHA256,
     "component_manifest_sha256": receipt["component_manifest_sha256"],
     "context_bundle_sha256": first.context_bundle_sha256,
@@ -367,22 +572,23 @@ witness = {
     "materialization_sha256": upgraded.materialization_sha256,
     "protected_state_sha256": first.protected_state_sha256,
     "provider_execution_ready": runtime["provider_execution_ready"],
+    "prompt_assembly": prompt_assembly,
     "prototype_sha256": first.prototype_sha256,
     "recent_message_ids": [value.id for value in first.recent_messages],
     "recent_messages_sha256": first.recent_messages_sha256,
     "receipt_sha256": receipt["receipt_sha256"],
     "retrieval_result_sha256": runtime["retrieval_result_sha256"],
     "runtime_sha256": hashlib.sha256(runtime_bytes).hexdigest(),
+    "overflow_refusal": overflow_refusal,
 }
-print(
-    json.dumps(
-        witness,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
-)
+witness = {
+    **witness_unsigned,
+    "witness_sha256": domain_sha256(
+        b"ctxc-materialized-context-witness-v0.3\0",
+        witness_unsigned,
+    ),
+}
+sys.stdout.buffer.write(canonical_bytes(witness) + b"\n")
 """
 
 
@@ -784,6 +990,20 @@ def _materialized_context_probe_command(
     ]
 
 
+def _canonical_json_bytes(value: object) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _domain_sha256(domain: bytes, value: object) -> str:
+    return hashlib.sha256(domain + _canonical_json_bytes(value)).hexdigest()
+
+
 def _decode_materialized_witness(output: str) -> dict[str, object]:
     if type(output) is not str:
         raise TypeError("materialized-context witness output must be an exact string")
@@ -796,8 +1016,24 @@ def _decode_materialized_witness(output: str) -> dict[str, object]:
     if not output.endswith("\n") or output.count("\n") != 1:
         raise ValueError("materialized-context witness must be exactly one JSON line")
     raw = output[:-1]
+
+    def exact_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        value: dict[str, object] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("materialized-context witness has duplicate fields")
+            value[key] = item
+        return value
+
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"materialized-context witness contains {value}")
+
     try:
-        value = json.loads(raw)
+        value = json.loads(
+            raw,
+            object_pairs_hook=exact_object,
+            parse_constant=reject_constant,
+        )
     except (RecursionError, json.JSONDecodeError) as exc:
         raise ValueError("materialized-context witness is not valid JSON") from exc
     if type(value) is not dict:
@@ -834,7 +1070,402 @@ def _decode_materialized_witness(output: str) -> dict[str, object]:
         raise ValueError("materialized-context witness cannot claim provider readiness")
     if value["retrieval_result_sha256"] is not None:
         raise ValueError("materialized-context witness cannot bind retrieval in v1")
+
+    witness_sha256 = value["witness_sha256"]
+    if type(witness_sha256) is not str or _SHA256.fullmatch(witness_sha256) is None:
+        raise ValueError("materialized-context witness self-digest is invalid")
+    witness_unsigned = {key: item for key, item in value.items() if key != "witness_sha256"}
+    if _domain_sha256(_WITNESS_DOMAIN, witness_unsigned) != witness_sha256:
+        raise ValueError("materialized-context witness self-digest mismatch")
+
+    prompt_assembly = value["prompt_assembly"]
+    if type(prompt_assembly) is not dict or frozenset(prompt_assembly) != _PROMPT_ASSEMBLY_FIELDS:
+        raise ValueError("materialized prompt-assembly fields are invalid")
+    if prompt_assembly["schema"] != MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA:
+        raise ValueError("materialized prompt-assembly schema is unsupported")
+    prompt_sha256 = prompt_assembly["prompt_assembly_sha256"]
+    if type(prompt_sha256) is not str or _SHA256.fullmatch(prompt_sha256) is None:
+        raise ValueError("materialized prompt-assembly digest is invalid")
+    prompt_unsigned = {
+        key: item for key, item in prompt_assembly.items() if key != "prompt_assembly_sha256"
+    }
+    if _domain_sha256(_PROMPT_ASSEMBLY_DOMAIN, prompt_unsigned) != prompt_sha256:
+        raise ValueError("materialized prompt-assembly digest mismatch")
+    component_manifest = prompt_assembly["component_manifest"]
+    runtime_payload = prompt_assembly["runtime_payload"]
+    if type(component_manifest) is not dict or type(runtime_payload) is not dict:
+        raise TypeError("materialized prompt-assembly components must be exact objects")
+    if frozenset(component_manifest) != _COMPONENT_MANIFEST_FIELDS:
+        raise ValueError("materialized component-manifest fields are invalid")
+    if frozenset(runtime_payload) != _RUNTIME_PAYLOAD_FIELDS:
+        raise ValueError("materialized runtime-payload fields are invalid")
+    if component_manifest["schema"] != "loss-resistant-materialized-context-components-v1":
+        raise ValueError("materialized component-manifest schema is unsupported")
+    if runtime_payload["schema"] != "loss-resistant-runtime-context-plan-v1":
+        raise ValueError("materialized runtime-payload schema is unsupported")
+    if (
+        type(runtime_payload["accounting_scope"]) is not str
+        or runtime_payload["accounting_scope"] != "planned-components-not-final-provider-request"
+    ):
+        raise ValueError("materialized runtime accounting scope is invalid")
+    if (
+        type(runtime_payload["tokenizer_identity"]) is not str
+        or runtime_payload["tokenizer_identity"] != "release-smoke-character-count-v1"
+    ):
+        raise ValueError("materialized runtime tokenizer identity is invalid")
+    if (
+        hashlib.sha256(_canonical_json_bytes(component_manifest)).hexdigest()
+        != value["component_manifest_sha256"]
+    ):
+        raise ValueError("materialized prompt-assembly manifest digest mismatch")
+    if (
+        hashlib.sha256(_canonical_json_bytes(runtime_payload)).hexdigest()
+        != value["runtime_sha256"]
+    ):
+        raise ValueError("materialized prompt-assembly runtime digest mismatch")
+    if component_manifest.get("prompt_order") != [
+        "lrcc_verified_memory",
+        "recent_raw_messages",
+        "external_untrusted_retrieval",
+        "current_user_turn",
+    ]:
+        raise ValueError("materialized prompt-assembly order is invalid")
+    verified_manifest = component_manifest.get("lrcc_verified_memory")
+    if type(verified_manifest) is not dict or (
+        frozenset(verified_manifest)
+        != {
+            "runtime_field",
+            "classification",
+            "content_sha256",
+            "can_supply_system_or_developer_instructions",
+        }
+        or verified_manifest.get("runtime_field") != "verified_context"
+        or verified_manifest.get("classification") != "lrcc_verified_semantic_memory"
+        or verified_manifest.get("content_sha256") != runtime_payload["rendered_memory_sha256"]
+        or verified_manifest.get("can_supply_system_or_developer_instructions") is not False
+    ):
+        raise ValueError("materialized verified-memory classification is invalid")
+    recent_manifest = component_manifest.get("recent_raw_messages")
+    if type(recent_manifest) is not dict or (
+        frozenset(recent_manifest)
+        != {
+            "runtime_field",
+            "classification",
+            "ordered_set_sha256",
+            "source_roles_preserved",
+            "provider_role_projection_allowed",
+            "can_supply_system_or_developer_instructions",
+        }
+        or recent_manifest.get("runtime_field") != "recent_messages"
+        or recent_manifest.get("provider_role_projection_allowed") is not False
+        or recent_manifest.get("classification") != "untrusted_recent_history"
+        or recent_manifest.get("ordered_set_sha256") != runtime_payload["recent_messages_sha256"]
+        or recent_manifest.get("source_roles_preserved") is not True
+        or recent_manifest.get("can_supply_system_or_developer_instructions") is not False
+    ):
+        raise ValueError("materialized recent-history boundary is invalid")
+    retrieval_manifest = component_manifest.get("external_untrusted_retrieval")
+    if type(retrieval_manifest) is not dict or (
+        frozenset(retrieval_manifest)
+        != {
+            "runtime_field",
+            "classification",
+            "content",
+            "retrieval_result_sha256",
+            "host_binding_required",
+            "can_mutate_lrcc_memory",
+            "can_supply_system_or_developer_instructions",
+        }
+        or retrieval_manifest.get("runtime_field") is not None
+        or retrieval_manifest.get("classification") != "untrusted_external_retrieval"
+        or retrieval_manifest.get("content") is not None
+        or retrieval_manifest.get("retrieval_result_sha256") is not None
+        or retrieval_manifest.get("host_binding_required") is not True
+        or retrieval_manifest.get("can_mutate_lrcc_memory") is not False
+        or retrieval_manifest.get("can_supply_system_or_developer_instructions") is not False
+    ):
+        raise ValueError("materialized retrieval boundary is invalid")
+    current_manifest = component_manifest.get("current_user_turn")
+    if type(current_manifest) is not dict or (
+        frozenset(current_manifest)
+        != {
+            "runtime_field",
+            "classification",
+            "record_sha256",
+            "required_role",
+            "can_supply_system_or_developer_instructions",
+        }
+        or current_manifest.get("runtime_field") != "current_turn"
+        or current_manifest.get("classification") != "current_user_turn"
+        or current_manifest.get("record_sha256") != runtime_payload["current_turn_sha256"]
+        or current_manifest.get("required_role") != "user"
+        or current_manifest.get("can_supply_system_or_developer_instructions") is not False
+    ):
+        raise ValueError("materialized current-turn boundary is invalid")
+    omission_manifest = component_manifest.get("omitted_from_live_tail")
+    if type(omission_manifest) is not dict or (
+        frozenset(omission_manifest)
+        != {
+            "runtime_field",
+            "classification",
+            "ordered_set_sha256",
+            "contains_raw_content",
+        }
+        or omission_manifest.get("runtime_field") != "recent_tail_omissions"
+        or omission_manifest.get("classification") != "compiled_source_accounting"
+        or omission_manifest.get("ordered_set_sha256")
+        != runtime_payload["recent_tail_omissions_sha256"]
+        or omission_manifest.get("contains_raw_content") is not False
+    ):
+        raise ValueError("materialized omission boundary is invalid")
+    refusal_manifest = component_manifest.get("refusal")
+    if type(refusal_manifest) is not dict or refusal_manifest != {
+        "runtime_field": "refusal_reason",
+        "value": None,
+    }:
+        raise ValueError("materialized accepted-result refusal boundary is invalid")
+    if runtime_payload.get("allocation_plan_sha256") != value["allocation_plan_sha256"]:
+        raise ValueError("materialized runtime allocation binding is invalid")
+    for outer, runtime in (
+        ("prototype_sha256", "prototype_sha256"),
+        ("materialization_sha256", "materialization_sha256"),
+        ("context_bundle_sha256", "context_bundle_sha256"),
+        ("protected_state_sha256", "protected_state_sha256"),
+        ("recent_messages_sha256", "recent_messages_sha256"),
+        ("current_turn_sha256", "current_turn_sha256"),
+        ("fixed_input_sha256", "fixed_input_sha256"),
+    ):
+        if runtime_payload.get(runtime) != value[outer]:
+            raise ValueError(f"materialized runtime {runtime} binding is invalid")
+    if (
+        runtime_payload.get("provider_execution_ready") is not False
+        or runtime_payload.get("final_provider_recount_required") is not True
+        or runtime_payload.get("retrieval_result_sha256") is not None
+        or runtime_payload.get("refusal_reason") is not None
+    ):
+        raise ValueError("materialized runtime claim boundary is invalid")
+    verified_context = runtime_payload.get("verified_context")
+    if (
+        type(verified_context) is not str
+        or hashlib.sha256(verified_context.encode("utf-8")).hexdigest()
+        != runtime_payload["rendered_memory_sha256"]
+    ):
+        raise ValueError("materialized verified-memory content digest mismatch")
+    recent_messages = runtime_payload.get("recent_messages")
+    current_turn = runtime_payload.get("current_turn")
+    omissions = runtime_payload.get("recent_tail_omissions")
+    if type(recent_messages) is not list or type(current_turn) is not dict:
+        raise TypeError("materialized runtime message components are invalid")
+    if type(omissions) is not list:
+        raise TypeError("materialized runtime omissions are invalid")
+    recent_ids = [message.get("id") for message in recent_messages if type(message) is dict]
+    if len(recent_ids) != len(recent_messages) or recent_ids != value["recent_message_ids"]:
+        raise ValueError("materialized runtime recent-message order is invalid")
+    if current_turn.get("id") != value["current_turn_id"] or current_turn.get("role") != "user":
+        raise ValueError("materialized runtime current turn is invalid")
+    for message in [*recent_messages, current_turn]:
+        if type(message) is not dict or frozenset(message) != _RUNTIME_MESSAGE_FIELDS:
+            raise ValueError("materialized runtime message fields are invalid")
+        if type(message["id"]) is not str or type(message["role"]) is not str:
+            raise TypeError("materialized runtime message identity is invalid")
+        if type(message["sequence"]) is not int or message["sequence"] < 0:
+            raise TypeError("materialized runtime message sequence is invalid")
+        if type(message["content"]) is not str:
+            raise TypeError("materialized runtime message content is invalid")
+        if (
+            hashlib.sha256(message["content"].encode("utf-8")).hexdigest()
+            != message["content_sha256"]
+        ):
+            raise ValueError("materialized runtime message content digest mismatch")
+        if (
+            type(message["record_sha256"]) is not str
+            or _SHA256.fullmatch(message["record_sha256"]) is None
+        ):
+            raise ValueError("materialized runtime message record digest is invalid")
+    if current_turn["record_sha256"] != value["current_turn_sha256"]:
+        raise ValueError("materialized runtime current-turn record digest mismatch")
+    for omission in omissions:
+        if type(omission) is not dict or frozenset(omission) != _RUNTIME_OMISSION_FIELDS:
+            raise ValueError("materialized runtime omission fields are invalid")
+        if "content" in omission:
+            raise ValueError("materialized runtime omission contains raw content")
+        if type(omission["sequence"]) is not int or omission["sequence"] < 0:
+            raise TypeError("materialized runtime omission sequence is invalid")
+        for field in (
+            "content_sha256",
+            "source_record_sha256",
+            "compiled_record_sha256",
+        ):
+            if type(omission[field]) is not str or _SHA256.fullmatch(omission[field]) is None:
+                raise ValueError(f"materialized runtime omission {field} is invalid")
+    accounting = runtime_payload.get("accounting")
+    if type(accounting) is not dict or frozenset(accounting) != _RUNTIME_ACCOUNTING_FIELDS:
+        raise ValueError("materialized runtime accounting fields are invalid")
+    if any(type(count) is not int or count < 0 for count in accounting.values()):
+        raise TypeError("materialized runtime accounting counts must be exact integers")
+    if accounting["current_turn_message_count"] != 1:
+        raise ValueError("materialized runtime current-turn accounting is invalid")
+    if accounting["recent_tail_message_count"] != len(recent_messages):
+        raise ValueError("materialized runtime recent-message accounting is invalid")
+    if accounting["compiled_prefix_message_count"] != len(omissions):
+        raise ValueError("materialized runtime omission accounting is invalid")
+    if accounting["source_message_count"] != len(omissions) + len(recent_messages) + 1:
+        raise ValueError("materialized runtime source accounting is invalid")
+    if accounting["input_tokens"] != sum(
+        accounting[name]
+        for name in (
+            "fixed_input_tokens",
+            "memory_tokens",
+            "recent_tail_tokens",
+            "current_turn_tokens",
+        )
+    ):
+        raise ValueError("materialized runtime input accounting is invalid")
+    if accounting["occupied_tokens"] != sum(
+        (
+            accounting["input_tokens"],
+            accounting["reserved_output_tokens"],
+            accounting["safety_margin_tokens"],
+        )
+    ):
+        raise ValueError("materialized runtime occupied accounting is invalid")
+    if accounting["remaining_tokens"] != (
+        accounting["hard_limit_tokens"] - accounting["occupied_tokens"]
+    ):
+        raise ValueError("materialized runtime remaining accounting is invalid")
+    if value["current_turn_id"] in recent_ids or value["current_turn_id"] in [
+        item.get("id") for item in omissions if type(item) is dict
+    ]:
+        raise ValueError("materialized runtime duplicates the current turn")
+
+    overflow_refusal = value["overflow_refusal"]
+    if type(overflow_refusal) is not dict or frozenset(overflow_refusal) != _REFUSAL_GOLDEN_FIELDS:
+        raise ValueError("materialized overflow-refusal fields are invalid")
+    if overflow_refusal["schema"] != MATERIALIZED_REFUSAL_GOLDEN_SCHEMA:
+        raise ValueError("materialized overflow-refusal schema is unsupported")
+    if overflow_refusal["reason"] != "compiled_memory_not_verified":
+        raise ValueError("materialized overflow-refusal reason is invalid")
+    refusal_sha256 = overflow_refusal["refusal_sha256"]
+    if type(refusal_sha256) is not str or _SHA256.fullmatch(refusal_sha256) is None:
+        raise ValueError("materialized overflow-refusal digest is invalid")
+    refusal_unsigned = {
+        key: item for key, item in overflow_refusal.items() if key != "refusal_sha256"
+    }
+    if _domain_sha256(_REFUSAL_GOLDEN_DOMAIN, refusal_unsigned) != refusal_sha256:
+        raise ValueError("materialized overflow-refusal digest mismatch")
+    refusal = overflow_refusal["diagnostic"]
+    if type(refusal) is not dict or frozenset(refusal) != _REFUSAL_DIAGNOSTIC_FIELDS:
+        raise ValueError("materialized overflow diagnostic fields are invalid")
+    expected_refusal = {
+        "schema": "loss-resistant-materialization-refusal-diagnostic-v1",
+        "reason": "compiled_memory_not_verified",
+        "stage": "compile_memory",
+        "cause": "memory_token_budget_overflow",
+        "tokenizer_identity": "unicode-codepoint-count-v1",
+        "memory_budget_tokens": 1_200,
+        "required_memory_tokens": 1_772,
+        "overflow_tokens": 572,
+        "compiled_prefix_message_count": 14,
+        "compiled_prefix_manifest_sha256": (
+            "0d681e92657fdddffa8c37de63aa5428d68d126b0a2e8a930e1a87354feae6b2"
+        ),
+        "retrieval_result_sha256": None,
+        "provider_execution_ready": False,
+        "final_provider_recount_required": True,
+    }
+    if refusal != expected_refusal:
+        raise ValueError("materialized overflow diagnostic changed")
     return value
+
+
+def _run_bounded_materialized_probe(command: Sequence[str]) -> str:
+    if type(command) not in {list, tuple} or not command:
+        raise TypeError("materialized-context probe command must be a non-empty sequence")
+    if any(type(value) is not str for value in command):
+        raise TypeError("materialized-context probe arguments must be exact strings")
+    empty_positions = [index for index, value in enumerate(command) if not value]
+    installed_module_root_sentinel = (
+        empty_positions == [6]
+        and len(command) == 7
+        and tuple(command[1:4]) == ("-I", "-B", "-c")
+        and command[4] == _MATERIALIZED_CONTEXT_PROBE
+        and command[5] == "1"
+    )
+    if empty_positions and not installed_module_root_sentinel:
+        raise TypeError("materialized-context probe arguments must be non-empty")
+    process = subprocess.Popen(
+        list(command),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=_subprocess_environment(),
+    )
+    if process.stdout is None or process.stderr is None:  # pragma: no cover - Popen contract
+        process.kill()
+        raise RuntimeError("materialized-context probe pipes are unavailable")
+    stdout = bytearray()
+    stderr = bytearray()
+    exceeded: list[str] = []
+    exceeded_lock = threading.Lock()
+
+    def drain(stream: object, sink: bytearray, label: str) -> None:
+        total = 0
+        try:
+            while True:
+                chunk = stream.read(4096)
+                if not chunk:
+                    break
+                total += len(chunk)
+                remaining = _MAX_WITNESS_BYTES + 1 - len(sink)
+                if remaining > 0:
+                    sink.extend(chunk[:remaining])
+                if total > _MAX_WITNESS_BYTES:
+                    with exceeded_lock:
+                        if label not in exceeded:
+                            exceeded.append(label)
+                    with contextlib.suppress(OSError):
+                        process.kill()
+        finally:
+            stream.close()
+
+    readers = (
+        threading.Thread(target=drain, args=(process.stdout, stdout, "stdout"), daemon=True),
+        threading.Thread(target=drain, args=(process.stderr, stderr, "stderr"), daemon=True),
+    )
+    for reader in readers:
+        reader.start()
+    timed_out = False
+    try:
+        returncode = process.wait(timeout=120)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        process.kill()
+        returncode = process.wait(timeout=10)
+    for reader in readers:
+        reader.join(timeout=10)
+    if any(reader.is_alive() for reader in readers):
+        raise RuntimeError("materialized-context probe output readers did not terminate")
+    if timed_out:
+        raise TimeoutError("materialized-context probe exceeded 120 seconds")
+    if exceeded:
+        raise ValueError(
+            "materialized-context probe " + ", ".join(exceeded) + " exceeds the byte limit"
+        )
+    try:
+        decoded_stdout = bytes(stdout).decode("utf-8", errors="strict")
+        decoded_stderr = bytes(stderr).decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError("materialized-context probe output is not UTF-8") from exc
+    if returncode != 0:
+        raise subprocess.CalledProcessError(
+            returncode,
+            list(command),
+            output=decoded_stdout,
+            stderr=decoded_stderr,
+        )
+    if decoded_stderr:
+        raise RuntimeError("materialized-context probe emitted unexpected stderr")
+    return decoded_stdout
 
 
 def _materialized_context_witness(
@@ -844,23 +1475,14 @@ def _materialized_context_witness(
     require_standalone: bool,
 ) -> dict[str, object]:
     verified_root = None if module_root is None else _verified_distribution_directory(module_root)
-    completed = subprocess.run(
+    output = _run_bounded_materialized_probe(
         _materialized_context_probe_command(
             python,
             module_root=verified_root,
             require_standalone=require_standalone,
-        ),
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="strict",
-        env=_subprocess_environment(),
-        timeout=120,
+        )
     )
-    if completed.stderr:
-        raise RuntimeError("materialized-context probe emitted unexpected stderr")
-    return _decode_materialized_witness(completed.stdout)
+    return _decode_materialized_witness(output)
 
 
 def _source_module_root() -> Path:
@@ -879,12 +1501,30 @@ def _source_module_root() -> Path:
 def _require_matching_materialized_witnesses(
     source_witness: dict[str, object],
     installed_witnesses: Sequence[dict[str, object]],
-) -> None:
+) -> dict[str, object]:
     if len(installed_witnesses) != 2:
         raise ValueError("release smoke requires exactly two installed witnesses")
+    source_bytes = _canonical_json_bytes(source_witness) + b"\n"
     for witness in installed_witnesses:
-        if witness != source_witness:
+        if _canonical_json_bytes(witness) + b"\n" != source_bytes:
             raise RuntimeError("installed materialized-context behavior differs from source")
+    return source_witness
+
+
+def _require_expected_materialized_witness_sha256(
+    witness: Mapping[str, object],
+    expected_sha256: str | None,
+) -> str:
+    if type(witness) is not dict:
+        raise TypeError("materialized witness must be an exact object")
+    actual = hashlib.sha256(_canonical_json_bytes(witness) + b"\n").hexdigest()
+    if expected_sha256 is None:
+        return actual
+    if type(expected_sha256) is not str or _SHA256.fullmatch(expected_sha256) is None:
+        raise TypeError("expected materialized witness SHA-256 is invalid")
+    if actual != expected_sha256:
+        raise ValueError("materialized witness does not match the external expected SHA-256")
+    return actual
 
 
 def _assert_installed_package(
@@ -1107,6 +1747,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--schema-dir", type=Path, default=Path("schemas"))
     parser.add_argument("--build-wheelhouse", type=Path)
     parser.add_argument("--build-requirements", type=Path)
+    parser.add_argument("--expected-materialized-witness-sha256")
     return parser
 
 
@@ -1114,6 +1755,7 @@ def _release_report(
     schema_count: int,
     artifacts: Sequence[dict[str, str]],
     materialized_evaluation: Mapping[str, object],
+    materialized_witness: Mapping[str, object],
 ) -> dict[str, object]:
     if type(materialized_evaluation) is not dict:
         raise TypeError("materialized evaluation must be an exact object")
@@ -1122,8 +1764,12 @@ def _release_report(
     claims = materialized_evaluation["claim_boundaries"]
     if claims != _EVALUATION_CLAIM_BOUNDARIES:
         raise ValueError("release report materialized evaluation claims changed")
+    if type(materialized_witness) is not dict:
+        raise TypeError("materialized witness must be an exact object")
+    witness_line = _canonical_json_bytes(materialized_witness) + b"\n"
+    decoded_witness = _decode_materialized_witness(witness_line.decode("utf-8"))
     return {
-        "schema": "ctxc-release-install-smoke-0.2",
+        "schema": "ctxc-release-install-smoke-0.3",
         "schema_count": schema_count,
         "artifacts": [dict(value) for value in artifacts],
         "materialized_evaluation": {
@@ -1134,6 +1780,11 @@ def _release_report(
             "retrieval_status": claims["retrieval_status"],
             "source_wheel_sdist_report_bytes_identical": True,
             "status": "failed",
+        },
+        "materialized_context_witness": {
+            "canonical_line_sha256": hashlib.sha256(witness_line).hexdigest(),
+            "source_wheel_sdist_witness_bytes_identical": True,
+            "witness": decoded_witness,
         },
     }
 
@@ -1151,6 +1802,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         Path(sys.executable),
         module_root=_source_module_root(),
         require_standalone=False,
+    )
+    _require_expected_materialized_witness_sha256(
+        source_witness,
+        args.expected_materialized_witness_sha256,
     )
     with tempfile.TemporaryDirectory(
         prefix="ctxc-source-evaluation-",
@@ -1186,6 +1841,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 len(expected_schema_names),
                 results,
                 materialized_evaluation,
+                source_witness,
             ),
             sort_keys=True,
         )

@@ -86,8 +86,12 @@ def test_ci_covers_supported_python_and_platform_release_smokes() -> None:
     assert workflow.count("--build-requirements requirements-build.lock") == 2
     assert workflow.count("release-install-smoke.json") >= 4
     assert workflow.count("release-install-smoke.log") >= 4
-    assert workflow.count("ctxc-release-install-smoke-0.2") == 2
+    assert workflow.count("ctxc-release-install-smoke-0.3") == 2
+    assert "ctxc-release-install-smoke-0.2" not in workflow
     assert "ctxc-release-install-smoke-0.1" not in workflow
+    assert workflow.count("materialized_context_witness") == 4
+    assert workflow.count("ctxc-materialized-context-witness-0.3") == 2
+    assert workflow.count("source_wheel_sdist_witness_bytes_identical") == 4
     assert workflow.count(
         "evaluation['source_wheel_sdist_report_bytes_identical'] is True"
     ) == 2

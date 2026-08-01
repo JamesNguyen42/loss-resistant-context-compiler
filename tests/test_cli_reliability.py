@@ -215,11 +215,26 @@ def test_strict_budget_failure_has_policy_diagnostic(
             "json",
         ]
     )
-    diagnostic = json.loads(capsys.readouterr().err)
+    raw_diagnostic = capsys.readouterr().err
+    diagnostic = json.loads(raw_diagnostic)
 
     assert exit_code == 2
-    assert diagnostic["category"] == "policy"
-    assert diagnostic["code"] == "policy_rejected"
+    assert raw_diagnostic == (
+        '{"category":"policy","code":"policy_rejected","command":"compile",'
+        '"exception_type":"ValueError","exit_code":2,"message":"loss-resistant '
+        'context exceeds token budget by 298 estimated tokens","schema":'
+        '"ctxc-diagnostic-0.1"}\n'
+    )
+    assert diagnostic == {
+        "category": "policy",
+        "code": "policy_rejected",
+        "command": "compile",
+        "exception_type": "ValueError",
+        "exit_code": 2,
+        "message": "loss-resistant context exceeds token budget by 298 estimated tokens",
+        "schema": "ctxc-diagnostic-0.1",
+    }
+    assert "details" not in diagnostic
 
 
 def test_compile_uses_atomic_output_path(

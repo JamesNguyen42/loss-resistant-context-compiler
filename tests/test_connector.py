@@ -319,6 +319,29 @@ def test_protected_budget_overflow_is_explicit_and_never_omitted() -> None:
     )
 
 
+def test_connector_strict_budget_preserves_plain_value_error() -> None:
+    connector = LocalAIConnector(
+        policy=CompilationPolicy(
+            token_budget=10,
+            minimum_compression_ratio=1.0,
+            fail_on_budget_overflow=True,
+        ),
+        token_counter=lambda _text: 11,
+        token_counter_id="connector-plain-value-error-v1",
+    )
+
+    with pytest.raises(ValueError) as caught:
+        connector.compile_memory(
+            events=[event(0, "constraint: preserve the public exception boundary")],
+            session_id="strict-budget-public-boundary",
+        )
+
+    assert type(caught.value) is ValueError
+    assert caught.value.args == (
+        "loss-resistant context exceeds token budget by 1 estimated tokens",
+    )
+
+
 def test_exact_token_counter_adapter_is_bound_and_required_for_replay() -> None:
     adapter = ExactTokenCounterAdapter(
         "words-v1",

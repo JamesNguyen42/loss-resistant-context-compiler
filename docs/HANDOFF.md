@@ -35,7 +35,7 @@ live-readiness status.
 | --- | --- |
 | Repository | [`JamesNguyen42/loss-resistant-context-compiler`](https://github.com/JamesNguyen42/loss-resistant-context-compiler) |
 | Default branch | `main` |
-| Package version | `0.1.1a4` |
+| Package version | `0.1.1a5` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
 | Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; `0f20b8a`: exact seven-wheel OpenHands build inputs, clean provider/a2 harness, and all automatic hosted gates passed; `7915beb`: exact seven-wheel root release inputs and post-acquisition offline build/smoke passed every automatic hosted gate; no local inference |
@@ -55,7 +55,7 @@ live-readiness status.
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
-| OpenHands integration | Separate `ctxc-openhands` `0.1.0a5` draft alpha; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
+| OpenHands integration | Separate `ctxc-openhands` `0.1.0a6` draft alpha; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
 | Installed JSON Schemas | 25 (7 historical ids, 18 current-namespace ids) |
 | External 50%-better claim | Not established |
 | Downstream task completion evidence | None yet |
@@ -389,8 +389,10 @@ Important compile options:
 - `inspect --format text --show-items` exposes bounded provenance, status,
   conflict, and selection details; `--max-display-items`,
   `--max-display-links`, and `--max-text-chars` cap the terminal view;
-- every operation accepts `--error-format text|json`; JSON runtime errors use
-  the `ctxc-diagnostic-0.1` schema.
+- every operation accepts `--error-format text|json`; generic JSON runtime
+  errors use `ctxc-diagnostic-0.1`, while exact materialization overflow
+  details use `ctxc-diagnostic-0.2` with a nested
+  `loss-resistant-materialization-refusal-diagnostic-v1` object.
 
 `ctxc redact` requires distinct output/report paths, refuses input aliases,
 accepts stdin, and exposes a repeatable `--detector` subset plus mask,
@@ -679,10 +681,10 @@ operations, validation, and unresolved host requirements.
 | Python distribution | `loss-resistant-context-compiler` |
 | Import package | `context_compiler` |
 | CLI command | `ctxc` |
-| Package version | `0.1.1a4` |
+| Package version | `0.1.1a5` |
 | OpenHands distribution | `ctxc-openhands` (separate package) |
 | OpenHands import / CLI | `ctxc_openhands` / `ctxc-openhands` |
-| OpenHands integration version | `0.1.0a5` draft alpha |
+| OpenHands integration version | `0.1.0a6` draft alpha |
 | Reviewed OpenHands host | `1.8.0` at `bc26df351dd5d833a95131556dbe2da69af82253` |
 | Reviewed OpenHands SDK/tools/agent-server | `1.27.0` at `904279edf2df5fa12d7caecc7576f62659b2e2dd` |
 | Compiled artifact schema | `1.0` |
@@ -690,7 +692,7 @@ operations, validation, and unresolved host requirements.
 | Artifact diff schema | `ctxc-artifact-diff-0.1` |
 | Artifact inspection schema | `ctxc-artifact-inspection-0.1` |
 | Compile completion event schema | `ctxc-event-0.1` |
-| CLI diagnostic schema | `ctxc-diagnostic-0.1` |
+| CLI diagnostic schemas | `ctxc-diagnostic-0.1` for generic errors; `ctxc-diagnostic-0.2` with nested `loss-resistant-materialization-refusal-diagnostic-v1` for exact materialization overflow details |
 | Redaction report schema | `ctxc-redaction-report-0.1` |
 | Redaction verification schema | `ctxc-redaction-verification-0.1` |
 | Detached trust manifest schema | `ctxc-trust-manifest-0.1` |

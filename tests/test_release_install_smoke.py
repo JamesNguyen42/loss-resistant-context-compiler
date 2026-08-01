@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import hashlib
 import io
 import json
@@ -14,6 +15,8 @@ import pytest
 
 from scripts.release_install_smoke import (
     MATERIALIZED_EVALUATION_REPORT_SCHEMA,
+    MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA,
+    MATERIALIZED_REFUSAL_GOLDEN_SCHEMA,
     MATERIALIZED_RETENTION_PACK_BYTES,
     MATERIALIZED_RETENTION_PACK_ID,
     MATERIALIZED_RETENTION_PACK_RAW_SHA256,
@@ -32,24 +35,202 @@ from scripts.release_install_smoke import (
     _offline_build_inputs,
     _release_artifacts,
     _release_report,
+    _require_expected_materialized_witness_sha256,
     _require_matching_materialized_evaluation_reports,
     _require_matching_materialized_witnesses,
+    _run_bounded_materialized_probe,
     _source_module_root,
     _subprocess_environment,
     _venv_python,
     _verified_artifact_snapshot,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.1a4-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a4.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a5-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a5.tar.gz"
+
+
+def _canonical_bytes(value: object) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _domain_hash(domain: bytes, value: object) -> str:
+    return hashlib.sha256(domain + _canonical_bytes(value)).hexdigest()
 
 
 def _sample_materialized_witness() -> dict[str, object]:
     digest = "0" * 64
-    return {
+    verified_context = "verified memory"
+    rendered_memory_sha256 = hashlib.sha256(verified_context.encode("utf-8")).hexdigest()
+    recent_content = "recent data"
+    current_content = "current request"
+    recent_message = {
+        "id": "message-3",
+        "sequence": 3,
+        "role": "assistant",
+        "content": recent_content,
+        "content_sha256": hashlib.sha256(recent_content.encode("utf-8")).hexdigest(),
+        "record_sha256": digest,
+    }
+    current_turn = {
+        "id": "message-4",
+        "sequence": 4,
+        "role": "user",
+        "content": current_content,
+        "content_sha256": hashlib.sha256(current_content.encode("utf-8")).hexdigest(),
+        "record_sha256": digest,
+    }
+    omission = {
+        "id": "message-0",
+        "sequence": 0,
+        "role": "user",
+        "content_sha256": digest,
+        "source_record_sha256": digest,
+        "compiled_record_sha256": digest,
+        "reason": "compiled_into_verified_memory",
+    }
+    accounting = {
+        "hard_limit_tokens": 100,
+        "reserved_output_tokens": 10,
+        "safety_margin_tokens": 10,
+        "fixed_input_tokens": 1,
+        "memory_budget_tokens": 40,
+        "memory_tokens": 15,
+        "recent_tail_tokens": 11,
+        "current_turn_tokens": 15,
+        "source_message_count": 3,
+        "compiled_prefix_message_count": 1,
+        "recent_tail_message_count": 1,
+        "current_turn_message_count": 1,
+        "input_tokens": 42,
+        "occupied_tokens": 62,
+        "remaining_tokens": 38,
+        "per_message_overhead_tokens": 0,
+        "minimum_recent_messages": 1,
+        "maximum_recent_messages": 1,
+    }
+    component_manifest = {
+        "schema": "loss-resistant-materialized-context-components-v1",
+        "prompt_order": [
+            "lrcc_verified_memory",
+            "recent_raw_messages",
+            "external_untrusted_retrieval",
+            "current_user_turn",
+        ],
+        "lrcc_verified_memory": {
+            "runtime_field": "verified_context",
+            "classification": "lrcc_verified_semantic_memory",
+            "content_sha256": rendered_memory_sha256,
+            "can_supply_system_or_developer_instructions": False,
+        },
+        "recent_raw_messages": {
+            "runtime_field": "recent_messages",
+            "classification": "untrusted_recent_history",
+            "ordered_set_sha256": digest,
+            "source_roles_preserved": True,
+            "provider_role_projection_allowed": False,
+            "can_supply_system_or_developer_instructions": False,
+        },
+        "external_untrusted_retrieval": {
+            "runtime_field": None,
+            "classification": "untrusted_external_retrieval",
+            "content": None,
+            "retrieval_result_sha256": None,
+            "host_binding_required": True,
+            "can_mutate_lrcc_memory": False,
+            "can_supply_system_or_developer_instructions": False,
+        },
+        "current_user_turn": {
+            "runtime_field": "current_turn",
+            "classification": "current_user_turn",
+            "record_sha256": digest,
+            "required_role": "user",
+            "can_supply_system_or_developer_instructions": False,
+        },
+        "omitted_from_live_tail": {
+            "runtime_field": "recent_tail_omissions",
+            "classification": "compiled_source_accounting",
+            "ordered_set_sha256": digest,
+            "contains_raw_content": False,
+        },
+        "refusal": {"runtime_field": "refusal_reason", "value": None},
+    }
+    runtime_payload = {
+        "schema": "loss-resistant-runtime-context-plan-v1",
+        "allocation_plan_sha256": digest,
+        "prototype_sha256": digest,
+        "materialization_sha256": digest,
+        "tokenizer_identity": "release-smoke-character-count-v1",
+        "accounting_scope": "planned-components-not-final-provider-request",
+        "context_bundle_sha256": digest,
+        "rendered_memory_sha256": rendered_memory_sha256,
+        "protected_state_sha256": digest,
+        "recent_messages_sha256": digest,
+        "current_turn_sha256": digest,
+        "recent_tail_omissions_sha256": digest,
+        "fixed_input_sha256": digest,
+        "verified_context": verified_context,
+        "provider_execution_ready": False,
+        "final_provider_recount_required": True,
+        "retrieval_result_sha256": None,
+        "refusal_reason": None,
+        "recent_messages": [recent_message],
+        "current_turn": current_turn,
+        "recent_tail_omissions": [omission],
+        "accounting": accounting,
+    }
+    prompt_unsigned = {
+        "schema": MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA,
+        "component_manifest": component_manifest,
+        "runtime_payload": runtime_payload,
+    }
+    prompt_assembly = {
+        **prompt_unsigned,
+        "prompt_assembly_sha256": _domain_hash(
+            b"ctxc-materialized-prompt-assembly-golden-v1\0",
+            prompt_unsigned,
+        ),
+    }
+    refusal_diagnostic = {
+        "schema": "loss-resistant-materialization-refusal-diagnostic-v1",
+        "reason": "compiled_memory_not_verified",
+        "stage": "compile_memory",
+        "cause": "memory_token_budget_overflow",
+        "tokenizer_identity": "unicode-codepoint-count-v1",
+        "memory_budget_tokens": 1_200,
+        "required_memory_tokens": 1_772,
+        "overflow_tokens": 572,
+        "compiled_prefix_message_count": 14,
+        "compiled_prefix_manifest_sha256": (
+            "0d681e92657fdddffa8c37de63aa5428d68d126b0a2e8a930e1a87354feae6b2"
+        ),
+        "retrieval_result_sha256": None,
+        "provider_execution_ready": False,
+        "final_provider_recount_required": True,
+    }
+    refusal_unsigned = {
+        "schema": MATERIALIZED_REFUSAL_GOLDEN_SCHEMA,
+        "reason": "compiled_memory_not_verified",
+        "diagnostic": refusal_diagnostic,
+    }
+    overflow_refusal = {
+        **refusal_unsigned,
+        "refusal_sha256": _domain_hash(
+            b"ctxc-materialization-refusal-golden-v1\0",
+            refusal_unsigned,
+        ),
+    }
+    unsigned = {
         "schema": MATERIALIZED_WITNESS_SCHEMA,
         "allocation_plan_sha256": digest,
-        "component_manifest_sha256": digest,
+        "component_manifest_sha256": hashlib.sha256(
+            _canonical_bytes(component_manifest)
+        ).hexdigest(),
         "context_bundle_sha256": digest,
         "current_turn_id": "message-4",
         "current_turn_sha256": digest,
@@ -58,12 +239,21 @@ def _sample_materialized_witness() -> dict[str, object]:
         "materialization_sha256": digest,
         "protected_state_sha256": digest,
         "provider_execution_ready": False,
+        "prompt_assembly": prompt_assembly,
         "prototype_sha256": digest,
         "recent_message_ids": ["message-3"],
         "recent_messages_sha256": digest,
         "receipt_sha256": digest,
         "retrieval_result_sha256": None,
-        "runtime_sha256": digest,
+        "runtime_sha256": hashlib.sha256(_canonical_bytes(runtime_payload)).hexdigest(),
+        "overflow_refusal": overflow_refusal,
+    }
+    return {
+        **unsigned,
+        "witness_sha256": _domain_hash(
+            b"ctxc-materialized-context-witness-v0.3\0",
+            unsigned,
+        ),
     }
 
 
@@ -80,11 +270,39 @@ def _encoded_witness(value: object) -> str:
     )
 
 
+def _reseal_witness(value: dict[str, object]) -> None:
+    prompt = value["prompt_assembly"]
+    assert type(prompt) is dict
+    value["component_manifest_sha256"] = hashlib.sha256(
+        _canonical_bytes(prompt["component_manifest"])
+    ).hexdigest()
+    value["runtime_sha256"] = hashlib.sha256(
+        _canonical_bytes(prompt["runtime_payload"])
+    ).hexdigest()
+    prompt_unsigned = {key: item for key, item in prompt.items() if key != "prompt_assembly_sha256"}
+    prompt["prompt_assembly_sha256"] = _domain_hash(
+        b"ctxc-materialized-prompt-assembly-golden-v1\0",
+        prompt_unsigned,
+    )
+    refusal = value["overflow_refusal"]
+    assert type(refusal) is dict
+    refusal_unsigned = {key: item for key, item in refusal.items() if key != "refusal_sha256"}
+    refusal["refusal_sha256"] = _domain_hash(
+        b"ctxc-materialization-refusal-golden-v1\0",
+        refusal_unsigned,
+    )
+    unsigned = {key: item for key, item in value.items() if key != "witness_sha256"}
+    value["witness_sha256"] = _domain_hash(
+        b"ctxc-materialized-context-witness-v0.3\0",
+        unsigned,
+    )
+
+
 def _sample_evaluation_report_bytes() -> bytes:
     case_ids = [f"retention-case-{index:03d}" for index in range(1, 21)]
     unsigned = {
         "schema": MATERIALIZED_EVALUATION_REPORT_SCHEMA,
-        "evaluator_package_version": "0.1.1a4",
+        "evaluator_package_version": "0.1.1a5",
         "pack": {
             "schema": MATERIALIZED_RETENTION_PACK_SCHEMA,
             "pack_id": MATERIALIZED_RETENTION_PACK_ID,
@@ -434,6 +652,66 @@ def test_materialized_context_probe_command_is_isolated_and_module_qualified(
     assert "materialized_retention_pack_v1.json" in script
     assert MATERIALIZED_RETENTION_PACK_RAW_SHA256 in script
     assert "__pycache__" in script
+    assert "package_root.parent == Path(module_root).resolve(strict=True)" in script
+    assert "package_root.relative_to(Path(sys.prefix).resolve(strict=True))" in script
+
+    installed = _materialized_context_probe_command(
+        python,
+        module_root=None,
+        require_standalone=True,
+    )
+    assert installed[:6] == [str(python), "-I", "-B", "-c", script, "1"]
+    assert installed[6] == ""
+
+
+def test_bounded_probe_accepts_only_the_closed_empty_module_root_sentinel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ReachedPopen(RuntimeError):
+        pass
+
+    def reached_popen(*_args: object, **_kwargs: object) -> None:
+        raise ReachedPopen("validated command reached Popen")
+
+    monkeypatch.setattr(subprocess, "Popen", reached_popen)
+    command = _materialized_context_probe_command(
+        tmp_path / "python",
+        module_root=None,
+        require_standalone=True,
+    )
+    with pytest.raises(ReachedPopen, match="reached Popen"):
+        _run_bounded_materialized_probe(command)
+    with pytest.raises(ReachedPopen, match="reached Popen"):
+        _run_bounded_materialized_probe(tuple(command))
+
+    invalid = (
+        ["", *command[1:]],
+        [*command, ""],
+        [*command[:-2], "", ""],
+        [*command[:5], "0", ""],
+    )
+    for value in invalid:
+        with pytest.raises(TypeError, match="non-empty"):
+            _run_bounded_materialized_probe(value)
+
+    class StringSubclass(str):
+        pass
+
+    with pytest.raises(TypeError, match="exact strings"):
+        _run_bounded_materialized_probe([*command[:-1], StringSubclass("")])
+
+
+def test_materialized_context_probe_output_is_bounded_before_decoding() -> None:
+    command = [
+        sys.executable,
+        "-I",
+        "-B",
+        "-c",
+        "import sys; sys.stdout.buffer.write(b'x' * (16 * 1024 + 1))",
+    ]
+    with pytest.raises(ValueError, match="stdout exceeds the byte limit"):
+        _run_bounded_materialized_probe(command)
 
 
 def test_materialized_evaluation_commands_bind_source_and_installed_cli(
@@ -577,6 +855,26 @@ def test_materialized_context_source_witness_is_byte_deterministic() -> None:
     assert first["retrieval_result_sha256"] is None
     assert len(first["component_manifest_sha256"]) == 64
     assert len(first["receipt_sha256"]) == 64
+    prompt = first["prompt_assembly"]
+    assert prompt["component_manifest"]["prompt_order"] == [
+        "lrcc_verified_memory",
+        "recent_raw_messages",
+        "external_untrusted_retrieval",
+        "current_user_turn",
+    ]
+    assert prompt["runtime_payload"]["current_turn"]["id"] == "message-4"
+    assert prompt["runtime_payload"]["retrieval_result_sha256"] is None
+    assert (
+        prompt["component_manifest"]["recent_raw_messages"]["provider_role_projection_allowed"]
+        is False
+    )
+    refusal = first["overflow_refusal"]["diagnostic"]
+    assert refusal["reason"] == "compiled_memory_not_verified"
+    assert refusal["required_memory_tokens"] == 1_772
+    assert refusal["memory_budget_tokens"] == 1_200
+    assert refusal["overflow_tokens"] == 572
+    assert refusal["provider_execution_ready"] is False
+    assert refusal["final_provider_recount_required"] is True
 
 
 def test_materialized_context_witness_requires_canonical_exact_fields() -> None:
@@ -599,7 +897,89 @@ def test_materialized_context_witness_requires_canonical_exact_fields() -> None:
         _decode_materialized_witness(_encoded_witness(bool_substitution))
 
     with pytest.raises(ValueError, match="byte limit"):
-        _decode_materialized_witness("x" * (4 * 1024 + 1))
+        _decode_materialized_witness("x" * (16 * 1024 + 1))
+
+    duplicate = _encoded_witness(valid).replace(
+        '"schema":"ctxc-materialized-context-witness-0.3"',
+        '"schema":"ctxc-materialized-context-witness-0.3",'
+        '"schema":"ctxc-materialized-context-witness-0.3"',
+        1,
+    )
+    with pytest.raises(ValueError, match="duplicate fields"):
+        _decode_materialized_witness(duplicate)
+
+    with pytest.raises(ValueError, match="not canonical"):
+        _decode_materialized_witness(_encoded_witness(valid).replace("\n", "\r\n"))
+
+
+def test_materialized_context_witness_rejects_nested_resealed_tamper() -> None:
+    valid = _sample_materialized_witness()
+
+    changed = copy.deepcopy(valid)
+    changed["prompt_assembly"]["unexpected"] = None
+    _reseal_witness(changed)
+    with pytest.raises(ValueError, match="prompt-assembly fields"):
+        _decode_materialized_witness(_encoded_witness(changed))
+
+    changed = copy.deepcopy(valid)
+    changed["prompt_assembly"]["runtime_payload"]["retrieval_result_sha256"] = "1" * 64
+    _reseal_witness(changed)
+    with pytest.raises(ValueError, match="retrieval boundary|claim boundary"):
+        _decode_materialized_witness(_encoded_witness(changed))
+
+    changed = copy.deepcopy(valid)
+    changed["prompt_assembly"]["component_manifest"]["recent_raw_messages"][
+        "provider_role_projection_allowed"
+    ] = True
+    _reseal_witness(changed)
+    with pytest.raises(ValueError, match="recent-history boundary"):
+        _decode_materialized_witness(_encoded_witness(changed))
+
+    changed = copy.deepcopy(valid)
+    changed["prompt_assembly"]["runtime_payload"]["accounting_scope"] = "final-provider-request"
+    _reseal_witness(changed)
+    with pytest.raises(ValueError, match="accounting scope"):
+        _decode_materialized_witness(_encoded_witness(changed))
+
+    changed = copy.deepcopy(valid)
+    changed["prompt_assembly"]["runtime_payload"]["tokenizer_identity"] = "different-counter"
+    _reseal_witness(changed)
+    with pytest.raises(ValueError, match="tokenizer identity"):
+        _decode_materialized_witness(_encoded_witness(changed))
+
+    changed = copy.deepcopy(valid)
+    changed["prompt_assembly"]["runtime_payload"]["recent_messages"][0]["content"] = "changed"
+    _reseal_witness(changed)
+    with pytest.raises(ValueError, match="content digest"):
+        _decode_materialized_witness(_encoded_witness(changed))
+
+    changed = copy.deepcopy(valid)
+    changed["overflow_refusal"]["diagnostic"]["overflow_tokens"] = 573
+    _reseal_witness(changed)
+    with pytest.raises(ValueError, match="overflow diagnostic changed"):
+        _decode_materialized_witness(_encoded_witness(changed))
+
+    changed = copy.deepcopy(valid)
+    changed["overflow_refusal"]["diagnostic"]["memory_budget_tokens"] = True
+    _reseal_witness(changed)
+    with pytest.raises(ValueError, match="overflow diagnostic changed"):
+        _decode_materialized_witness(_encoded_witness(changed))
+
+
+def test_resealed_structural_substitution_cannot_match_source_witness() -> None:
+    source = _sample_materialized_witness()
+    changed = copy.deepcopy(source)
+    current = changed["prompt_assembly"]["runtime_payload"]["current_turn"]
+    current["content"] = "different current request"
+    current["content_sha256"] = hashlib.sha256(current["content"].encode("utf-8")).hexdigest()
+    _reseal_witness(changed)
+
+    assert _decode_materialized_witness(_encoded_witness(changed)) == changed
+    with pytest.raises(RuntimeError, match="differs from source"):
+        _require_matching_materialized_witnesses(
+            source,
+            [copy.deepcopy(source), changed],
+        )
 
 
 def test_release_smoke_compares_source_wheel_and_sdist_witnesses() -> None:
@@ -618,6 +998,18 @@ def test_release_smoke_compares_source_wheel_and_sdist_witnesses() -> None:
         )
     with pytest.raises(ValueError, match="exactly two"):
         _require_matching_materialized_witnesses(source, [dict(source)])
+
+
+def test_materialized_witness_consumption_requires_external_expected_digest() -> None:
+    witness = _sample_materialized_witness()
+    expected = hashlib.sha256(_canonical_bytes(witness) + b"\n").hexdigest()
+
+    assert _require_expected_materialized_witness_sha256(witness, expected) == expected
+    assert _require_expected_materialized_witness_sha256(witness, None) == expected
+    with pytest.raises(ValueError, match="external expected"):
+        _require_expected_materialized_witness_sha256(witness, "0" * 64)
+    with pytest.raises(TypeError, match="expected materialized witness"):
+        _require_expected_materialized_witness_sha256(witness, True)
 
 
 def test_release_smoke_compares_source_wheel_and_sdist_evaluation_reports() -> None:
@@ -676,15 +1068,17 @@ def test_release_smoke_report_shape_remains_compatible() -> None:
     ]
 
     evaluation = _decode_materialized_evaluation_report(_sample_evaluation_report_bytes())
-    report = _release_report(13, artifacts, evaluation)
+    witness = _sample_materialized_witness()
+    report = _release_report(13, artifacts, evaluation, witness)
 
     assert set(report) == {
         "schema",
         "schema_count",
         "artifacts",
         "materialized_evaluation",
+        "materialized_context_witness",
     }
-    assert report["schema"] == "ctxc-release-install-smoke-0.2"
+    assert report["schema"] == "ctxc-release-install-smoke-0.3"
     assert report["schema_count"] == 13
     assert report["artifacts"] == artifacts
     assert all(
@@ -700,8 +1094,13 @@ def test_release_smoke_report_shape_remains_compatible() -> None:
         "source_wheel_sdist_report_bytes_identical": True,
         "status": "failed",
     }
+    assert report["materialized_context_witness"] == {
+        "canonical_line_sha256": hashlib.sha256(_canonical_bytes(witness) + b"\n").hexdigest(),
+        "source_wheel_sdist_witness_bytes_identical": True,
+        "witness": witness,
+    }
 
     green = dict(evaluation)
     green["integrity_passed"] = True
     with pytest.raises(ValueError, match="cannot relabel"):
-        _release_report(13, artifacts, green)
+        _release_report(13, artifacts, green, witness)

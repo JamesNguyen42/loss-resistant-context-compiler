@@ -166,6 +166,33 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a5 - 2026-07-31
+
+### Added
+
+- Added exact, content-free planning-unit details when strict materialization
+  computes an over-budget memory candidate before independent verification.
+  The public reason
+  remains `compiled_memory_not_verified`; unrelated compile and replay errors
+  do not fabricate numeric accounting or partial output.
+- Extended the clean-install materialization witness with the verified-memory,
+  recent-history, null-retrieval, and current-turn prompt-assembly inputs plus
+  the fixed held-out overflow diagnostic. Source, wheel, and sdist probes must
+  emit identical canonical witness bytes, and the release report retains their
+  independently calculated canonical-line digest.
+
+### Changed
+
+- Advanced the separately packaged OpenHands integration to `0.1.0a6` solely
+  to preserve its exact dependency on core `0.1.1a5`.
+
+The compact-projection experiment was not adopted and successful compiled and
+materialized payload bytes are unchanged: projection occurs after the strict
+compiler budget decision and cannot repair a pre-materialization refusal.
+Provider execution remains not ready, a final immutable provider-request
+recount is still required, and this change makes no semantic-completeness,
+retrieval-authority, or comparative claim.
+
 ## 0.1.1a4 - 2026-07-31
 
 ### Changed

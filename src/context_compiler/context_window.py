@@ -18,6 +18,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from typing import Any
 
+from .compiler import _capture_budget_overflow
 from .connector import (
     ContextBundle,
     ExactTokenCounterAdapter,
@@ -36,6 +37,9 @@ from .limits import (
 from .models import CompilationPolicy, SourceRecord, _FrozenDict, _FrozenList
 
 CONTEXT_WINDOW_PROTOTYPE_SCHEMA = "loss-resistant-context-window-prototype-v1"
+MATERIALIZATION_REFUSAL_DIAGNOSTIC_SCHEMA = (
+    "loss-resistant-materialization-refusal-diagnostic-v1"
+)
 _ACCOUNTING_SCOPE = "planned-components-not-final-provider-request"
 _FINAL_RECOUNT_REASON = "final_provider_recount_required"
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -136,14 +140,134 @@ _PROTECTED_STATE_KEYS = (
     "omitted_or_overflowed_protected_items",
 )
 _MANDATORY_MEMORY_KINDS = frozenset({"goal", "constraint", "user_correction", "decision"})
+_REFUSAL_DIAGNOSTIC_FIELDS = frozenset(
+    {
+        "schema",
+        "reason",
+        "stage",
+        "cause",
+        "tokenizer_identity",
+        "memory_budget_tokens",
+        "required_memory_tokens",
+        "overflow_tokens",
+        "compiled_prefix_message_count",
+        "compiled_prefix_manifest_sha256",
+        "retrieval_result_sha256",
+        "provider_execution_ready",
+        "final_provider_recount_required",
+    }
+)
+
+
+def _validated_refusal_diagnostic(value: object) -> bytes:
+    if type(value) is not dict:
+        raise TypeError("refusal diagnostic must be an exact object")
+    if any(type(key) is not str for key in value):
+        raise TypeError("refusal diagnostic keys must be exact strings")
+    actual = frozenset(value)
+    if actual != _REFUSAL_DIAGNOSTIC_FIELDS:
+        unknown = sorted(actual - _REFUSAL_DIAGNOSTIC_FIELDS)
+        missing = sorted(_REFUSAL_DIAGNOSTIC_FIELDS - actual)
+        raise ValueError(
+            "refusal diagnostic fields are invalid; "
+            f"unknown={unknown}, missing={missing}"
+        )
+    if (
+        type(value["schema"]) is not str
+        or value["schema"] != MATERIALIZATION_REFUSAL_DIAGNOSTIC_SCHEMA
+    ):
+        raise ValueError("refusal diagnostic schema is unsupported")
+    if type(value["reason"]) is not str or value["reason"] != "compiled_memory_not_verified":
+        raise ValueError("refusal diagnostic reason is unsupported")
+    if type(value["stage"]) is not str or value["stage"] != "compile_memory":
+        raise ValueError("refusal diagnostic stage is unsupported")
+    if (
+        type(value["cause"]) is not str
+        or value["cause"] != "memory_token_budget_overflow"
+    ):
+        raise ValueError("refusal diagnostic cause is unsupported")
+    tokenizer_identity = value["tokenizer_identity"]
+    if type(tokenizer_identity) is not str or not 1 <= len(tokenizer_identity) <= 256:
+        raise TypeError("refusal diagnostic tokenizer_identity must be an exact string")
+    if any(ord(character) < 32 or ord(character) == 127 for character in tokenizer_identity):
+        raise ValueError("refusal diagnostic tokenizer_identity contains control characters")
+    try:
+        tokenizer_identity.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ValueError("refusal diagnostic tokenizer_identity must be valid Unicode") from exc
+    for name in (
+        "memory_budget_tokens",
+        "required_memory_tokens",
+        "overflow_tokens",
+        "compiled_prefix_message_count",
+    ):
+        count = value[name]
+        if type(count) is not int or not 0 <= count <= _MAX_COUNT:
+            raise TypeError(f"refusal diagnostic {name} must be a non-negative exact integer")
+    if value["memory_budget_tokens"] == 0:
+        raise ValueError("refusal diagnostic memory_budget_tokens must be positive")
+    if value["compiled_prefix_message_count"] == 0:
+        raise ValueError("refusal diagnostic requires a compiled source prefix")
+    if value["required_memory_tokens"] <= value["memory_budget_tokens"]:
+        raise ValueError("refusal diagnostic does not describe a budget overflow")
+    if (
+        value["required_memory_tokens"] - value["memory_budget_tokens"]
+        != value["overflow_tokens"]
+    ):
+        raise ValueError("refusal diagnostic overflow accounting is inconsistent")
+    manifest_sha256 = value["compiled_prefix_manifest_sha256"]
+    if type(manifest_sha256) is not str or _SHA256.fullmatch(manifest_sha256) is None:
+        raise TypeError(
+            "refusal diagnostic compiled_prefix_manifest_sha256 must be a SHA-256 string"
+        )
+    if value["retrieval_result_sha256"] is not None:
+        raise ValueError("refusal diagnostic retrieval_result_sha256 must be null")
+    if value["provider_execution_ready"] is not False:
+        raise ValueError("a refusal diagnostic cannot claim provider readiness")
+    if value["final_provider_recount_required"] is not True:
+        raise ValueError("a refusal diagnostic must require the final provider recount")
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
 
 
 class ContextWindowError(ValueError):
     """Raised when a trustworthy active context window cannot be produced."""
 
-    def __init__(self, message: str, *, reason: str = "invalid_context_window") -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str = "invalid_context_window",
+        diagnostic: dict[str, object] | None = None,
+    ) -> None:
         super().__init__(message)
         self.reason = reason
+        if diagnostic is not None:
+            if type(diagnostic) is not dict:
+                raise TypeError("refusal diagnostic must be an exact object")
+            if type(reason) is not str:
+                raise TypeError("a refusal diagnostic reason must be an exact string")
+            if reason != diagnostic.get("reason"):
+                raise ValueError("exception and refusal diagnostic reasons must match")
+        self._diagnostic_bytes = (
+            None if diagnostic is None else _validated_refusal_diagnostic(diagnostic)
+        )
+
+    @property
+    def diagnostic(self) -> dict[str, object] | None:
+        """Return a detached exact-JSON refusal diagnostic when one is available."""
+
+        if self._diagnostic_bytes is None:
+            return None
+        value = json.loads(self._diagnostic_bytes.decode("utf-8"))
+        if type(value) is not dict:  # pragma: no cover - constructor invariant
+            raise RuntimeError("stored refusal diagnostic is not an object")
+        return value
 
 
 class _FrozenAccounting(dict[str, int]):
@@ -586,6 +710,20 @@ def _deterministic_session_id(
         "policy": _policy_value(policy),
     }
     return "context-window-" + _digest(value)[:48]
+
+
+def _compiled_prefix_manifest_sha256(prefix: list[SourceRecord]) -> str:
+    """Bind the ordered compiled prefix without disclosing its raw values."""
+
+    return _digest(
+        {
+            "schema": "loss-resistant-compiled-prefix-manifest-v1",
+            "records": [
+                [source.sequence, source.id, source.record_sha256]
+                for source in prefix
+            ],
+        }
+    )
 
 
 def _normalize_bundle_operational_fields(bundle: ContextBundle) -> ContextBundle:
@@ -1384,18 +1522,89 @@ def compose_context_window(
             tokenizer_identity=token_counter.identity,
             policy=compilation_policy,
         )
+        overflow_capture: list[tuple[int, int]] = []
         try:
-            compiled = connector.compile_memory(
-                events=events,
-                session_id=session_id,
-            )
+            with _capture_budget_overflow() as overflow_capture:
+                compiled = connector.compile_memory(
+                    events=events,
+                    session_id=session_id,
+                )
             context_bundle = _normalize_bundle_operational_fields(compiled)
             replay = connector.verify_memory(
                 context_bundle,
                 events=events,
                 session_id=session_id,
             )
-        except (TypeError, ValueError, RuntimeError, OverflowError) as exc:
+        except ValueError as exc:
+            diagnostic = None
+            tokenizer_identity = token_counter.identity
+            if type(tokenizer_identity) is not str:
+                tokenizer_identity_valid = False
+            else:
+                try:
+                    tokenizer_identity.encode("utf-8")
+                except UnicodeEncodeError:
+                    tokenizer_identity_valid = False
+                else:
+                    tokenizer_identity_valid = (
+                        1 <= len(tokenizer_identity) <= 256
+                        and not any(
+                            ord(character) < 32 or ord(character) == 127
+                            for character in tokenizer_identity
+                        )
+                    )
+            overflow_details = (
+                overflow_capture[0] if len(overflow_capture) == 1 else None
+            )
+            if overflow_details is not None:
+                required_tokens, token_budget = overflow_details
+                expected_message = (
+                    "loss-resistant context exceeds token budget by "
+                    f"{required_tokens - token_budget} estimated tokens"
+                )
+            else:
+                required_tokens = token_budget = -1
+                expected_message = ""
+            if (
+                type(exc) is ValueError
+                and exc.args == (expected_message,)
+                and token_budget == budget.memory_budget_tokens
+                and tokenizer_identity_valid
+                and all(
+                    type(value) is int and 0 <= value <= _MAX_COUNT
+                    for value in (
+                        token_budget,
+                        required_tokens,
+                        required_tokens - token_budget,
+                        len(prefix),
+                    )
+                )
+                and len(prefix) > 0
+            ):
+                diagnostic = {
+                    "schema": MATERIALIZATION_REFUSAL_DIAGNOSTIC_SCHEMA,
+                    "reason": "compiled_memory_not_verified",
+                    "stage": "compile_memory",
+                    "cause": "memory_token_budget_overflow",
+                    "tokenizer_identity": tokenizer_identity,
+                    "memory_budget_tokens": token_budget,
+                    "required_memory_tokens": required_tokens,
+                    "overflow_tokens": required_tokens - token_budget,
+                    "compiled_prefix_message_count": len(prefix),
+                    "compiled_prefix_manifest_sha256": (
+                        _compiled_prefix_manifest_sha256(prefix)
+                    ),
+                    "retrieval_result_sha256": None,
+                    "provider_execution_ready": False,
+                    "final_provider_recount_required": True,
+                }
+            raise ContextWindowError(
+                "older context could not be compiled and independently verified "
+                "within the memory budget",
+                reason="compiled_memory_not_verified",
+                diagnostic=diagnostic,
+            ) from exc
+        except (TypeError, RuntimeError, OverflowError) as exc:
             raise ContextWindowError(
                 "older context could not be compiled and independently verified "
                 "within the memory budget",
@@ -1503,6 +1712,7 @@ def compose_context_window(
 
 __all__ = [
     "CONTEXT_WINDOW_PROTOTYPE_SCHEMA",
+    "MATERIALIZATION_REFUSAL_DIAGNOSTIC_SCHEMA",
     "ContextWindowBudget",
     "ContextWindowError",
     "ContextWindowPrototype",

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import math
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from .extractors import ExtractionResult, Extractor, RuleBasedExtractor
 from .limits import (
@@ -45,6 +47,47 @@ from .resolver import resolve_temporal_state
 from .verifier import verify_memory
 
 TokenCounter = Callable[[str], int]
+
+
+_BUDGET_OVERFLOW_CAPTURE: ContextVar[list[tuple[int, int]] | None] = ContextVar(
+    "ctxc_budget_overflow_capture",
+    default=None,
+)
+
+
+@contextmanager
+def _capture_budget_overflow() -> Iterator[list[tuple[int, int]]]:
+    """Capture exact overflow counts for one internal materialization call.
+
+    Ordinary compiler and connector callers still receive the same plain
+    ``ValueError``.  A context-local capture avoids changing a public method
+    signature and prevents concurrent materializations from sharing details.
+    """
+
+    capture: list[tuple[int, int]] = []
+    token = _BUDGET_OVERFLOW_CAPTURE.set(capture)
+    try:
+        yield capture
+    finally:
+        _BUDGET_OVERFLOW_CAPTURE.reset(token)
+
+
+def _budget_overflow_error(*, required_tokens: int, token_budget: int) -> ValueError:
+    """Return the unchanged public error while optionally recording counts."""
+
+    if type(required_tokens) is not int or required_tokens < 0:
+        raise TypeError("required_tokens must be a non-negative exact integer")
+    if type(token_budget) is not int or token_budget < 0:
+        raise TypeError("token_budget must be a non-negative exact integer")
+    if required_tokens <= token_budget:
+        raise ValueError("a budget overflow requires required_tokens > token_budget")
+    capture = _BUDGET_OVERFLOW_CAPTURE.get()
+    if capture is not None:
+        capture.append((required_tokens, token_budget))
+    return ValueError(
+        "loss-resistant context exceeds token budget by "
+        f"{required_tokens - token_budget} estimated tokens"
+    )
 
 
 class ContextCompiler:
@@ -362,6 +405,11 @@ class ContextCompiler:
             target_met=ratio >= self.policy.minimum_compression_ratio,
         )
         if self.policy.fail_on_budget_overflow and result.compression.budget_overflow:
+            if type(active_tokens) is int and type(self.policy.token_budget) is int:
+                raise _budget_overflow_error(
+                    required_tokens=active_tokens,
+                    token_budget=self.policy.token_budget,
+                )
             raise ValueError(
                 "loss-resistant context exceeds token budget by "
                 f"{result.compression.budget_overflow} estimated tokens"
