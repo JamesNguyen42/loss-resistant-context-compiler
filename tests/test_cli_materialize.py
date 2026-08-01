@@ -12,6 +12,7 @@ import pytest
 
 from context_compiler import verify_materialized_context_result
 from context_compiler.cli import _write_exact_utf8_output, main
+from context_compiler.context_window import CONTEXT_WINDOW_DEGRADATION_MODE
 
 ROOT = Path(__file__).parents[1]
 HISTORY = ROOT / "examples" / "materialized_context.jsonl"
@@ -415,15 +416,19 @@ def test_materialize_output_file_remains_atomic_utf8_and_overwritable(
     )
 
 
+@pytest.mark.parametrize("use_degradation_policy", [False, True])
 def test_materialize_refusal_is_reason_coded_and_writes_no_partial_output(
     tmp_path: Path,
     capsys,
+    use_degradation_policy: bool,
 ) -> None:
     output = tmp_path / "result.json"
     output.write_text("previous-complete-result\n", encoding="utf-8")
     args = materialize_args(str(HISTORY))
     args[args.index("3000")] = "400"
     args[args.index("2200")] = "200"
+    if use_degradation_policy:
+        args.extend(["--degradation-policy", CONTEXT_WINDOW_DEGRADATION_MODE])
     args.extend(["--error-format", "json", "--output", str(output)])
 
     assert main(args) == 2
@@ -543,3 +548,159 @@ def test_materialize_cli_emits_exact_content_free_overflow_diagnostic(
         assert source["content"] not in raw
     assert str(tmp_path) not in raw
     assert output.read_text(encoding="utf-8") == "previous-complete-result\n"
+
+
+def test_materialize_cli_exact_degradation_policy_accepts_bounded_overflow(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    pack = json.loads(
+        files("context_compiler")
+        .joinpath("data/materialized_retention_pack_v1.json")
+        .read_text(encoding="utf-8")
+    )
+    case = next(value for value in pack["cases"] if value["case_id"] == "case-021")
+    history = tmp_path / "heldout.jsonl"
+    history.write_text(
+        "".join(
+            json.dumps(source, ensure_ascii=False, separators=(",", ":")) + "\n"
+            for source in case["sources"]
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    input_before = history.read_bytes()
+    args = [
+        "materialize",
+        str(history),
+        "--current-turn-id",
+        case["current_turn_id"],
+        "--hard-limit-tokens",
+        "2200",
+        "--memory-budget-tokens",
+        "1200",
+        "--reserved-output-tokens",
+        "128",
+        "--safety-margin-tokens",
+        "64",
+        "--minimum-recent-messages",
+        "2",
+        "--maximum-recent-messages",
+        "3",
+        "--per-message-overhead-tokens",
+        "2",
+        "--allocation-plan-sha256",
+        ALLOCATION_SHA256,
+        "--tokenizer-profile",
+        "unicode-codepoint-count-v1",
+        "--degradation-policy",
+        CONTEXT_WINDOW_DEGRADATION_MODE,
+    ]
+
+    assert main(args) == 0
+    first = capsys.readouterr()
+    assert first.err == ""
+    assert first.out.count("\n") == 1
+    assert main(args) == 0
+    second = capsys.readouterr()
+    assert second.err == ""
+    assert second.out == first.out
+    assert history.read_bytes() == input_before
+
+    result = json.loads(first.out)
+    assert (
+        verify_materialized_context_result(
+            first.out.encode("utf-8"),
+            expected_receipt_sha256=result["receipt"]["receipt_sha256"],
+            expected_allocation_plan_sha256=ALLOCATION_SHA256,
+        )
+        == result
+    )
+    materialized = result["materialized_context"]
+    prototype = materialized["prototype"]
+    runtime = result["runtime_payload"]
+    degradation = prototype["context_bundle"]["artifact"]["compiler_metadata"][
+        "context_window_degradation"
+    ]
+    assert degradation == {
+        "effective_memory_budget_tokens": 1_486,
+        "mode": CONTEXT_WINDOW_DEGRADATION_MODE,
+        "requested_memory_budget_tokens": 1_200,
+        "rung": "minimal_memory_reallocation_compact",
+    }
+    assert [message["id"] for message in runtime["recent_messages"]] == [
+        "case-021-m15",
+        "case-021-m16",
+        "case-021-m17",
+    ]
+    assert runtime["current_turn"]["id"] == "case-021-m18"
+    assert runtime["accounting"]["current_turn_message_count"] == 1
+    assert len(runtime["recent_tail_omissions"]) == 14
+    assert runtime["retrieval_result_sha256"] is None
+    assert runtime["provider_execution_ready"] is False
+    assert runtime["final_provider_recount_required"] is True
+    assert prototype["context_bundle"]["certificate"]["semantic_completeness_claimed"] is False
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "LOSSLESS-COMPACT-THEN-REALLOCATE-V1",
+        "lossless-compact-only-v1",
+    ],
+)
+def test_materialize_cli_rejects_unknown_degradation_policy_before_reading_sources(
+    value: str,
+    monkeypatch,
+) -> None:
+    def fail_if_read(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("invalid degradation policy must fail before source input")
+
+    monkeypatch.setattr("context_compiler.cli._input_sources", fail_if_read)
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                *materialize_args("unread.jsonl"),
+                "--degradation-policy",
+                value,
+            ]
+        )
+    assert exc_info.value.code == 2
+
+
+def test_materialize_cli_rejects_non_exact_policy_before_reading_sources(
+    monkeypatch,
+    capsys,
+) -> None:
+    class StringSubclass(str):
+        pass
+
+    def fail_if_read(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("non-exact degradation policy must fail before source input")
+
+    monkeypatch.setattr("context_compiler.cli._input_sources", fail_if_read)
+    args = [
+        *materialize_args("unread.jsonl"),
+        "--degradation-policy",
+        StringSubclass(CONTEXT_WINDOW_DEGRADATION_MODE),
+        "--error-format",
+        "json",
+    ]
+    assert main(args) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    diagnostic = json.loads(captured.err)
+    assert diagnostic["code"] == "invalid_type"
+    assert "exact string" in diagnostic["message"]
+
+
+def test_materialize_cli_strict_success_is_identical_with_policy_flag(capsys) -> None:
+    args = materialize_args(str(HISTORY))
+    assert main(args) == 0
+    strict = capsys.readouterr()
+    assert strict.err == ""
+
+    assert main([*args, "--degradation-policy", CONTEXT_WINDOW_DEGRADATION_MODE]) == 0
+    opted_in = capsys.readouterr()
+    assert opted_in.err == ""
+    assert opted_in.out == strict.out

@@ -13,7 +13,9 @@ from pathlib import Path
 
 import pytest
 
+from context_compiler.context_window import CONTEXT_WINDOW_DEGRADATION_MODE
 from scripts.release_install_smoke import (
+    MATERIALIZED_DEGRADATION_POLICY,
     MATERIALIZED_DEGRADATION_REPORT_SCHEMA,
     MATERIALIZED_EVALUATION_REPORT_SCHEMA,
     MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA,
@@ -52,8 +54,12 @@ from scripts.release_install_smoke import (
     _verified_artifact_snapshot,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.1a14-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a14.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a15-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a15.tar.gz"
+
+
+def test_release_smoke_uses_the_exact_materialization_degradation_policy() -> None:
+    assert MATERIALIZED_DEGRADATION_POLICY == CONTEXT_WINDOW_DEGRADATION_MODE
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -309,7 +315,7 @@ def _sample_evaluation_report_bytes() -> bytes:
     case_ids = [f"retention-case-{index:03d}" for index in range(1, 21)]
     unsigned = {
         "schema": MATERIALIZED_EVALUATION_REPORT_SCHEMA,
-        "evaluator_package_version": "0.1.1a14",
+        "evaluator_package_version": "0.1.1a15",
         "pack": {
             "schema": MATERIALIZED_RETENTION_PACK_SCHEMA,
             "pack_id": MATERIALIZED_RETENTION_PACK_ID,

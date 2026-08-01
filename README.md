@@ -24,7 +24,7 @@ meaning can be compressed without loss.
 
 | Area | Current state |
 | --- | --- |
-| Release | Alpha research implementation, package version `0.1.1a14` |
+| Release | Alpha research implementation, package version `0.1.1a15` |
 | Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts, optional LocalAI connector |
@@ -166,12 +166,13 @@ The repository currently includes:
   command that emit the existing materialized v1 plan, structured runtime
   payload, fixed untrusted-retrieval insertion marker, and independently
   verifiable receipt without constructing a provider request;
-- an exact Python-only `ContextWindowDegradationPolicy` opt-in that keeps the
-  default and CLI strict, tries a self-describing lossless compact memory form,
-  and makes at most one bounded memory reallocation from the smaller exact
-  pre-verification requirement observed for the original partition without
-  displacing fixed input, the current turn, or the configured minimum recent
-  tail;
+- an exact `ContextWindowDegradationPolicy` opt-in that keeps default
+  materialization strict and is available to `ctxc materialize` only through
+  `--degradation-policy lossless-compact-then-reallocate-v1`; it tries a
+  self-describing lossless compact memory form and makes at most one bounded
+  memory reallocation from the smaller exact pre-verification requirement
+  observed for the original partition without displacing fixed input, the
+  current turn, or the configured minimum recent tail;
 - an optional standard-library LocalAI connector with six framework-neutral
   operations, a strict versioned JSONL process boundary, immutable
   `SourceEvent` mapping, self-hashed `ContextBundle` output, and deterministic

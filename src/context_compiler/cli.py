@@ -18,7 +18,12 @@ from .artifact_inspection import render_artifact_text, summarize_artifact
 from .atomic import AtomicDestinationExistsError, atomic_write_text
 from .compiler import ContextCompiler
 from .connector import ExactTokenCounterAdapter
-from .context_window import ContextWindowBudget, ContextWindowError
+from .context_window import (
+    CONTEXT_WINDOW_DEGRADATION_MODE,
+    ContextWindowBudget,
+    ContextWindowDegradationPolicy,
+    ContextWindowError,
+)
 from .io import (
     load_artifact_path,
     load_sources,
@@ -507,6 +512,11 @@ def _compile(args: argparse.Namespace) -> int:
 
 def _materialize(args: argparse.Namespace) -> int:
     try:
+        degradation_policy = (
+            None
+            if args.degradation_policy is None
+            else ContextWindowDegradationPolicy(mode=args.degradation_policy)
+        )
         source_limits = _source_limits(args)
         sources = _input_sources(args.input, source_limits)
         budget = ContextWindowBudget(
@@ -531,6 +541,7 @@ def _materialize(args: argparse.Namespace) -> int:
             fixed_input_sha256=args.fixed_input_sha256,
             source_limits=source_limits,
             compilation_limits=_compilation_limits(args),
+            degradation_policy=degradation_policy,
         )
         rendered = json.dumps(
             result,
@@ -1270,6 +1281,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "exact Unicode code-point planning units only; this is not a "
             "provider tokenizer and final provider recount remains required"
+        ),
+    )
+    materialize_parser.add_argument(
+        "--degradation-policy",
+        choices=(CONTEXT_WINDOW_DEGRADATION_MODE,),
+        default=None,
+        help=(
+            "opt into the closed strict-first lossless compact and single "
+            "memory-reallocation policy"
         ),
     )
     _add_source_limit_arguments(materialize_parser)

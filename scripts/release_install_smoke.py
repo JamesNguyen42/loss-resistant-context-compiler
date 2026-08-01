@@ -17,13 +17,14 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a14"
+EXPECTED_VERSION = "0.1.1a15"
 SCHEMA_GLOB = "*.schema.json"
 MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.3"
 MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA = "ctxc-materialized-prompt-assembly-golden-0.1"
 MATERIALIZED_REFUSAL_GOLDEN_SCHEMA = "ctxc-materialization-refusal-golden-0.1"
 MATERIALIZED_EVALUATION_REPORT_SCHEMA = "ctxc-materialized-retention-report-0.1"
 MATERIALIZED_DEGRADATION_REPORT_SCHEMA = "ctxc-materialized-degradation-report-0.2"
+MATERIALIZED_DEGRADATION_POLICY = "lossless-compact-then-reallocate-v1"
 MATERIALIZED_DEGRADATION_SPEC_SHA256 = (
     "6473ddd7b9b941a644032564ebc235040439291693df8d62e31eb07faed89525"
 )
@@ -77,6 +78,74 @@ _EVALUATION_SOURCE_RUNNER = (
     "from context_compiler.cli import main; "
     "raise SystemExit(main(sys.argv[2:]))"
 )
+_INSTALLED_DEGRADATION_CASE_WRITER = r"""
+import hashlib
+from importlib import resources
+import json
+from pathlib import Path
+import sys
+
+if len(sys.argv) != 2:
+    raise RuntimeError("installed degradation case arguments are invalid")
+raw = resources.files("context_compiler").joinpath(
+    "data", "materialized_retention_pack_v1.json"
+).read_bytes()
+assert len(raw) == 192498
+assert hashlib.sha256(raw).hexdigest() == (
+    "a17dc61a05ddb0d20811e8ec64c7a2da5f0262e98f24a734189550abb6f7f466"
+)
+pack = json.loads(raw.decode("utf-8"))
+case = next(value for value in pack["cases"] if value["case_id"] == "case-021")
+encoded = b"".join(
+    json.dumps(
+        source,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8") + b"\n"
+    for source in case["sources"]
+)
+with Path(sys.argv[1]).open("xb") as stream:
+    assert stream.write(encoded) == len(encoded)
+    stream.flush()
+"""
+_INSTALLED_DEGRADATION_RESULT_VERIFIER = r"""
+import json
+from pathlib import Path
+import sys
+
+from context_compiler import verify_materialized_context_result
+
+if len(sys.argv) != 2:
+    raise RuntimeError("installed degradation result arguments are invalid")
+raw = Path(sys.argv[1]).read_bytes()
+value = json.loads(raw)
+verified = verify_materialized_context_result(
+    raw,
+    expected_receipt_sha256=value["receipt"]["receipt_sha256"],
+    expected_allocation_plan_sha256="a" * 64,
+)
+runtime = verified["runtime_payload"]
+prototype = verified["materialized_context"]["prototype"]
+bundle = prototype["context_bundle"]
+degradation = bundle["artifact"]["compiler_metadata"]["context_window_degradation"]
+assert degradation == {
+    "effective_memory_budget_tokens": 1486,
+    "mode": "lossless-compact-then-reallocate-v1",
+    "requested_memory_budget_tokens": 1200,
+    "rung": "minimal_memory_reallocation_compact",
+}
+assert [item["id"] for item in runtime["recent_messages"]] == [
+    "case-021-m15", "case-021-m16", "case-021-m17"
+]
+assert runtime["current_turn"]["id"] == "case-021-m18"
+assert runtime["accounting"]["current_turn_message_count"] == 1
+assert runtime["retrieval_result_sha256"] is None
+assert runtime["provider_execution_ready"] is False
+assert runtime["final_provider_recount_required"] is True
+assert bundle["certificate"]["semantic_completeness_claimed"] is False
+"""
 _WITNESS_HASH_FIELDS = frozenset(
     {
         "allocation_plan_sha256",
@@ -1876,6 +1945,71 @@ def _require_expected_materialized_witness_sha256(
     return actual
 
 
+def _assert_installed_materialize_degradation(
+    ctxc: Path,
+    python: Path,
+    environment: Path,
+) -> None:
+    history = environment / "materialized-degradation-case.jsonl"
+    first = environment / "materialized-degradation-first.json"
+    second = environment / "materialized-degradation-second.json"
+    if any(path.exists() for path in (history, first, second)):
+        raise ValueError("installed materialization degradation paths must be absent")
+    _run(
+        [
+            str(python),
+            "-I",
+            "-B",
+            "-c",
+            _INSTALLED_DEGRADATION_CASE_WRITER,
+            str(history),
+        ]
+    )
+    command = [
+        str(ctxc),
+        "materialize",
+        str(history),
+        "--current-turn-id",
+        "case-021-m18",
+        "--hard-limit-tokens",
+        "2200",
+        "--memory-budget-tokens",
+        "1200",
+        "--reserved-output-tokens",
+        "128",
+        "--safety-margin-tokens",
+        "64",
+        "--minimum-recent-messages",
+        "2",
+        "--maximum-recent-messages",
+        "3",
+        "--per-message-overhead-tokens",
+        "2",
+        "--allocation-plan-sha256",
+        "a" * 64,
+        "--tokenizer-profile",
+        "unicode-codepoint-count-v1",
+        "--degradation-policy",
+        MATERIALIZED_DEGRADATION_POLICY,
+    ]
+    _run([*command, "--output", str(first)])
+    _run([*command, "--output", str(second)])
+    first_raw = _read_stable_evaluation_report(first)
+    second_raw = _read_stable_evaluation_report(second)
+    if first_raw != second_raw:
+        raise RuntimeError("installed materialization degradation output is nondeterministic")
+    _run(
+        [
+            str(python),
+            "-I",
+            "-B",
+            "-c",
+            _INSTALLED_DEGRADATION_RESULT_VERIFIER,
+            str(first),
+        ]
+    )
+
+
 def _assert_installed_package(
     python: Path,
     environment: Path,
@@ -1897,8 +2031,18 @@ def _assert_installed_package(
     ctxc = _venv_ctxc(environment)
     _run([str(ctxc), "--help"])
     _run([str(ctxc), "materialize", "--help"])
+    _run(
+        [
+            str(ctxc),
+            "materialize",
+            "--degradation-policy",
+            MATERIALIZED_DEGRADATION_POLICY,
+            "--help",
+        ]
+    )
     _run([str(ctxc), "evaluate-materialization", "--help"])
     _run([str(ctxc), "evaluate-materialization-degradation", "--help"])
+    _assert_installed_materialize_degradation(ctxc, python, environment)
     _assert_connector_utf8_output(ctxc)
 
     source_path = environment / "sources.json"

@@ -166,6 +166,28 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a15 - 2026-08-01
+
+### Added
+
+- Exposed the existing strict-first bounded materialization degradation policy
+  through the single exact `ctxc materialize --degradation-policy
+  lossless-compact-then-reallocate-v1` opt-in.
+- Added CLI regressions proving the known 1,772-required/1,200-requested
+  compiled-memory refusal can use the already reviewed 1,486-unit compact
+  reallocation while preserving protected memory, recent order, current-turn
+  uniqueness, canonical replay, and all claim boundaries.
+
+### Changed
+
+- Kept default CLI and Python materialization byte-compatible and strict. The
+  fixed structural diagnostics and their frozen expectations remain unchanged.
+- Advanced the separately packaged OpenHands integration to `0.1.0a16` with
+  an exact dependency on core `0.1.1a15`.
+- Retained materialized-context schema v1, null retrieval and capability
+  identities, `provider_execution_ready=false`, and the required final
+  provider recount. No provider or model execution was run.
+
 ## 0.1.1a14 - 2026-08-01
 
 ### Fixed

@@ -586,13 +586,15 @@ Acceptance:
   refuse with `compiled_memory_not_verified`; both intentional hard-limit
   refusals match. The emitted report has `integrity_passed=false` and the CLI
   exits 3.
-- [x] Add a separate exact Python-only degradation policy that reuses the frozen
+- [x] Add a separate exact opt-in degradation policy that reuses the frozen
   held-out inputs without changing them or their expected report. It tries a
   lossless compact rendering and one bounded reallocation to the smaller exact
   pre-verification requirement observed for the original partition. Boundary
   changes can alter the final rendering, so this is not a global-minimum claim.
-  Default and CLI evaluation behavior remain strict, so this does not erase the
-  red gate above.
+  Default materialization and CLI evaluation behavior remain strict. The
+  materialize command exposes only the exact
+  `--degradation-policy lossless-compact-then-reallocate-v1` opt-in, so this
+  does not erase the red gate above.
 - [x] Add a fixed three-arm structural diagnostic over the unchanged 20-case
   held-out split. Strict and compact-only each retain 18 exact
   `compiled_memory_not_verified` failures plus two mandatory refusals; the full

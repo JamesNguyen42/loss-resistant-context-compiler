@@ -73,19 +73,27 @@ memory, or exception internals. Other compile or replay failures retain the
 generic reason without invented numeric details.
 
 These counts describe the named materialization counter, not provider tokens.
-Default Python calls and the CLI do not retry with a larger budget or silently
+Default Python and CLI calls do not retry with a larger budget or silently
 clamp the refusal. A Python host may explicitly provide
-`ContextWindowDegradationPolicy()`. That bounded path preserves the strict
-attempt, retries the same partition with a self-describing lossless compact
-memory representation, compares the two exact pre-verification requirements
-observed for that original partition, and performs at most one bounded
-reallocation using the smaller observed form. A shifted boundary can change the
-final compiled rendering, so the `minimal_memory_reallocation_*` rung names do
-not claim a globally minimal budget over every possible repartition. It never
-reduces fixed input, the current turn, or the configured minimum recent tail.
-Older raw recent messages move into the compiled prefix only when that exact
-reallocation makes it unavoidable; each such source remains represented by a
-digest-bound omission and the complete `ContextBundle` source inventory.
+`ContextWindowDegradationPolicy()`, and the CLI exposes that same closed policy
+only through:
+
+```console
+ctxc materialize history.jsonl ... \
+  --degradation-policy lossless-compact-then-reallocate-v1
+```
+
+That bounded path preserves the strict attempt, retries the same partition with
+a self-describing lossless compact memory representation, compares the two
+exact pre-verification requirements observed for that original partition, and
+performs at most one bounded reallocation using the smaller observed form. A
+shifted boundary can change the final compiled rendering, so the
+`minimal_memory_reallocation_*` rung names do not claim a globally minimal
+budget over every possible repartition. It never reduces fixed input, the
+current turn, or the configured minimum recent tail. Older raw recent messages
+move into the compiled prefix only when that exact reallocation makes it
+unavoidable; each such source remains represented by a digest-bound omission
+and the complete `ContextBundle` source inventory.
 
 The compiler metadata binds the degradation mode and rung, the requested and
 effective memory budgets, and any compact rendering profile before artifact,
@@ -129,9 +137,8 @@ ctxc evaluate-materialization-degradation -o degradation-report.json
 
 Its canonical report binds exact source-span structural retention, correction
 precedence, current-turn, omission, deterministic-byte, and a receipt digest
-from the second deterministic execution. It does not
-enable degradation for `ctxc materialize`, add a retrieval binding, or make the
-result provider-ready.
+from the second deterministic execution. It does not enable the materialize
+command's opt-in, add a retrieval binding, or make the result provider-ready.
 
 No arm calls or simulates a model, retrieval system, or provider. Zoom or other
 retrieval remains outside authoritative LRCC memory. The fixtures are visible,

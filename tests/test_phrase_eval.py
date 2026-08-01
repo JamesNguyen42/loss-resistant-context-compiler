@@ -168,6 +168,7 @@ def test_phrase_evaluation_replays_the_committed_baseline() -> None:
         "0.1.1a12",
         "0.1.1a13",
         "0.1.1a14",
+        "0.1.1a15",
     ],
 )
 def test_phrase_evaluation_replays_each_supported_package_identity(
