@@ -9,6 +9,7 @@ import json
 import os
 import sys
 from collections.abc import Sequence
+from contextlib import suppress
 from pathlib import Path
 
 from .archive import SourceArchive
@@ -65,6 +66,10 @@ _DETAIL_DIAGNOSTIC_SCHEMA = "ctxc-diagnostic-0.2"
 _EVENT_SCHEMA = "ctxc-event-0.1"
 _MATERIALIZE_TOKENIZER_PROFILE = "unicode-codepoint-count-v1"
 _CLI_MASK_CHARACTERS = frozenset({"*", "#", "█", "■"})
+
+
+class _StderrEmissionError(RuntimeError):
+    """Raised after one failed binary diagnostic/event emission attempt."""
 
 
 def _mask_character(value: str) -> str:
@@ -148,12 +153,34 @@ def _write_binary_stdout(rendered: str) -> None:
     output.flush()
 
 
+def _write_binary_stderr(rendered: str) -> None:
+    payload = rendered.encode("utf-8", errors="strict")
+    output = getattr(sys.stderr, "buffer", None)
+    if output is None:
+        raise _StderrEmissionError("standard error does not expose a binary buffer")
+    try:
+        written = output.write(payload)
+    except (OSError, TypeError, ValueError) as exc:
+        raise _StderrEmissionError("standard error write failed") from exc
+    if type(written) is not int or written != len(payload):
+        raise _StderrEmissionError("standard error did not accept the complete diagnostic")
+    try:
+        output.flush()
+    except (OSError, TypeError, ValueError) as exc:
+        raise _StderrEmissionError("standard error flush failed") from exc
+
+
 def _write_exact_utf8_output(value: str, path: str | None) -> None:
     """Write canonical UTF-8 bytes to stdout while preserving atomic file output."""
 
     rendered = value + ("" if value.endswith("\n") else "\n")
     if path:
         atomic_write_text(Path(path), rendered)
+    elif type(sys.stdout) is io.StringIO:
+        written = sys.stdout.write(rendered)
+        if type(written) is not int or written != len(rendered):
+            raise OSError("in-memory standard output did not accept the complete report")
+        sys.stdout.flush()
     else:
         _write_binary_stdout(rendered)
 
@@ -254,7 +281,7 @@ def _write_error(
         }
         if details is not None:
             diagnostic["details"] = details
-        sys.stderr.write(
+        _write_binary_stderr(
             json.dumps(
                 diagnostic,
                 ensure_ascii=False,
@@ -264,7 +291,7 @@ def _write_error(
             + "\n"
         )
         return
-    sys.stderr.write(f"ctxc: {exc}\n")
+    _write_binary_stderr(f"ctxc: {exc}\n")
 
 
 def _compile_event(
@@ -356,7 +383,7 @@ def _emit_compile_event(
         exit_code=exit_code,
         output_format=args.format,
     )
-    sys.stderr.write(
+    _write_binary_stderr(
         json.dumps(
             event,
             ensure_ascii=False,
@@ -448,14 +475,16 @@ def _compile(args: argparse.Namespace) -> int:
                 indent=2,
                 ensure_ascii=False,
             )
-        _write_output(rendered, args.output)
+        _write_exact_utf8_output(rendered, args.output)
         _emit_compile_event(
             args,
             result,
             artifact,
             exit_code=exit_code,
         )
-    except (OSError, TypeError, ValueError) as exc:
+    except _StderrEmissionError:
+        raise
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
         _write_error(args, exc)
         return 2
     return exit_code
@@ -1545,8 +1574,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.handler(args))
+    except _StderrEmissionError:
+        return 2
     except (OSError, TypeError, ValueError, TimeoutError) as exc:
-        _write_error(args, exc)
+        with suppress(_StderrEmissionError):
+            _write_error(args, exc)
         return 2
 
 

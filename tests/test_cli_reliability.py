@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import stat
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -16,6 +19,8 @@ from context_compiler import (
     cli,
 )
 from context_compiler.cli import main
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def write_sources(path: Path, *, content: str = "goal: stay reliable") -> None:
@@ -95,6 +100,200 @@ def test_stdout_output_retains_existing_text_contract(
 ) -> None:
     cli._write_output("value", None)
     assert capsys.readouterr().out == "value\n"
+
+
+def test_exact_utf8_output_retains_builtin_stringio_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = io.StringIO()
+    monkeypatch.setattr(cli.sys, "stdout", output)
+
+    cli._write_exact_utf8_output("caf\u00e9 \U0001f9ea e\u0301", None)
+
+    assert output.getvalue() == "caf\u00e9 \U0001f9ea e\u0301\n"
+
+
+def test_binary_stderr_requires_a_binary_buffer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TextOnlyStderr:
+        pass
+
+    monkeypatch.setattr(cli.sys, "stderr", TextOnlyStderr())
+
+    with pytest.raises(
+        RuntimeError,
+        match="standard error does not expose a binary buffer",
+    ):
+        cli._write_binary_stderr("diagnostic\n")
+
+
+def test_binary_stderr_rejects_a_short_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ShortBuffer:
+        def write(self, payload: bytes) -> int:
+            return len(payload) - 1
+
+        def flush(self) -> None:
+            raise AssertionError("short writes must fail before flush")
+
+    class BinaryStderr:
+        buffer = ShortBuffer()
+
+    monkeypatch.setattr(cli.sys, "stderr", BinaryStderr())
+
+    with pytest.raises(
+        cli._StderrEmissionError,
+        match="standard error did not accept the complete diagnostic",
+    ):
+        cli._write_binary_stderr("diagnostic\n")
+
+
+def test_broken_error_stderr_is_attempted_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ShortBuffer:
+        writes = 0
+        flushes = 0
+
+        def write(self, payload: bytes) -> int:
+            self.writes += 1
+            return len(payload) - 1
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    buffer = ShortBuffer()
+
+    class BinaryStderr:
+        pass
+
+    stderr = BinaryStderr()
+    stderr.buffer = buffer
+    monkeypatch.setattr(cli.sys, "stderr", stderr)
+
+    assert main(["inspect", str(tmp_path / "missing.json")]) == 2
+    assert buffer.writes == 1
+    assert buffer.flushes == 0
+
+
+def test_failed_error_stderr_flush_is_not_retried(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FlushFailureBuffer:
+        writes = 0
+        flushes = 0
+
+        def write(self, payload: bytes) -> int:
+            self.writes += 1
+            return len(payload)
+
+        def flush(self) -> None:
+            self.flushes += 1
+            raise OSError("injected diagnostic flush failure")
+
+    buffer = FlushFailureBuffer()
+
+    class BinaryStderr:
+        pass
+
+    stderr = BinaryStderr()
+    stderr.buffer = buffer
+    monkeypatch.setattr(cli.sys, "stderr", stderr)
+
+    assert main(["inspect", str(tmp_path / "missing.json")]) == 2
+    assert buffer.writes == 1
+    assert buffer.flushes == 1
+
+
+@pytest.mark.parametrize("output_format", ["json", "prompt"])
+def test_compile_stdout_is_exact_utf8_outside_utf8_mode(
+    tmp_path: Path,
+    output_format: str,
+) -> None:
+    sources = tmp_path / "sources.json"
+    detail = "preserve caf\u00e9, \U0001f9ea, and e\u0301 exactly"
+    content = f"constraint: {detail}"
+    sources.write_text(
+        json.dumps([{"role": "user", "content": content}], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(ROOT / "src")
+    environment["PYTHONUTF8"] = "0"
+    environment["PYTHONIOENCODING"] = "cp1252:strict"
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-m",
+            "context_compiler",
+            "compile",
+            str(sources),
+            "--format",
+            output_format,
+        ],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0
+    assert completed.stderr == b""
+    rendered = completed.stdout.decode("utf-8", errors="strict")
+    assert detail in rendered
+    assert "caf\u00c3\u00a9" not in rendered
+
+
+@pytest.mark.parametrize("error_format", ["json", "text"])
+def test_error_diagnostic_is_exact_utf8_outside_utf8_mode(
+    tmp_path: Path,
+    error_format: str,
+) -> None:
+    missing = tmp_path / "missing-\U0001f9ea.json"
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(ROOT / "src")
+    environment["PYTHONUTF8"] = "0"
+    environment["PYTHONIOENCODING"] = "cp1252:strict"
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-m",
+            "context_compiler",
+            "inspect",
+            str(missing),
+            "--error-format",
+            error_format,
+        ],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 2
+    assert completed.stdout == b""
+    assert completed.stderr.endswith(b"\n")
+    rendered = completed.stderr.decode("utf-8", errors="strict")
+    assert missing.name in rendered
+    if error_format == "json":
+        diagnostic = json.loads(rendered)
+        assert diagnostic["category"] == "io"
+        assert diagnostic["code"] == "path_not_found"
+        assert diagnostic["exception_type"] == "FileNotFoundError"
+    else:
+        assert rendered.startswith("ctxc: ")
 
 
 @pytest.mark.parametrize(
@@ -250,6 +449,23 @@ def test_compile_uses_atomic_output_path(
     artifact = json.loads(output.read_text(encoding="utf-8"))
     assert artifact["schema_version"] == "1.0"
     assert list(tmp_path.glob(".ctxc-*.tmp")) == []
+
+
+def test_compile_file_output_does_not_require_stdout_binary_buffer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sources = tmp_path / "sources.json"
+    output = tmp_path / "artifact.json"
+    write_sources(sources, content="constraint: preserve file output")
+
+    class TextOnlyStdout:
+        pass
+
+    monkeypatch.setattr(cli.sys, "stdout", TextOnlyStdout())
+
+    assert main(["compile", str(sources), "--output", str(output)]) == 0
+    assert json.loads(output.read_text(encoding="utf-8"))["schema_version"] == "1.0"
 
 
 def test_archive_command_name_is_unambiguous_in_json_diagnostic(

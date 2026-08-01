@@ -166,6 +166,23 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a11 - 2026-08-01
+
+### Fixed
+
+- Made compile JSON and prompt stdout, compile event stderr, and text/JSON
+  diagnostic stderr emit strict UTF-8 bytes independently of the process locale.
+- Refused missing binary streams, incomplete writes, and failed flushes without
+  retrying a partial diagnostic or event record.
+
+### Changed
+
+- Advanced the separately packaged OpenHands integration to `0.1.0a12` solely
+  to preserve its exact dependency on core `0.1.1a11`.
+- Retained materialized-context schema v1, default-strict behavior, null
+  retrieval and capability identities, `provider_execution_ready=false`, and
+  the required final provider recount. No provider or model execution was run.
+
 ## 0.1.1a10 - 2026-08-01
 
 ### Fixed

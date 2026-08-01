@@ -5,7 +5,7 @@ backend-path = ["."]
 
 [project]
 name = "ctxc-openhands"
-version = "0.1.0a11"
+version = "0.1.0a12"
 description = "Fail-closed OpenHands integration for the loss-resistant context compiler"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
@@ -18,7 +18,7 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
 ]
-dependencies = ["loss-resistant-context-compiler==0.1.1a10"]
+dependencies = ["loss-resistant-context-compiler==0.1.1a11"]
 
 [project.optional-dependencies]
 live = [
