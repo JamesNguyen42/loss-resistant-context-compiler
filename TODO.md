@@ -47,7 +47,7 @@ raw evidence when completing benchmark work.
   `capabilities`, `ingest_source_events`, `compile_memory`, `render_context`,
   `verify_memory`, and `inspect_memory` over one strict shared versioned
   request/response JSONL envelope and `ctxc connector --stdio`.
-- [x] Add the separately packaged `ctxc-openhands` `0.1.0a6` draft-alpha
+- [x] Add the separately packaged `ctxc-openhands` `0.1.0a7` draft-alpha
   foundation without adding OpenHands or another dependency to the ordinary
   core installation or import path. The implemented evidence is offline-only;
   it is not a successful live integration claim.
@@ -585,6 +585,13 @@ Acceptance:
   refuse with `compiled_memory_not_verified`; both intentional hard-limit
   refusals match. The emitted report has `integrity_passed=false` and the CLI
   exits 3.
+- [x] Add a separate exact Python-only degradation policy that reuses the frozen
+  held-out inputs without changing them or their expected report. It tries a
+  lossless compact rendering and one bounded reallocation to the smaller exact
+  pre-verification requirement observed for the original partition. Boundary
+  changes can alter the final rendering, so this is not a global-minimum claim.
+  Default and CLI evaluation behavior remain strict, so this does not erase the
+  red gate above.
 - [ ] Approve and apply a privacy and licensing policy to real trajectories.
 - [ ] Collect public or explicitly consented coding-agent histories from
   multiple repositories, task types, and history lengths.

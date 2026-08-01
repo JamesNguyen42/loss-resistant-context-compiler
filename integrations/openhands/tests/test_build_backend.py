@@ -12,7 +12,7 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_PATH = PROJECT_ROOT / "_ctxc_openhands_build_backend.py"
-ARCHIVE_ROOT = "ctxc_openhands-0.1.0a6"
+ARCHIVE_ROOT = "ctxc_openhands-0.1.0a7"
 ARCHIVE_NAME = f"{ARCHIVE_ROOT}.tar.gz"
 EPOCH = 1_700_000_000
 
@@ -81,7 +81,7 @@ def _write_raw_sdist(
         _add_file(
             archive,
             f"{ARCHIVE_ROOT}/PKG-INFO",
-            b"Metadata-Version: 2.4\nName: ctxc-openhands\nVersion: 0.1.0a6\n",
+            b"Metadata-Version: 2.4\nName: ctxc-openhands\nVersion: 0.1.0a7\n",
             mtime=member_mtime,
         )
         _add_file(
@@ -203,13 +203,13 @@ def test_non_sdist_hook_delegates_unchanged(
         metadata_directory: object = None,
     ) -> str:
         observed.append((directory, config_settings, metadata_directory))
-        return "ctxc_openhands-0.1.0a6-py3-none-any.whl"
+        return "ctxc_openhands-0.1.0a7-py3-none-any.whl"
 
     monkeypatch.setattr(BACKEND._setuptools_backend, "build_wheel", build_wheel)
     settings = {"tag-date": "false"}
 
     assert BACKEND.build_wheel(str(tmp_path), settings, "metadata") == (
-        "ctxc_openhands-0.1.0a6-py3-none-any.whl"
+        "ctxc_openhands-0.1.0a7-py3-none-any.whl"
     )
     assert observed == [(str(tmp_path), settings, "metadata")]
 

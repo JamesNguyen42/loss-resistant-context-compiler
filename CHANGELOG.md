@@ -166,6 +166,39 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a6 - 2026-07-31
+
+### Added
+
+- Added the exact `ContextWindowDegradationPolicy` opt-in for Python
+  materialization callers. The bounded ladder first preserves the strict
+  attempt, then tries a lossless self-describing compact memory rendering, and
+  only then makes one bounded memory reallocation while preserving fixed input,
+  the current turn, and the configured minimum recent tail.
+- Added structural regressions over the unchanged 20-case held-out
+  synthetic-naturalistic split plus focused conflict, correction, fixed-input,
+  tamper, exact-fit, retry-boundary, and concurrency cases. No model, retrieval,
+  or provider is called.
+
+### Changed
+
+- Bound the chosen degradation mode, rung, requested memory budget, effective
+  memory budget, and rendering profile inside compiler metadata and every
+  downstream artifact digest. Reallocation chooses the smaller exact
+  pre-verification strict or compact requirement observed for the original
+  partition and increases the budget only to that count. A boundary message can
+  move into the compiled prefix during that one final attempt, so the rung name
+  does not claim a globally minimal budget over every possible repartition.
+- Advanced the separately packaged OpenHands integration to `0.1.0a7` solely
+  to preserve its exact dependency on core `0.1.1a6`.
+
+Default materialization and the CLI remain strict and byte-compatible when no
+policy is supplied. The frozen evaluation pack, its predeclared expectations,
+and its retained red strict report were not changed. Provider execution remains
+not ready, a final immutable provider-request recount is still required, and
+this change makes no semantic-completeness, retrieval-authority, natural-cohort,
+or comparative claim.
+
 ## 0.1.1a5 - 2026-07-31
 
 ### Added

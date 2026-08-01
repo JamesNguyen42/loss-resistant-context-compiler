@@ -338,7 +338,7 @@ connector instance.
 
 ## Isolated OpenHands integration package
 
-`integrations/openhands/` builds the separate `ctxc-openhands` `0.1.0a6`
+`integrations/openhands/` builds the separate `ctxc-openhands` `0.1.0a7`
 draft-alpha package. Neither the core distribution nor an ordinary
 `ctxc_openhands` import imports OpenHands; host imports occur only behind the
 exact compatibility gate. The only reviewed identity is OpenHands `1.8.0` at
@@ -1220,6 +1220,18 @@ manifest is a verified failure with no candidate because dependency-lock,
 enforced network-isolation, inference-service, exact Python, source-checkout,
 and local-model prerequisites were absent. Failed preflight and runner evidence
 is never upgraded into a valid result.
+
+The Python materialization API also has one exact opt-in degradation policy.
+Default and CLI calls retain strict behavior. After an exact strict
+compiled-memory overflow, the policy tries a self-describing lossless compact
+renderer, compares both exact pre-verification required counts observed for the
+original partition, and makes at most one bounded memory reallocation using the
+smaller form. A boundary message can then move into the compiled prefix, so the
+`minimal_memory_reallocation_*` rung names do not claim a globally minimal
+budget over every possible repartition. Fixed inputs, the current turn, and the
+configured minimum recent tail remain mandatory. Compiler metadata binds the
+mode, rung, requested/effective budgets, and rendering profile before the
+artifact and receipt digests are calculated.
 
 The installed `ctxc evaluate-materialization` command is a dependency-free
 structural diagnostic over an immutable package-resident pack of 30

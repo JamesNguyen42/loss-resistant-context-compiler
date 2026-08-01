@@ -34,7 +34,15 @@ from .limits import (
     resolve_source_limits,
     source_value_size,
 )
-from .models import CompilationPolicy, SourceRecord, _FrozenDict, _FrozenList
+from .models import (
+    CONTEXT_WINDOW_DEGRADATION_MODE,
+    CONTEXT_WINDOW_DEGRADATION_RUNGS,
+    LOSSLESS_COMPACT_MEMORY_RENDERING_PROFILE,
+    CompilationPolicy,
+    SourceRecord,
+    _FrozenDict,
+    _FrozenList,
+)
 
 CONTEXT_WINDOW_PROTOTYPE_SCHEMA = "loss-resistant-context-window-prototype-v1"
 MATERIALIZATION_REFUSAL_DIAGNOSTIC_SCHEMA = (
@@ -703,12 +711,18 @@ def _deterministic_session_id(
     *,
     tokenizer_identity: str,
     policy: CompilationPolicy,
+    memory_rendering_profile: str | None = None,
+    degradation_metadata: Mapping[str, object] | None = None,
 ) -> str:
     value = {
         "sources": [source.to_dict() for source in prefix],
         "tokenizer_identity": tokenizer_identity,
         "policy": _policy_value(policy),
     }
+    if memory_rendering_profile is not None:
+        value["context_window_memory_rendering_profile"] = memory_rendering_profile
+    if degradation_metadata is not None:
+        value["context_window_degradation"] = dict(degradation_metadata)
     return "context-window-" + _digest(value)[:48]
 
 
@@ -920,6 +934,31 @@ class ContextWindowBudget:
             ),
             label="fixed allocation",
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ContextWindowDegradationPolicy:
+    """Closed opt-in retry policy for a constrained materialization.
+
+    The policy first retries the same partition with the lossless compact
+    selected-memory renderer.  If that exact rendering still overflows, one
+    final retry reallocates otherwise available dynamic capacity to memory
+    using the smaller exact pre-verification requirement observed for the
+    original partition, while preserving the configured minimum recent tail.
+    The public ``minimal_memory_reallocation_*`` rung names describe that
+    observed requirement; they do not claim a globally minimal budget after a
+    boundary message moves into the compiled prefix.  No source or protected
+    item is truncated, and all shifted prefix sources remain bound by ordinary
+    omission and ContextBundle source inventories.
+    """
+
+    mode: str = CONTEXT_WINDOW_DEGRADATION_MODE
+
+    def __post_init__(self) -> None:
+        if type(self.mode) is not str:
+            raise TypeError("degradation policy mode must be an exact string")
+        if self.mode != CONTEXT_WINDOW_DEGRADATION_MODE:
+            raise ContextWindowError(f"unsupported degradation policy mode: {self.mode!r}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1406,7 +1445,7 @@ def _message_cost(
     )
 
 
-def compose_context_window(
+def _compose_context_window_once(
     sources: Iterable[SourceRecord | Mapping[str, Any]],
     *,
     current_turn_id: str,
@@ -1416,6 +1455,10 @@ def compose_context_window(
     policy: CompilationPolicy | None = None,
     source_limits: SourceLimits | None = None,
     compilation_limits: CompilationLimits | None = None,
+    memory_rendering_profile: str | None = None,
+    degradation_mode: str | None = None,
+    degradation_rung: str | None = None,
+    requested_memory_budget_tokens: int | None = None,
 ) -> ContextWindowPrototype:
     """Create a deterministic planning prototype with an exact source partition."""
 
@@ -1438,6 +1481,28 @@ def compose_context_window(
         )
     if policy is not None and type(policy) is not CompilationPolicy:
         raise TypeError("policy must be an exact CompilationPolicy or null")
+    if memory_rendering_profile is not None and (
+        type(memory_rendering_profile) is not str
+        or memory_rendering_profile != LOSSLESS_COMPACT_MEMORY_RENDERING_PROFILE
+    ):
+        raise ValueError("memory_rendering_profile is unsupported")
+    degradation_values = (
+        degradation_mode,
+        degradation_rung,
+        requested_memory_budget_tokens,
+    )
+    if any(value is not None for value in degradation_values):
+        if (
+            type(degradation_mode) is not str
+            or degradation_mode != CONTEXT_WINDOW_DEGRADATION_MODE
+            or type(degradation_rung) is not str
+            or degradation_rung not in CONTEXT_WINDOW_DEGRADATION_RUNGS
+            or type(requested_memory_budget_tokens) is not int
+            or requested_memory_budget_tokens <= 0
+        ):
+            raise ValueError("context-window degradation metadata is invalid")
+    elif memory_rendering_profile is not None:
+        raise ValueError("memory rendering profile requires degradation metadata")
     resolved_limits = resolve_source_limits(source_limits)
     ordered = _prepare_sources(sources, limits=resolved_limits)
     current_matches = [source for source in ordered if source.id == current_id]
@@ -1516,11 +1581,29 @@ def compose_context_window(
             source_limits=resolved_limits,
             compilation_limits=compilation_limits,
         )
+        degradation_metadata: dict[str, object] | None = None
+        if degradation_mode is not None:
+            if degradation_rung is None or requested_memory_budget_tokens is None:
+                raise RuntimeError("degradation metadata lost an internal field")
+            connector._use_context_window_degradation(  # noqa: SLF001
+                mode=degradation_mode,
+                rung=degradation_rung,
+                requested_memory_budget_tokens=requested_memory_budget_tokens,
+                memory_rendering_profile=memory_rendering_profile,
+            )
+            degradation_metadata = {
+                "mode": degradation_mode,
+                "rung": degradation_rung,
+                "requested_memory_budget_tokens": requested_memory_budget_tokens,
+                "effective_memory_budget_tokens": budget.memory_budget_tokens,
+            }
         events = [_source_event(source) for source in prefix]
         session_id = _deterministic_session_id(
             prefix,
             tokenizer_identity=token_counter.identity,
             policy=compilation_policy,
+            memory_rendering_profile=memory_rendering_profile,
+            degradation_metadata=degradation_metadata,
         )
         overflow_capture: list[tuple[int, int]] = []
         try:
@@ -1710,10 +1793,167 @@ def compose_context_window(
     )
 
 
+def _is_exact_memory_overflow(error: ContextWindowError) -> bool:
+    diagnostic = error.diagnostic
+    return (
+        error.reason == "compiled_memory_not_verified"
+        and type(diagnostic) is dict
+        and diagnostic.get("cause") == "memory_token_budget_overflow"
+    )
+
+
+def compose_context_window(
+    sources: Iterable[SourceRecord | Mapping[str, Any]],
+    *,
+    current_turn_id: str,
+    budget: ContextWindowBudget,
+    token_counter: ExactTokenCounterAdapter,
+    fixed_input_sha256: str | None = None,
+    policy: CompilationPolicy | None = None,
+    source_limits: SourceLimits | None = None,
+    compilation_limits: CompilationLimits | None = None,
+    degradation_policy: ContextWindowDegradationPolicy | None = None,
+) -> ContextWindowPrototype:
+    """Create a strict plan, with an optional bounded lossless retry ladder."""
+
+    if degradation_policy is None:
+        return _compose_context_window_once(
+            sources,
+            current_turn_id=current_turn_id,
+            budget=budget,
+            token_counter=token_counter,
+            fixed_input_sha256=fixed_input_sha256,
+            policy=policy,
+            source_limits=source_limits,
+            compilation_limits=compilation_limits,
+        )
+    if type(degradation_policy) is not ContextWindowDegradationPolicy:
+        raise TypeError(
+            "degradation_policy must be an exact ContextWindowDegradationPolicy or null"
+        )
+
+    resolved_limits = resolve_source_limits(source_limits)
+    prepared = tuple(_prepare_sources(sources, limits=resolved_limits))
+
+    def attempt(
+        candidate_budget: ContextWindowBudget,
+        *,
+        compact: bool,
+        rung: str | None,
+    ) -> ContextWindowPrototype:
+        return _compose_context_window_once(
+            prepared,
+            current_turn_id=current_turn_id,
+            budget=candidate_budget,
+            token_counter=token_counter,
+            fixed_input_sha256=fixed_input_sha256,
+            policy=policy,
+            source_limits=resolved_limits,
+            compilation_limits=compilation_limits,
+            memory_rendering_profile=(
+                LOSSLESS_COMPACT_MEMORY_RENDERING_PROFILE if compact else None
+            ),
+            degradation_mode=(CONTEXT_WINDOW_DEGRADATION_MODE if rung is not None else None),
+            degradation_rung=rung,
+            requested_memory_budget_tokens=(
+                budget.memory_budget_tokens if rung is not None else None
+            ),
+        )
+
+    strict_overflow: ContextWindowError | None = None
+    try:
+        return attempt(budget, compact=False, rung=None)
+    except ContextWindowError as strict_error:
+        if not _is_exact_memory_overflow(strict_error):
+            raise
+        strict_overflow = strict_error
+
+    compact_overflow: ContextWindowError | None = None
+    try:
+        return attempt(budget, compact=True, rung="lossless_compact")
+    except ContextWindowError as compact_error:
+        if not _is_exact_memory_overflow(compact_error):
+            raise
+        compact_overflow = compact_error
+
+    if type(strict_overflow) is not ContextWindowError:  # pragma: no cover
+        raise RuntimeError("strict overflow retry lost its exact failure")
+    if type(compact_overflow) is not ContextWindowError:  # pragma: no cover
+        raise RuntimeError("compact overflow retry lost its exact failure")
+    if not prepared:
+        raise compact_overflow
+    current_cost = _message_cost(
+        prepared[-1],
+        token_counter=token_counter,
+        overhead=budget.per_message_overhead_tokens,
+    )
+    history = prepared[:-1]
+    minimum_count = min(budget.minimum_recent_messages, len(history))
+    mandatory_recent = history[len(history) - minimum_count :] if minimum_count else ()
+    mandatory_recent_cost = _checked_sum(
+        (
+            _message_cost(
+                source,
+                token_counter=token_counter,
+                overhead=budget.per_message_overhead_tokens,
+            )
+            for source in mandatory_recent
+        ),
+        label="minimum recent tail tokens",
+    )
+    maximum_memory_budget = (
+        budget.available_dynamic_tokens - current_cost - mandatory_recent_cost
+    )
+    maximum_memory_budget = min(
+        maximum_memory_budget,
+        budget.available_dynamic_tokens - 1,
+    )
+    strict_diagnostic = strict_overflow.diagnostic
+    compact_diagnostic = compact_overflow.diagnostic
+    if (
+        type(strict_diagnostic) is not dict
+        or type(compact_diagnostic) is not dict
+    ):  # pragma: no cover - exact-error invariant
+        raise RuntimeError("rendering overflow lost its validated diagnostic")
+    strict_required = strict_diagnostic["required_memory_tokens"]
+    compact_required = compact_diagnostic["required_memory_tokens"]
+    if type(strict_required) is not int or type(compact_required) is not int:
+        raise RuntimeError("rendering overflow contains an invalid required count")
+    # These exact counts describe the original requested-budget partition.
+    # Reallocating memory can move additional boundary messages into the
+    # compiled prefix, where a correction can change the selected rendering.
+    # Keep the ladder to one final bounded attempt; the public rung therefore
+    # records the smaller observed pre-verification requirement rather than
+    # claiming a global minimum over every possible repartition.
+    use_compact = compact_required < strict_required
+    required_memory_budget = compact_required if use_compact else strict_required
+    chosen_overflow = compact_overflow if use_compact else strict_overflow
+    if (
+        required_memory_budget <= budget.memory_budget_tokens
+        or required_memory_budget > maximum_memory_budget
+    ):
+        raise chosen_overflow
+    reallocated_budget = replace(
+        budget,
+        memory_budget_tokens=required_memory_budget,
+    )
+    return attempt(
+        reallocated_budget,
+        compact=use_compact,
+        rung=(
+            "minimal_memory_reallocation_compact"
+            if use_compact
+            else "minimal_memory_reallocation_standard"
+        ),
+    )
+
+
 __all__ = [
     "CONTEXT_WINDOW_PROTOTYPE_SCHEMA",
+    "CONTEXT_WINDOW_DEGRADATION_MODE",
     "MATERIALIZATION_REFUSAL_DIAGNOSTIC_SCHEMA",
     "ContextWindowBudget",
+    "ContextWindowDegradationPolicy",
     "ContextWindowError",
     "ContextWindowPrototype",
     "RecentTailOmission",

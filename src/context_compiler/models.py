@@ -12,7 +12,7 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -34,6 +34,19 @@ PRIMARY_EXTRACTOR_DEGRADED_MESSAGE = (
 ADDITIVE_SAFETY_EXTRACTOR_FAILED_MESSAGE = (
     "The additive safety extractor failed; built-in deterministic "
     "certification remained active."
+)
+LOSSLESS_COMPACT_MEMORY_RENDERING_PROFILE = (
+    "loss-resistant-lossless-compact-memory-v1"
+)
+MEMORY_RENDERING_PROFILE_METADATA_KEY = "context_window_memory_rendering_profile"
+CONTEXT_WINDOW_DEGRADATION_MODE = "lossless-compact-then-reallocate-v1"
+CONTEXT_WINDOW_DEGRADATION_METADATA_KEY = "context_window_degradation"
+CONTEXT_WINDOW_DEGRADATION_RUNGS = frozenset(
+    {
+        "lossless_compact",
+        "minimal_memory_reallocation_compact",
+        "minimal_memory_reallocation_standard",
+    }
 )
 
 
@@ -1141,7 +1154,11 @@ class CompiledMemory:
             raise ValueError("refusing to render active context from unverified memory")
 
         self._assert_snapshot_integrity()
-        return render_typed_memory(self.items, self.selected_item_ids)
+        return render_memory_for_metadata(
+            self.items,
+            self.selected_item_ids,
+            self.compiler_metadata,
+        )
 
 
 def render_prompt_item(item: MemoryItem) -> str:
@@ -1188,6 +1205,170 @@ def render_typed_memory(
         lines.extend(render_prompt_item(item) for item in kind_items)
     lines.append("</typed_memory>")
     return "\n".join(lines)
+
+
+_COMPACT_COLUMNS = (
+    "text",
+    "status",
+    "exact",
+    "source_roles",
+    "provenance[source_index,start,end,quote_sha256_prefix]",
+)
+
+
+def _escaped_prompt_json(value: object) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return (
+        encoded.replace("\u0085", "\\u0085")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
+
+
+def render_lossless_compact_typed_memory(
+    items: Iterable[MemoryItem],
+    selected_item_ids: Iterable[str],
+) -> str:
+    """Render the same selected prompt fields in a closed columnar encoding.
+
+    This profile is used only by the explicitly opted-in context-window
+    degradation path.  It keeps kind ordering, exact item text, status,
+    exactness, source-role classification, and every prompt provenance
+    reference. Source ids are interned in a sorted table and provenance rows
+    contain table index, character start, character end, and the same
+    ten-character hash anchor as the default renderer. The payload includes
+    exact column names so a provider does not need an out-of-band flag legend.
+    """
+
+    selected = set(selected_item_ids)
+    selected_items = [item for item in items if item.id in selected]
+    source_ids = sorted(
+        {
+            span.source_id
+            for item in selected_items
+            for span in item.provenance
+        }
+    )
+    source_indices = {source_id: index for index, source_id in enumerate(source_ids)}
+    groups: list[list[object]] = []
+    for kind in MemoryKind:
+        rows: list[list[object]] = []
+        for item in selected_items:
+            if item.kind != kind:
+                continue
+            raw_roles = str(item.metadata.get("source_role", "unknown")).split(",")
+            roles = sorted({role for role in raw_roles if role})
+            provenance = [
+                [
+                    source_indices[span.source_id],
+                    span.start,
+                    span.end,
+                    span.quote_sha256[:10],
+                ]
+                for span in item.provenance
+            ]
+            rows.append(
+                [
+                    item.text,
+                    item.status.value,
+                    item.exact,
+                    roles,
+                    provenance,
+                ]
+            )
+        if rows:
+            groups.append([kind.value, rows])
+    payload = _escaped_prompt_json(
+        {
+            "columns": _COMPACT_COLUMNS,
+            "sources": source_ids,
+            "groups": groups,
+        }
+    )
+    return "\n".join(
+        (
+            '<typed_memory schema="1.0" content="untrusted-json-object" '
+            f'profile="{LOSSLESS_COMPACT_MEMORY_RENDERING_PROFILE}">',
+            payload,
+            "</typed_memory>",
+        )
+    )
+
+
+def memory_rendering_profile(compiler_metadata: Mapping[str, Any]) -> str | None:
+    """Validate degradation metadata and return its closed rendering profile."""
+
+    if type(compiler_metadata) not in (dict, _FrozenDict):
+        raise TypeError("compiler metadata must be an exact or frozen object")
+    profile = compiler_metadata.get(MEMORY_RENDERING_PROFILE_METADATA_KEY)
+    if MEMORY_RENDERING_PROFILE_METADATA_KEY in compiler_metadata:
+        if type(profile) is not str:
+            raise TypeError("memory rendering profile must be an exact string")
+        if profile != LOSSLESS_COMPACT_MEMORY_RENDERING_PROFILE:
+            raise ValueError(f"unsupported memory rendering profile: {profile!r}")
+
+    if CONTEXT_WINDOW_DEGRADATION_METADATA_KEY not in compiler_metadata:
+        if profile is not None:
+            raise ValueError("memory rendering profile requires degradation metadata")
+        return None
+    degradation = compiler_metadata[CONTEXT_WINDOW_DEGRADATION_METADATA_KEY]
+    if type(degradation) not in (dict, _FrozenDict):
+        raise TypeError("context-window degradation metadata must be an exact object")
+    expected_fields = {
+        "mode",
+        "rung",
+        "requested_memory_budget_tokens",
+        "effective_memory_budget_tokens",
+    }
+    if set(degradation) != expected_fields:
+        raise ValueError("context-window degradation metadata fields are invalid")
+    mode = degradation["mode"]
+    rung = degradation["rung"]
+    requested = degradation["requested_memory_budget_tokens"]
+    effective = degradation["effective_memory_budget_tokens"]
+    if type(mode) is not str or mode != CONTEXT_WINDOW_DEGRADATION_MODE:
+        raise ValueError("context-window degradation mode is unsupported")
+    if type(rung) is not str or rung not in CONTEXT_WINDOW_DEGRADATION_RUNGS:
+        raise ValueError("context-window degradation rung is unsupported")
+    if type(requested) is not int or requested <= 0:
+        raise TypeError("requested memory budget must be a positive exact integer")
+    if type(effective) is not int or effective <= 0:
+        raise TypeError("effective memory budget must be a positive exact integer")
+    compact = rung in {
+        "lossless_compact",
+        "minimal_memory_reallocation_compact",
+    }
+    if compact is not (profile == LOSSLESS_COMPACT_MEMORY_RENDERING_PROFILE):
+        raise ValueError("degradation rung and memory rendering profile disagree")
+    if rung == "lossless_compact" and effective != requested:
+        raise ValueError("lossless compact rung must preserve the requested memory budget")
+    if rung != "lossless_compact" and effective <= requested:
+        raise ValueError("memory reallocation rung must increase the requested budget")
+    policy = compiler_metadata.get("policy")
+    if type(policy) in (dict, _FrozenDict) and policy.get("token_budget") != effective:
+        raise ValueError("effective memory budget disagrees with compiler policy")
+    return profile
+
+
+def render_memory_for_metadata(
+    items: Iterable[MemoryItem],
+    selected_item_ids: Iterable[str],
+    compiler_metadata: Mapping[str, Any],
+) -> str:
+    """Render selected memory using its artifact-bound profile."""
+
+    profile = memory_rendering_profile(compiler_metadata)
+    if profile is None:
+        return render_typed_memory(items, selected_item_ids)
+    return render_lossless_compact_typed_memory(items, selected_item_ids)
 
 
 def source_digest(sources: Iterable[SourceRecord]) -> str:

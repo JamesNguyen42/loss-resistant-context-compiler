@@ -45,8 +45,8 @@ from scripts.release_install_smoke import (
     _verified_artifact_snapshot,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.1a5-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a5.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a6-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a6.tar.gz"
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -302,7 +302,7 @@ def _sample_evaluation_report_bytes() -> bytes:
     case_ids = [f"retention-case-{index:03d}" for index in range(1, 21)]
     unsigned = {
         "schema": MATERIALIZED_EVALUATION_REPORT_SCHEMA,
-        "evaluator_package_version": "0.1.1a5",
+        "evaluator_package_version": "0.1.1a6",
         "pack": {
             "schema": MATERIALIZED_RETENTION_PACK_SCHEMA,
             "pack_id": MATERIALIZED_RETENTION_PACK_ID,
@@ -643,6 +643,9 @@ def test_materialized_context_probe_command_is_isolated_and_module_qualified(
     script = command[4]
     assert "from context_compiler import" in script
     assert "materialize_context" in script
+    assert "ContextWindowDegradationPolicy" in script
+    assert "minimal_memory_reallocation_compact" in script
+    assert '"effective_memory_budget_tokens": 1486' in script
     assert "verify_materialized_context_result" in script
     assert "MATERIALIZED_CONTEXT_RESULT_SCHEMA" in script
     assert "from context_compiler.context_window import" in script

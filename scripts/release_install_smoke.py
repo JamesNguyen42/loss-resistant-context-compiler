@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a5"
+EXPECTED_VERSION = "0.1.1a6"
 SCHEMA_GLOB = "*.schema.json"
 MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.3"
 MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA = "ctxc-materialized-prompt-assembly-golden-0.1"
@@ -215,6 +215,7 @@ from context_compiler import (
     MATERIALIZED_CONTEXT_RECEIPT_SCHEMA,
     MATERIALIZED_CONTEXT_RESULT_SCHEMA,
     ContextWindowBudget,
+    ContextWindowDegradationPolicy,
     materialize_context,
     verify_materialized_context_result,
 )
@@ -222,6 +223,7 @@ from context_compiler.connector import ExactTokenCounterAdapter
 from context_compiler.context_window import (
     MATERIALIZATION_REFUSAL_DIAGNOSTIC_SCHEMA,
     ContextWindowBudget as ModuleContextWindowBudget,
+    ContextWindowDegradationPolicy as ModuleContextWindowDegradationPolicy,
     ContextWindowError,
     ContextWindowPrototype,
     compose_context_window,
@@ -230,7 +232,12 @@ from context_compiler.materialized_window import (
     MaterializedContextWindow,
     compose_materialized_context_window,
 )
-from context_compiler.models import SourceRecord
+from context_compiler.models import (
+    CONTEXT_WINDOW_DEGRADATION_METADATA_KEY,
+    LOSSLESS_COMPACT_MEMORY_RENDERING_PROFILE,
+    MEMORY_RENDERING_PROFILE_METADATA_KEY,
+    SourceRecord,
+)
 
 package_root = Path(context_compiler.__file__).resolve(strict=True).parent
 if module_root:
@@ -262,6 +269,7 @@ if require_standalone:
     )
 
 assert ContextWindowBudget is ModuleContextWindowBudget
+assert ContextWindowDegradationPolicy is ModuleContextWindowDegradationPolicy
 for name in (
     "ContextWindowPrototype",
     "MaterializedContextWindow",
@@ -541,6 +549,48 @@ overflow_refusal = {
         overflow_refusal_unsigned,
     ),
 }
+
+degraded_consumer = materialize_context(
+    heldout["sources"],
+    current_turn_id=heldout["current_turn_id"],
+    budget=heldout_budget,
+    token_counter=heldout_counter,
+    allocation_plan_sha256=ALLOCATION_PLAN_SHA256,
+    degradation_policy=ContextWindowDegradationPolicy(),
+)
+degraded_receipt = degraded_consumer["receipt"]
+assert verify_materialized_context_result(
+    degraded_consumer,
+    expected_receipt_sha256=degraded_receipt["receipt_sha256"],
+    expected_allocation_plan_sha256=ALLOCATION_PLAN_SHA256,
+) == degraded_consumer
+degraded_runtime = degraded_consumer["runtime_payload"]
+degraded_prototype = degraded_consumer["materialized_context"]["prototype"]
+degraded_bundle = degraded_prototype["context_bundle"]
+degraded_metadata = degraded_bundle["artifact"]["compiler_metadata"]
+assert degraded_metadata[MEMORY_RENDERING_PROFILE_METADATA_KEY] == (
+    LOSSLESS_COMPACT_MEMORY_RENDERING_PROFILE
+)
+assert degraded_metadata[CONTEXT_WINDOW_DEGRADATION_METADATA_KEY] == {
+    "effective_memory_budget_tokens": 1486,
+    "mode": "lossless-compact-then-reallocate-v1",
+    "requested_memory_budget_tokens": 1200,
+    "rung": "minimal_memory_reallocation_compact",
+}
+assert degraded_runtime["accounting"]["memory_tokens"] == 1486
+assert degraded_runtime["accounting"]["memory_budget_tokens"] == 1486
+assert [item["id"] for item in degraded_runtime["recent_messages"]] == [
+    "case-021-m15",
+    "case-021-m16",
+    "case-021-m17",
+]
+assert degraded_runtime["current_turn"]["id"] == "case-021-m18"
+assert degraded_bundle["certificate"]["issued"] is True
+assert degraded_bundle["certificate"]["semantic_completeness_claimed"] is False
+assert degraded_bundle["trusted_memory"]["omitted_or_overflowed_protected_items"] == []
+assert degraded_runtime["retrieval_result_sha256"] is None
+assert degraded_runtime["provider_execution_ready"] is False
+assert degraded_runtime["final_provider_recount_required"] is True
 
 
 def keys(value):

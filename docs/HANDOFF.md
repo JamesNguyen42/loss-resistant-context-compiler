@@ -35,7 +35,7 @@ live-readiness status.
 | --- | --- |
 | Repository | [`JamesNguyen42/loss-resistant-context-compiler`](https://github.com/JamesNguyen42/loss-resistant-context-compiler) |
 | Default branch | `main` |
-| Package version | `0.1.1a5` |
+| Package version | `0.1.1a6` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
 | Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; `0f20b8a`: exact seven-wheel OpenHands build inputs, clean provider/a2 harness, and all automatic hosted gates passed; `7915beb`: exact seven-wheel root release inputs and post-acquisition offline build/smoke passed every automatic hosted gate; no local inference |
@@ -55,7 +55,7 @@ live-readiness status.
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
-| OpenHands integration | Separate `ctxc-openhands` `0.1.0a6` draft alpha; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
+| OpenHands integration | Separate `ctxc-openhands` `0.1.0a7` draft alpha; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
 | Installed JSON Schemas | 25 (7 historical ids, 18 current-namespace ids) |
 | External 50%-better claim | Not established |
 | Downstream task completion evidence | None yet |
@@ -681,10 +681,10 @@ operations, validation, and unresolved host requirements.
 | Python distribution | `loss-resistant-context-compiler` |
 | Import package | `context_compiler` |
 | CLI command | `ctxc` |
-| Package version | `0.1.1a5` |
+| Package version | `0.1.1a6` |
 | OpenHands distribution | `ctxc-openhands` (separate package) |
 | OpenHands import / CLI | `ctxc_openhands` / `ctxc-openhands` |
-| OpenHands integration version | `0.1.0a6` draft alpha |
+| OpenHands integration version | `0.1.0a7` draft alpha |
 | Reviewed OpenHands host | `1.8.0` at `bc26df351dd5d833a95131556dbe2da69af82253` |
 | Reviewed OpenHands SDK/tools/agent-server | `1.27.0` at `904279edf2df5fa12d7caecc7576f62659b2e2dd` |
 | Compiled artifact schema | `1.0` |
@@ -1503,6 +1503,13 @@ lower quantile before results are observed.
 
 ### Evaluation
 
+- Python callers may opt into `ContextWindowDegradationPolicy()`. The default
+  and CLI remain strict. The bounded ladder compares strict and self-describing
+  compact memory requirements, then performs at most one exact minimum
+  reallocation while preserving fixed input, the current turn, and the minimum
+  raw recent tail. Digest-bound compiler metadata records the mode, rung, and
+  requested/effective budgets. This does not alter the frozen evaluation pack
+  or its retained strict red outcome.
 - The installed `ctxc evaluate-materialization` command runs a deterministic,
   dependency-free structural diagnostic over 30 project-authored
   synthetic-naturalistic coding histories grouped into 4 train, 6 development,

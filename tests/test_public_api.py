@@ -4,6 +4,8 @@ from __future__ import annotations
 import inspect
 
 import context_compiler
+from context_compiler.context_window import compose_context_window
+from context_compiler.materialized_window import compose_materialized_context_window
 
 EXPECTED_EXPORTS = (
     "ARCHIVE_ENTRY_SCHEMA",
@@ -38,6 +40,7 @@ EXPECTED_EXPORTS = (
     "ContextCompiler",
     "ContextBundle",
     "ContextWindowBudget",
+    "ContextWindowDegradationPolicy",
     "DomainLabelExtractor",
     "ExtractionResult",
     "Extractor",
@@ -104,6 +107,7 @@ EXPECTED_SIGNATURES = {
     "ContextCompiler": "(extractor: 'Extractor | None' = None, *, policy: 'CompilationPolicy | None' = None, safety_extractor: 'Extractor | None' = None, token_counter: 'TokenCounter | None' = None, token_counter_id: 'str | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None, untrusted_historical_roles: 'bool' = False) -> 'None'",
     "ContextBundle": "(artifact: 'dict[str, Any]', trusted_memory: 'dict[str, Any]', bindings: 'dict[str, Any]', certificate: 'dict[str, Any]', token_accounting: 'dict[str, Any]', schema: 'str' = 'localai-context-bundle-0.1', protocol_version: 'str' = '0.1', bundle_sha256: 'str' = '') -> None",
     "ContextWindowBudget": "(hard_limit_tokens: 'int', memory_budget_tokens: 'int', reserved_output_tokens: 'int' = 1024, safety_margin_tokens: 'int' = 256, fixed_input_tokens: 'int' = 0, minimum_recent_messages: 'int' = 0, maximum_recent_messages: 'int' = 4096, per_message_overhead_tokens: 'int' = 0) -> None",
+    "ContextWindowDegradationPolicy": "(mode: 'str' = 'lossless-compact-then-reallocate-v1') -> None",
     "ExactTokenCounterAdapter": "(identity: 'str', count_tokens: 'Callable[[str], int]') -> None",
     "IncrementalCompiler": "(compiler: 'ContextCompiler | None' = None, *, session_id: 'str | None' = None, sources: 'Iterable[SourceRecord]' = (), archive_chain_head_sha256: 'str | None' = None, archive_head_verified: 'bool' = False) -> 'None'",
     "LocalAIConnector": "(*, policy: 'CompilationPolicy | None' = None, token_counter: 'ExactTokenCounterAdapter | Callable[[str], int] | Any | None' = None, token_counter_id: 'str | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None, artifact_limits: 'ArtifactLimits | None' = None, source_archive: 'SourceArchive | None' = None) -> 'None'",
@@ -116,7 +120,7 @@ EXPECTED_SIGNATURES = {
     "decode_connector_request": "(raw: 'str', *, max_request_bytes: 'int' = 8388608, max_json_depth: 'int' = 128) -> 'dict[str, Any]'",
     "diff_artifacts": "(before: 'Any', after: 'Any', *, include_item_details: 'bool' = True, limits: 'ArtifactLimits | None' = None) -> 'dict[str, Any]'",
     "redact_sources": "(sources: 'Iterable[SourceRecord]', *, policy: 'RedactionPolicy | None' = None) -> 'RedactionResult'",
-    "materialize_context": "(sources: 'Iterable[SourceRecord | Mapping[str, Any]]', *, current_turn_id: 'str', budget: 'ContextWindowBudget', token_counter: 'ExactTokenCounterAdapter', allocation_plan_sha256: 'str', fixed_input_sha256: 'str | None' = None, policy: 'CompilationPolicy | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None) -> 'dict[str, Any]'",
+    "materialize_context": "(sources: 'Iterable[SourceRecord | Mapping[str, Any]]', *, current_turn_id: 'str', budget: 'ContextWindowBudget', token_counter: 'ExactTokenCounterAdapter', allocation_plan_sha256: 'str', fixed_input_sha256: 'str | None' = None, policy: 'CompilationPolicy | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None, degradation_policy: 'ContextWindowDegradationPolicy | None' = None) -> 'dict[str, Any]'",
     "serve_stdio": "(*, connector: 'LocalAIConnector | None' = None, input_stream: 'Any', output_stream: 'Any', max_request_bytes: 'int' = 8388608, max_json_depth: 'int' = 128) -> 'int'",
     "source_event_to_record": "(event: 'SourceEvent | Mapping[str, Any] | Any', *, default_sequence: 'int') -> 'SourceRecord'",
     "validate_artifact_envelope": "(artifact: 'Any', *, limits: 'ArtifactLimits | None' = None) -> 'dict[str, Any]'",
@@ -139,6 +143,11 @@ EXPECTED_SIGNATURES = {
     "SourceArchive.verify": "(self, *, expected_chain_head: 'str | None' = None) -> 'ArchiveReport'",
 }
 
+EXPECTED_MODULE_SIGNATURES = {
+    "compose_context_window": "(sources: 'Iterable[SourceRecord | Mapping[str, Any]]', *, current_turn_id: 'str', budget: 'ContextWindowBudget', token_counter: 'ExactTokenCounterAdapter', fixed_input_sha256: 'str | None' = None, policy: 'CompilationPolicy | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None, degradation_policy: 'ContextWindowDegradationPolicy | None' = None) -> 'ContextWindowPrototype'",
+    "compose_materialized_context_window": "(sources: 'Iterable[SourceRecord | Mapping[str, Any]]', *, current_turn_id: 'str', budget: 'ContextWindowBudget', token_counter: 'ExactTokenCounterAdapter', fixed_input_sha256: 'str | None' = None, allocation_plan_sha256: 'str | None' = None, policy: 'CompilationPolicy | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None, degradation_policy: 'ContextWindowDegradationPolicy | None' = None) -> 'MaterializedContextWindow'",
+}
+
 
 def _resolve(path: str) -> object:
     value: object = context_compiler
@@ -156,6 +165,16 @@ def test_public_exports_are_exact_and_resolvable() -> None:
 def test_critical_public_signatures_are_exact() -> None:
     actual = {path: str(inspect.signature(_resolve(path))) for path in EXPECTED_SIGNATURES}
     assert actual == EXPECTED_SIGNATURES
+
+
+def test_context_window_module_signatures_are_exact() -> None:
+    actual = {
+        "compose_context_window": str(inspect.signature(compose_context_window)),
+        "compose_materialized_context_window": str(
+            inspect.signature(compose_materialized_context_window)
+        ),
+    }
+    assert actual == EXPECTED_MODULE_SIGNATURES
 
 
 def test_compilation_policy_preserves_legacy_positional_order() -> None:

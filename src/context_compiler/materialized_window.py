@@ -18,6 +18,7 @@ from .context_window import (
     _MAX_CONTEXT_WINDOW_BYTES,
     _MAX_JSON_DEPTH,
     ContextWindowBudget,
+    ContextWindowDegradationPolicy,
     ContextWindowError,
     ContextWindowPrototype,
     _canonical_bytes,
@@ -428,6 +429,7 @@ def materialize_context(
     policy: CompilationPolicy | None = None,
     source_limits: SourceLimits | None = None,
     compilation_limits: CompilationLimits | None = None,
+    degradation_policy: ContextWindowDegradationPolicy | None = None,
 ) -> dict[str, Any]:
     """Build one canonical consumer result without constructing a provider request."""
 
@@ -441,6 +443,7 @@ def materialize_context(
         policy=policy,
         source_limits=source_limits,
         compilation_limits=compilation_limits,
+        degradation_policy=degradation_policy,
     )
     materialized_value = materialized.to_dict()
     runtime_payload = materialized.runtime_payload(
@@ -582,6 +585,7 @@ def compose_materialized_context_window(
     policy: CompilationPolicy | None = None,
     source_limits: SourceLimits | None = None,
     compilation_limits: CompilationLimits | None = None,
+    degradation_policy: ContextWindowDegradationPolicy | None = None,
 ) -> MaterializedContextWindow:
     """Compose and bind a planning artifact without executing a provider."""
 
@@ -594,6 +598,7 @@ def compose_materialized_context_window(
         policy=policy,
         source_limits=source_limits,
         compilation_limits=compilation_limits,
+        degradation_policy=degradation_policy,
     )
     return MaterializedContextWindow.from_prototype(
         prototype,

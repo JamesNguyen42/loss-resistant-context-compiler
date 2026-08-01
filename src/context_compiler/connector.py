@@ -44,7 +44,7 @@ from .models import (
     MemoryStatus,
     ProvenanceSpan,
     SourceRecord,
-    render_typed_memory,
+    render_memory_for_metadata,
     source_digest,
 )
 
@@ -1470,9 +1470,27 @@ class LocalAIConnector:
         self.source_archive = source_archive
         self._sessions: dict[str, IncrementalCompiler] = {}
         self._archive_session_id: str | None = None
+        self._context_window_degradation: tuple[str, str, int, str | None] | None = None
+
+    def _use_context_window_degradation(
+        self,
+        *,
+        mode: str,
+        rung: str,
+        requested_memory_budget_tokens: int,
+        memory_rendering_profile: str | None,
+    ) -> None:
+        """Carry an internal materialization decision into a fresh compiler."""
+
+        self._context_window_degradation = (
+            mode,
+            rung,
+            requested_memory_budget_tokens,
+            memory_rendering_profile,
+        )
 
     def _compiler(self, policy: CompilationPolicy | None = None) -> ContextCompiler:
-        return ContextCompiler(
+        compiler = ContextCompiler(
             policy=policy or self.policy,
             token_counter=self.token_counter,
             token_counter_id=self.token_counter_id,
@@ -1480,6 +1498,15 @@ class LocalAIConnector:
             compilation_limits=self.compilation_limits,
             untrusted_historical_roles=True,
         )
+        if self._context_window_degradation is not None:
+            mode, rung, requested, profile = self._context_window_degradation
+            compiler._set_context_window_degradation(  # noqa: SLF001
+                mode=mode,
+                rung=rung,
+                requested_memory_budget_tokens=requested,
+                memory_rendering_profile=profile,
+            )
+        return compiler
 
     def _prepare_connector_sources(
         self,
@@ -2016,9 +2043,10 @@ class LocalAIConnector:
             MemoryItem.from_dict(item) for item in bundle.artifact["items"]
         ]
         self._require_trusted_memory_artifact_alignment(bundle, decoded_items)
-        rendered = render_typed_memory(
+        rendered = render_memory_for_metadata(
             decoded_items,
             bundle.artifact["selected_item_ids"],
+            bundle.artifact["compiler_metadata"],
         )
         if bindings["rendered_memory_sha256"] != _sha256_text(rendered):
             raise ValueError(
@@ -2107,7 +2135,11 @@ class LocalAIConnector:
         if not isinstance(verification, dict) or verification.get("passed") is not True:
             raise ValueError("refusing to render context from unverified memory")
         items = [MemoryItem.from_dict(item) for item in artifact["items"]]
-        rendered = render_typed_memory(items, artifact["selected_item_ids"])
+        rendered = render_memory_for_metadata(
+            items,
+            artifact["selected_item_ids"],
+            artifact["compiler_metadata"],
+        )
         expected = checked.bindings.get("rendered_memory_sha256")
         if expected != _sha256_text(rendered):
             raise ValueError("rendered memory digest does not match ContextBundle binding")
@@ -2324,15 +2356,23 @@ class LocalAIConnector:
         decoded_items = [
             MemoryItem.from_dict(item) for item in checked.artifact["items"]
         ]
-        rendered = render_typed_memory(
-            decoded_items,
-            checked.artifact["selected_item_ids"],
-        )
-        if bindings.get("rendered_memory_sha256") != _sha256_text(rendered):
-            binding_issue(
-                "rendered_memory_digest_mismatch",
-                "ContextBundle rendered-memory binding is invalid.",
+        try:
+            rendered = render_memory_for_metadata(
+                decoded_items,
+                checked.artifact["selected_item_ids"],
+                checked.artifact["compiler_metadata"],
             )
+        except (TypeError, ValueError) as exc:
+            binding_issue(
+                "invalid_memory_rendering_profile",
+                f"ContextBundle memory rendering metadata is invalid: {exc}",
+            )
+        else:
+            if bindings.get("rendered_memory_sha256") != _sha256_text(rendered):
+                binding_issue(
+                    "rendered_memory_digest_mismatch",
+                    "ContextBundle rendered-memory binding is invalid.",
+                )
         raw_metrics = checked.artifact.get("compiler_metadata", {}).get(
             "metrics",
             {},

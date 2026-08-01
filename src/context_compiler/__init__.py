@@ -34,7 +34,7 @@ from .connector import (
     serve_stdio,
     source_event_to_record,
 )
-from .context_window import ContextWindowBudget
+from .context_window import ContextWindowBudget, ContextWindowDegradationPolicy
 from .extractors import (
     CompositeExtractor,
     DomainLabelExtractor,
@@ -141,6 +141,7 @@ __all__ = [
     "ContextCompiler",
     "ContextBundle",
     "ContextWindowBudget",
+    "ContextWindowDegradationPolicy",
     "DomainLabelExtractor",
     "ExtractionResult",
     "Extractor",
@@ -200,4 +201,4 @@ __all__ = [
     "verify_trust_manifest",
 ]
 
-__version__ = "0.1.1a5"
+__version__ = "0.1.1a6"

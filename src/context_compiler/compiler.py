@@ -23,6 +23,11 @@ from .limits import (
 )
 from .models import (
     ADDITIVE_SAFETY_EXTRACTOR_FAILED_MESSAGE,
+    CONTEXT_WINDOW_DEGRADATION_METADATA_KEY,
+    CONTEXT_WINDOW_DEGRADATION_MODE,
+    CONTEXT_WINDOW_DEGRADATION_RUNGS,
+    LOSSLESS_COMPACT_MEMORY_RENDERING_PROFILE,
+    MEMORY_RENDERING_PROFILE_METADATA_KEY,
     PRIMARY_EXTRACTOR_DEGRADED_MESSAGE,
     PRIMARY_EXTRACTOR_FAILED_MESSAGE,
     SCHEMA_VERSION,
@@ -38,6 +43,7 @@ from .models import (
     VerificationIssue,
     VerificationReport,
     memory_item_covers_candidate,
+    render_lossless_compact_typed_memory,
     render_prompt_item,
     render_typed_memory,
     source_digest,
@@ -137,6 +143,58 @@ class ContextCompiler:
         self._custom_token_counter = token_counter
         self._token_counter_id = token_counter_id.strip() if token_counter_id else None
         self.source_limits = resolve_source_limits(source_limits)
+        self._context_window_memory_rendering_profile: str | None = None
+        self._context_window_degradation: dict[str, object] | None = None
+
+    def _set_context_window_degradation(
+        self,
+        *,
+        mode: str,
+        rung: str,
+        requested_memory_budget_tokens: int,
+        memory_rendering_profile: str | None,
+    ) -> None:
+        """Bind the one closed opt-in degradation decision before compilation."""
+
+        if type(mode) is not str or mode != CONTEXT_WINDOW_DEGRADATION_MODE:
+            raise ValueError("unsupported context-window degradation mode")
+        if type(rung) is not str or rung not in CONTEXT_WINDOW_DEGRADATION_RUNGS:
+            raise ValueError("unsupported context-window degradation rung")
+        if (
+            type(requested_memory_budget_tokens) is not int
+            or requested_memory_budget_tokens <= 0
+        ):
+            raise TypeError("requested memory budget must be a positive exact integer")
+        compact = rung in {
+            "lossless_compact",
+            "minimal_memory_reallocation_compact",
+        }
+        if compact:
+            if memory_rendering_profile != LOSSLESS_COMPACT_MEMORY_RENDERING_PROFILE:
+                raise ValueError("compact degradation rung requires the compact profile")
+        elif memory_rendering_profile is not None:
+            raise ValueError("standard degradation rung cannot use a compact profile")
+        effective = self.policy.token_budget
+        if rung == "lossless_compact" and effective != requested_memory_budget_tokens:
+            raise ValueError("lossless compact rung cannot reallocate memory")
+        if rung != "lossless_compact" and effective <= requested_memory_budget_tokens:
+            raise ValueError("memory reallocation rung must increase the requested budget")
+        self._context_window_memory_rendering_profile = memory_rendering_profile
+        self._context_window_degradation = {
+            "mode": mode,
+            "rung": rung,
+            "requested_memory_budget_tokens": requested_memory_budget_tokens,
+            "effective_memory_budget_tokens": effective,
+        }
+
+    def _render_selected(
+        self,
+        items: Iterable[MemoryItem],
+        selected_item_ids: Iterable[str],
+    ) -> str:
+        if self._context_window_memory_rendering_profile is None:
+            return render_typed_memory(items, selected_item_ids)
+        return render_lossless_compact_typed_memory(items, selected_item_ids)
 
     def compile(
         self,
@@ -388,6 +446,20 @@ class ContextCompiler:
                     if self.untrusted_historical_roles
                     else {}
                 ),
+                **(
+                    {
+                        MEMORY_RENDERING_PROFILE_METADATA_KEY: (
+                            self._context_window_memory_rendering_profile
+                        )
+                    }
+                    if self._context_window_memory_rendering_profile is not None
+                    else {}
+                ),
+                **(
+                    {CONTEXT_WINDOW_DEGRADATION_METADATA_KEY: self._context_window_degradation}
+                    if self._context_window_degradation is not None
+                    else {}
+                ),
             },
         )
         active_prompt = result.to_prompt()
@@ -448,7 +520,7 @@ class ContextCompiler:
         ]
         protected_prompt_tokens = (
             self._count_tokens(
-                render_typed_memory(
+                self._render_selected(
                     protected_selected,
                     [item.id for item in protected_selected],
                 )
@@ -716,6 +788,8 @@ class ContextCompiler:
         return max(1, math.ceil(len(text) / self.policy.chars_per_token))
 
     def _item_cost(self, item: MemoryItem) -> int:
+        if self._context_window_memory_rendering_profile is not None:
+            return self._count_tokens(self._render_selected([item], [item.id]))
         return self._count_tokens(
             f"{item.kind.value}:\n{render_prompt_item(item)}\n"
         )
@@ -763,7 +837,7 @@ class ContextCompiler:
         protected.sort(key=lambda item: (item.kind.value, item.source_sequence, item.id))
 
         chosen: list[MemoryItem] = list(protected)
-        protected_prompt = render_typed_memory(chosen, [item.id for item in chosen])
+        protected_prompt = self._render_selected(chosen, [item.id for item in chosen])
         protected_floor = self._count_tokens(protected_prompt)
         # A target below the mandatory envelope/protected floor is impossible.
         # In that case retain useful optional state under the ordinary budget
@@ -777,7 +851,7 @@ class ContextCompiler:
                 len(trial),
                 phase="selection prompt rendering",
             )
-            rendered = render_typed_memory(trial, [value.id for value in trial])
+            rendered = self._render_selected(trial, [value.id for value in trial])
             if self._count_tokens(rendered) <= effective_budget:
                 chosen.append(item)
         return [item.id for item in chosen]
