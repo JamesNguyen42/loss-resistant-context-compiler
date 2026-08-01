@@ -118,6 +118,12 @@ The expected status in the recorded environment is exit code 2. Retain that
 failure as evidence; do not reinterpret ordinary `doctor` success as live
 readiness.
 
+Structured JSON reports and file-write receipts use strict UTF-8 bytes with
+exact LF framing independently of the host stdout text encoding. Output is
+written once and is not retried after an incomplete write or failed flush.
+This narrow guarantee does not cover argparse help/version text or stderr
+diagnostics, which remain owned by the host text streams.
+
 ## Guard construction API
 
 The supported construction path is available from the package root without

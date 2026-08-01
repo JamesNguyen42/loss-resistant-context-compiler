@@ -20,9 +20,9 @@ from packaging.markers import default_environment
 from packaging.requirements import InvalidRequirement, Requirement
 
 CORE_DISTRIBUTION = "loss-resistant-context-compiler"
-CORE_VERSION = "0.1.1a13"
+CORE_VERSION = "0.1.1a14"
 INTEGRATION_DISTRIBUTION = "ctxc-openhands"
-INTEGRATION_VERSION = "0.1.0a14"
+INTEGRATION_VERSION = "0.1.0a15"
 LIVE_DISTRIBUTIONS = (
     "openhands-ai",
     "openhands-sdk",
@@ -31,6 +31,7 @@ LIVE_DISTRIBUTIONS = (
 )
 EXPECTED_BLOCKER = "hash-pinned-wheelhouse-absent"
 BUILD_LOCK_NAME = "requirements-build.lock"
+MAX_CLI_STDOUT_BYTES = 1024 * 1024
 
 _PROBE = textwrap.dedent(
     f"""
@@ -282,6 +283,50 @@ def _json_stdout(result: subprocess.CompletedProcess[str], *, label: str) -> dic
         value = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
         raise CleanInstallError(f"{label} did not emit one JSON value") from exc
+    if not isinstance(value, dict):
+        raise CleanInstallError(f"{label} JSON must be an object")
+    return value
+
+
+def _exact_utf8_json_stdout(
+    command: list[str],
+    *,
+    environment: dict[str, str],
+    expected: int,
+    label: str,
+) -> dict[str, Any]:
+    hostile_environment = dict(environment)
+    hostile_environment["PYTHONUTF8"] = "0"
+    hostile_environment["PYTHONIOENCODING"] = "utf-16:strict"
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=False,
+        env=hostile_environment,
+    )
+    if result.returncode != expected:
+        raise CleanInstallError(f"{label} returned {result.returncode}, expected {expected}")
+    stdout = result.stdout
+    stderr = result.stderr
+    if type(stdout) is not bytes or type(stderr) is not bytes:
+        raise CleanInstallError(f"{label} did not expose byte output")
+    if stderr:
+        raise CleanInstallError(f"{label} emitted stderr")
+    if not stdout or len(stdout) > MAX_CLI_STDOUT_BYTES:
+        raise CleanInstallError(f"{label} output size is invalid")
+    if (
+        not stdout.endswith(b"\n")
+        or stdout.endswith(b"\n\n")
+        or stdout.startswith(b"\xef\xbb\xbf")
+        or b"\r" in stdout
+        or b"\x00" in stdout
+    ):
+        raise CleanInstallError(f"{label} is not canonical LF-framed UTF-8")
+    try:
+        value = json.loads(stdout.decode("utf-8", errors="strict"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CleanInstallError(f"{label} did not emit one strict UTF-8 JSON value") from exc
     if not isinstance(value, dict):
         raise CleanInstallError(f"{label} JSON must be an object")
     return value
@@ -560,6 +605,15 @@ def _validate_mode(
         label=f"{mode} doctor",
     )
     _assert_doctor(doctor, require_live=False)
+    exact_utf8_doctor = _exact_utf8_json_stdout(
+        [str(entrypoint), "doctor"],
+        environment=environment,
+        expected=0,
+        label=f"{mode} exact UTF-8 doctor",
+    )
+    _assert_doctor(exact_utf8_doctor, require_live=False)
+    if exact_utf8_doctor != doctor:
+        raise CleanInstallError(f"{mode} exact UTF-8 doctor did not match the ordinary doctor")
     live_doctor = _json_stdout(
         _run(
             [str(entrypoint), "doctor", "--require-live"],

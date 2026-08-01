@@ -166,6 +166,29 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a14 - 2026-08-01
+
+### Fixed
+
+- Made structured `ctxc-openhands` JSON report and file-receipt stdout use
+  strict UTF-8 bytes with exact LF framing independently of the host text
+  encoding.
+- Refused missing binary stdout, incomplete writes, malformed Unicode, and
+  failed flushes without retrying output. Exact built-in `StringIO` embedding
+  remains supported, and an already durable report is retained if only its
+  stdout receipt fails.
+
+### Changed
+
+- Extended clean OpenHands wheel and sdist validation with an installed doctor
+  probe under a hostile UTF-16 host encoding.
+- Advanced the separately packaged OpenHands integration to `0.1.0a15` with
+  an exact dependency on core `0.1.1a14`.
+- Retained OpenHands file creation, evidence, replay, authority, and live-gate
+  behavior; materialized-context schema v1; null retrieval and capability
+  identities; `provider_execution_ready=false`; and the required final
+  provider recount. No provider or model execution was run.
+
 ## 0.1.1a13 - 2026-08-01
 
 ### Fixed

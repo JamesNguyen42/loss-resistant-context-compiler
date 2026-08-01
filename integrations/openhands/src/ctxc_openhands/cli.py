@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import sqlite3
@@ -128,10 +129,28 @@ def _safe_error_text(exc: BaseException) -> str:
         return "<exception text unavailable>"
 
 
+def _write_exact_utf8_stdout(rendered: str) -> None:
+    rendered = rendered + ("" if rendered.endswith("\n") else "\n")
+    payload = rendered.encode("utf-8", errors="strict")
+    if type(sys.stdout) is io.StringIO:
+        written = sys.stdout.write(rendered)
+        if type(written) is not int or written != len(rendered):
+            raise OSError("standard output did not accept the complete structured output")
+        sys.stdout.flush()
+        return
+    output = getattr(sys.stdout, "buffer", None)
+    if output is None:
+        raise OSError("standard output does not expose a binary buffer")
+    written = output.write(payload)
+    if type(written) is not int or written != len(payload):
+        raise OSError("standard output did not accept the complete structured output")
+    output.flush()
+
+
 def _write_report(path: str | None, value: Any) -> None:
     rendered = _json(value) + "\n"
     if path is None:
-        sys.stdout.write(rendered)
+        _write_exact_utf8_stdout(rendered)
         return
     destination = Path(path).expanduser().absolute()
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -144,16 +163,16 @@ def _write_report(path: str | None, value: Any) -> None:
         raise FileExistsError(
             f"report output already exists: {destination}"
         ) from None
-    sys.stdout.write(_json({"written": str(destination)}) + "\n")
+    _write_exact_utf8_stdout(_json({"written": str(destination)}))
 
 
 def _write_evidence_output(path: str | None, value: dict[str, Any]) -> None:
     if path is None:
-        sys.stdout.write(_json(value, pretty=False) + "\n")
+        _write_exact_utf8_stdout(_json(value, pretty=False))
         return
     destination = Path(path).expanduser().absolute()
     write_evidence_report(destination, value)
-    sys.stdout.write(_json({"written": str(destination)}) + "\n")
+    _write_exact_utf8_stdout(_json({"written": str(destination)}))
 
 
 def _doctor(*, require_live: bool) -> tuple[dict[str, Any], int]:
@@ -168,7 +187,7 @@ def _doctor(*, require_live: bool) -> tuple[dict[str, Any], int]:
     }
     sqlite_supports_strict = sqlite3.sqlite_version_info >= (3, 37, 0)
     offline_ready = (
-        context_compiler.__version__ == "0.1.1a13"
+        context_compiler.__version__ == "0.1.1a14"
         and tokenizer.passed
         and sqlite_supports_strict
         and imported_after == imported_before

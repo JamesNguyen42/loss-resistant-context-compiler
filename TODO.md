@@ -47,10 +47,11 @@ raw evidence when completing benchmark work.
   `capabilities`, `ingest_source_events`, `compile_memory`, `render_context`,
   `verify_memory`, and `inspect_memory` over one strict shared versioned
   request/response JSONL envelope and `ctxc connector --stdio`.
-- [x] Add the separately packaged `ctxc-openhands` `0.1.0a14` draft-alpha
-  foundation without adding OpenHands or another dependency to the ordinary
-  core installation or import path. The implemented evidence is offline-only;
-  it is not a successful live integration claim.
+- [x] Add the separately packaged `ctxc-openhands` draft-alpha foundation;
+  its exact current version is owned by the integration package metadata. It
+  does not add OpenHands or another dependency to the ordinary core
+  installation or import path. The implemented evidence is offline-only; it is
+  not a successful live integration claim.
 - [x] Pin one exact OpenHands/SDK/tools/agent-server identity, map a closed
   18-class event inventory, keep host actor claims untrusted without an
   independent receipt, poison dispatch after callback refusal, preserve atomic

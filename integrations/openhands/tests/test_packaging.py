@@ -630,6 +630,108 @@ def test_clean_install_report_is_exclusive_and_import_paths_are_bound(
     assert destination.read_bytes() == retained
 
 
+def test_clean_install_probe_forces_and_verifies_exact_utf8_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clean_install = _load_clean_install_script()
+    observed: dict[str, object] = {}
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        observed["command"] = command
+        observed.update(kwargs)
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=b'{"detail":"caf\xc3\xa9 \xf0\x9f\xa7\xaa e\xcc\x81"}\n',
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(clean_install.subprocess, "run", run)
+    environment = {"PYTHONDONTWRITEBYTECODE": "1"}
+
+    value = clean_install._exact_utf8_json_stdout(
+        ["ctxc-openhands", "doctor"],
+        environment=environment,
+        expected=0,
+        label="doctor",
+    )
+
+    assert value == {"detail": "caf\u00e9 \U0001f9ea e\u0301"}
+    assert observed["command"] == ["ctxc-openhands", "doctor"]
+    assert observed["check"] is False
+    assert observed["capture_output"] is True
+    assert observed["text"] is False
+    child_environment = observed["env"]
+    assert type(child_environment) is dict
+    assert child_environment["PYTHONUTF8"] == "0"
+    assert child_environment["PYTHONIOENCODING"] == "utf-16:strict"
+    assert child_environment["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert environment == {"PYTHONDONTWRITEBYTECODE": "1"}
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr"),
+    [
+        (b"", b""),
+        (b"{}\n\n", b""),
+        (b"\xef\xbb\xbf{}\n", b""),
+        (b"{}\r\n", b""),
+        (b'{"value":"\x00"}\n', b""),
+        (b'{"value":"\xff"}\n', b""),
+        (b"[]\n", b""),
+        (b"{}\n", b"diagnostic\n"),
+    ],
+)
+def test_clean_install_probe_rejects_noncanonical_structured_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+    stdout: bytes,
+    stderr: bytes,
+) -> None:
+    clean_install = _load_clean_install_script()
+    monkeypatch.setattr(
+        clean_install.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=stdout,
+            stderr=stderr,
+        ),
+    )
+
+    with pytest.raises(clean_install.CleanInstallError):
+        clean_install._exact_utf8_json_stdout(
+            ["ctxc-openhands", "doctor"],
+            environment={},
+            expected=0,
+            label="doctor",
+        )
+
+
+def test_clean_install_probe_rejects_oversized_structured_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clean_install = _load_clean_install_script()
+    monkeypatch.setattr(
+        clean_install.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=b" " * (clean_install.MAX_CLI_STDOUT_BYTES + 1),
+            stderr=b"",
+        ),
+    )
+
+    with pytest.raises(clean_install.CleanInstallError, match="output size"):
+        clean_install._exact_utf8_json_stdout(
+            ["ctxc-openhands", "doctor"],
+            environment={},
+            expected=0,
+            label="doctor",
+        )
+
+
 def test_clean_install_disables_and_rejects_package_bytecode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -774,11 +876,11 @@ def test_clean_install_probe_distinguishes_dev_extras_from_runtime_dependencies(
     ) == ()
     assert clean_install._active_requirements(
         [
-            "loss-resistant-context-compiler==0.1.1a13",
+            "loss-resistant-context-compiler==0.1.1a14",
             'openhands-ai==1.8.0; extra == "live"',
         ],
         label="integration",
-    ) == ("loss-resistant-context-compiler==0.1.1a13",)
+    ) == ("loss-resistant-context-compiler==0.1.1a14",)
 
     monkeypatch.setattr(
         clean_install,
@@ -793,7 +895,7 @@ def test_clean_install_probe_distinguishes_dev_extras_from_runtime_dependencies(
         "sys_prefix": "environment",
         "core_requirements": ['pytest>=8.0; extra == "dev"'],
         "integration_requirements": [
-            "loss-resistant-context-compiler==0.1.1a13",
+            "loss-resistant-context-compiler==0.1.1a14",
             'openhands-ai==1.8.0; extra == "live"',
         ],
         "openhands_modules_before": [],
