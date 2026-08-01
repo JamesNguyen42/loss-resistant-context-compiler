@@ -46,6 +46,7 @@ from scripts.release_install_smoke import (
     _release_artifacts,
     _release_report,
     _require_expected_materialized_witness_sha256,
+    _require_installed_cli_version_output,
     _require_matching_materialized_degradation_evaluation_reports,
     _require_matching_materialized_evaluation_reports,
     _require_matching_materialized_witnesses,
@@ -56,8 +57,8 @@ from scripts.release_install_smoke import (
     _verified_artifact_snapshot,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.1a20-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a20.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a21-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a21.tar.gz"
 
 
 def test_release_smoke_uses_the_exact_materialization_degradation_policy() -> None:
@@ -65,6 +66,44 @@ def test_release_smoke_uses_the_exact_materialization_degradation_policy() -> No
     assert MATERIALIZED_DEGRADATION_RECEIPT_SHA256 == (
         "b03b83a6fddeeaead17cf716918b183ae6c1625299b36846c2618cf2f71654e5"
     )
+
+
+def test_installed_cli_version_output_is_exact() -> None:
+    assert (
+        _require_installed_cli_version_output("loss-resistant-context-compiler 0.1.1a21\n") is None
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "loss-resistant-context-compiler 0.1.1a21",
+        "loss-resistant-context-compiler 0.1.1a21\r\n",
+        "\ufeffloss-resistant-context-compiler 0.1.1a21\n",
+        "loss-resistant-context-compiler 0.1.1a20\n",
+        "loss-resistant-context-compiler 0.1.1a21\nextra\n",
+    ],
+)
+def test_installed_cli_version_output_rejects_framing_or_identity_drift(
+    value: str,
+) -> None:
+    with pytest.raises(ValueError, match="distribution version output changed"):
+        _require_installed_cli_version_output(value)
+
+
+def test_installed_cli_version_output_rejects_non_exact_strings() -> None:
+    class StringSubclass(str):
+        pass
+
+    for value in (
+        b"version\n",
+        True,
+        1,
+        None,
+        StringSubclass("loss-resistant-context-compiler 0.1.1a21\n"),
+    ):
+        with pytest.raises(TypeError, match="must be an exact string"):
+            _require_installed_cli_version_output(value)  # type: ignore[arg-type]
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -320,7 +359,7 @@ def _sample_evaluation_report_bytes() -> bytes:
     case_ids = [f"retention-case-{index:03d}" for index in range(1, 21)]
     unsigned = {
         "schema": MATERIALIZED_EVALUATION_REPORT_SCHEMA,
-        "evaluator_package_version": "0.1.1a20",
+        "evaluator_package_version": "0.1.1a21",
         "pack": {
             "schema": MATERIALIZED_RETENTION_PACK_SCHEMA,
             "pack_id": MATERIALIZED_RETENTION_PACK_ID,
@@ -914,11 +953,7 @@ def test_installed_receipt_probe_rejects_oversized_output_boundedly() -> None:
         "-I",
         "-B",
         "-c",
-        (
-            "import sys; "
-            "sys.stdout.buffer.write(b'a' * (16 * 1024 + 1)); "
-            "sys.stdout.buffer.flush()"
-        ),
+        ("import sys; sys.stdout.buffer.write(b'a' * (16 * 1024 + 1)); sys.stdout.buffer.flush()"),
     ]
     with pytest.raises(ValueError, match="stdout exceeds the byte limit"):
         _run_bounded_materialized_probe(command)

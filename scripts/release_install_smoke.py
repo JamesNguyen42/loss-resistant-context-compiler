@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a20"
+EXPECTED_VERSION = "0.1.1a21"
 SCHEMA_GLOB = "*.schema.json"
 MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.3"
 MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA = "ctxc-materialized-prompt-assembly-golden-0.1"
@@ -776,6 +776,13 @@ def _venv_ctxc(environment: Path) -> Path:
     if os.name == "nt":
         return environment / "Scripts" / "ctxc.exe"
     return environment / "bin" / "ctxc"
+
+
+def _require_installed_cli_version_output(value: str) -> None:
+    if type(value) is not str:
+        raise TypeError("installed CLI version output must be an exact string")
+    if value != f"{DISTRIBUTION} {EXPECTED_VERSION}\n":
+        raise ValueError("installed CLI distribution version output changed")
 
 
 def _artifact_kind(path: Path) -> str:
@@ -2173,6 +2180,8 @@ def _assert_installed_package(
 
     ctxc = _venv_ctxc(environment)
     _run([str(ctxc), "--help"])
+    version_output = _run_bounded_materialized_probe([str(ctxc), "version"])
+    _require_installed_cli_version_output(version_output)
     _run([str(ctxc), "materialize", "--help"])
     _run([str(ctxc), "verify-materialization", "--help"])
     _run(

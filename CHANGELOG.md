@@ -166,6 +166,19 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a21 - 2026-08-01
+
+### Added
+
+- Added `ctxc version`, which emits the exact installed distribution name and
+  version through the strict binary CLI output path. The output is explicitly
+  not commit, tree, wheel, RECORD, capability, or readiness evidence.
+
+### Changed
+
+- Advanced the separately packaged OpenHands integration to `0.1.0a22` with
+  an exact dependency on core `0.1.1a21`.
+
 ## 0.1.1a20 - 2026-08-01
 
 ### Added

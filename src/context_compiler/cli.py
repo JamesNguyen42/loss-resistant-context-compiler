@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from contextlib import suppress
 from pathlib import Path
 
+from . import __version__ as _PACKAGE_VERSION
 from .archive import SourceArchive
 from .artifact_diff import diff_artifacts
 from .artifact_inspection import render_artifact_text, summarize_artifact
@@ -77,6 +78,7 @@ _DETAIL_DIAGNOSTIC_SCHEMA = "ctxc-diagnostic-0.2"
 _EVENT_SCHEMA = "ctxc-event-0.1"
 _MATERIALIZE_TOKENIZER_PROFILE = "unicode-codepoint-count-v1"
 _MATERIALIZED_RESULT_READ_CHUNK = 64 * 1024
+_DISTRIBUTION = "loss-resistant-context-compiler"
 _CLI_MASK_CHARACTERS = frozenset({"*", "#", "█", "■"})
 
 
@@ -284,6 +286,16 @@ def _write_new_output(value: str, path: str | None) -> None:
             raise FileExistsError("output already exists") from exc
     else:
         _write_exact_utf8_output(value, None)
+
+
+def _version(_args: argparse.Namespace) -> int:
+    try:
+        _write_binary_stdout(f"{_DISTRIBUTION} {_PACKAGE_VERSION}\n")
+    except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise OSError(
+            "package version was not emitted completely; treat any emitted bytes as unusable"
+        ) from exc
+    return 0
 
 
 def _command_name(args: argparse.Namespace) -> str:
@@ -1320,6 +1332,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Compile verbose agent histories into typed, provenance-linked memory.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    version_parser = subparsers.add_parser(
+        "version",
+        help="show the installed distribution version",
+    )
+    version_parser.set_defaults(handler=_version)
 
     compile_parser = subparsers.add_parser("compile", help="compile JSON or JSONL history")
     compile_parser.add_argument("input", help="history path or - for stdin")

@@ -16,11 +16,103 @@ from context_compiler import (
     PathBoundaryError,
     SourceLimitError,
     SourceRecord,
+    __version__,
     cli,
 )
 from context_compiler.cli import main
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_version_cli_emits_exact_binary_distribution_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BinaryBuffer:
+        payloads: list[bytes] = []
+        flushes = 0
+
+        def write(self, payload: bytes) -> int:
+            self.payloads.append(payload)
+            return len(payload)
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    class HostTextOutput:
+        buffer = BinaryBuffer()
+
+        def write(self, _value: str) -> int:
+            raise AssertionError("version output must not use the locale text stream")
+
+    output = HostTextOutput()
+    monkeypatch.setattr(cli.sys, "stdout", output)
+
+    assert main(["version"]) == 0
+    assert output.buffer.payloads == [
+        f"loss-resistant-context-compiler {__version__}\n".encode("ascii")
+    ]
+    assert output.buffer.flushes == 1
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["missing", "short", "write", "flush", "missing-flush"],
+)
+def test_version_cli_output_failure_is_single_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+) -> None:
+    class OutputBuffer:
+        def __init__(self) -> None:
+            self.writes = 0
+            self.flushes = 0
+
+        def write(self, payload: bytes) -> int:
+            self.writes += 1
+            if mode == "write":
+                raise OSError("injected version write failure")
+            if mode == "short":
+                return len(payload) - 1
+            return len(payload)
+
+    class FlushableOutputBuffer(OutputBuffer):
+        def flush(self) -> None:
+            self.flushes += 1
+            if mode == "flush":
+                raise OSError("injected version flush failure")
+
+    class DiagnosticBuffer:
+        payloads: list[bytes] = []
+        flushes = 0
+
+        def write(self, payload: bytes) -> int:
+            self.payloads.append(payload)
+            return len(payload)
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    output = type("Output", (), {})()
+    output_buffer = OutputBuffer() if mode == "missing-flush" else FlushableOutputBuffer()
+    if mode != "missing":
+        output.buffer = output_buffer
+    diagnostic = type("Diagnostic", (), {"buffer": DiagnosticBuffer()})()
+    monkeypatch.setattr(cli.sys, "stdout", output)
+    monkeypatch.setattr(cli.sys, "stderr", diagnostic)
+
+    assert main(["version"]) == 2
+    assert output_buffer.writes == (0 if mode == "missing" else 1)
+    assert output_buffer.flushes == (1 if mode == "flush" else 0)
+    assert diagnostic.buffer.payloads == [
+        b"ctxc: package version was not emitted completely; treat any emitted bytes as unusable\n"
+    ]
+    assert diagnostic.buffer.flushes == 1
+
+
+def test_version_cli_rejects_extra_arguments() -> None:
+    with pytest.raises(SystemExit) as raised:
+        main(["version", "unexpected"])
+    assert raised.value.code == 2
 
 
 def write_sources(path: Path, *, content: str = "goal: stay reliable") -> None:

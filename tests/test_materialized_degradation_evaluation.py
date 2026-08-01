@@ -57,7 +57,7 @@ def test_fixed_three_arm_report_is_deterministic_and_preserves_boundaries() -> N
 
     assert _canonical_bytes(first) == _canonical_bytes(second)
     assert first["schema"] == "ctxc-materialized-degradation-report-0.2"
-    assert first["evaluator_package_version"] == "0.1.1a20"
+    assert first["evaluator_package_version"] == "0.1.1a21"
     assert (
         first["report_sha256"]
         == hashlib.sha256(

@@ -25,12 +25,12 @@ from scripts.release_reproducibility import (
     main,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.1a20-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a20.tar.gz"
-ROOT = "loss_resistant_context_compiler-0.1.1a20"
+WHEEL = "loss_resistant_context_compiler-0.1.1a21-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a21.tar.gz"
+ROOT = "loss_resistant_context_compiler-0.1.1a21"
 MATRIX_REVISION = "1" * 40
-MATRIX_ROOT_WHEEL = "loss_resistant_context_compiler-0.1.1a20-py3-none-any.whl"
-MATRIX_INTEGRATION_VERSION = "0.1.0a21"
+MATRIX_ROOT_WHEEL = "loss_resistant_context_compiler-0.1.1a21-py3-none-any.whl"
+MATRIX_INTEGRATION_VERSION = "0.1.0a22"
 MATRIX_INTEGRATION_WHEEL = f"ctxc_openhands-{MATRIX_INTEGRATION_VERSION}-py3-none-any.whl"
 MATRIX_INTEGRATION_SDIST = f"ctxc_openhands-{MATRIX_INTEGRATION_VERSION}.tar.gz"
 MATRIX_BUILD_INPUTS = tuple(reproducibility._BUILD_INPUT_WHEELS)
@@ -73,14 +73,14 @@ def _self_hashed_report(unsigned: dict[str, object]) -> dict[str, object]:
 
 def _write_wheel(path: Path, *, timestamp: tuple[int, int, int, int, int, int]) -> None:
     entries = {
-        "context_compiler/__init__.py": b'__version__ = "0.1.1a20"\n',
-        "loss_resistant_context_compiler-0.1.1a20.dist-info/METADATA": (
-            b"Metadata-Version: 2.4\nName: loss-resistant-context-compiler\nVersion: 0.1.1a20\n"
+        "context_compiler/__init__.py": b'__version__ = "0.1.1a21"\n',
+        "loss_resistant_context_compiler-0.1.1a21.dist-info/METADATA": (
+            b"Metadata-Version: 2.4\nName: loss-resistant-context-compiler\nVersion: 0.1.1a21\n"
         ),
-        "loss_resistant_context_compiler-0.1.1a20.dist-info/WHEEL": (
+        "loss_resistant_context_compiler-0.1.1a21.dist-info/WHEEL": (
             b"Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n"
         ),
-        "loss_resistant_context_compiler-0.1.1a20.dist-info/RECORD": b"",
+        "loss_resistant_context_compiler-0.1.1a21.dist-info/RECORD": b"",
     }
     with zipfile.ZipFile(path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, content in entries.items():
@@ -237,7 +237,7 @@ def _write_package_matrix(tmp_path: Path) -> Path:
             encoding="utf-8",
         )
         probe = {
-            "core_version": "0.1.1a20",
+            "core_version": "0.1.1a21",
             "integration_version": MATRIX_INTEGRATION_VERSION,
             "core_file": "/fixture/site-packages/context_compiler/__init__.py",
             "integration_file": "/fixture/site-packages/ctxc_openhands/__init__.py",
@@ -251,7 +251,7 @@ def _write_package_matrix(tmp_path: Path) -> Path:
                 'wheel>=0.41; extra == "dev"',
             ],
             "integration_requirements": [
-                "loss-resistant-context-compiler==0.1.1a20",
+                "loss-resistant-context-compiler==0.1.1a21",
                 'openhands-ai==1.8.0; extra == "live"',
                 'openhands-sdk==1.27.0; extra == "live"',
                 'openhands-tools==1.27.0; extra == "live"',
@@ -702,7 +702,7 @@ def test_package_matrix_requires_exact_six_lanes_and_self_hashes(
     assert report["required_lanes"] == list(PACKAGE_MATRIX_LANES)
     assert report["package_identity"] == {
         "core_distribution": "loss-resistant-context-compiler",
-        "core_version": "0.1.1a20",
+        "core_version": "0.1.1a21",
         "root_wheel": MATRIX_ROOT_WHEEL,
         "integration_distribution": "ctxc-openhands",
         "integration_version": MATRIX_INTEGRATION_VERSION,

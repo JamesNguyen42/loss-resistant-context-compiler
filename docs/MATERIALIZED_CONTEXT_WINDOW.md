@@ -8,6 +8,17 @@ window types remain experimental and module-qualified.
 
 ## Stable consumer API and CLI
 
+An installed consumer can perform the narrow distribution-version preflight:
+
+```console
+ctxc version
+```
+
+The command emits exactly `loss-resistant-context-compiler <version>` plus one
+LF through the strict CLI output path. This is not commit, tree, wheel, RECORD,
+capability, provider-readiness, or artifact-provenance evidence. Bind those
+identities separately when they matter.
+
 Python hosts call `materialize_context()` with their exact
 `ExactTokenCounterAdapter`, one independently calculated allocation digest, and
 a `ContextWindowBudget`. The returned exact dictionary contains the unchanged

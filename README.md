@@ -24,7 +24,7 @@ meaning can be compressed without loss.
 
 | Area | Current state |
 | --- | --- |
-| Release | Alpha research implementation, package version `0.1.1a20` |
+| Release | Alpha research implementation, package version `0.1.1a21` |
 | Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts, optional LocalAI connector |
@@ -411,6 +411,18 @@ remove it before reinstalling the current project. The Python import and
 `ctxc` command have not changed. See [Support](SUPPORT.md).
 
 ## CLI quick start
+
+Confirm the installed distribution version without importing Python:
+
+```console
+ctxc version
+```
+
+The exact output is `loss-resistant-context-compiler <version>` plus one LF.
+It identifies only the installed distribution version. It does not establish a
+source commit, tree, wheel, RECORD, capability, provider readiness, or artifact
+provenance; consumers that require those identities must verify them
+independently.
 
 Optionally create length-preserving redacted source records before any model
 extractor sees the history:
