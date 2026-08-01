@@ -166,6 +166,54 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a7 - 2026-07-31
+
+### Added
+
+- Added the fixed `ctxc evaluate-materialization-degradation` offline
+  diagnostic over the unchanged 20-case held-out synthetic-naturalistic split.
+  It compares the default strict path, an evaluator-private compact-only stop,
+  and the public compact-plus-single-reallocation policy under the same budget,
+  tokenizer profile, histories, and predeclared atom oracles.
+- Added deterministic report replay and clean source/wheel/sdist execution for
+  acceptance/refusal, exact required and protected fact retention, correction
+  precedence, current-turn placement, planning units, omissions, canonical
+  execution bytes, and receipt bindings.
+
+### Changed
+
+- Advanced the separately packaged OpenHands integration to `0.1.0a8` solely
+  to preserve its exact dependency on core `0.1.1a7`.
+
+The frozen comparison measured zero accepts for strict, zero for compact-only,
+and 18 accepts for compact plus one bounded reallocation; the same two
+mandatory-component cases refused in every arm. All 18 accepted results
+preserved the required and protected atoms, correction precedence, authority
+boundaries, exact source partition, current turn, and a receipt digest bound to
+the second deterministic execution. Required and protected atoms are matched
+to their frozen source id and exact span, not merely to equal text elsewhere.
+These are Unicode code-point planning units over visible
+project-authored synthetic-naturalistic fixtures, not provider-token or natural
+cohort evidence.
+
+The first preflight remains recorded as failed: spec
+`60bc8d14985c8264bbb3430d40320d83fa1c9ec5839f5df77d5552b28d8a0e2d`
+produced report digest
+`370df110ad65914443fa681bed2cd795b1f3921ac72ff5e1eec0694ac774ba75`
+after incorrectly treating historical strict outcomes as a current integrity
+oracle. Only the two predeclared mandatory refusals remain integrity gates;
+historical accepted outcomes are measurements. The failed report itself was
+not retained, so this is a digest-only failed-preflight record. The corpus and
+historical outcomes were not changed. No model, retrieval, or provider was run,
+and no semantic-completeness, provider-readiness, retrieval-authority,
+natural-history, or superiority claim is made.
+
+The corrected fixed spec digest is
+`6473ddd7b9b941a644032564ebc235040439291693df8d62e31eb07faed89525`.
+Generated reports are not tracked as frozen evidence. A consumer must retain
+the canonical report bytes and supply their expected embedded digest
+independently when replaying a report.
+
 ## 0.1.1a6 - 2026-07-31
 
 ### Added

@@ -47,7 +47,7 @@ raw evidence when completing benchmark work.
   `capabilities`, `ingest_source_events`, `compile_memory`, `render_context`,
   `verify_memory`, and `inspect_memory` over one strict shared versioned
   request/response JSONL envelope and `ctxc connector --stdio`.
-- [x] Add the separately packaged `ctxc-openhands` `0.1.0a7` draft-alpha
+- [x] Add the separately packaged `ctxc-openhands` `0.1.0a8` draft-alpha
   foundation without adding OpenHands or another dependency to the ordinary
   core installation or import path. The implemented evidence is offline-only;
   it is not a successful live integration claim.
@@ -592,6 +592,15 @@ Acceptance:
   changes can alter the final rendering, so this is not a global-minimum claim.
   Default and CLI evaluation behavior remain strict, so this does not erase the
   red gate above.
+- [x] Add a fixed three-arm structural diagnostic over the unchanged 20-case
+  held-out split. Strict and compact-only each retain 18 exact
+  `compiled_memory_not_verified` failures plus two mandatory refusals; the full
+  ladder accepts 18 and retains the same two mandatory refusals. All accepted
+  rows preserve required/protected atoms, correction precedence, authority,
+  current-turn, partition, omission, deterministic-byte, and second-execution
+  receipt checks. Required/protected atoms use exact source-span retention.
+  The first invalid integrity assumption remains a digest-only failed preflight
+  record rather than being relabeled or used to rewrite the frozen pack.
 - [ ] Approve and apply a privacy and licensing policy to real trajectories.
 - [ ] Collect public or explicitly consented coding-agent histories from
   multiple repositories, task types, and history lengths.

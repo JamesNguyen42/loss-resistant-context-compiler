@@ -5,7 +5,7 @@ backend-path = ["."]
 
 [project]
 name = "loss-resistant-context-compiler"
-version = "0.1.1a6"
+version = "0.1.1a7"
 description = "A model-agnostic, provenance-preserving context compiler for long-running agents"
 readme = "README.md"
 requires-python = ">=3.11"

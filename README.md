@@ -24,7 +24,7 @@ meaning can be compressed without loss.
 
 | Area | Current state |
 | --- | --- |
-| Release | Alpha research implementation, package version `0.1.1a6` |
+| Release | Alpha research implementation, package version `0.1.1a7` |
 | Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts, optional LocalAI connector |
@@ -40,7 +40,7 @@ meaning can be compressed without loss.
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic structural cases; 20 held out; no model or natural-cohort claim |
-| OpenHands integration | Separately packaged `ctxc-openhands` `0.1.0a7` draft alpha; reviewed offline fake-runtime foundation only; live execution blocked |
+| OpenHands integration | Separately packaged `ctxc-openhands` `0.1.0a8` draft alpha; reviewed offline fake-runtime foundation only; live execution blocked |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
 | Production readiness | Not production-ready |
@@ -500,6 +500,25 @@ predeclared accepted cases refuse with `compiled_memory_not_verified`, while
 both predeclared hard-limit refusals match. The command still writes the
 complete canonical report and returns 3; neither the fixtures nor their
 expectations were changed after observing that result.
+
+Run the fixed degradation comparison over the unchanged 20-case held-out split:
+
+```console
+ctxc evaluate-materialization-degradation -o degradation-report.json
+```
+
+The three arms use the default strict path, a compact-only stop, and the public
+compact-plus-single-reallocation policy. Strict and compact-only each refused
+all 20 cases (18 `compiled_memory_not_verified`, two mandatory-component
+refusals). The full ladder accepted 18 and retained the same two mandatory
+refusals. Every accepted result preserved all required/protected exact atoms,
+correction precedence, authority boundaries, source partition, current turn,
+and receipt bindings. Required/protected atoms are bound to their exact frozen
+source spans, and receipt verification is bound to a second deterministic
+execution rather than described as an external anchor. The report explicitly
+records that both the full ladder and the failed compact-only preflight were
+previously observed; it is structural synthetic-naturalistic evidence, not
+newly unseen natural-history or provider-token evidence.
 
 JSON remains the default inspection format. The terminal view bounds displayed
 items, per-item provenance/state links, and raw string length through
@@ -1166,7 +1185,7 @@ bundle authenticates its producer.
 ## Separately packaged OpenHands alpha
 
 [`ctxc-openhands`](integrations/openhands/README.md) is an isolated
-`0.1.0a7` package under `integrations/openhands/`. Ordinary
+`0.1.0a8` package under `integrations/openhands/`. Ordinary
 `loss-resistant-context-compiler` installation and every standalone `ctxc`
 Python/CLI path remain dependency-free and do not import OpenHands. Importing
 `ctxc_openhands` also defers all host imports until its exact compatibility

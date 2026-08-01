@@ -111,6 +111,20 @@ measurements.
 ctxc evaluate-materialization --split heldout -o retention-report.json
 ```
 
+The separate fixed comparison command measures strict, compact-only, and the
+public compact-plus-single-reallocation policy over the unchanged held-out
+split:
+
+```console
+ctxc evaluate-materialization-degradation -o degradation-report.json
+```
+
+Its canonical report binds exact source-span structural retention, correction
+precedence, current-turn, omission, deterministic-byte, and a receipt digest
+from the second deterministic execution. It does not
+enable degradation for `ctxc materialize`, add a retrieval binding, or make the
+result provider-ready.
+
 No arm calls or simulates a model, retrieval system, or provider. Zoom or other
 retrieval remains outside authoritative LRCC memory. The fixtures are visible,
 project-authored test material rather than blind gold or a collected, licensed,

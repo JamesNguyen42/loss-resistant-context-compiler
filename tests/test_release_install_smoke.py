@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from scripts.release_install_smoke import (
+    MATERIALIZED_DEGRADATION_REPORT_SCHEMA,
     MATERIALIZED_EVALUATION_REPORT_SCHEMA,
     MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA,
     MATERIALIZED_REFUSAL_GOLDEN_SCHEMA,
@@ -26,16 +27,20 @@ from scripts.release_install_smoke import (
     _artifact_install_command,
     _assert_artifact_snapshot,
     _build_tool_install_command,
+    _decode_materialized_degradation_evaluation_report,
     _decode_materialized_evaluation_report,
     _decode_materialized_witness,
     _materialized_context_probe_command,
     _materialized_context_witness,
+    _materialized_degradation_evaluation_command,
+    _materialized_degradation_evaluation_report,
     _materialized_evaluation_command,
     _materialized_evaluation_report,
     _offline_build_inputs,
     _release_artifacts,
     _release_report,
     _require_expected_materialized_witness_sha256,
+    _require_matching_materialized_degradation_evaluation_reports,
     _require_matching_materialized_evaluation_reports,
     _require_matching_materialized_witnesses,
     _run_bounded_materialized_probe,
@@ -45,8 +50,8 @@ from scripts.release_install_smoke import (
     _verified_artifact_snapshot,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.1a6-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a6.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a7-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a7.tar.gz"
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -302,7 +307,7 @@ def _sample_evaluation_report_bytes() -> bytes:
     case_ids = [f"retention-case-{index:03d}" for index in range(1, 21)]
     unsigned = {
         "schema": MATERIALIZED_EVALUATION_REPORT_SCHEMA,
-        "evaluator_package_version": "0.1.1a6",
+        "evaluator_package_version": "0.1.1a7",
         "pack": {
             "schema": MATERIALIZED_RETENTION_PACK_SCHEMA,
             "pack_id": MATERIALIZED_RETENTION_PACK_ID,
@@ -833,6 +838,98 @@ def test_materialized_evaluation_source_smoke_replays_exact_red_report(
     assert report["claim_boundaries"]["retrieval_status"] == "not_run"
     assert (tmp_path / "materialized-retention-report.json").read_bytes() == raw
     assert (tmp_path / "materialized-retention-report-verified.json").read_bytes() == raw
+
+
+def test_materialized_degradation_source_smoke_replays_exact_green_report(
+    tmp_path: Path,
+) -> None:
+    command = _materialized_degradation_evaluation_command(
+        Path(sys.executable),
+        tmp_path / "shape.json",
+        module_root=_source_module_root(),
+    )
+    assert command[-3:] == [
+        "evaluate-materialization-degradation",
+        "--output",
+        str(tmp_path / "shape.json"),
+    ]
+
+    raw = _materialized_degradation_evaluation_report(
+        Path(sys.executable),
+        tmp_path,
+        module_root=_source_module_root(),
+    )
+    report = _decode_materialized_degradation_evaluation_report(raw)
+
+    assert report["schema"] == MATERIALIZED_DEGRADATION_REPORT_SCHEMA
+    assert report["integrity_passed"] is True
+    assert set(report["summary"]["arms"]) == {
+        "strict",
+        "lossless_compact_only",
+        "lossless_compact_then_single_reallocation",
+    }
+    for arm in report["summary"]["arms"].values():
+        assert arm["case_count"] == 20
+        assert arm["accepted_case_count"] + arm["refused_case_count"] == 20
+        assert arm["deterministic_replay_pass_count"] == 20
+        assert arm["inputs_unchanged_pass_count"] == 20
+        assert arm["integrity_pass_count"] == 20
+        assert arm["receipt_replay_bound_count"] == arm["accepted_case_count"]
+        assert arm["raw_source_identity_pass_count"] == arm["accepted_case_count"]
+    assert report["summary"]["mandatory_refusal_expected_count"] == 2
+    assert report["summary"]["mandatory_refusal_preserved_count"] == 2
+    mandatory = {
+        case["case_id"]: case
+        for case in report["cases"]
+        if case["mandatory_refusal_applicable"] is True
+    }
+    assert set(mandatory) == {"case-028", "case-030"}
+    assert all(
+        arm["outcome"] == "refused" and arm["reason"] == "mandatory_components_do_not_fit"
+        for case in mandatory.values()
+        for arm in case["arms"]
+    )
+    assert report["claim_boundaries"]["inference_status"] == "not_run"
+    assert report["claim_boundaries"]["retrieval_status"] == "not_run"
+    assert (tmp_path / "materialized-degradation-report.json").read_bytes() == raw
+    assert (tmp_path / "materialized-degradation-report-verified.json").read_bytes() == raw
+
+    assert (
+        _require_matching_materialized_degradation_evaluation_reports(
+            raw,
+            [bytes(raw), bytes(raw)],
+        )
+        == report
+    )
+
+    changed = json.loads(raw)
+    changed["summary"]["arms"]["strict"]["accepted_case_count"] = 1
+    unsigned = {key: value for key, value in changed.items() if key != "report_sha256"}
+    changed["report_sha256"] = hashlib.sha256(_canonical_bytes(unsigned)).hexdigest()
+    changed_raw = _canonical_bytes(changed) + b"\n"
+    with pytest.raises(ValueError, match="arm summary is invalid"):
+        _decode_materialized_degradation_evaluation_report(changed_raw)
+
+    for field in ("receipt_replay_bound_count", "raw_source_identity_pass_count"):
+        changed = json.loads(raw)
+        arm = changed["summary"]["arms"]["strict"]
+        arm[field] = float(arm["accepted_case_count"])
+        unsigned = {key: value for key, value in changed.items() if key != "report_sha256"}
+        changed["report_sha256"] = hashlib.sha256(_canonical_bytes(unsigned)).hexdigest()
+        with pytest.raises(ValueError, match="arm summary is invalid"):
+            _decode_materialized_degradation_evaluation_report(_canonical_bytes(changed) + b"\n")
+
+        changed = json.loads(raw)
+        arm = changed["summary"]["arms"]["strict"]
+        arm["accepted_case_count"] = 0
+        arm["refused_case_count"] = 20
+        arm["receipt_replay_bound_count"] = 0
+        arm["raw_source_identity_pass_count"] = 0
+        arm[field] = False
+        unsigned = {key: value for key, value in changed.items() if key != "report_sha256"}
+        changed["report_sha256"] = hashlib.sha256(_canonical_bytes(unsigned)).hexdigest()
+        with pytest.raises(ValueError, match="arm summary is invalid"):
+            _decode_materialized_degradation_evaluation_report(_canonical_bytes(changed) + b"\n")
 
 
 def test_materialized_context_source_witness_is_byte_deterministic() -> None:

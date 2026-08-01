@@ -34,6 +34,10 @@ from .limits import (
     SourceLimitError,
     SourceLimits,
 )
+from .materialized_degradation_evaluation import (
+    evaluate_materialization_degradation,
+    load_materialization_degradation_report,
+)
 from .materialized_evaluation import (
     evaluate_materialization_retention,
     load_materialization_retention_report,
@@ -499,6 +503,41 @@ def _evaluate_materialization(args: argparse.Namespace) -> int:
                     "--verify-report requires --expected-report-sha256"
                 )
             report = load_materialization_retention_report(
+                args.verify_report,
+                expected_report_sha256=args.expected_report_sha256,
+            )
+        rendered = json.dumps(
+            report,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        _write_new_output(rendered, args.output)
+        return 0 if report["integrity_passed"] is True else 3
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        TimeoutError,
+    ) as exc:
+        _write_error(args, exc)
+        return 2
+    return 0
+
+
+def _evaluate_materialization_degradation(args: argparse.Namespace) -> int:
+    try:
+        if args.verify_report is None:
+            if args.expected_report_sha256 is not None:
+                raise ValueError("--expected-report-sha256 requires --verify-report")
+            report = evaluate_materialization_degradation()
+        else:
+            if args.expected_report_sha256 is None:
+                raise ValueError("--verify-report requires --expected-report-sha256")
+            report = load_materialization_degradation_report(
                 args.verify_report,
                 expected_report_sha256=args.expected_report_sha256,
             )
@@ -1167,6 +1206,26 @@ def build_parser() -> argparse.ArgumentParser:
     evaluation_parser.add_argument("-o", "--output")
     _add_error_format_argument(evaluation_parser)
     evaluation_parser.set_defaults(handler=_evaluate_materialization)
+
+    degradation_evaluation_parser = subparsers.add_parser(
+        "evaluate-materialization-degradation",
+        help=(
+            "run or verify the fixed offline strict/compact/reallocation diagnostic"
+        ),
+    )
+    degradation_evaluation_parser.add_argument(
+        "--verify-report",
+        help="verify one previously emitted report instead of running the diagnostic",
+    )
+    degradation_evaluation_parser.add_argument(
+        "--expected-report-sha256",
+        help="independently retained report digest required for verification",
+    )
+    degradation_evaluation_parser.add_argument("-o", "--output")
+    _add_error_format_argument(degradation_evaluation_parser)
+    degradation_evaluation_parser.set_defaults(
+        handler=_evaluate_materialization_degradation
+    )
 
     verify_parser = subparsers.add_parser(
         "verify", help="re-verify an artifact against immutable source history"

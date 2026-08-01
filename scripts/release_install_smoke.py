@@ -17,12 +17,16 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a6"
+EXPECTED_VERSION = "0.1.1a7"
 SCHEMA_GLOB = "*.schema.json"
 MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.3"
 MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA = "ctxc-materialized-prompt-assembly-golden-0.1"
 MATERIALIZED_REFUSAL_GOLDEN_SCHEMA = "ctxc-materialization-refusal-golden-0.1"
 MATERIALIZED_EVALUATION_REPORT_SCHEMA = "ctxc-materialized-retention-report-0.1"
+MATERIALIZED_DEGRADATION_REPORT_SCHEMA = "ctxc-materialized-degradation-report-0.2"
+MATERIALIZED_DEGRADATION_SPEC_SHA256 = (
+    "6473ddd7b9b941a644032564ebc235040439291693df8d62e31eb07faed89525"
+)
 MATERIALIZED_RETENTION_PACK_ID = "ctxc-materialized-retention-naturalistic-v1"
 MATERIALIZED_RETENTION_PACK_SCHEMA = "ctxc-materialized-retention-pack-0.1"
 MATERIALIZED_RETENTION_PACK_BYTES = 192_498
@@ -42,6 +46,25 @@ _EVALUATION_CLAIM_BOUNDARIES = {
     "natural_history_claimed": False,
     "provider_execution_ready": False,
     "provider_token_accounting": False,
+    "retrieval_included": False,
+    "retrieval_status": "not_run",
+    "semantic_completeness_claimed": False,
+    "structural_retention_only": True,
+    "task_completion_measured": False,
+}
+_DEGRADATION_EVALUATION_CLAIM_BOUNDARIES = {
+    "compact_only_arm_observed_in_failed_preflight": True,
+    "corpus_is_project_authored_synthetic_naturalistic": True,
+    "final_provider_recount_required": True,
+    "full_ladder_outcomes_previously_observed": True,
+    "historical_accepted_outcomes_used_as_integrity_gate": False,
+    "inference_status": "not_run",
+    "model_answer_superiority_claimed": False,
+    "natural_history_claimed": False,
+    "newly_unseen_heldout_claimed": False,
+    "provider_execution_ready": False,
+    "provider_token_accounting": False,
+    "predeclared_mandatory_refusal_outcomes_used_as_integrity_gate": True,
     "retrieval_included": False,
     "retrieval_status": "not_run",
     "semantic_completeness_claimed": False,
@@ -804,6 +827,43 @@ def _materialized_evaluation_command(
     return command
 
 
+def _materialized_degradation_evaluation_command(
+    executable: Path,
+    output: Path,
+    *,
+    module_root: Path | None,
+    verify_report: Path | None = None,
+    expected_report_sha256: str | None = None,
+) -> list[str]:
+    if (verify_report is None) != (expected_report_sha256 is None):
+        raise ValueError("degradation evaluation verification requires report and digest")
+    if module_root is None:
+        command = [str(executable)]
+    else:
+        verified_root = _verified_distribution_directory(module_root)
+        command = [
+            str(executable),
+            "-I",
+            "-P",
+            "-B",
+            "-c",
+            _EVALUATION_SOURCE_RUNNER,
+            str(verified_root),
+        ]
+    command.append("evaluate-materialization-degradation")
+    if verify_report is not None:
+        command.extend(
+            (
+                "--verify-report",
+                str(verify_report),
+                "--expected-report-sha256",
+                str(expected_report_sha256),
+            )
+        )
+    command.extend(("--output", str(output)))
+    return command
+
+
 def _read_stable_evaluation_report(path: Path) -> bytes:
     snapshot = _verified_artifact_snapshot(path)
     resolved, fingerprint = snapshot
@@ -1020,6 +1080,245 @@ def _require_matching_materialized_evaluation_reports(
         _decode_materialized_evaluation_report(report)
         if report != source_report:
             raise RuntimeError("installed materialized evaluation report differs from source")
+    return source
+
+
+def _decode_materialized_degradation_evaluation_report(raw: bytes) -> dict[str, object]:
+    if type(raw) is not bytes:
+        raise TypeError("materialized degradation evaluation report must be exact bytes")
+    if not raw or len(raw) > _MAX_EVALUATION_REPORT_BYTES:
+        raise ValueError("materialized degradation evaluation report is outside its byte limit")
+    try:
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError("materialized degradation evaluation report must be valid UTF-8") from exc
+    if not text.endswith("\n") or text.count("\n") != 1:
+        raise ValueError("materialized degradation evaluation report must be one JSON line")
+
+    def exact_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        value: dict[str, object] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("materialized degradation evaluation report has duplicate fields")
+            value[key] = item
+        return value
+
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"materialized degradation evaluation report contains {value}")
+
+    try:
+        value = json.loads(
+            text[:-1],
+            object_pairs_hook=exact_object,
+            parse_constant=reject_constant,
+        )
+    except (RecursionError, json.JSONDecodeError) as exc:
+        raise ValueError("materialized degradation evaluation report is not valid JSON") from exc
+    if type(value) is not dict:
+        raise TypeError("materialized degradation evaluation report must be an exact object")
+    canonical = _canonical_json_bytes(value) + b"\n"
+    if canonical != raw:
+        raise ValueError("materialized degradation evaluation report is not canonical JSON")
+    if set(value) != {
+        "cases",
+        "claim_boundaries",
+        "evaluation_spec",
+        "evaluator_package_version",
+        "failed_preflight",
+        "integrity_passed",
+        "pack",
+        "report_sha256",
+        "schema",
+        "summary",
+    }:
+        raise ValueError("materialized degradation evaluation report fields are invalid")
+    if value["schema"] != MATERIALIZED_DEGRADATION_REPORT_SCHEMA:
+        raise ValueError("materialized degradation evaluation report schema is unsupported")
+    if value["evaluator_package_version"] != EXPECTED_VERSION:
+        raise ValueError("materialized degradation evaluation package version is unsupported")
+    if value["integrity_passed"] is not True:
+        raise ValueError("materialized degradation evaluation integrity did not pass")
+    report_sha256 = value["report_sha256"]
+    if type(report_sha256) is not str or _SHA256.fullmatch(report_sha256) is None:
+        raise ValueError("materialized degradation evaluation report digest is invalid")
+    unsigned = {key: item for key, item in value.items() if key != "report_sha256"}
+    if hashlib.sha256(_canonical_json_bytes(unsigned)).hexdigest() != report_sha256:
+        raise ValueError("materialized degradation evaluation report self-digest mismatch")
+    if value["pack"] != {
+        "corpus_kind": "repository-authored-synthetic-naturalistic-fixture",
+        "pack_id": MATERIALIZED_RETENTION_PACK_ID,
+        "pack_sha256": MATERIALIZED_RETENTION_PACK_SHA256,
+        "raw_bytes": MATERIALIZED_RETENTION_PACK_BYTES,
+        "raw_sha256": MATERIALIZED_RETENTION_PACK_RAW_SHA256,
+        "schema": MATERIALIZED_RETENTION_PACK_SCHEMA,
+    }:
+        raise ValueError("materialized degradation evaluation pack identity is invalid")
+    spec = value["evaluation_spec"]
+    selection = spec.get("selection") if type(spec) is dict else None
+    if (
+        type(spec) is not dict
+        or type(selection) is not dict
+        or spec.get("spec_sha256") != MATERIALIZED_DEGRADATION_SPEC_SHA256
+        or selection.get("case_count") != 20
+        or selection.get("split") != "heldout"
+    ):
+        raise ValueError("materialized degradation evaluation specification is invalid")
+    failed_preflight = value["failed_preflight"]
+    if failed_preflight != {
+        "report_bytes_retained": False,
+        "report_sha256": "370df110ad65914443fa681bed2cd795b1f3921ac72ff5e1eec0694ac774ba75",
+        "spec_sha256": "60bc8d14985c8264bbb3430d40320d83fa1c9ec5839f5df77d5552b28d8a0e2d",
+        "status": "failed",
+    }:
+        raise ValueError("materialized degradation evaluation lost its failed preflight")
+    cases = value["cases"]
+    expected_case_ids = [f"case-{number:03d}" for number in range(11, 31)]
+    if (
+        type(cases) is not list
+        or len(cases) != 20
+        or any(type(case) is not dict or case.get("integrity_passed") is not True for case in cases)
+        or [case.get("case_id") for case in cases] != expected_case_ids
+    ):
+        raise ValueError("materialized degradation evaluation cases are invalid")
+    mandatory_cases = [case for case in cases if case.get("mandatory_refusal_applicable") is True]
+    if (
+        [case["case_id"] for case in mandatory_cases] != ["case-028", "case-030"]
+        or any(case.get("mandatory_refusal_preserved") is not True for case in mandatory_cases)
+        or any(
+            arm.get("outcome") != "refused"
+            or arm.get("reason") != "mandatory_components_do_not_fit"
+            for case in mandatory_cases
+            for arm in case.get("arms", [])
+        )
+    ):
+        raise ValueError("materialized degradation mandatory refusals changed")
+    summary = value["summary"]
+    historical_matches = (
+        summary.get("historical_strict_expectation_match_count") if type(summary) is dict else None
+    )
+    if (
+        type(summary) is not dict
+        or summary.get("case_count") != 20
+        or summary.get("failed_case_ids") != []
+        or type(historical_matches) is not int
+        or not 0 <= historical_matches <= 20
+        or summary.get("mandatory_refusal_expected_count") != 2
+        or summary.get("mandatory_refusal_preserved_count") != 2
+    ):
+        raise ValueError("materialized degradation evaluation summary is invalid")
+    arms = summary.get("arms")
+    expected_arms = {
+        "strict",
+        "lossless_compact_only",
+        "lossless_compact_then_single_reallocation",
+    }
+    if type(arms) is not dict or set(arms) != expected_arms:
+        raise ValueError("materialized degradation evaluation arm summary is invalid")
+    for arm_name in sorted(expected_arms):
+        arm = arms[arm_name]
+        accepted = arm.get("accepted_case_count") if type(arm) is dict else None
+        refused = arm.get("refused_case_count") if type(arm) is dict else None
+        receipt_count = arm.get("receipt_replay_bound_count") if type(arm) is dict else None
+        raw_identity_count = (
+            arm.get("raw_source_identity_pass_count") if type(arm) is dict else None
+        )
+        if (
+            type(arm) is not dict
+            or arm.get("case_count") != 20
+            or type(accepted) is not int
+            or type(refused) is not int
+            or accepted < 0
+            or refused < 0
+            or accepted + refused != 20
+            or arm.get("deterministic_replay_pass_count") != 20
+            or arm.get("inputs_unchanged_pass_count") != 20
+            or arm.get("integrity_pass_count") != 20
+            or type(receipt_count) is not int
+            or receipt_count != accepted
+            or type(raw_identity_count) is not int
+            or raw_identity_count != accepted
+        ):
+            raise ValueError("materialized degradation evaluation arm summary is invalid")
+    if value["claim_boundaries"] != _DEGRADATION_EVALUATION_CLAIM_BOUNDARIES:
+        raise ValueError("materialized degradation evaluation claim boundaries changed")
+    return value
+
+
+def _materialized_degradation_evaluation_report(
+    executable: Path,
+    directory: Path,
+    *,
+    module_root: Path | None,
+) -> bytes:
+    verified_directory = _verified_distribution_directory(directory)
+    report_path = verified_directory / "materialized-degradation-report.json"
+    verified_path = verified_directory / "materialized-degradation-report-verified.json"
+    if report_path.exists() or verified_path.exists():
+        raise ValueError("materialized degradation output paths must be absent")
+    completed = subprocess.run(
+        _materialized_degradation_evaluation_command(
+            executable,
+            report_path,
+            module_root=module_root,
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+        env=_subprocess_environment(),
+        timeout=300,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "materialized degradation evaluation did not pass; "
+            f"observed exit code {completed.returncode}"
+        )
+    if completed.stdout or completed.stderr:
+        raise RuntimeError("materialized degradation evaluation emitted console output")
+    raw = _read_stable_evaluation_report(report_path)
+    report = _decode_materialized_degradation_evaluation_report(raw)
+    verified = subprocess.run(
+        _materialized_degradation_evaluation_command(
+            executable,
+            verified_path,
+            module_root=module_root,
+            verify_report=report_path,
+            expected_report_sha256=str(report["report_sha256"]),
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+        env=_subprocess_environment(),
+        timeout=300,
+    )
+    if verified.returncode != 0:
+        raise RuntimeError(
+            "materialized degradation verification did not pass; "
+            f"observed exit code {verified.returncode}"
+        )
+    if verified.stdout or verified.stderr:
+        raise RuntimeError("materialized degradation verification emitted console output")
+    verified_raw = _read_stable_evaluation_report(verified_path)
+    _decode_materialized_degradation_evaluation_report(verified_raw)
+    if verified_raw != raw:
+        raise RuntimeError("materialized degradation verification changed report bytes")
+    return raw
+
+
+def _require_matching_materialized_degradation_evaluation_reports(
+    source_report: bytes,
+    installed_reports: Sequence[bytes],
+) -> dict[str, object]:
+    source = _decode_materialized_degradation_evaluation_report(source_report)
+    if len(installed_reports) != 2:
+        raise ValueError("release smoke requires two installed degradation reports")
+    for report in installed_reports:
+        _decode_materialized_degradation_evaluation_report(report)
+        if report != source_report:
+            raise RuntimeError("installed materialized degradation report differs from source")
     return source
 
 
@@ -1581,7 +1880,7 @@ def _assert_installed_package(
     python: Path,
     environment: Path,
     expected_schema_names: list[str],
-) -> tuple[dict[str, object], bytes]:
+) -> tuple[dict[str, object], bytes, bytes]:
     probe = (
         "import importlib.metadata as m, json, pathlib, sys; "
         f"assert m.version('{DISTRIBUTION}') == '{EXPECTED_VERSION}'; "
@@ -1599,6 +1898,7 @@ def _assert_installed_package(
     _run([str(ctxc), "--help"])
     _run([str(ctxc), "materialize", "--help"])
     _run([str(ctxc), "evaluate-materialization", "--help"])
+    _run([str(ctxc), "evaluate-materialization-degradation", "--help"])
 
     source_path = environment / "sources.json"
     artifact_path = environment / "artifact.json"
@@ -1655,11 +1955,16 @@ def _assert_installed_package(
         environment.parent,
         module_root=None,
     )
+    degradation_evaluation_report = _materialized_degradation_evaluation_report(
+        ctxc,
+        environment.parent,
+        module_root=None,
+    )
     witness = _materialized_context_witness(
         python,
         require_standalone=True,
     )
-    return witness, evaluation_report
+    return witness, evaluation_report, degradation_evaluation_report
 
 
 def _temporary_root() -> Path:
@@ -1732,7 +2037,7 @@ def _smoke_artifact(
     expected_schema_names: list[str],
     *,
     offline_build_inputs: tuple[Path, tuple[Path, tuple[int, ...]]] | None,
-) -> tuple[dict[str, str], dict[str, object], bytes]:
+) -> tuple[dict[str, str], dict[str, object], bytes, bytes]:
     artifact_snapshot = _verified_artifact_snapshot(path)
     artifact, _ = artifact_snapshot
     kind = _artifact_kind(artifact)
@@ -1758,7 +2063,7 @@ def _smoke_artifact(
         _assert_artifact_snapshot(path, artifact_snapshot)
         _run(_artifact_install_command(python, artifact, kind=kind))
         _assert_artifact_snapshot(path, artifact_snapshot)
-        witness, evaluation_report = _assert_installed_package(
+        witness, evaluation_report, degradation_evaluation_report = _assert_installed_package(
             python,
             environment,
             expected_schema_names,
@@ -1772,6 +2077,7 @@ def _smoke_artifact(
         },
         witness,
         evaluation_report,
+        degradation_evaluation_report,
     )
 
 
@@ -1866,6 +2172,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             Path(directory),
             module_root=_source_module_root(),
         )
+        source_degradation_evaluation_report = _materialized_degradation_evaluation_report(
+            Path(sys.executable),
+            Path(directory),
+            module_root=_source_module_root(),
+        )
     smoke_results = [
         _smoke_artifact(
             path,
@@ -1874,9 +2185,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         for path in _release_artifacts(args.dist_dir)
     ]
-    results = [result for result, _witness, _evaluation in smoke_results]
-    installed_witnesses = [witness for _result, witness, _evaluation in smoke_results]
-    installed_evaluation_reports = [evaluation for _result, _witness, evaluation in smoke_results]
+    results = [result for result, _witness, _evaluation, _degradation in smoke_results]
+    installed_witnesses = [witness for _result, witness, _evaluation, _degradation in smoke_results]
+    installed_evaluation_reports = [
+        evaluation for _result, _witness, evaluation, _degradation in smoke_results
+    ]
+    installed_degradation_evaluation_reports = [
+        degradation for _result, _witness, _evaluation, degradation in smoke_results
+    ]
     _require_matching_materialized_witnesses(
         source_witness,
         installed_witnesses,
@@ -1884,6 +2200,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     materialized_evaluation = _require_matching_materialized_evaluation_reports(
         source_evaluation_report,
         installed_evaluation_reports,
+    )
+    _require_matching_materialized_degradation_evaluation_reports(
+        source_degradation_evaluation_report,
+        installed_degradation_evaluation_reports,
     )
     print(
         json.dumps(

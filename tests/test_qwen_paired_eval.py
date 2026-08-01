@@ -324,7 +324,16 @@ def test_perfect_paired_oracle_is_sequential_and_replays(
 
 @pytest.mark.parametrize(
     "package_version",
-    ["0.1.0", "0.1.1a1", "0.1.1a2", "0.1.1a3", "0.1.1a4", "0.1.1a5", "0.1.1a6"],
+    [
+        "0.1.0",
+        "0.1.1a1",
+        "0.1.1a2",
+        "0.1.1a3",
+        "0.1.1a4",
+        "0.1.1a5",
+        "0.1.1a6",
+        "0.1.1a7",
+    ],
 )
 def test_qwen_paired_reader_accepts_only_recorded_supported_versions(
     package_version: str,

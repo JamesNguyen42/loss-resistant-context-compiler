@@ -338,7 +338,7 @@ connector instance.
 
 ## Isolated OpenHands integration package
 
-`integrations/openhands/` builds the separate `ctxc-openhands` `0.1.0a7`
+`integrations/openhands/` builds the separate `ctxc-openhands` `0.1.0a8`
 draft-alpha package. Neither the core distribution nor an ordinary
 `ctxc_openhands` import imports OpenHands; host imports occur only behind the
 exact compatibility gate. The only reviewed identity is OpenHands `1.8.0` at
@@ -1249,6 +1249,19 @@ This pack is visible project-authored input, not blind gold or a collected,
 licensed, consented, privacy-reviewed natural cohort. Its structural report
 does not establish semantic completeness, task completion, provider-token
 accounting/readiness, or comparative superiority, and it does not close P0-E3.
+
+`ctxc evaluate-materialization-degradation` reuses only the fixed held-out 20
+cases and their existing oracles. Its arms are the default strict path, an
+evaluator-private compact-only stop, and the public compact-plus-one-reallocation
+policy. At the fixed code-point budget the first two arms refuse all 20 cases;
+the public ladder accepts 18 and retains the two mandatory-component refusals.
+Accepted rows bind exact retention, correction precedence, source partition,
+current turn, authority, omission, canonical execution, and a receipt digest
+from the second deterministic execution. Required/protected retention requires
+the frozen source id and exact source span; equal text from another source does
+not satisfy it.
+This is a structural regression comparison, not an additional authority or
+provider-admission layer.
 
 `benchmarks/natural_history.py` defines a separate strict evidence pipeline.
 Six schemas and seven self-hashed fixtures cover bounded corpus intake,

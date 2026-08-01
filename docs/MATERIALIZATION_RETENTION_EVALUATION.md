@@ -90,6 +90,65 @@ all-split report therefore has `integrity_passed=false`, and the command returns
 exit code 3 after writing the complete report. This observed product limitation
 is not converted into a passing expectation or used to alter the pack.
 
+## Fixed degradation comparison
+
+`ctxc evaluate-materialization-degradation` reuses the exact immutable 20-case
+held-out split, budget, tokenizer profile, source bytes, and gold atom spans.
+It has no pack, case, budget, threshold, or arm override. The fixed arm order
+is:
+
+1. `strict`, the ordinary no-policy public materialization path;
+2. `lossless_compact_only`, an evaluator-private stop after the exact compact
+   attempt, with no reallocation or new public policy;
+3. `lossless_compact_then_single_reallocation`, the existing public opt-in
+   policy.
+
+The compact-only arm first preserves any strict success. After the exact
+compiled-memory overflow only, it invokes the existing compact compiler path.
+If compact succeeds, the evaluator requires the public policy to produce the
+same prototype bytes and uses that verified public result. Its receipt digest
+must match a second deterministic execution; that replay binding is not an
+externally retained receipt anchor. If compact still overflows, its exact
+refusal is retained; it never
+crosses the reallocation boundary.
+
+At the fixed held-out budget, strict and compact-only each accept zero cases:
+18 refuse with `compiled_memory_not_verified`, and two refuse with
+`mandatory_components_do_not_fit`. The public ladder accepts those 18
+memory-overflow cases and retains the same two mandatory refusals. All 18
+accepted results preserve every required active or protected exact atom,
+correction precedence, protected retention, the authority boundary, exact
+source partition, one final current turn, omission inventory, deterministic
+canonical bytes, and the second-execution receipt binding. Required and
+protected atoms match only through their frozen source id and exact character
+span or through that same exact raw source; equal text in another source cannot
+satisfy retention.
+
+The first evaluation-spec preflight failed. Spec digest
+`60bc8d14985c8264bbb3430d40320d83fa1c9ec5839f5df77d5552b28d8a0e2d`
+treated the older pack's strict expected outcomes as a current integrity gate;
+its failed report digest was
+`370df110ad65914443fa681bed2cd795b1f3921ac72ff5e1eec0694ac774ba75`.
+Those historical outcomes and all fixture/oracle bytes remain unchanged. The
+failed report bytes were not retained, so its spec and report digests form a
+digest-only failed-preflight record. The replacement spec records historical
+accepted-outcome matches as measurements while the two predeclared mandatory
+refusals remain integrity gates. Other integrity checks cover deterministic
+bytes, exact source-span retention, authority, partition, current-turn, and the
+second-execution receipt binding.
+
+The corrected fixed spec has SHA-256
+`6473ddd7b9b941a644032564ebc235040439291693df8d62e31eb07faed89525`.
+Generated reports are not tracked as frozen evidence. Retain the exact
+canonical report bytes outside the source tree and supply the expected
+embedded report digest independently when replaying them. The digest binds a
+structural report; it is not a signature or provider evidence.
+
+The held-out full-ladder outcomes had already been exercised by regression
+tests, and compact-only was observed in the failed preflight before this report
+was formalized. The report says so and does not call the comparison newly
+unseen, independently blinded, or a natural cohort.
+
 ## CLI
 
 Run the held-out split and reserve a new output path:
@@ -109,6 +168,21 @@ ctxc evaluate-materialization \
   --verify-report retention-report.json \
   --expected-report-sha256 EXPECTED_SHA256
 ```
+
+Run and verify the fixed degradation comparison with separate output files:
+
+```console
+ctxc evaluate-materialization-degradation -o degradation-report.json
+ctxc evaluate-materialization-degradation \
+  --verify-report degradation-report.json \
+  --expected-report-sha256 EXPECTED_SHA256 \
+  -o degradation-report-verified.json
+```
+
+The degradation command returns 0 only when its integrity invariants pass. A
+modeled refusal remains a report row rather than a process failure. Exit 2 is
+reserved for invalid invocation, malformed/unverifiable input, I/O failure, or
+an unexpected evaluator failure.
 
 Reports are compact canonical JSON with a self-digest and contain no raw
 history text, gold literals, timestamps, host paths, platform identity, timing,
