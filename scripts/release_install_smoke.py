@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a17"
+EXPECTED_VERSION = "0.1.1a18"
 SCHEMA_GLOB = "*.schema.json"
 MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.3"
 MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA = "ctxc-materialized-prompt-assembly-golden-0.1"
@@ -320,6 +320,7 @@ from context_compiler import (
     MATERIALIZED_CONTEXT_RESULT_SCHEMA,
     ContextWindowBudget,
     ContextWindowDegradationPolicy,
+    ContextWindowError,
     materialize_context,
     verify_materialized_context_result,
 )
@@ -328,7 +329,7 @@ from context_compiler.context_window import (
     MATERIALIZATION_REFUSAL_DIAGNOSTIC_SCHEMA,
     ContextWindowBudget as ModuleContextWindowBudget,
     ContextWindowDegradationPolicy as ModuleContextWindowDegradationPolicy,
-    ContextWindowError,
+    ContextWindowError as ModuleContextWindowError,
     ContextWindowPrototype,
     compose_context_window,
 )
@@ -342,6 +343,8 @@ from context_compiler.models import (
     MEMORY_RENDERING_PROFILE_METADATA_KEY,
     SourceRecord,
 )
+
+assert ContextWindowError is ModuleContextWindowError
 
 package_root = Path(context_compiler.__file__).resolve(strict=True).parent
 if module_root:

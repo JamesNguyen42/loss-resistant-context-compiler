@@ -166,6 +166,21 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a18 - 2026-08-01
+
+### Added
+
+- Exported the existing reason-coded `ContextWindowError` from the stable
+  `context_compiler` package root without changing its class identity,
+  signature, refusal behavior, diagnostic boundaries, or materialized bytes.
+- Added source and clean-installed wheel/sdist checks that bind the root export
+  to the unchanged module-qualified exception.
+
+### Changed
+
+- Advanced the separately packaged OpenHands integration to `0.1.0a19` with
+  an exact dependency on core `0.1.1a18`.
+
 ## 0.1.1a17 - 2026-08-01
 
 ### Changed

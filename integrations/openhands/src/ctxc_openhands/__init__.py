@@ -94,4 +94,4 @@ __all__ = [
     "verify_pin_manifest",
 ]
 
-__version__ = "0.1.0a18"
+__version__ = "0.1.0a19"

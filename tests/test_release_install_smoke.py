@@ -56,8 +56,8 @@ from scripts.release_install_smoke import (
     _verified_artifact_snapshot,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.1a17-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a17.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a18-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a18.tar.gz"
 
 
 def test_release_smoke_uses_the_exact_materialization_degradation_policy() -> None:
@@ -320,7 +320,7 @@ def _sample_evaluation_report_bytes() -> bytes:
     case_ids = [f"retention-case-{index:03d}" for index in range(1, 21)]
     unsigned = {
         "schema": MATERIALIZED_EVALUATION_REPORT_SCHEMA,
-        "evaluator_package_version": "0.1.1a17",
+        "evaluator_package_version": "0.1.1a18",
         "pack": {
             "schema": MATERIALIZED_RETENTION_PACK_SCHEMA,
             "pack_id": MATERIALIZED_RETENTION_PACK_ID,

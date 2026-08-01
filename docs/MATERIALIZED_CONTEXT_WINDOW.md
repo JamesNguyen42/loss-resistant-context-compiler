@@ -16,6 +16,25 @@ component manifest, and a compact receipt. Retain the receipt SHA-256 outside
 the result and require it again when calling
 `verify_materialized_context_result()`.
 
+Hosts can import `ContextWindowError` from the same stable package root and
+branch on its reason without parsing message text:
+
+```python
+from context_compiler import ContextWindowError, materialize_context
+
+try:
+    result = materialize_context(...)
+except ContextWindowError as exc:
+    if exc.reason == "mandatory_components_do_not_fit":
+        # Keep the exact refusal; select a different host-owned budget or stop.
+        raise
+    raise
+```
+
+This is the existing module exception, not a wrapper or translated type.
+Its detached `diagnostic` remains available only for reasons that already
+produce one; a missing diagnostic must not be inferred or synthesized.
+
 The manifest fixes this assembly order without concatenating untrusted text:
 
 1. verified LRCC semantic memory;

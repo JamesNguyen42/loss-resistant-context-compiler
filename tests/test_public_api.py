@@ -4,6 +4,7 @@ from __future__ import annotations
 import inspect
 
 import context_compiler
+from context_compiler.context_window import ContextWindowError as ModuleContextWindowError
 from context_compiler.context_window import compose_context_window
 from context_compiler.materialized_window import compose_materialized_context_window
 
@@ -41,6 +42,7 @@ EXPECTED_EXPORTS = (
     "ContextBundle",
     "ContextWindowBudget",
     "ContextWindowDegradationPolicy",
+    "ContextWindowError",
     "DomainLabelExtractor",
     "ExtractionResult",
     "Extractor",
@@ -108,6 +110,7 @@ EXPECTED_SIGNATURES = {
     "ContextBundle": "(artifact: 'dict[str, Any]', trusted_memory: 'dict[str, Any]', bindings: 'dict[str, Any]', certificate: 'dict[str, Any]', token_accounting: 'dict[str, Any]', schema: 'str' = 'localai-context-bundle-0.1', protocol_version: 'str' = '0.1', bundle_sha256: 'str' = '') -> None",
     "ContextWindowBudget": "(hard_limit_tokens: 'int', memory_budget_tokens: 'int', reserved_output_tokens: 'int' = 1024, safety_margin_tokens: 'int' = 256, fixed_input_tokens: 'int' = 0, minimum_recent_messages: 'int' = 0, maximum_recent_messages: 'int' = 4096, per_message_overhead_tokens: 'int' = 0) -> None",
     "ContextWindowDegradationPolicy": "(mode: 'str' = 'lossless-compact-then-reallocate-v1') -> None",
+    "ContextWindowError": "(message: 'str', *, reason: 'str' = 'invalid_context_window', diagnostic: 'dict[str, object] | None' = None) -> 'None'",
     "ExactTokenCounterAdapter": "(identity: 'str', count_tokens: 'Callable[[str], int]') -> None",
     "IncrementalCompiler": "(compiler: 'ContextCompiler | None' = None, *, session_id: 'str | None' = None, sources: 'Iterable[SourceRecord]' = (), archive_chain_head_sha256: 'str | None' = None, archive_head_verified: 'bool' = False) -> 'None'",
     "LocalAIConnector": "(*, policy: 'CompilationPolicy | None' = None, token_counter: 'ExactTokenCounterAdapter | Callable[[str], int] | Any | None' = None, token_counter_id: 'str | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None, artifact_limits: 'ArtifactLimits | None' = None, source_archive: 'SourceArchive | None' = None) -> 'None'",
@@ -175,6 +178,16 @@ def test_context_window_module_signatures_are_exact() -> None:
         ),
     }
     assert actual == EXPECTED_MODULE_SIGNATURES
+
+
+def test_context_window_error_is_the_stable_root_exception() -> None:
+    assert context_compiler.ContextWindowError is ModuleContextWindowError
+    error = context_compiler.ContextWindowError(
+        "bounded refusal",
+        reason="mandatory_components_do_not_fit",
+    )
+    assert error.reason == "mandatory_components_do_not_fit"
+    assert error.diagnostic is None
 
 
 def test_compilation_policy_preserves_legacy_positional_order() -> None:
