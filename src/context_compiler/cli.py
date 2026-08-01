@@ -126,6 +126,27 @@ def _write_output(value: str, path: str | None) -> None:
         sys.stdout.write(rendered)
 
 
+def _write_binary_stdout(rendered: str) -> None:
+    payload = rendered.encode("utf-8", errors="strict")
+    output = getattr(sys.stdout, "buffer", None)
+    if output is None:
+        raise RuntimeError("standard output does not expose a binary buffer")
+    written = output.write(payload)
+    if type(written) is not int or written != len(payload):
+        raise OSError("standard output did not accept the complete canonical report")
+    output.flush()
+
+
+def _write_exact_utf8_output(value: str, path: str | None) -> None:
+    """Write canonical UTF-8 bytes to stdout while preserving atomic file output."""
+
+    rendered = value + ("" if value.endswith("\n") else "\n")
+    if path:
+        atomic_write_text(Path(path), rendered)
+    else:
+        _write_binary_stdout(rendered)
+
+
 def _write_new_output(value: str, path: str | None) -> None:
     rendered = value + ("" if value.endswith("\n") else "\n")
     if path:
@@ -134,14 +155,7 @@ def _write_new_output(value: str, path: str | None) -> None:
         except AtomicDestinationExistsError as exc:
             raise FileExistsError("output already exists") from exc
     else:
-        payload = rendered.encode("utf-8", errors="strict")
-        output = getattr(sys.stdout, "buffer", None)
-        if output is None:
-            raise RuntimeError("standard output does not expose a binary buffer")
-        written = output.write(payload)
-        if type(written) is not int or written != len(payload):
-            raise OSError("standard output did not accept the complete canonical report")
-        output.flush()
+        _write_binary_stdout(rendered)
 
 
 def _command_name(args: argparse.Namespace) -> str:
@@ -470,7 +484,7 @@ def _materialize(args: argparse.Namespace) -> int:
             separators=(",", ":"),
             allow_nan=False,
         )
-        _write_output(rendered, args.output)
+        _write_exact_utf8_output(rendered, args.output)
     except (
         OSError,
         RuntimeError,

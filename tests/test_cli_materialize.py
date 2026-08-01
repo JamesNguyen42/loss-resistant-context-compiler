@@ -6,8 +6,10 @@ import sys
 from importlib.resources import files
 from pathlib import Path
 
+import pytest
+
 from context_compiler import verify_materialized_context_result
-from context_compiler.cli import main
+from context_compiler.cli import _write_exact_utf8_output, main
 
 ROOT = Path(__file__).parents[1]
 HISTORY = ROOT / "examples" / "materialized_context.jsonl"
@@ -151,6 +153,132 @@ def test_materialize_cli_unicode_profile_counts_code_points_not_utf8_bytes(
     assert len(current_content) != len(current_content.encode("utf-8"))
     assert value["runtime_payload"]["provider_execution_ready"] is False
     assert value["runtime_payload"]["final_provider_recount_required"] is True
+
+
+def test_materialize_cli_stdout_is_exact_utf8_bytes(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    current_content = "continue with caf\u00e9, \U0001f680, and e\u0301 exactly once"
+    history = tmp_path / "unicode-stdout.jsonl"
+    history.write_text(
+        "".join(
+            json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n"
+            for value in (
+                {
+                    "id": "stdout-0",
+                    "sequence": 0,
+                    "role": "assistant",
+                    "content": "retain the exact UTF-8 output bytes",
+                },
+                {
+                    "id": "stdout-1",
+                    "sequence": 1,
+                    "role": "user",
+                    "content": current_content,
+                },
+            )
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    class BinaryOnlyStdout:
+        def __init__(self) -> None:
+            self.buffer = io.BytesIO()
+
+        def write(self, _value: str) -> int:
+            raise AssertionError("materialize stdout must not use the text stream")
+
+    output = BinaryOnlyStdout()
+    monkeypatch.setattr(sys, "stdout", output)
+    args = [
+        "materialize",
+        str(history),
+        "--current-turn-id",
+        "stdout-1",
+        "--hard-limit-tokens",
+        "512",
+        "--memory-budget-tokens",
+        "128",
+        "--reserved-output-tokens",
+        "32",
+        "--safety-margin-tokens",
+        "16",
+        "--minimum-recent-messages",
+        "1",
+        "--maximum-recent-messages",
+        "1",
+        "--allocation-plan-sha256",
+        ALLOCATION_SHA256,
+        "--tokenizer-profile",
+        "unicode-codepoint-count-v1",
+    ]
+
+    assert main(args) == 0
+    raw = output.buffer.getvalue()
+    assert raw.endswith(b"\n")
+    assert raw.count(b"\n") == 1
+    assert current_content.encode("utf-8") in raw
+    decoded = json.loads(raw)
+    assert raw == (
+        json.dumps(
+            decoded,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n"
+    )
+
+
+def test_exact_utf8_stdout_fails_closed_without_a_complete_binary_write(
+    monkeypatch,
+) -> None:
+    class MissingBuffer:
+        pass
+
+    monkeypatch.setattr(sys, "stdout", MissingBuffer())
+    with pytest.raises(RuntimeError, match="binary buffer"):
+        _write_exact_utf8_output("{}", None)
+
+    class ShortBuffer:
+        def write(self, value: bytes) -> int:
+            return len(value) - 1
+
+        def flush(self) -> None:
+            raise AssertionError("a short write must fail before flush")
+
+    class ShortStdout:
+        buffer = ShortBuffer()
+
+    monkeypatch.setattr(sys, "stdout", ShortStdout())
+    with pytest.raises(OSError, match="complete canonical report"):
+        _write_exact_utf8_output("{}", None)
+
+
+def test_materialize_output_file_remains_atomic_utf8_and_overwritable(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "materialized.json"
+    output.write_bytes(b"previous-result\n")
+    args = [*materialize_args(str(HISTORY)), "--output", str(output)]
+
+    assert main(args) == 0
+    raw = output.read_bytes()
+    assert raw.endswith(b"\n")
+    value = json.loads(raw)
+    assert raw == (
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n"
+    )
 
 
 def test_materialize_refusal_is_reason_coded_and_writes_no_partial_output(

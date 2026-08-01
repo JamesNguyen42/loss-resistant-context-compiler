@@ -46,6 +46,10 @@ ctxc materialize examples/materialized_context.jsonl \
   -o materialized-context.json
 ```
 
+Without `--output`, the command writes one canonical UTF-8 JSON line through
+the binary standard-output stream and refuses a missing or incomplete binary
+write. `--output` retains its atomic UTF-8 overwrite behavior.
+
 The CLI profile counts Unicode code points exactly for that named diagnostic
 profile. It is not a provider tokenizer and must not be presented as exact
 provider accounting. Hosts that have a real tokenizer use the Python API. Both

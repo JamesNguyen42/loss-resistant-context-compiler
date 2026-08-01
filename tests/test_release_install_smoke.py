@@ -50,8 +50,8 @@ from scripts.release_install_smoke import (
     _verified_artifact_snapshot,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.1a7-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a7.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a8-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a8.tar.gz"
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -307,7 +307,7 @@ def _sample_evaluation_report_bytes() -> bytes:
     case_ids = [f"retention-case-{index:03d}" for index in range(1, 21)]
     unsigned = {
         "schema": MATERIALIZED_EVALUATION_REPORT_SCHEMA,
-        "evaluator_package_version": "0.1.1a7",
+        "evaluator_package_version": "0.1.1a8",
         "pack": {
             "schema": MATERIALIZED_RETENTION_PACK_SCHEMA,
             "pack_id": MATERIALIZED_RETENTION_PACK_ID,

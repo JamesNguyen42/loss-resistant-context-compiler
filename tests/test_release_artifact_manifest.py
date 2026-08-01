@@ -18,8 +18,8 @@ from scripts.release_artifact_manifest import (
 
 ROOT = Path(__file__).resolve().parents[1]
 REVISION = "a" * 40
-WHEEL = "loss_resistant_context_compiler-0.1.1a7-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a7.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a8-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a8.tar.gz"
 
 
 def _dist(tmp_path: Path) -> Path:
@@ -130,9 +130,9 @@ def test_release_artifact_cli_refuses_to_overwrite_evidence(
 @pytest.mark.parametrize(
     "invalid_wheel",
     [
-        "loss_resistant_context_compiler-0.1.1a7-not-a-valid-wheel.whl",
-        "loss_resistant_context_compiler-0.1.1a7-cp311-cp311-win_amd64.whl",
-        "loss_resistant_context_compiler-0.1.1a7-1-py3-none-any.whl",
+        "loss_resistant_context_compiler-0.1.1a8-not-a-valid-wheel.whl",
+        "loss_resistant_context_compiler-0.1.1a8-cp311-cp311-win_amd64.whl",
+        "loss_resistant_context_compiler-0.1.1a8-1-py3-none-any.whl",
     ],
 )
 def test_release_artifact_manifest_rejects_noncanonical_wheel_names(

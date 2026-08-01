@@ -166,6 +166,22 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a8 - 2026-08-01
+
+### Fixed
+
+- Made `ctxc materialize` write its canonical standard-output report as exact
+  UTF-8 bytes. Missing or incomplete binary writes now fail closed, while
+  `--output` retains its existing atomic UTF-8 overwrite behavior.
+
+### Changed
+
+- Advanced the separately packaged OpenHands integration to `0.1.0a9` solely
+  to preserve its exact dependency on core `0.1.1a8`.
+- Retained materialized-context schema v1, default-strict behavior, null
+  retrieval and capability identities, `provider_execution_ready=false`, and
+  the required final provider recount. No provider or model execution was run.
+
 ## 0.1.1a7 - 2026-07-31
 
 ### Added
