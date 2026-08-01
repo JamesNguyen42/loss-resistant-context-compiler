@@ -26,6 +26,7 @@ from scripts.release_install_smoke import (
     MATERIALIZED_WITNESS_SCHEMA,
     _artifact_install_command,
     _assert_artifact_snapshot,
+    _assert_connector_utf8_output,
     _build_tool_install_command,
     _decode_materialized_degradation_evaluation_report,
     _decode_materialized_evaluation_report,
@@ -50,8 +51,8 @@ from scripts.release_install_smoke import (
     _verified_artifact_snapshot,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.1a11-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a11.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a12-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a12.tar.gz"
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -307,7 +308,7 @@ def _sample_evaluation_report_bytes() -> bytes:
     case_ids = [f"retention-case-{index:03d}" for index in range(1, 21)]
     unsigned = {
         "schema": MATERIALIZED_EVALUATION_REPORT_SCHEMA,
-        "evaluator_package_version": "0.1.1a11",
+        "evaluator_package_version": "0.1.1a12",
         "pack": {
             "schema": MATERIALIZED_RETENTION_PACK_SCHEMA,
             "pack_id": MATERIALIZED_RETENTION_PACK_ID,
@@ -631,6 +632,49 @@ def test_release_smoke_subprocess_environment_is_standalone_and_no_bytecode(
     assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
     assert os.environ["PYTHONHOME"] == "private-home"
     assert os.environ["PYTHONPATH"] == "private-path"
+
+
+def test_installed_connector_probe_forces_and_verifies_exact_utf8(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: dict[str, object] = {}
+
+    def run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        observed["arguments"] = arguments
+        observed.update(kwargs)
+        response = {
+            "schema": "ctxc-connector-response-0.1",
+            "request_id": "release-utf8-output",
+            "operation": "capabilities",
+            "ok": True,
+            "result": {},
+            "error": None,
+        }
+        return subprocess.CompletedProcess(
+            arguments,
+            0,
+            stdout=(json.dumps(response, ensure_ascii=True, separators=(",", ":")) + "\n").encode(
+                "utf-8"
+            ),
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(subprocess, "run", run)
+    ctxc = tmp_path / "ctxc"
+
+    _assert_connector_utf8_output(ctxc)
+
+    assert observed["arguments"] == [str(ctxc), "connector", "--stdio"]
+    assert observed["check"] is False
+    assert observed["timeout"] == 30
+    environment = observed["env"]
+    assert type(environment) is dict
+    assert environment["PYTHONUTF8"] == "0"
+    assert environment["PYTHONIOENCODING"] == "utf-16:strict"
+    assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert "PYTHONHOME" not in environment
+    assert "PYTHONPATH" not in environment
 
 
 def test_materialized_context_probe_command_is_isolated_and_module_qualified(

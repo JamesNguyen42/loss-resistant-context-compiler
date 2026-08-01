@@ -168,7 +168,7 @@ def _doctor(*, require_live: bool) -> tuple[dict[str, Any], int]:
     }
     sqlite_supports_strict = sqlite3.sqlite_version_info >= (3, 37, 0)
     offline_ready = (
-        context_compiler.__version__ == "0.1.1a11"
+        context_compiler.__version__ == "0.1.1a12"
         and tokenizer.passed
         and sqlite_supports_strict
         and imported_after == imported_before

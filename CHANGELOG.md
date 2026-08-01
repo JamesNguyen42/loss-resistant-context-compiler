@@ -166,6 +166,27 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a12 - 2026-08-01
+
+### Fixed
+
+- Made `ctxc connector --stdio` emit canonical UTF-8 records with exact LF
+  framing independently of the host stdout encoding.
+- Refused missing binary stdout, incomplete record writes, and failed flushes
+  without retrying connector output. Exact built-in `StringIO` embedding
+  remains supported.
+
+### Changed
+
+- Extended clean wheel and sdist smoke validation with a connector round trip
+  under a hostile UTF-16 host encoding.
+- Advanced the separately packaged OpenHands integration to `0.1.0a13` solely
+  to preserve its exact dependency on core `0.1.1a12`.
+- Retained connector schemas and envelope semantics, materialized-context
+  schema v1, default-strict behavior, null retrieval and capability identities,
+  `provider_execution_ready=false`, and the required final provider recount.
+  No provider or model execution was run.
+
 ## 0.1.1a11 - 2026-08-01
 
 ### Fixed

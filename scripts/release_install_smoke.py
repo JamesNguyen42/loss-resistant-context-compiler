@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a11"
+EXPECTED_VERSION = "0.1.1a12"
 SCHEMA_GLOB = "*.schema.json"
 MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.3"
 MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA = "ctxc-materialized-prompt-assembly-golden-0.1"
@@ -1899,6 +1899,7 @@ def _assert_installed_package(
     _run([str(ctxc), "materialize", "--help"])
     _run([str(ctxc), "evaluate-materialization", "--help"])
     _run([str(ctxc), "evaluate-materialization-degradation", "--help"])
+    _assert_connector_utf8_output(ctxc)
 
     source_path = environment / "sources.json"
     artifact_path = environment / "artifact.json"
@@ -1965,6 +1966,54 @@ def _assert_installed_package(
         require_standalone=True,
     )
     return witness, evaluation_report, degradation_evaluation_report
+
+
+def _assert_connector_utf8_output(ctxc: Path) -> None:
+    request = {
+        "schema": "ctxc-connector-request-0.1",
+        "request_id": "release-utf8-output",
+        "operation": "capabilities",
+        "payload": {},
+    }
+    environment = _subprocess_environment()
+    environment["PYTHONUTF8"] = "0"
+    environment["PYTHONIOENCODING"] = "utf-16:strict"
+    completed = subprocess.run(
+        [str(ctxc), "connector", "--stdio"],
+        input=(json.dumps(request, ensure_ascii=True, separators=(",", ":")) + "\n").encode(
+            "ascii"
+        ),
+        capture_output=True,
+        env=environment,
+        check=False,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError("installed connector UTF-8 probe failed")
+    if completed.stderr:
+        raise RuntimeError("installed connector UTF-8 probe emitted stderr")
+    if len(completed.stdout) > 64 * 1024:
+        raise ValueError("installed connector UTF-8 probe exceeded the byte limit")
+    if (
+        not completed.stdout.endswith(b"\n")
+        or b"\r" in completed.stdout
+        or b"\x00" in completed.stdout
+        or len(completed.stdout.splitlines()) != 1
+    ):
+        raise ValueError("installed connector output is not one canonical UTF-8 JSON line")
+    try:
+        response = json.loads(completed.stdout.decode("utf-8", errors="strict"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("installed connector output is not strict UTF-8 JSON") from exc
+    if not (
+        type(response) is dict
+        and response.get("schema") == "ctxc-connector-response-0.1"
+        and response.get("request_id") == "release-utf8-output"
+        and response.get("operation") == "capabilities"
+        and response.get("ok") is True
+        and type(response.get("result")) is dict
+    ):
+        raise ValueError("installed connector response envelope is invalid")
 
 
 def _temporary_root() -> Path:

@@ -774,11 +774,11 @@ def test_clean_install_probe_distinguishes_dev_extras_from_runtime_dependencies(
     ) == ()
     assert clean_install._active_requirements(
         [
-            "loss-resistant-context-compiler==0.1.1a11",
+            "loss-resistant-context-compiler==0.1.1a12",
             'openhands-ai==1.8.0; extra == "live"',
         ],
         label="integration",
-    ) == ("loss-resistant-context-compiler==0.1.1a11",)
+    ) == ("loss-resistant-context-compiler==0.1.1a12",)
 
     monkeypatch.setattr(
         clean_install,
@@ -793,7 +793,7 @@ def test_clean_install_probe_distinguishes_dev_extras_from_runtime_dependencies(
         "sys_prefix": "environment",
         "core_requirements": ['pytest>=8.0; extra == "dev"'],
         "integration_requirements": [
-            "loss-resistant-context-compiler==0.1.1a11",
+            "loss-resistant-context-compiler==0.1.1a12",
             'openhands-ai==1.8.0; extra == "live"',
         ],
         "openhands_modules_before": [],

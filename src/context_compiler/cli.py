@@ -72,6 +72,25 @@ class _StderrEmissionError(RuntimeError):
     """Raised after one failed binary diagnostic/event emission attempt."""
 
 
+class _Utf8BinaryTextWriter:
+    """Expose a strict text-writer surface over an unowned binary stream."""
+
+    def __init__(self, output: object) -> None:
+        self._output = output
+
+    def write(self, value: str) -> int:
+        if type(value) is not str:
+            raise TypeError("connector output must be an exact string")
+        payload = value.encode("utf-8", errors="strict")
+        written = self._output.write(payload)
+        if type(written) is not int or written != len(payload):
+            raise OSError("standard output did not accept the complete connector record")
+        return len(value)
+
+    def flush(self) -> None:
+        self._output.flush()
+
+
 def _mask_character(value: str) -> str:
     if value not in _CLI_MASK_CHARACTERS:
         raise argparse.ArgumentTypeError(
@@ -916,6 +935,13 @@ def _connector(args: argparse.Namespace) -> int:
     from .connector import serve_stdio
 
     binary_input = getattr(sys.stdin, "buffer", None)
+    binary_output = getattr(sys.stdout, "buffer", None)
+    if binary_output is None:
+        if type(sys.stdout) is not io.StringIO:
+            raise OSError("standard output does not expose a binary buffer")
+        output_stream = sys.stdout
+    else:
+        output_stream = _Utf8BinaryTextWriter(binary_output)
     decoder = (
         None
         if binary_input is None
@@ -929,7 +955,7 @@ def _connector(args: argparse.Namespace) -> int:
     try:
         return serve_stdio(
             input_stream=sys.stdin if decoder is None else decoder,
-            output_stream=sys.stdout,
+            output_stream=output_stream,
             max_request_bytes=args.max_request_bytes,
             max_json_depth=args.max_request_json_depth,
         )

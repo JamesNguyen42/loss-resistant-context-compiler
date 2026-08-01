@@ -69,8 +69,9 @@ The connector exposes exactly six operations:
 | `inspect_memory` | Bounded artifact summary, trusted-memory counts, bindings, accounting, and certificate |
 
 The CLI entry point is `ctxc connector --stdio`. It reads sequential JSONL and
-writes one response line for each nonblank request line. The strict request
-envelope is exactly:
+writes one strict UTF-8, LF-terminated response for each nonblank request line,
+without inheriting the host text encoding. The strict request envelope is
+exactly:
 
 ```json
 {
@@ -338,7 +339,7 @@ connector instance.
 
 ## Isolated OpenHands integration package
 
-`integrations/openhands/` builds the separate `ctxc-openhands` `0.1.0a12`
+`integrations/openhands/` builds the separate `ctxc-openhands` `0.1.0a13`
 draft-alpha package. Neither the core distribution nor an ordinary
 `ctxc_openhands` import imports OpenHands; host imports occur only behind the
 exact compatibility gate. The only reviewed identity is OpenHands `1.8.0` at

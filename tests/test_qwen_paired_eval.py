@@ -337,6 +337,7 @@ def test_perfect_paired_oracle_is_sequential_and_replays(
         "0.1.1a9",
         "0.1.1a10",
         "0.1.1a11",
+        "0.1.1a12",
     ],
 )
 def test_qwen_paired_reader_accepts_only_recorded_supported_versions(

@@ -449,11 +449,164 @@ def test_ctxc_connector_stdio_does_not_close_host_binary_stdin(
     )
 
 
-def test_ctxc_connector_stdio_uses_strict_utf8_bytes_outside_utf8_mode() -> None:
+def test_ctxc_connector_stdio_uses_host_binary_stdout_without_closing_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    value = request("binary-output", "capabilities")
+    binary_output = io.BytesIO()
+
+    class BinaryStdout:
+        buffer = binary_output
+
+        def write(self, _value: str) -> int:
+            raise AssertionError("connector must not use the locale text stream")
+
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(json.dumps(value, separators=(",", ":")) + "\n"),
+    )
+    monkeypatch.setattr(sys, "stdout", BinaryStdout())
+
+    assert main(["connector", "--stdio"]) == 0
+    assert binary_output.closed is False
+    payload = binary_output.getvalue()
+    assert payload.endswith(b"\n")
+    assert b"\r" not in payload
+    response = json.loads(payload.decode("utf-8", errors="strict"))
+    assert_response_envelope(
+        response,
+        request_id="binary-output",
+        operation="capabilities",
+        ok=True,
+    )
+
+
+def test_ctxc_connector_stdio_retains_exact_stringio_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    value = request("string-output", "capabilities")
+    output = io.StringIO()
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(json.dumps(value, separators=(",", ":")) + "\n"),
+    )
+    monkeypatch.setattr(sys, "stdout", output)
+
+    assert main(["connector", "--stdio"]) == 0
+    response = json.loads(output.getvalue())
+    assert_response_envelope(
+        response,
+        request_id="string-output",
+        operation="capabilities",
+        ok=True,
+    )
+
+
+def test_ctxc_connector_stdio_rejects_custom_text_only_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    binary_input = io.BytesIO(b"")
+
+    class BinaryStdin:
+        buffer = binary_input
+
+    class TextOnlyStdout:
+        writes = 0
+
+        def write(self, _value: str) -> int:
+            self.writes += 1
+            return 0
+
+    output = TextOnlyStdout()
+    monkeypatch.setattr(sys, "stdin", BinaryStdin())
+    monkeypatch.setattr(sys, "stdout", output)
+
+    assert main(["connector", "--stdio"]) == 2
+    assert binary_input.closed is False
+    assert output.writes == 0
+
+
+def test_ctxc_connector_stdio_rejects_short_binary_stdout_without_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    value = request("short-output", "capabilities")
+
+    class ShortBuffer:
+        writes = 0
+        flushes = 0
+
+        def write(self, payload: bytes) -> int:
+            self.writes += 1
+            return len(payload) - 1
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    buffer = ShortBuffer()
+
+    class BinaryStdout:
+        pass
+
+    output = BinaryStdout()
+    output.buffer = buffer
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(json.dumps(value, separators=(",", ":")) + "\n"),
+    )
+    monkeypatch.setattr(sys, "stdout", output)
+
+    assert main(["connector", "--stdio"]) == 2
+    assert buffer.writes == 1
+    assert buffer.flushes == 0
+
+
+def test_ctxc_connector_stdio_does_not_retry_failed_binary_stdout_flush(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    value = request("failed-flush", "capabilities")
+
+    class FlushFailureBuffer:
+        writes = 0
+        flushes = 0
+
+        def write(self, payload: bytes) -> int:
+            self.writes += 1
+            return len(payload)
+
+        def flush(self) -> None:
+            self.flushes += 1
+            raise OSError("injected connector output flush failure")
+
+    buffer = FlushFailureBuffer()
+
+    class BinaryStdout:
+        pass
+
+    output = BinaryStdout()
+    output.buffer = buffer
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(json.dumps(value, separators=(",", ":")) + "\n"),
+    )
+    monkeypatch.setattr(sys, "stdout", output)
+
+    assert main(["connector", "--stdio"]) == 2
+    assert buffer.writes == 1
+    assert buffer.flushes == 1
+
+
+@pytest.mark.parametrize("python_io_encoding", ["cp1252:strict", "utf-16:strict"])
+def test_ctxc_connector_stdio_uses_strict_utf8_bytes_outside_utf8_mode(
+    python_io_encoding: str,
+) -> None:
     environment = os.environ.copy()
     environment["PYTHONPATH"] = str(ROOT / "src")
     environment["PYTHONUTF8"] = "0"
-    environment["PYTHONIOENCODING"] = "cp1252:strict"
+    environment["PYTHONIOENCODING"] = python_io_encoding
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     content = "constraint: preserve caf\u00e9, \U0001f680, and e\u0301 exactly"
     value = request(
@@ -495,8 +648,11 @@ def test_ctxc_connector_stdio_uses_strict_utf8_bytes_outside_utf8_mode() -> None
     assert completed.returncode == 0
     assert completed.stderr == b""
     assert completed.stdout.endswith(b"\n")
+    assert b"\x00" not in completed.stdout
+    assert b"\r" not in completed.stdout
     assert len(completed.stdout.splitlines()) == 1
-    response = json.loads(completed.stdout)
+    decoded = completed.stdout.decode("utf-8", errors="strict")
+    response = json.loads(decoded)
     serialized = json.dumps(
         response,
         ensure_ascii=False,

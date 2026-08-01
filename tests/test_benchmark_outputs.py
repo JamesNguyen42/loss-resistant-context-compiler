@@ -87,7 +87,7 @@ def test_report_metadata_is_self_contained_and_self_hashed(
     assert lrcbench_module._canonical_sha256(payload) == claimed_digest
     assert payload["run_metadata"]["repository_commit"] == commit
     assert payload["run_metadata"]["repository_dirty"] is True
-    assert payload["run_metadata"]["package_version"] == "0.1.1a11"
+    assert payload["run_metadata"]["package_version"] == "0.1.1a12"
     assert payload["run_metadata"]["tokenizer_id"] == lrcbench_module.TOKENIZER_ID
     assert payload["run_metadata"]["model_id"] == "deterministic-no-model"
     assert payload["run_metadata"]["model_service_cost_usd"] == 0.0
