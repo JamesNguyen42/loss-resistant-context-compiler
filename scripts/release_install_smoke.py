@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a15"
+EXPECTED_VERSION = "0.1.1a16"
 SCHEMA_GLOB = "*.schema.json"
 MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.3"
 MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA = "ctxc-materialized-prompt-assembly-golden-0.1"
@@ -25,6 +25,9 @@ MATERIALIZED_REFUSAL_GOLDEN_SCHEMA = "ctxc-materialization-refusal-golden-0.1"
 MATERIALIZED_EVALUATION_REPORT_SCHEMA = "ctxc-materialized-retention-report-0.1"
 MATERIALIZED_DEGRADATION_REPORT_SCHEMA = "ctxc-materialized-degradation-report-0.2"
 MATERIALIZED_DEGRADATION_POLICY = "lossless-compact-then-reallocate-v1"
+MATERIALIZED_DEGRADATION_RECEIPT_SHA256 = (
+    "b03b83a6fddeeaead17cf716918b183ae6c1625299b36846c2618cf2f71654e5"
+)
 MATERIALIZED_DEGRADATION_SPEC_SHA256 = (
     "6473ddd7b9b941a644032564ebc235040439291693df8d62e31eb07faed89525"
 )
@@ -1953,7 +1956,8 @@ def _assert_installed_materialize_degradation(
     history = environment / "materialized-degradation-case.jsonl"
     first = environment / "materialized-degradation-first.json"
     second = environment / "materialized-degradation-second.json"
-    if any(path.exists() for path in (history, first, second)):
+    verified = environment / "materialized-degradation-verified.json"
+    if any(path.exists() for path in (history, first, second, verified)):
         raise ValueError("installed materialization degradation paths must be absent")
     _run(
         [
@@ -2000,6 +2004,23 @@ def _assert_installed_materialize_degradation(
         raise RuntimeError("installed materialization degradation output is nondeterministic")
     _run(
         [
+            str(ctxc),
+            "verify-materialization",
+            str(first),
+            "--expected-receipt-sha256",
+            MATERIALIZED_DEGRADATION_RECEIPT_SHA256,
+            "--expected-allocation-plan-sha256",
+            "a" * 64,
+            "--output",
+            str(verified),
+        ]
+    )
+    if _read_stable_evaluation_report(verified) != first_raw:
+        raise RuntimeError(
+            "installed materialization verification changed canonical result bytes"
+        )
+    _run(
+        [
             str(python),
             "-I",
             "-B",
@@ -2031,6 +2052,7 @@ def _assert_installed_package(
     ctxc = _venv_ctxc(environment)
     _run([str(ctxc), "--help"])
     _run([str(ctxc), "materialize", "--help"])
+    _run([str(ctxc), "verify-materialization", "--help"])
     _run(
         [
             str(ctxc),

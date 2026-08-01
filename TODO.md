@@ -595,6 +595,11 @@ Acceptance:
   materialize command exposes only the exact
   `--degradation-policy lossless-compact-then-reallocate-v1` opt-in, so this
   does not erase the red gate above.
+- [x] Expose the existing bounded materialized-result verifier through
+  `ctxc verify-materialization`. Both receipt and allocation digests remain
+  independently required; successful verification re-emits the original
+  canonical bytes and adds no schema, receipt, capability, retrieval, or
+  provider-readiness claim.
 - [x] Add a fixed three-arm structural diagnostic over the unchanged 20-case
   held-out split. Strict and compact-only each retain 18 exact
   `compiled_memory_not_verified` failures plus two mandatory refusals; the full

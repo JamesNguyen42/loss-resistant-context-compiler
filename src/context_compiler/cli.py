@@ -25,6 +25,7 @@ from .context_window import (
     ContextWindowError,
 )
 from .io import (
+    _open_stable_text_path,
     load_artifact_path,
     load_sources,
     load_sources_path,
@@ -50,7 +51,11 @@ from .materialized_evaluation import (
     evaluate_materialization_retention,
     load_materialization_retention_report,
 )
-from .materialized_window import materialize_context
+from .materialized_window import (
+    _MAX_SERIALIZED_RESULT_BYTES,
+    materialize_context,
+    verify_materialized_context_result,
+)
 from .models import CompilationPolicy, CompiledMemory
 from .path_safety import PathBoundaryError
 from .redaction import (
@@ -70,6 +75,7 @@ _DIAGNOSTIC_SCHEMA = "ctxc-diagnostic-0.1"
 _DETAIL_DIAGNOSTIC_SCHEMA = "ctxc-diagnostic-0.2"
 _EVENT_SCHEMA = "ctxc-event-0.1"
 _MATERIALIZE_TOKENIZER_PROFILE = "unicode-codepoint-count-v1"
+_MATERIALIZED_RESULT_READ_CHUNK = 64 * 1024
 _CLI_MASK_CHARACTERS = frozenset({"*", "#", "█", "■"})
 
 
@@ -156,6 +162,53 @@ def _input_sources(path: str, limits: SourceLimits) -> list:
         except UnicodeDecodeError as exc:
             raise UnicodeError("source input must be valid UTF-8 text") from exc
     return load_sources_path(path, limits=limits)
+
+
+def _materialized_result_bytes(path: str) -> bytes:
+    if path == "-":
+        binary_input = getattr(sys.stdin, "buffer", None)
+        if binary_input is None:
+            raise OSError("standard input does not expose a binary buffer")
+        payload = bytearray()
+        while len(payload) <= _MAX_SERIALIZED_RESULT_BYTES:
+            chunk = binary_input.read(
+                min(
+                    _MATERIALIZED_RESULT_READ_CHUNK,
+                    _MAX_SERIALIZED_RESULT_BYTES + 1 - len(payload),
+                )
+            )
+            if type(chunk) is not bytes:
+                raise TypeError("materialized context input must yield exact bytes")
+            if not chunk:
+                break
+            payload.extend(chunk)
+            if len(payload) > _MAX_SERIALIZED_RESULT_BYTES:
+                raise ContextWindowError(
+                    "serialized materialized context result exceeds the byte limit"
+                )
+        return bytes(payload)
+
+    payload = bytearray()
+    with _open_stable_text_path(
+        path,
+        max_input_bytes=_MAX_SERIALIZED_RESULT_BYTES,
+        label="materialized context result",
+        limit_error=ContextWindowError,
+        require_single_link=True,
+    ) as stream:
+        while True:
+            text = stream.read(_MATERIALIZED_RESULT_READ_CHUNK)
+            if type(text) is not str:
+                raise TypeError("materialized context input must yield exact text")
+            if not text:
+                break
+            chunk = text.encode("utf-8", errors="strict")
+            if len(payload) + len(chunk) > _MAX_SERIALIZED_RESULT_BYTES:
+                raise ContextWindowError(
+                    "serialized materialized context result exceeds the byte limit"
+                )
+            payload.extend(chunk)
+    return bytes(payload)
 
 
 def _write_output(value: str, path: str | None) -> None:
@@ -561,6 +614,41 @@ def _materialize(args: argparse.Namespace) -> int:
     ) as exc:
         code = exc.reason if isinstance(exc, ContextWindowError) else None
         _write_error(args, exc, code=code)
+        return 2
+    return 0
+
+
+def _verify_materialization(args: argparse.Namespace) -> int:
+    try:
+        if (
+            args.output is not None
+            and args.result != "-"
+            and _paths_alias(args.result, args.output)
+        ):
+            raise ValueError(
+                "materialized context verification refuses to overwrite its input"
+            )
+        payload = _materialized_result_bytes(args.result)
+        verify_materialized_context_result(
+            payload,
+            expected_receipt_sha256=args.expected_receipt_sha256,
+            expected_allocation_plan_sha256=(
+                args.expected_allocation_plan_sha256
+            ),
+        )
+        _write_exact_utf8_output(
+            payload.decode("utf-8", errors="strict"),
+            args.output,
+        )
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        TimeoutError,
+    ) as exc:
+        _write_error(args, exc)
         return 2
     return 0
 
@@ -1296,6 +1384,28 @@ def build_parser() -> argparse.ArgumentParser:
     _add_compilation_limit_arguments(materialize_parser)
     _add_error_format_argument(materialize_parser)
     materialize_parser.set_defaults(handler=_materialize)
+
+    verify_materialization_parser = subparsers.add_parser(
+        "verify-materialization",
+        help="verify and re-emit one canonical materialized context result",
+    )
+    verify_materialization_parser.add_argument(
+        "result",
+        help="canonical materialized context result path or - for stdin",
+    )
+    verify_materialization_parser.add_argument(
+        "--expected-receipt-sha256",
+        required=True,
+        help="independently retained 64-character lowercase receipt SHA-256",
+    )
+    verify_materialization_parser.add_argument(
+        "--expected-allocation-plan-sha256",
+        required=True,
+        help="independently retained 64-character lowercase allocation SHA-256",
+    )
+    verify_materialization_parser.add_argument("-o", "--output")
+    _add_error_format_argument(verify_materialization_parser)
+    verify_materialization_parser.set_defaults(handler=_verify_materialization)
 
     evaluation_parser = subparsers.add_parser(
         "evaluate-materialization",

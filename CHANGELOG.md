@@ -166,6 +166,25 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a16 - 2026-08-01
+
+### Added
+
+- Added `ctxc verify-materialization` for bounded verification of a saved
+  canonical materialized-context result against independently supplied receipt
+  and allocation-plan SHA-256 anchors.
+- Added file, binary-stdin, canonical-framing, digest, tamper, alias, hard-link,
+  oversized-input, and clean-installed wheel/sdist regressions for the command.
+
+### Changed
+
+- Successful CLI verification re-emits the original canonical bytes without a
+  new report or receipt. Materialized schemas remain v1; retrieval and
+  capability identities remain null; provider execution remains false; and a
+  final provider recount remains required.
+- Advanced the separately packaged OpenHands integration to `0.1.0a17` with
+  an exact dependency on core `0.1.1a16`.
+
 ## 0.1.1a15 - 2026-08-01
 
 ### Added

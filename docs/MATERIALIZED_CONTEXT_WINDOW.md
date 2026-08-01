@@ -277,6 +277,21 @@ invalid Unicode, excessive nesting, and oversized input are rejected before
 the existing receipt and allocation checks. The caller must still retain and
 supply both expected digests independently of the serialized result.
 
+The installed CLI exposes the same closed verification boundary without a new
+schema or receipt:
+
+```console
+ctxc verify-materialization materialized-context.json \
+  --expected-receipt-sha256 <independently-retained-receipt-sha256> \
+  --expected-allocation-plan-sha256 <independently-retained-allocation-sha256> \
+  -o verified-materialized-context.json
+```
+
+The command performs a bounded stable-file or binary-stdin read, refuses
+linked or changing inputs, verifies both independent anchors, and only then
+re-emits the original canonical bytes. It does not infer either trusted digest
+from the result, alter v1 claims, or make the payload provider-ready.
+
 ## Final provider recount
 
 `runtime_payload(expected_allocation_plan_sha256=...)` is a planning payload,

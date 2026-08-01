@@ -11,7 +11,11 @@ from pathlib import Path
 import pytest
 
 from context_compiler import verify_materialized_context_result
-from context_compiler.cli import _write_exact_utf8_output, main
+from context_compiler.cli import (
+    _MAX_SERIALIZED_RESULT_BYTES,
+    _write_exact_utf8_output,
+    main,
+)
 from context_compiler.context_window import CONTEXT_WINDOW_DEGRADATION_MODE
 
 ROOT = Path(__file__).parents[1]
@@ -46,6 +50,29 @@ def materialize_args(input_path: str) -> list[str]:
     ]
 
 
+def verify_materialization_args(
+    input_path: str,
+    *,
+    receipt_sha256: str,
+    allocation_sha256: str = ALLOCATION_SHA256,
+) -> list[str]:
+    return [
+        "verify-materialization",
+        input_path,
+        "--expected-receipt-sha256",
+        receipt_sha256,
+        "--expected-allocation-plan-sha256",
+        allocation_sha256,
+    ]
+
+
+def materialized_result_bytes(capsys: pytest.CaptureFixture[str]) -> bytes:
+    assert main(materialize_args(str(HISTORY))) == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    return captured.out.encode("utf-8")
+
+
 def test_materialize_cli_emits_one_canonical_verifiable_result(
     capsys,
 ) -> None:
@@ -75,6 +102,184 @@ def test_materialize_cli_emits_one_canonical_verifiable_result(
         )
         == value
     )
+
+
+def test_verify_materialization_cli_reemits_exact_file_and_stdin_bytes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    expected = materialized_result_bytes(capsys)
+    value = json.loads(expected)
+    receipt_sha256 = value["receipt"]["receipt_sha256"]
+    result_path = tmp_path / "materialized.json"
+    verified_path = tmp_path / "verified.json"
+    result_path.write_bytes(expected)
+
+    file_args = verify_materialization_args(
+        str(result_path),
+        receipt_sha256=receipt_sha256,
+    )
+    assert main([*file_args, "--output", str(verified_path)]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert verified_path.read_bytes() == expected
+
+    class BinaryOnlyStdin:
+        def __init__(self) -> None:
+            self.buffer = io.BytesIO(expected)
+
+        def read(self, *_args: object, **_kwargs: object) -> str:
+            raise AssertionError("verification must not use locale text stdin")
+
+    monkeypatch.setattr(sys, "stdin", BinaryOnlyStdin())
+    assert main(verify_materialization_args("-", receipt_sha256=receipt_sha256)) == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out.encode("utf-8") == expected
+
+
+@pytest.mark.parametrize(
+    ("digest_name", "digest_value"),
+    [
+        ("receipt", "b" * 64),
+        ("receipt", "A" * 64),
+        ("receipt", "a" * 63),
+        ("allocation", "b" * 64),
+        ("allocation", "A" * 64),
+        ("allocation", "a" * 63),
+    ],
+)
+def test_verify_materialization_cli_requires_exact_independent_digests(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    digest_name: str,
+    digest_value: str,
+) -> None:
+    expected = materialized_result_bytes(capsys)
+    value = json.loads(expected)
+    result_path = tmp_path / "materialized.json"
+    output_path = tmp_path / "verified.json"
+    result_path.write_bytes(expected)
+    output_path.write_bytes(b"retained-output")
+    receipt = value["receipt"]["receipt_sha256"]
+    allocation = ALLOCATION_SHA256
+    if digest_name == "receipt":
+        receipt = digest_value
+    else:
+        allocation = digest_value
+
+    args = verify_materialization_args(
+        str(result_path),
+        receipt_sha256=receipt,
+        allocation_sha256=allocation,
+    )
+    assert main([*args, "--output", str(output_path)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err
+    assert output_path.read_bytes() == b"retained-output"
+
+
+@pytest.mark.parametrize(
+    "transform",
+    [
+        pytest.param(lambda value: value[:-1], id="missing-final-lf"),
+        pytest.param(lambda value: value[:-1] + b"\r\n", id="crlf"),
+        pytest.param(lambda value: value + b"\n", id="extra-record"),
+        pytest.param(lambda value: b"\xef\xbb\xbf" + value, id="bom"),
+        pytest.param(lambda _value: b'{"schema":"x","schema":"x"}\n', id="duplicate-key"),
+        pytest.param(lambda _value: b'{"schema":"\xff"}\n', id="invalid-utf8"),
+    ],
+)
+def test_verify_materialization_cli_rejects_noncanonical_input_without_output(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    transform,
+) -> None:
+    expected = materialized_result_bytes(capsys)
+    value = json.loads(expected)
+    result_path = tmp_path / "materialized-invalid.json"
+    output_path = tmp_path / "verified.json"
+    result_path.write_bytes(transform(expected))
+    output_path.write_bytes(b"retained-output")
+
+    args = verify_materialization_args(
+        str(result_path),
+        receipt_sha256=value["receipt"]["receipt_sha256"],
+    )
+    assert main([*args, "--output", str(output_path)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err
+    assert output_path.read_bytes() == b"retained-output"
+
+
+def test_verify_materialization_cli_rejects_tamper_alias_hardlink_and_oversize(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    expected = materialized_result_bytes(capsys)
+    value = json.loads(expected)
+    receipt_sha256 = value["receipt"]["receipt_sha256"]
+
+    def args_for(path: Path) -> list[str]:
+        return verify_materialization_args(
+            str(path),
+            receipt_sha256=receipt_sha256,
+        )
+
+    tampered = json.loads(expected)
+    tampered["runtime_payload"]["provider_execution_ready"] = True
+    tampered_path = tmp_path / "tampered.json"
+    tampered_path.write_bytes(
+        json.dumps(
+            tampered,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n"
+    )
+    assert main(args_for(tampered_path)) == 2
+    assert capsys.readouterr().out == ""
+
+    alias_path = tmp_path / "alias.json"
+    alias_path.write_bytes(expected)
+    alias_before = alias_path.read_bytes()
+    assert main([*args_for(alias_path), "--output", str(alias_path)]) == 2
+    assert capsys.readouterr().out == ""
+    assert alias_path.read_bytes() == alias_before
+
+    hardlink_source = tmp_path / "hardlink-source.json"
+    hardlink_alias = tmp_path / "hardlink-alias.json"
+    hardlink_source.write_bytes(expected)
+    os.link(hardlink_source, hardlink_alias)
+    assert main(args_for(hardlink_alias)) == 2
+    assert capsys.readouterr().out == ""
+
+    oversized_path = tmp_path / "oversized.json"
+    with oversized_path.open("wb") as stream:
+        stream.seek(_MAX_SERIALIZED_RESULT_BYTES)
+        stream.write(b"xx")
+    assert main(args_for(oversized_path)) == 2
+    assert capsys.readouterr().out == ""
+
+
+def test_verify_materialization_cli_parser_requires_both_external_digests() -> None:
+    with pytest.raises(SystemExit):
+        main(["verify-materialization", "missing.json"])
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "verify-materialization",
+                "missing.json",
+                "--expected-receipt-sha256",
+                "a" * 64,
+            ]
+        )
 
 
 def test_materialize_cli_stdin_is_byte_identical(

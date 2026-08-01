@@ -1236,6 +1236,13 @@ current turn, and the configured minimum recent tail remain mandatory.
 Compiler metadata binds the mode, rung, requested/effective budgets, and
 rendering profile before the artifact and receipt digests are calculated.
 
+`ctxc verify-materialization` is the CLI projection of the existing public
+materialized-result verifier. It boundedly reads one canonical result, requires
+independent expected receipt and allocation digests, reconstructs the nested
+materialization/runtime/component/receipt relationship, and re-emits the exact
+input bytes only after verification. It introduces no second receipt or
+provider-execution state.
+
 The installed `ctxc evaluate-materialization` command is a dependency-free
 structural diagnostic over an immutable package-resident pack of 30
 project-authored synthetic-naturalistic coding histories. Grouped splits contain

@@ -35,7 +35,7 @@ live-readiness status.
 | --- | --- |
 | Repository | [`JamesNguyen42/loss-resistant-context-compiler`](https://github.com/JamesNguyen42/loss-resistant-context-compiler) |
 | Default branch | `main` |
-| Package version | `0.1.1a15` |
+| Package version | `0.1.1a16` |
 | Python | 3.11, 3.12, and 3.13 in CI |
 | Core runtime dependencies | None outside the Python standard library |
 | Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; `0f20b8a`: exact seven-wheel OpenHands build inputs, clean provider/a2 harness, and all automatic hosted gates passed; `7915beb`: exact seven-wheel root release inputs and post-acquisition offline build/smoke passed every automatic hosted gate; no local inference |
@@ -681,7 +681,7 @@ operations, validation, and unresolved host requirements.
 | Python distribution | `loss-resistant-context-compiler` |
 | Import package | `context_compiler` |
 | CLI command | `ctxc` |
-| Package version | `0.1.1a15` |
+| Package version | `0.1.1a16` |
 | OpenHands distribution | `ctxc-openhands` (separate package) |
 | OpenHands import / CLI | `ctxc_openhands` / `ctxc-openhands` |
 | OpenHands integration version | Exact current version is owned by `integrations/openhands/pyproject.toml`; draft alpha |
@@ -1511,6 +1511,11 @@ lower quantile before results are observed.
   the current turn, and the minimum raw recent tail. Digest-bound compiler
   metadata records the mode, rung, and requested/effective budgets. This does
   not alter the frozen evaluation pack or its retained strict red outcome.
+- CLI-only consumers can run `ctxc verify-materialization` with independently
+  retained receipt and allocation digests. The command uses the existing
+  bounded v1 verifier and re-emits identical canonical result bytes only after
+  nested digest verification; it adds no schema, capability, retrieval, or
+  provider-readiness claim.
 - The installed `ctxc evaluate-materialization` command runs a deterministic,
   dependency-free structural diagnostic over 30 project-authored
   synthetic-naturalistic coding histories grouped into 4 train, 6 development,

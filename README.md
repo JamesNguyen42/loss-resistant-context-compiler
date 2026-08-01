@@ -24,7 +24,7 @@ meaning can be compressed without loss.
 
 | Area | Current state |
 | --- | --- |
-| Release | Alpha research implementation, package version `0.1.1a15` |
+| Release | Alpha research implementation, package version `0.1.1a16` |
 | Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts, optional LocalAI connector |
@@ -457,6 +457,11 @@ ctxc materialize examples/materialized_context.jsonl \
   --allocation-plan-sha256 <independently-calculated-sha256> \
   --tokenizer-profile unicode-codepoint-count-v1 \
   -o materialized-context.json
+
+ctxc verify-materialization materialized-context.json \
+  --expected-receipt-sha256 <independently-retained-receipt-sha256> \
+  --expected-allocation-plan-sha256 <independently-calculated-sha256> \
+  -o verified-materialized-context.json
 ```
 
 The CLI profile counts its named Unicode code-point units exactly; it is not a
@@ -464,7 +469,10 @@ provider tokenizer. The result keeps verified memory, recent raw messages, one
 empty untrusted external-retrieval slot, and the current user turn in a fixed
 order. It remains provider-not-ready and requires a final recount. Python hosts
 with an exact tokenizer should use `materialize_context()` and retain the
-receipt digest independently for `verify_materialized_context_result()`.
+receipt digest independently for `verify_materialized_context_result()`. CLI
+hosts can use `verify-materialization` with both independent digests; it
+boundedly verifies and re-emits the original canonical result bytes without
+creating a second receipt or readiness claim.
 
 Python callers facing an exact compiled-memory overflow may explicitly supply
 `ContextWindowDegradationPolicy()`. The ladder compares the exact
@@ -474,7 +482,7 @@ count. A shifted boundary can change the final compiled rendering, so this is
 not a global-minimum claim over every possible repartition. Compiler metadata
 and the receipt transitively bind the mode, rung, requested/effective memory
 budgets, rendering profile, and all shifted-prefix omissions. Default calls and
-`ctxc materialize` remain strict. Every result still has
+`ctxc materialize` without the exact opt-in remain strict. Every result still has
 `semantic_completeness_claimed: false`,
 `provider_execution_ready: false`, `retrieval_result_sha256: null`, and
 `final_provider_recount_required: true`.
