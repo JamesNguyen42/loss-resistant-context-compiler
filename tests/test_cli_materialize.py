@@ -374,7 +374,7 @@ def test_exact_utf8_stdout_fails_closed_without_a_complete_binary_write(
         pass
 
     monkeypatch.setattr(sys, "stdout", MissingBuffer())
-    with pytest.raises(RuntimeError, match="binary buffer"):
+    with pytest.raises(OSError, match="binary buffer"):
         _write_exact_utf8_output("{}", None)
 
     class ShortBuffer:

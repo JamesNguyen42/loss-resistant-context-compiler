@@ -339,7 +339,7 @@ connector instance.
 
 ## Isolated OpenHands integration package
 
-`integrations/openhands/` builds the separate `ctxc-openhands` `0.1.0a13`
+`integrations/openhands/` builds the separate `ctxc-openhands` `0.1.0a14`
 draft-alpha package. Neither the core distribution nor an ordinary
 `ctxc_openhands` import imports OpenHands; host imports occur only behind the
 exact compatibility gate. The only reviewed identity is OpenHands `1.8.0` at

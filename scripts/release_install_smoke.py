@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 DISTRIBUTION = "loss-resistant-context-compiler"
-EXPECTED_VERSION = "0.1.1a12"
+EXPECTED_VERSION = "0.1.1a13"
 SCHEMA_GLOB = "*.schema.json"
 MATERIALIZED_WITNESS_SCHEMA = "ctxc-materialized-context-witness-0.3"
 MATERIALIZED_PROMPT_ASSEMBLY_SCHEMA = "ctxc-materialized-prompt-assembly-golden-0.1"
@@ -1910,13 +1910,18 @@ def _assert_installed_package(
             [
                 {
                     "role": "user",
-                    "content": "constraint: preserve the release contract",
+                    "content": (
+                        "constraint: preserve the release contract: "
+                        "caf\u00e9, \U0001f9ea, and e\u0301"
+                    ),
                 }
-            ]
+            ],
+            ensure_ascii=False,
         ),
         encoding="utf-8",
     )
     _run([str(ctxc), "compile", str(source_path), "-o", str(artifact_path)])
+    _assert_report_utf8_output(ctxc, artifact_path)
     _run(
         [
             str(ctxc),
@@ -2014,6 +2019,38 @@ def _assert_connector_utf8_output(ctxc: Path) -> None:
         and type(response.get("result")) is dict
     ):
         raise ValueError("installed connector response envelope is invalid")
+
+
+def _assert_report_utf8_output(ctxc: Path, artifact: Path) -> None:
+    environment = _subprocess_environment()
+    environment["PYTHONUTF8"] = "0"
+    environment["PYTHONIOENCODING"] = "utf-16:strict"
+    completed = subprocess.run(
+        [str(ctxc), "inspect", str(artifact), "--format", "text", "--show-items"],
+        capture_output=True,
+        env=environment,
+        check=False,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError("installed report UTF-8 probe failed")
+    if completed.stderr:
+        raise RuntimeError("installed report UTF-8 probe emitted stderr")
+    if len(completed.stdout) > 256 * 1024:
+        raise ValueError("installed report UTF-8 probe exceeded the byte limit")
+    if (
+        not completed.stdout.endswith(b"\n")
+        or completed.stdout.startswith(b"\xef\xbb\xbf")
+        or b"\r" in completed.stdout
+        or b"\x00" in completed.stdout
+    ):
+        raise ValueError("installed report output is not canonical LF-framed UTF-8")
+    try:
+        rendered = completed.stdout.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError("installed report output is not strict UTF-8") from exc
+    if "caf\u00e9, \U0001f9ea, and e\u0301" not in rendered or "\ufffd" in rendered:
+        raise ValueError("installed report output did not preserve Unicode content")
 
 
 def _temporary_root() -> Path:

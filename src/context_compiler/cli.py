@@ -154,18 +154,14 @@ def _input_sources(path: str, limits: SourceLimits) -> list:
 
 
 def _write_output(value: str, path: str | None) -> None:
-    rendered = value + ("" if value.endswith("\n") else "\n")
-    if path:
-        atomic_write_text(Path(path), rendered)
-    else:
-        sys.stdout.write(rendered)
+    _write_exact_utf8_output(value, path)
 
 
 def _write_binary_stdout(rendered: str) -> None:
     payload = rendered.encode("utf-8", errors="strict")
     output = getattr(sys.stdout, "buffer", None)
     if output is None:
-        raise RuntimeError("standard output does not expose a binary buffer")
+        raise OSError("standard output does not expose a binary buffer")
     written = output.write(payload)
     if type(written) is not int or written != len(payload):
         raise OSError("standard output did not accept the complete canonical report")
@@ -205,14 +201,14 @@ def _write_exact_utf8_output(value: str, path: str | None) -> None:
 
 
 def _write_new_output(value: str, path: str | None) -> None:
-    rendered = value + ("" if value.endswith("\n") else "\n")
     if path:
+        rendered = value + ("" if value.endswith("\n") else "\n")
         try:
             atomic_write_text(Path(path), rendered, overwrite=False)
         except AtomicDestinationExistsError as exc:
             raise FileExistsError("output already exists") from exc
     else:
-        _write_binary_stdout(rendered)
+        _write_exact_utf8_output(value, None)
 
 
 def _command_name(args: argparse.Namespace) -> str:

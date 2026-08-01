@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,6 +16,8 @@ from context_compiler import (
     summarize_artifact,
 )
 from context_compiler.cli import main
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def write_artifact(
@@ -203,6 +208,51 @@ def test_default_json_inspection_remains_summary_only(
     artifact["verification"]["passed"] = False
     artifact["compression"]["token_budget"] = 1
     assert direct == detached
+
+
+@pytest.mark.parametrize("host_encoding", ["cp1252:replace", "utf-16:strict"])
+def test_text_inspector_stdout_is_exact_utf8_outside_utf8_mode(
+    tmp_path: Path,
+    host_encoding: str,
+) -> None:
+    path = tmp_path / "artifact.json"
+    detail = "preserve caf\u00e9, \U0001f9ea, and e\u0301 exactly"
+    write_artifact(path, content=f"constraint: {detail}")
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(ROOT / "src")
+    environment["PYTHONUTF8"] = "0"
+    environment["PYTHONIOENCODING"] = host_encoding
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-m",
+            "context_compiler",
+            "inspect",
+            str(path),
+            "--format",
+            "text",
+            "--show-items",
+        ],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0
+    assert completed.stderr == b""
+    assert completed.stdout.endswith(b"\n")
+    assert not completed.stdout.startswith(b"\xef\xbb\xbf")
+    assert b"\r" not in completed.stdout
+    assert b"\x00" not in completed.stdout
+    rendered = completed.stdout.decode("utf-8", errors="strict")
+    assert detail in rendered
+    assert "caf\u00c3\u00a9" not in rendered
+    assert "\ufffd" not in rendered
 
 
 def test_inspector_rejects_nonpositive_display_bounds(

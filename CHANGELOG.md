@@ -166,6 +166,28 @@ versioning and release rules in
   installed-environment validation rather than wheel-archive authentication,
   atomic import, or containment of a compromised Python process.
 
+## 0.1.1a13 - 2026-08-01
+
+### Fixed
+
+- Made `ctxc` report stdout use strict UTF-8 bytes with exact LF framing
+  independently of the host text encoding. This covers archive, verification,
+  trust, inspection, diff, and schema reports without changing file output.
+- Refused missing binary stdout, incomplete writes, malformed Unicode, and
+  failed flushes without retrying report output. Exact built-in `StringIO`
+  embedding remains supported.
+
+### Changed
+
+- Extended clean wheel and sdist smoke validation with Unicode inspection under
+  a hostile UTF-16 host encoding.
+- Advanced the separately packaged OpenHands integration to `0.1.0a14` solely
+  to preserve its exact dependency on core `0.1.1a13`.
+- Retained report schemas and semantics, materialized-context schema v1,
+  default-strict behavior, null retrieval and capability identities,
+  `provider_execution_ready=false`, and the required final provider recount.
+  No provider or model execution was run.
+
 ## 0.1.1a12 - 2026-08-01
 
 ### Fixed

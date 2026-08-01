@@ -102,6 +102,195 @@ def test_stdout_output_retains_existing_text_contract(
     assert capsys.readouterr().out == "value\n"
 
 
+def test_report_output_retains_builtin_stringio_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = io.StringIO()
+    monkeypatch.setattr(cli.sys, "stdout", output)
+
+    cli._write_output("caf\u00e9 \U0001f9ea e\u0301", None)
+
+    assert output.getvalue() == "caf\u00e9 \U0001f9ea e\u0301\n"
+
+
+def test_new_report_output_retains_builtin_stringio_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = io.StringIO()
+    monkeypatch.setattr(cli.sys, "stdout", output)
+
+    cli._write_new_output("caf\u00e9 \U0001f9ea e\u0301", None)
+
+    assert output.getvalue() == "caf\u00e9 \U0001f9ea e\u0301\n"
+
+
+def test_report_output_bypasses_the_host_text_encoding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BinaryBuffer:
+        payloads: list[bytes] = []
+        flushes = 0
+
+        def write(self, payload: bytes) -> int:
+            self.payloads.append(payload)
+            return len(payload)
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    class HostTextOutput:
+        buffer = BinaryBuffer()
+
+        def write(self, _value: str) -> int:
+            raise AssertionError("the locale text writer must not be used")
+
+    output = HostTextOutput()
+    monkeypatch.setattr(cli.sys, "stdout", output)
+
+    cli._write_output("caf\u00e9 \U0001f9ea e\u0301", None)
+
+    assert output.buffer.payloads == ["caf\u00e9 \U0001f9ea e\u0301\n".encode("utf-8")]
+    assert output.buffer.flushes == 1
+
+
+def test_report_output_requires_a_binary_buffer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TextOnlyOutput:
+        pass
+
+    monkeypatch.setattr(cli.sys, "stdout", TextOnlyOutput())
+
+    with pytest.raises(
+        OSError,
+        match="standard output does not expose a binary buffer",
+    ):
+        cli._write_output("report", None)
+
+
+def test_missing_binary_stdout_returns_a_stable_cli_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TextOnlyOutput:
+        writes = 0
+
+        def write(self, _value: str) -> int:
+            self.writes += 1
+            raise AssertionError("the text writer must not be used")
+
+    class DiagnosticBuffer:
+        payloads: list[bytes] = []
+        flushes = 0
+
+        def write(self, payload: bytes) -> int:
+            self.payloads.append(payload)
+            return len(payload)
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    class BinaryDiagnosticOutput:
+        buffer = DiagnosticBuffer()
+
+    stdout = TextOnlyOutput()
+    stderr = BinaryDiagnosticOutput()
+    monkeypatch.setattr(cli.sys, "stdout", stdout)
+    monkeypatch.setattr(cli.sys, "stderr", stderr)
+
+    assert main(["schema", "--error-format", "json"]) == 2
+
+    assert stdout.writes == 0
+    assert stderr.buffer.flushes == 1
+    assert len(stderr.buffer.payloads) == 1
+    diagnostic = json.loads(stderr.buffer.payloads[0].decode("utf-8", errors="strict"))
+    assert diagnostic["command"] == "schema"
+    assert diagnostic["category"] == "io"
+    assert diagnostic["code"] == "io_error"
+    assert diagnostic["exception_type"] == "OSError"
+
+
+@pytest.mark.parametrize("write_result", [None, True, 0])
+def test_report_output_rejects_an_incomplete_binary_write_without_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    write_result: object,
+) -> None:
+    class RefusingBuffer:
+        writes = 0
+        flushes = 0
+
+        def write(self, _payload: bytes) -> object:
+            self.writes += 1
+            return write_result
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    class BinaryOutput:
+        buffer = RefusingBuffer()
+
+    output = BinaryOutput()
+    monkeypatch.setattr(cli.sys, "stdout", output)
+
+    with pytest.raises(
+        OSError,
+        match="standard output did not accept the complete canonical report",
+    ):
+        cli._write_output("report", None)
+
+    assert output.buffer.writes == 1
+    assert output.buffer.flushes == 0
+
+
+def test_report_output_failed_flush_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FlushFailureBuffer:
+        writes = 0
+        flushes = 0
+
+        def write(self, payload: bytes) -> int:
+            self.writes += 1
+            return len(payload)
+
+        def flush(self) -> None:
+            self.flushes += 1
+            raise OSError("injected report flush failure")
+
+    class BinaryOutput:
+        buffer = FlushFailureBuffer()
+
+    output = BinaryOutput()
+    monkeypatch.setattr(cli.sys, "stdout", output)
+
+    with pytest.raises(OSError, match="injected report flush failure"):
+        cli._write_output("report", None)
+
+    assert output.buffer.writes == 1
+    assert output.buffer.flushes == 1
+
+
+def test_report_output_encoding_failure_writes_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class UntouchedBuffer:
+        writes = 0
+
+        def write(self, _payload: bytes) -> int:
+            self.writes += 1
+            raise AssertionError("invalid text must fail before output")
+
+    class BinaryOutput:
+        buffer = UntouchedBuffer()
+
+    output = BinaryOutput()
+    monkeypatch.setattr(cli.sys, "stdout", output)
+
+    with pytest.raises(UnicodeEncodeError):
+        cli._write_output("invalid surrogate: \ud800", None)
+
+    assert output.buffer.writes == 0
+
+
 def test_exact_utf8_output_retains_builtin_stringio_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

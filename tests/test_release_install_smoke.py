@@ -27,6 +27,7 @@ from scripts.release_install_smoke import (
     _artifact_install_command,
     _assert_artifact_snapshot,
     _assert_connector_utf8_output,
+    _assert_report_utf8_output,
     _build_tool_install_command,
     _decode_materialized_degradation_evaluation_report,
     _decode_materialized_evaluation_report,
@@ -51,8 +52,8 @@ from scripts.release_install_smoke import (
     _verified_artifact_snapshot,
 )
 
-WHEEL = "loss_resistant_context_compiler-0.1.1a12-py3-none-any.whl"
-SDIST = "loss_resistant_context_compiler-0.1.1a12.tar.gz"
+WHEEL = "loss_resistant_context_compiler-0.1.1a13-py3-none-any.whl"
+SDIST = "loss_resistant_context_compiler-0.1.1a13.tar.gz"
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -308,7 +309,7 @@ def _sample_evaluation_report_bytes() -> bytes:
     case_ids = [f"retention-case-{index:03d}" for index in range(1, 21)]
     unsigned = {
         "schema": MATERIALIZED_EVALUATION_REPORT_SCHEMA,
-        "evaluator_package_version": "0.1.1a12",
+        "evaluator_package_version": "0.1.1a13",
         "pack": {
             "schema": MATERIALIZED_RETENTION_PACK_SCHEMA,
             "pack_id": MATERIALIZED_RETENTION_PACK_ID,
@@ -675,6 +676,77 @@ def test_installed_connector_probe_forces_and_verifies_exact_utf8(
     assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
     assert "PYTHONHOME" not in environment
     assert "PYTHONPATH" not in environment
+
+
+def test_installed_report_probe_forces_and_verifies_exact_utf8(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: dict[str, object] = {}
+
+    def run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        observed["arguments"] = arguments
+        observed.update(kwargs)
+        return subprocess.CompletedProcess(
+            arguments,
+            0,
+            stdout="constraint: preserve caf\u00e9, \U0001f9ea, and e\u0301\n".encode("utf-8"),
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(subprocess, "run", run)
+    ctxc = tmp_path / "ctxc"
+    artifact = tmp_path / "artifact.json"
+
+    _assert_report_utf8_output(ctxc, artifact)
+
+    assert observed["arguments"] == [
+        str(ctxc),
+        "inspect",
+        str(artifact),
+        "--format",
+        "text",
+        "--show-items",
+    ]
+    assert observed["check"] is False
+    assert observed["timeout"] == 30
+    environment = observed["env"]
+    assert type(environment) is dict
+    assert environment["PYTHONUTF8"] == "0"
+    assert environment["PYTHONIOENCODING"] == "utf-16:strict"
+    assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert "PYTHONHOME" not in environment
+    assert "PYTHONPATH" not in environment
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        b"\xef\xbb\xbfconstraint: preserve caf\xc3\xa9, \xf0\x9f\xa7\xaa, and e\xcc\x81\n",
+        b"constraint: preserve caf\xc3\xa9, \xf0\x9f\xa7\xaa, and e\xcc\x81\r\n",
+        b"constraint: preserve caf\xc3\xa9, \xf0\x9f\xa7\xaa, and e\xcc\x81\x00\n",
+        b"constraint: preserve caf\xff, \xf0\x9f\xa7\xaa, and e\xcc\x81\n",
+        b"missing the required Unicode content\n",
+    ],
+)
+def test_installed_report_probe_rejects_noncanonical_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stdout: bytes,
+) -> None:
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda arguments, **_kwargs: subprocess.CompletedProcess(
+            arguments,
+            0,
+            stdout=stdout,
+            stderr=b"",
+        ),
+    )
+
+    with pytest.raises(ValueError):
+        _assert_report_utf8_output(tmp_path / "ctxc", tmp_path / "artifact.json")
 
 
 def test_materialized_context_probe_command_is_isolated_and_module_qualified(

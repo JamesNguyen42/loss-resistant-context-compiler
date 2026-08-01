@@ -24,7 +24,7 @@ meaning can be compressed without loss.
 
 | Area | Current state |
 | --- | --- |
-| Release | Alpha research implementation, package version `0.1.1a12` |
+| Release | Alpha research implementation, package version `0.1.1a13` |
 | Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts, optional LocalAI connector |
@@ -40,7 +40,7 @@ meaning can be compressed without loss.
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic structural cases; 20 held out; no model or natural-cohort claim |
-| OpenHands integration | Separately packaged `ctxc-openhands` `0.1.0a13` draft alpha; reviewed offline fake-runtime foundation only; live execution blocked |
+| OpenHands integration | Separately packaged `ctxc-openhands` `0.1.0a14` draft alpha; reviewed offline fake-runtime foundation only; live execution blocked |
 | Downstream agent task completion | Not measured |
 | “50% better than most related technology” | **Not established** |
 | Production readiness | Not production-ready |
@@ -531,6 +531,10 @@ without changing their decoded values; the same safe serialization applies to
 summary strings. Python callers can use
 `summarize_artifact()` or `render_artifact_text()` directly; JSON summaries
 identify their contract as `ctxc-artifact-inspection-0.1`.
+
+CLI reports written to stdout use strict UTF-8 with one LF terminator,
+independently of the host text encoding. File reports retain their existing
+atomic UTF-8 behavior.
 
 Compare two integrity-checked artifact envelopes without requiring their source
 histories:
@@ -1187,7 +1191,7 @@ bundle authenticates its producer.
 ## Separately packaged OpenHands alpha
 
 [`ctxc-openhands`](integrations/openhands/README.md) is an isolated
-`0.1.0a13` package under `integrations/openhands/`. Ordinary
+`0.1.0a14` package under `integrations/openhands/`. Ordinary
 `loss-resistant-context-compiler` installation and every standalone `ctxc`
 Python/CLI path remain dependency-free and do not import OpenHands. Importing
 `ctxc_openhands` also defers all host imports until its exact compatibility
