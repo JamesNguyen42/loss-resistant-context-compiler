@@ -249,6 +249,7 @@ python -m benchmarks.external_runner `
   --network-isolation-evidence network-policy.txt `
   --inference-service-pid INFERENCE_SERVICE_PID `
   --max-inference-service-memory-mb SERVICE_MEMORY_LIMIT_MB `
+  --expected-inference-service-executable-sha256 SERVICE_EXECUTABLE_SHA256 `
   --adapter-revision REVISION `
   --environment-id sha256:DEPENDENCY_LOCK_SHA256 `
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m `
@@ -364,8 +365,21 @@ without terminating the service. Sampling is not containment and can miss a
 spike between polls; it does not prove the adapter used that PID or
 automatically include separate helper processes, and it is not a verified
 jetsam or physical-footprint provider. Configured service accounting
-is supported on Windows, Linux, and macOS and fails preflight elsewhere. The
-wrapper does not establish a filesystem or network sandbox, so execute only
+is supported on Windows, Linux, and macOS and fails preflight elsewhere. Linux
+requires a mounted procfs and access to the target process. It hashes an opened
+`/proc/<pid>/exe` descriptor and rechecks the proc link target and inode, rather
+than resolving and reopening the display pathname through the runner's mount
+namespace. Missing procfs, a protected executable link, and a
+PID outside the runner's PID namespace are distinct fail-closed preflight
+errors; no command-line or pathname fallback is accepted. The PID must be the
+service PID as visible inside the runner namespace. Supplying
+`--expected-inference-service-executable-sha256` rejects a visible PID collision
+when its executable bytes differ before the adapter starts; two processes using
+the same executable remain indistinguishable. Frozen scoring still requires the
+same digest. Omitting all service
+options disables only this claim-bearing evidence and leaves diagnostic runner
+features available. The wrapper does not establish a filesystem or network
+sandbox, so execute only
 reviewed adapter code in an appropriately isolated environment. Claim-bearing
 runs must provide the retained host firewall,
 container, or network-namespace policy file; the runner hashes it before

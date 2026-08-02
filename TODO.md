@@ -219,6 +219,11 @@ raw evidence when completing benchmark work.
   per-case processes, inherited POSIX per-process memory limits, Windows
   per-process and aggregate Job limits, full candidate validation, and
   self-hashed run manifests.
+- [x] Keep Linux inference-service accounting fail-closed across protected or
+  missing procfs and container PID/mount namespaces: classify unavailable
+  inspection, hash the opened `/proc/<pid>/exe` descriptor rather than a
+  runner-resolved display path, and isolate unrelated runner tests from this
+  optional claim-bearing host capability.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
 - [x] Maintain unit and connector-contract coverage, including standalone
   operation without sibling dependencies; CI covers Python 3.11, 3.12, and

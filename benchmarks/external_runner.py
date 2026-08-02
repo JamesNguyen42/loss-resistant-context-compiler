@@ -19,11 +19,11 @@ import tempfile
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, NoReturn
 
 from context_compiler.atomic import atomic_write_text
 from context_compiler.local_qwen import (
@@ -388,6 +388,16 @@ class _DarwinProcTaskInfo(ctypes.Structure):
 
 class ExternalRunnerError(RuntimeError):
     """The adapter runner could not establish a safe execution boundary."""
+
+
+class InferenceServiceInspectionError(ExternalRunnerError):
+    """The host cannot provide the process evidence required for a claim."""
+
+    def __init__(self, reason: str, message: str) -> None:
+        self.reason = reason
+        super().__init__(
+            f"inference-service inspection unavailable [{reason}]: {message}"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1307,6 +1317,8 @@ class _InferenceProcessSnapshot:
     executable_path: str
     memory_metric: str
     memory_bytes: int
+    executable_sha256: str | None = None
+    executable_bytes: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -2169,13 +2181,100 @@ def _darwin_inference_process_snapshot(
     )
 
 
-def _linux_process_start_token(stat_path: Path) -> str:
+def _linux_procfs_unavailable(reason: str, message: str) -> NoReturn:
+    raise InferenceServiceInspectionError(reason, message)
+
+
+def _require_linux_procfs_process(proc_root: Path, process_id: int) -> Path:
+    try:
+        root_status = proc_root.stat()
+    except FileNotFoundError:
+        _linux_procfs_unavailable(
+            "procfs_unavailable",
+            f"Linux procfs is not mounted at {proc_root}",
+        )
+    except PermissionError:
+        _linux_procfs_unavailable(
+            "permission_denied",
+            f"permission was denied while inspecting Linux procfs at {proc_root}",
+        )
+    except OSError as exc:
+        _linux_procfs_unavailable(
+            "procfs_unavailable",
+            f"Linux procfs at {proc_root} could not be inspected: {exc}",
+        )
+    if not stat.S_ISDIR(root_status.st_mode):
+        _linux_procfs_unavailable(
+            "procfs_unavailable",
+            f"Linux procfs path {proc_root} is not a directory",
+        )
+
+    self_stat_path = proc_root / "self" / "stat"
+    try:
+        self_stat_path.stat()
+    except FileNotFoundError:
+        _linux_procfs_unavailable(
+            "procfs_unavailable",
+            f"Linux procfs identity records are unavailable at {self_stat_path}",
+        )
+    except PermissionError:
+        _linux_procfs_unavailable(
+            "permission_denied",
+            f"permission was denied while inspecting {self_stat_path}",
+        )
+    except OSError as exc:
+        _linux_procfs_unavailable(
+            "procfs_unavailable",
+            f"Linux procfs identity records could not be inspected: {exc}",
+        )
+
+    process_directory = proc_root / str(process_id)
+    try:
+        process_status = process_directory.stat()
+    except FileNotFoundError:
+        _linux_procfs_unavailable(
+            "process_not_visible",
+            f"process {process_id} is not visible in {proc_root}; it may have "
+            "exited or be outside this container PID namespace",
+        )
+    except PermissionError:
+        _linux_procfs_unavailable(
+            "permission_denied",
+            f"permission was denied while inspecting process {process_id} in "
+            f"{proc_root}",
+        )
+    except OSError as exc:
+        _linux_procfs_unavailable(
+            "process_unavailable",
+            f"process {process_id} could not be inspected in {proc_root}: {exc}",
+        )
+    if not stat.S_ISDIR(process_status.st_mode):
+        _linux_procfs_unavailable(
+            "process_not_visible",
+            f"process {process_id} does not have a procfs directory in {proc_root}",
+        )
+    return process_directory
+
+
+def _linux_process_start_token(stat_path: Path, *, process_id: int) -> str:
     try:
         stat_text = stat_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        _linux_procfs_unavailable(
+            "process_not_visible",
+            f"process {process_id} disappeared while its identity was sampled",
+        )
+    except PermissionError:
+        _linux_procfs_unavailable(
+            "permission_denied",
+            f"permission was denied while reading process {process_id} identity "
+            f"from {stat_path}",
+        )
     except OSError as exc:
-        raise ExternalRunnerError(
-            "could not read inference-service process identity"
-        ) from exc
+        _linux_procfs_unavailable(
+            "process_unavailable",
+            f"process {process_id} identity could not be read from {stat_path}: {exc}",
+        )
     command_end = stat_text.rfind(")")
     if command_end < 0:
         raise ExternalRunnerError(
@@ -2189,27 +2288,245 @@ def _linux_process_start_token(stat_path: Path) -> str:
     return f"linux-proc-start:{fields_after_command[19]}"
 
 
+def _linux_executable_evidence(
+    executable_link: Path,
+    *,
+    process_id: int,
+) -> tuple[StrictFileEvidence, tuple[int, int, int, int, int]]:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    try:
+        descriptor = os.open(executable_link, flags)
+    except FileNotFoundError:
+        _linux_procfs_unavailable(
+            "process_not_visible",
+            f"process {process_id} executable disappeared during sampling",
+        )
+    except PermissionError:
+        _linux_procfs_unavailable(
+            "permission_denied",
+            f"permission was denied while opening {executable_link}; the procfs "
+            "policy prevents fail-closed executable identity verification",
+        )
+    except OSError as exc:
+        _linux_procfs_unavailable(
+            "executable_unavailable",
+            f"process {process_id} executable could not be opened: {exc}",
+        )
+
+    primary_error: BaseException | None = None
+    try:
+        try:
+            before = os.fstat(descriptor)
+        except OSError as exc:
+            _linux_procfs_unavailable(
+                "executable_unavailable",
+                f"process {process_id} executable descriptor could not be inspected: {exc}",
+            )
+        if not stat.S_ISREG(before.st_mode):
+            raise ExternalRunnerError(
+                "inference-service executable descriptor is not a regular file"
+            )
+        if before.st_size > _INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES:
+            raise ExternalRunnerError(
+                "inference-service executable exceeds "
+                f"{_INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES} bytes"
+            )
+
+        digest = hashlib.sha256()
+        byte_count = 0
+        while True:
+            try:
+                block = os.read(
+                    descriptor,
+                    min(
+                        1024 * 1024,
+                        _INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES - byte_count + 1,
+                    ),
+                )
+            except OSError as exc:
+                _linux_procfs_unavailable(
+                    "executable_unavailable",
+                    f"process {process_id} executable bytes could not be read: {exc}",
+                )
+            if not block:
+                break
+            byte_count += len(block)
+            if byte_count > _INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES:
+                raise ExternalRunnerError(
+                    "inference-service executable exceeds "
+                    f"{_INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES} bytes"
+                )
+            digest.update(block)
+
+        try:
+            after = os.fstat(descriptor)
+        except OSError as exc:
+            _linux_procfs_unavailable(
+                "executable_unavailable",
+                f"process {process_id} executable descriptor could not be rechecked: {exc}",
+            )
+        identity_fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
+        if any(getattr(before, field) != getattr(after, field) for field in identity_fields):
+            _linux_procfs_unavailable(
+                "identity_raced",
+                f"process {process_id} executable identity changed while it was hashed",
+            )
+        if byte_count != before.st_size:
+            _linux_procfs_unavailable(
+                "identity_raced",
+                f"process {process_id} executable size changed while it was hashed",
+            )
+        return (
+            StrictFileEvidence(
+                byte_count=byte_count,
+                file_sha256=digest.hexdigest(),
+            ),
+            tuple(
+                getattr(before, field)
+                for field in (
+                    "st_dev",
+                    "st_ino",
+                    "st_mode",
+                    "st_size",
+                    "st_mtime_ns",
+                )
+            ),
+        )
+    except BaseException as exc:
+        primary_error = exc
+        raise
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError as exc:
+            if primary_error is None:
+                _linux_procfs_unavailable(
+                    "executable_unavailable",
+                    f"process {process_id} executable descriptor could not be closed: {exc}",
+                )
+
+
 def _linux_inference_process_snapshot(
     process_id: int,
+    *,
+    proc_root: Path = Path("/proc"),
+    include_executable_evidence: bool = False,
 ) -> _InferenceProcessSnapshot:
-    process_directory = Path("/proc") / str(process_id)
+    process_directory = _require_linux_procfs_process(proc_root, process_id)
     stat_path = process_directory / "stat"
-    first_start_token = _linux_process_start_token(stat_path)
+    first_start_token = _linux_process_start_token(
+        stat_path,
+        process_id=process_id,
+    )
+    executable_link = process_directory / "exe"
     try:
-        executable = Path(os.readlink(process_directory / "exe")).resolve()
+        raw_executable = os.readlink(executable_link)
+    except FileNotFoundError:
+        _linux_procfs_unavailable(
+            "process_not_visible",
+            f"process {process_id} executable disappeared during sampling",
+        )
+    except PermissionError:
+        _linux_procfs_unavailable(
+            "permission_denied",
+            f"permission was denied while resolving {executable_link}; "
+            "the procfs policy prevents fail-closed executable identity verification",
+        )
+    except OSError as exc:
+        _linux_procfs_unavailable(
+            "executable_unavailable",
+            f"process {process_id} executable could not be resolved: {exc}",
+        )
+    if not isinstance(raw_executable, str) or not raw_executable:
+        raise ExternalRunnerError(
+            "inference-service executable path is malformed"
+        )
+    executable = Path(raw_executable)
+    if not executable.is_absolute():
+        raise ExternalRunnerError(
+            "inference-service executable path is not absolute"
+        )
+    executable_capture = (
+        _linux_executable_evidence(
+            executable_link,
+            process_id=process_id,
+        )
+        if include_executable_evidence
+        else None
+    )
+    if executable_capture is None:
+        executable_evidence = None
+    else:
+        executable_evidence, opened_executable_identity = executable_capture
+        try:
+            rechecked_executable = os.readlink(executable_link)
+            rechecked_status = os.stat(executable_link)
+        except FileNotFoundError:
+            _linux_procfs_unavailable(
+                "process_not_visible",
+                f"process {process_id} executable disappeared during recheck",
+            )
+        except PermissionError:
+            _linux_procfs_unavailable(
+                "permission_denied",
+                f"permission was denied while rechecking {executable_link}",
+            )
+        except OSError as exc:
+            _linux_procfs_unavailable(
+                "executable_unavailable",
+                f"process {process_id} executable could not be rechecked: {exc}",
+            )
+        rechecked_identity = tuple(
+            getattr(rechecked_status, field)
+            for field in (
+                "st_dev",
+                "st_ino",
+                "st_mode",
+                "st_size",
+                "st_mtime_ns",
+            )
+        )
+        if (
+            rechecked_executable != raw_executable
+            or rechecked_identity != opened_executable_identity
+        ):
+            _linux_procfs_unavailable(
+                "identity_raced",
+                f"process {process_id} executable changed while it was hashed",
+            )
+    try:
         statm_fields = (process_directory / "statm").read_text(
             encoding="utf-8"
         ).split()
         page_size = os.sysconf("SC_PAGE_SIZE")
-    except (OSError, ValueError) as exc:
+    except FileNotFoundError:
+        _linux_procfs_unavailable(
+            "process_not_visible",
+            f"process {process_id} disappeared while memory was sampled",
+        )
+    except PermissionError:
+        _linux_procfs_unavailable(
+            "permission_denied",
+            f"permission was denied while reading process {process_id} memory "
+            f"from {process_directory / 'statm'}",
+        )
+    except OSError as exc:
+        _linux_procfs_unavailable(
+            "process_unavailable",
+            f"process {process_id} memory could not be read: {exc}",
+        )
+    except ValueError as exc:
         raise ExternalRunnerError(
-            f"could not inspect inference-service process {process_id}"
+            "Linux page-size accounting is unavailable"
         ) from exc
     if len(statm_fields) < 2 or not statm_fields[1].isdigit():
         raise ExternalRunnerError(
             "inference-service memory counters are malformed"
         )
-    second_start_token = _linux_process_start_token(stat_path)
+    second_start_token = _linux_process_start_token(
+        stat_path,
+        process_id=process_id,
+    )
     if second_start_token != first_start_token:
         raise ExternalRunnerError(
             "inference-service process identity changed during sampling"
@@ -2225,19 +2542,50 @@ def _linux_inference_process_snapshot(
         executable_path=str(executable),
         memory_metric="resident-set-bytes",
         memory_bytes=memory_bytes,
+        executable_sha256=(
+            executable_evidence.file_sha256
+            if executable_evidence is not None
+            else None
+        ),
+        executable_bytes=(
+            executable_evidence.byte_count
+            if executable_evidence is not None
+            else None
+        ),
     )
 
 
-def _inference_process_snapshot(process_id: int) -> _InferenceProcessSnapshot:
+def _inference_process_snapshot(
+    process_id: int,
+    *,
+    include_executable_evidence: bool = False,
+) -> _InferenceProcessSnapshot:
     if os.name == "nt":
-        return _windows_inference_process_snapshot(process_id)
-    if sys.platform.startswith("linux"):
-        return _linux_inference_process_snapshot(process_id)
-    if sys.platform == "darwin":
-        return _darwin_inference_process_snapshot(process_id)
-    raise ExternalRunnerError(
-        "inference-service process accounting is supported only on Windows, "
-        "Linux, and macOS"
+        snapshot = _windows_inference_process_snapshot(process_id)
+    elif sys.platform.startswith("linux"):
+        return _linux_inference_process_snapshot(
+            process_id,
+            include_executable_evidence=include_executable_evidence,
+        )
+    elif sys.platform == "darwin":
+        snapshot = _darwin_inference_process_snapshot(process_id)
+    else:
+        raise InferenceServiceInspectionError(
+            "unsupported_platform",
+            f"platform {sys.platform!r} does not provide a reviewed process inspector; "
+            "supported platforms are Windows, Linux, and macOS",
+        )
+    if not include_executable_evidence:
+        return snapshot
+    evidence = _bounded_file_evidence(
+        Path(snapshot.executable_path),
+        max_bytes=_INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES,
+        label="inference-service executable",
+    )
+    return replace(
+        snapshot,
+        executable_sha256=evidence.file_sha256,
+        executable_bytes=evidence.byte_count,
     )
 
 
@@ -2245,10 +2593,15 @@ def capture_inference_service_contract(
     process_id: int | None = None,
     *,
     max_memory_mb: int | None = None,
+    expected_executable_sha256: str | None = None,
 ) -> InferenceServiceContract:
     """Capture a stable service identity and ceiling before adapter execution."""
 
-    if process_id is None and max_memory_mb is None:
+    if (
+        process_id is None
+        and max_memory_mb is None
+        and expected_executable_sha256 is None
+    ):
         return InferenceServiceContract()
     if (
         isinstance(process_id, bool)
@@ -2266,14 +2619,23 @@ def capture_inference_service_contract(
         raise ExternalRunnerError(
             "inference-service accounting requires a positive memory ceiling"
         )
-    snapshot = _inference_process_snapshot(process_id)
-    executable = Path(snapshot.executable_path)
-    evidence = _bounded_file_evidence(
-        executable,
-        max_bytes=_INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES,
-        label="inference-service executable",
+    if (
+        expected_executable_sha256 is not None
+        and not _is_sha256(expected_executable_sha256)
+    ):
+        raise ExternalRunnerError(
+            "expected inference-service executable digest must be a SHA-256"
+        )
+    snapshot = _inference_process_snapshot(
+        process_id,
+        include_executable_evidence=True,
     )
-    if evidence.byte_count <= 0:
+    if (
+        not _is_sha256(snapshot.executable_sha256)
+        or isinstance(snapshot.executable_bytes, bool)
+        or not isinstance(snapshot.executable_bytes, int)
+        or snapshot.executable_bytes <= 0
+    ):
         raise ExternalRunnerError(
             "inference-service executable evidence cannot be empty"
         )
@@ -2281,12 +2643,20 @@ def capture_inference_service_contract(
         raise ExternalRunnerError(
             "inference-service memory already exceeds the configured ceiling"
         )
+    if (
+        expected_executable_sha256 is not None
+        and snapshot.executable_sha256 != expected_executable_sha256
+    ):
+        raise ExternalRunnerError(
+            "inference-service executable does not match the expected SHA-256; "
+            "the PID may identify a different process in this namespace"
+        )
     return InferenceServiceContract(
         process_id=snapshot.process_id,
         process_start_token=snapshot.process_start_token,
-        executable_path=str(executable),
-        executable_sha256=evidence.file_sha256,
-        executable_bytes=evidence.byte_count,
+        executable_path=snapshot.executable_path,
+        executable_sha256=snapshot.executable_sha256,
+        executable_bytes=snapshot.executable_bytes,
         memory_metric=snapshot.memory_metric,
         max_memory_mb=max_memory_mb,
     )
@@ -2299,26 +2669,17 @@ class _InferenceServiceMonitor:
         self.contract = contract
         self.sample_count = 0
         self.peak_memory_bytes: int | None = None
+        self.last_inspection_error: InferenceServiceInspectionError | None = None
 
-    def _executable_matches(self) -> bool:
+    def _executable_matches(
+        self,
+        observed: _InferenceProcessSnapshot,
+    ) -> bool:
         if not self.contract.enabled:
             return True
-        executable_path = _native_absolute_path(
-            self.contract.executable_path
-        )
-        if executable_path is None:
-            return False
-        try:
-            observed = _bounded_file_evidence(
-                executable_path,
-                max_bytes=_INFERENCE_SERVICE_EXECUTABLE_MAX_BYTES,
-                label="inference-service executable",
-            )
-        except ExternalRunnerError:
-            return False
         return (
-            observed.file_sha256 == self.contract.executable_sha256
-            and observed.byte_count == self.contract.executable_bytes
+            observed.executable_sha256 == self.contract.executable_sha256
+            and observed.executable_bytes == self.contract.executable_bytes
         )
 
     def _snapshot_matches(
@@ -2333,27 +2694,39 @@ class _InferenceServiceMonitor:
         )
 
     def sample(self, *, check_executable: bool = False) -> str | None:
+        self.last_inspection_error = None
         if not self.contract.enabled:
             return None
         if _native_absolute_path(self.contract.executable_path) is None:
+            self.last_inspection_error = InferenceServiceInspectionError(
+                "unsupported_path",
+                "the retained executable path is not native to this host",
+            )
             return "inference_service_unavailable"
 
         try:
             snapshot = _inference_process_snapshot(
-                int(self.contract.process_id or 0)
+                int(self.contract.process_id or 0),
+                include_executable_evidence=check_executable,
             )
+        except InferenceServiceInspectionError as exc:
+            self.last_inspection_error = exc
+            return "inference_service_unavailable"
         except ExternalRunnerError:
             return "inference_service_unavailable"
         if not self._snapshot_matches(snapshot):
             return "inference_service_identity_changed"
         snapshots = [snapshot]
-        if check_executable and not self._executable_matches():
+        if check_executable and not self._executable_matches(snapshot):
             return "inference_service_executable_modified"
         if check_executable:
             try:
                 final_snapshot = _inference_process_snapshot(
                     int(self.contract.process_id or 0)
                 )
+            except InferenceServiceInspectionError as exc:
+                self.last_inspection_error = exc
+                return "inference_service_unavailable"
             except ExternalRunnerError:
                 return "inference_service_unavailable"
             if not self._snapshot_matches(final_snapshot):
@@ -2387,6 +2760,13 @@ class _InferenceServiceMonitor:
             sample_count=self.sample_count,
             peak_memory_bytes=self.peak_memory_bytes,
         )
+
+
+def _inference_failure_detail(
+    monitor: _InferenceServiceMonitor,
+) -> str | None:
+    error = monitor.last_inspection_error
+    return str(error) if error is not None else None
 
 
 def _is_sha256(value: object) -> bool:
@@ -4409,9 +4789,11 @@ def run_external_command(
             check_executable=True
         )
         if inference_preflight is not None:
+            inspection_detail = _inference_failure_detail(inference_monitor)
             raise ExternalRunnerError(
                 "inference-service contract failed before execution: "
                 f"{inference_preflight}"
+                + (f": {inspection_detail}" if inspection_detail else "")
             )
         check_executable_after = True
     else:
@@ -4608,6 +4990,10 @@ def run_external_command(
                         service_failure = inference_monitor.sample()
                         if service_failure is not None:
                             termination_reason = service_failure
+                            validation_error = (
+                                _inference_failure_detail(inference_monitor)
+                                or validation_error
+                            )
                         elif elapsed > limits.timeout_seconds:
                             termination_reason = "timeout"
                         elif (
@@ -4658,6 +5044,10 @@ def run_external_command(
                         and service_failure is not None
                     ):
                         termination_reason = service_failure
+                        validation_error = (
+                            _inference_failure_detail(inference_monitor)
+                            or validation_error
+                        )
                     stdout.flush()
                     stderr.flush()
                 finally:
@@ -4992,9 +5382,11 @@ def run_external_cases(
     inference_monitor = _InferenceServiceMonitor(inference_service)
     inference_preflight = inference_monitor.sample(check_executable=True)
     if inference_preflight is not None:
+        inspection_detail = _inference_failure_detail(inference_monitor)
         raise ExternalRunnerError(
             "inference-service contract failed before execution: "
             f"{inference_preflight}"
+            + (f": {inspection_detail}" if inspection_detail else "")
         )
     corpus = Path(corpus_path).expanduser().resolve()
     candidate = Path(candidate_path).expanduser().resolve()
@@ -5078,6 +5470,7 @@ def run_external_cases(
             termination_reason = (
                 f"case_failure:{case.id}:{service_failure}"
             )
+            validation_error = _inference_failure_detail(inference_monitor)
             break
         with _runner_temporary_directory(
             prefix=f".lrcbench-case-{index:06d}-",
@@ -5248,6 +5641,7 @@ def run_external_cases(
                 f"case_failure:{case.id}:"
                 f"{case_manifest.termination_reason}"
             )
+            validation_error = case_manifest.validation_error
             break
 
     final_service_failure = inference_monitor.sample(
@@ -5255,6 +5649,7 @@ def run_external_cases(
     )
     if termination_reason is None and final_service_failure is not None:
         termination_reason = final_service_failure
+        validation_error = _inference_failure_detail(inference_monitor)
     if termination_reason is None and (
         not _bounded_file_matches(
             corpus,
@@ -5523,6 +5918,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             "it invalidates the run without terminating the service"
         ),
     )
+    parser.add_argument(
+        "--expected-inference-service-executable-sha256",
+        help=(
+            "optional preflight SHA-256 for rejecting a different-executable "
+            "PID-namespace collision before adapter execution"
+        ),
+    )
     parser.add_argument("--adapter-revision", default="unrecorded")
     parser.add_argument("--environment-id", default="unrecorded")
     parser.add_argument("--model-id", default="unrecorded")
@@ -5564,6 +5966,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         inference_service = capture_inference_service_contract(
             args.inference_service_pid,
             max_memory_mb=args.max_inference_service_memory_mb,
+            expected_executable_sha256=(
+                args.expected_inference_service_executable_sha256
+            ),
         )
         process_environment = _process_environment_with_pass_through(
             args.pass_environment

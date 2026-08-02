@@ -303,6 +303,7 @@ python -m benchmarks.external_runner \
   --network-isolation-evidence network-policy.txt \
   --inference-service-pid INFERENCE_SERVICE_PID \
   --max-inference-service-memory-mb SERVICE_MEMORY_LIMIT_MB \
+  --expected-inference-service-executable-sha256 SERVICE_EXECUTABLE_SHA256 \
   --adapter-revision REVISION \
   --environment-id sha256:DEPENDENCY_LOCK_SHA256 \
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m \
@@ -430,6 +431,19 @@ polling cadence. macOS uses `libproc` and rechecks the PID creation time around
 each executable/RSS sample. The adapter run fails if the service disappears,
 restarts, changes executable, or exceeds the ceiling; the runner does not
 terminate or contain that service, and polling can miss between-sample spikes.
+Linux brackets an intentional open and bounded hash of `/proc/<pid>/exe` with
+the process start token, then rechecks the proc link target and inode. The proc
+descriptor supplies the executable bytes; the symlink target is display
+metadata and is not reopened through the runner's mount namespace. Linux
+service accounting therefore requires mounted procfs,
+permission to inspect the process, and a PID visible in the runner's PID
+namespace. Missing procfs, protected procfs, and an invisible PID are
+classified and fail the claim-bearing preflight without a weaker fallback.
+The optional expected-executable digest rejects a visible wrong-PID collision
+only when its executable bytes differ; processes using the same executable
+remain indistinguishable. Registered scoring independently requires the same
+frozen digest.
+Omitting service accounting leaves non-claim diagnostic execution available.
 This is not a verified macOS jetsam or physical-footprint provider.
 It also cannot prove that the adapter used the designated PID or automatically
 include separate helper processes. Configured service accounting is supported

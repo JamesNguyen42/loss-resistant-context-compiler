@@ -55,6 +55,9 @@ context_compiler = ["data/materialized_retention_pack_v1.json"]
 addopts = "-q"
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+  "native_inference_service_inspection: exercises optional claim-bearing host process inspection",
+]
 
 [tool.ruff]
 line-length = 100

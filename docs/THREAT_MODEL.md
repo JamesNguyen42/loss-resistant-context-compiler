@@ -465,6 +465,16 @@ executable and RSS observations. This measured peak is a sampled upper
 observation, not proof that no shorter memory spike occurred, that the adapter
 used the designated PID, or that separate helper processes were included. It is
 not a verified jetsam or physical-footprint provider.
+Linux hashes the opened `/proc/<pid>/exe` descriptor between start-token
+observations and rechecks the proc link target and inode so a different
+mount-namespace pathname or concurrent `execve` cannot substitute other bytes.
+Protected or absent procfs and a PID not visible in the runner namespace
+fail closed with distinct inspection categories; no `cmdline`, `ps`, or
+caller-supplied-path fallback is trusted. A numeric PID can still collide with
+an unrelated process in another PID namespace. Operators must supply the PID
+visible to the runner, and claim scoring must match the captured executable
+digest to the frozen protocol. Re-execution of the same path, inode, and bytes
+does not change these observations and remains outside this identity proof.
 Claim protocols must freeze the service executable digest, metric, and ceiling
 or establish stronger external containment.
 

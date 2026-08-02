@@ -1831,6 +1831,19 @@ and invalidates the adapter run if the service disappears, restarts, changes
 executable, or crosses its ceiling. macOS uses `libproc` and rechecks creation
 identity around each executable/RSS observation. Scoring requires the memory
 metric, executable digest, and service ceiling to match the frozen protocol.
+On Linux, the runner intentionally opens and hashes `/proc/<pid>/exe` itself,
+then rechecks its link target and inode; the resolved display pathname is not
+reopened in the runner's mount namespace.
+This requires a mounted procfs plus permission to inspect the target process.
+The PID is interpreted in the runner's PID namespace. A missing mount,
+protected procfs, or PID outside that namespace fails the requested
+claim-bearing service inspection with a classified error instead of selecting
+a weaker identity source. Runs that omit service accounting remain available
+for diagnostics but cannot become claim-complete. An operator can supply the
+expected service-executable SHA-256 to reject a visible numeric PID collision
+with different executable bytes before adapter execution; frozen scoring
+independently requires that digest. Two processes using the same executable
+remain indistinguishable by that guard.
 The wrapper does not itself create a filesystem or network sandbox, does not
 contain or terminate the inference service, and can miss a memory spike between
 samples. The source inventory does not bind imports outside its root or prove
@@ -1838,7 +1851,10 @@ which files were loaded. The runtime digest covers argument zero, not every
 shared library or interpreter support file. The runner also cannot prove that
 the adapter used the designated PID or automatically include separate helper
 processes. Service sampling is supported on Windows, Linux, and macOS; a
-configured service contract fails preflight elsewhere.
+configured service contract fails preflight elsewhere. A bare numeric PID can
+name an unrelated process in a different PID namespace, so the operator must
+pass the service PID visible to the runner and the frozen executable digest
+must still match before scoring.
 It accepts the legacy producerless adapter payload only at that bounded runner
 boundary, then emits the current self-hashed candidate envelope with the
 registered adapter/model identity. Direct candidate imports require the current
