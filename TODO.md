@@ -682,11 +682,23 @@ Acceptance:
   execution, isolation, hidden-test, grading, resolution, score, usefulness,
   and claim-readiness assertions remain unauthenticated or false. The current
   evidence is synthetic contract testing only.
+- [x] Add the coordinator-only, source/sdist-only SWE-bench text-patch
+  composition preflight, schema `ctxc-swebench-patch-composition-0.1`. It
+  revalidates the canonical source and prepared tree, applies candidate and
+  hidden text patches to independent copies, retains effective-path overlap
+  without composing it, and replays disjoint deltas in a third copy. Binary,
+  extended copy/rename, mode-change, and non-`100644` add/delete headers fail
+  before Git; the native ordinary-text-patch parser remains unsandboxed and has
+  no native memory or filesystem quota. Its two statuses are mechanical evidence,
+  not grading or cohort results, and every execution, result, score,
+  usefulness, isolation, and claim flag remains false.
 - [ ] Complete SWE-bench dataset/repository license review, prepare and retain
   every selected base-commit outcome, establish externally verified candidate
   mount/filesystem and network isolation, harden hidden-test application and
   grading, and add public task result evidence before running or scoring any
-  public candidate.
+  public candidate. The next preparation target is scikit-learn ordinals
+  349--380 (32 rows); no local mirror or exact base-commit license evidence has
+  yet been retained for it.
 - [x] Inspect the exact Flask task base commit's root and discovered
   license-file declarations and exercise selected ordinal 289 through public
   mirror verification and raw-tree preparation. Retain the local manifest

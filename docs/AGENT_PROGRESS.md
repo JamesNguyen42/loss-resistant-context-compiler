@@ -6,19 +6,19 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Base commit for this in-progress checkpoint: `c119ebd`
-- Current checkpoint: the separately result-blind-reviewed tau2-bench v1.0.1
-  half-duplex text core is source-bound in actual loader order. A local bare
-  mirror replay verified the annotated tag, peeled commit, root tree, 12 exact
-  source files, and all 278 selected rows without importing tau2-bench or
-  executing a candidate, simulator, or grader.
-- Previous checkpoint: the 22-row Xarray preparation expansion and replayed
-  56/6/438 full-cohort preparation ledger were committed and pushed as
-  `c119ebd`.
-- Next task: commit and push this source-only tau2 checkpoint, then integrate
-  the synthetic candidate/hidden-patch composition preflight for the pinned
-  SWE-bench issue-538 path and continue exact-license preparation across the
-  remaining six task repositories. Do not encode a repository patch as an
+- Base commit for this in-progress checkpoint: `43e8489`
+- Current checkpoint: the coordinator-only, source/sdist-only synthetic
+  SWE-bench text-patch composition preflight is implemented and is being
+  integrated. It mechanically revalidates source/preparation evidence, applies
+  candidate and hidden patches to independent temporary copies, retains
+  bounded effective-path overlap evidence, and replays only disjoint changes in
+  a third copy. It is not a grader or public-suite result.
+- Previous checkpoint: the separately result-blind-reviewed tau2-bench v1.0.1
+  half-duplex text core was source-bound in actual loader order and committed
+  and pushed as `43e8489`.
+- Next public preparation target: scikit-learn ordinals 349--380 (32 selected
+  rows). No local mirror or exact base-commit license evidence has yet been
+  retained for that repository. Do not encode a repository patch as an
   LRCBench rendered-memory candidate.
 
 ## Mission status
@@ -29,7 +29,8 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 3. Public long-horizon suite evidence: SWE-bench Verified source selection,
    candidate-input projection, raw-Git preparation, and a full-cohort
    prediction/official-JSONL boundary are pinned. A separately replayable
-   synthetic controller-run ledger now exists. Sixty-two public rows have been
+   synthetic controller-run ledger and a separate text-patch composition
+   preflight now exist. Sixty-two public rows have been
    attempted: 56 prepared, 6 policy-refused, and 438 unattempted. No public
    candidate, model, agent, or grader has run and no resolution, external score,
    or usefulness result exists. Tau2-bench's materially different 278-row
@@ -40,7 +41,45 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
-## Current tau2-bench source-binding checkpoint
+## Current SWE-bench patch-composition checkpoint
+
+- Added coordinator-only, source/sdist-only `benchmarks.swebench_patch` and
+  strict self-hashed schema `ctxc-swebench-patch-composition-0.1`. It adds no
+  installed wheel schema and does not change the public 56 prepared / 6
+  policy-refused / 438 unattempted denominator.
+- Revalidate the canonical `VerifiedSweBenchSource` and source-bound
+  `PreparedSweBenchRepository`, rescan the immutable prepared base, and apply
+  candidate and hidden text patches to independent temporary copies. The
+  bounded near-linear overlap check treats equal and ancestor/descendant
+  effective paths as conflicts.
+- Retain exactly two statuses. `overlap-detected-not-composable` records the
+  conflicts without composition evidence.
+  `disjoint-composition-preflight-verified-not-a-grader` applies both deltas to
+  a third clean copy and requires exact candidate and hidden replay.
+- Strict decode is structural only. Public verify, exclusive write, load, and
+  replay canonically snapshot source and preparation evidence, bind the live
+  prepared-tree summary, and require exact semantic replay. The structural
+  `retained_disjoint` property fails closed on malformed public construction.
+- Inline and payload-free binary diffs, extended copy/rename headers,
+  file-mode changes, and non-`100644` new/deleted-file modes are rejected
+  before native Git parsing.
+- Accepted text patches still reach an unsandboxed native Git parser without a
+  native memory or filesystem quota. `PatchCompositionError` exposes a
+  machine-readable stage and fixed
+  `preflight-exception-not-a-cohort-result` disposition. An outer
+  complete-denominator ledger remains responsible for retaining and mapping
+  that exception.
+- Candidate-code and hidden-test execution, official grading, official result,
+  external score, usefulness, candidate mount/network/filesystem isolation,
+  native quotas, Git-parser sandboxing, and claim readiness remain false.
+- The finalized focused suite passed 22 synthetic/adversarial tests in 62.6
+  seconds. An independent read-only re-audit passed the same 22 cases and found
+  no remaining P0--P2 issue. The integrated source/repository/patch matrix
+  passed 39 tests and skipped one expected platform-specific case. Ruff check,
+  Ruff formatting, compile validation, and deterministic Python quality lint
+  were clean.
+
+## Previous tau2-bench source-binding checkpoint (`43e8489`)
 
 - Added source/sdist-only `benchmarks.tau2` and
   `benchmarks/suites/tau2_text_v1.json`. The descriptor pins annotated tag
@@ -360,6 +399,40 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 All ordinary commands used the repository Python 3.12 virtual environment.
 Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
+- Clean tau2 checkpoint `43e8489`: the full repository suite passed 2,337
+  tests, skipped 27, and passed 112 subtests in 681.1 seconds on Windows.
+- A clean build from that committed tau2 checkpoint passed packaging
+  inspection: the sdist contains the tau2 module, descriptor, test, and
+  evaluation contract, while the wheel excludes the source-only tau2 artifacts
+  and retains the unchanged installed schema inventory.
+- Patch-composition focused validation after the security repair passed all 22
+  synthetic/adversarial cases in 62.6 seconds. Independent review repeated the
+  22-case pass and approved module SHA-256
+  `ea18be63a4c613acc6dc0f43cb8bc80b740f7b0ebb3a7d29684c699561f86bf3`
+  and test SHA-256
+  `9cc770cfbbe7631f16fd96577cf664edafdc4cd2af9222a42fed7751d17276ea`
+  with no P0--P2 finding. The integrated source/repository/patch matrix passed
+  39 tests and skipped one platform-specific case in 141.5 seconds.
+- Full integrated repository suite: 2,359 passed, 27 skipped, and 112 subtests
+  passed in 675.54 seconds on Windows. No model, GPU, or inference runtime was
+  started.
+- Precommit package inspection at `SOURCE_DATE_EPOCH=1700000000` confirmed that
+  the sdist contains the patch module, test, and evaluation contract, while the
+  wheel excludes patch source artifacts and retains exactly 26 installed
+  schemas. Exact local archive digests are not embedded into an archive member.
+- Ruff check, Ruff formatting, compile validation, and deterministic Python
+  quality lint were clean. Documentation quality lint had no error or warning;
+  only the longstanding whole-file `AS-TXT-003` structural information on
+  `TODO.md`, `CHANGELOG.md`, and `docs/HANDOFF.md` remained.
+- Repository-wide Ruff and compile checks passed. Connector conformance passed
+  6 golden steps and 66 negative vectors across 17 schemas. The external draft
+  protocol, 500-row SWE-bench source descriptor, 278-row tau2 source
+  descriptor, natural-history fixture kit, and benchmark self-test all verified
+  offline with claim readiness still false where applicable.
+- All five committed benchmark reports replayed offline without model or
+  inference execution. OneDrive cold-file hydration first triggered the
+  fail-closed changed-during-read guard on several inputs; isolated retries
+  succeeded with the committed report/corpus hashes and no guard weakening.
 - Controller-run focused suite: 42 passed and one skipped in 158.55 seconds on
   Windows. The skip is explicitly the directory-symlink-root case, which could
   not create its fixture because the current Windows token lacks
@@ -523,6 +596,11 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
   grading must prove exact hidden-test-patch application, reject candidate
   overlap/precreation of hidden test paths, retain raw application evidence,
   and close the documented upstream false-positive path.
+- The patch-composition checkpoint is a synthetic mechanical preflight. Its
+  native Git text parser is unsandboxed and lacks native memory and filesystem
+  quotas. Its overlap or disjoint status is not a hidden-test execution,
+  grader, result, score, usefulness, isolation, or claim-ready outcome, and an
+  exception is not a cohort disposition until the outer ledger retains it.
 - The existing `lrcbench-external-run-manifest-0.13` runner accepts bounded
   rendered memory, not repository patches. Reusing that wire would be a false
   equivalence.
@@ -546,10 +624,12 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
 ## Next exact actions
 
-1. Continue exact base-commit license inspection, acquire the remaining six
-   repositories through reviewed channels, and apply the raw-Git preparer to
-   the other 438 selected tasks. Retain every success or refusal without
-   silently narrowing the cohort.
+1. Acquire the scikit-learn repository through a reviewed channel, inspect the
+   exact base-commit license evidence, and apply the raw-Git preparer to
+   ordinals 349--380 (32 selected rows). No local mirror or license evidence is
+   currently retained. Continue through the other unattempted repositories and
+   preserve every success or refusal without silently narrowing the 500-row
+   cohort.
 2. Do not treat the controller-run ledger or the literal lifecycle's Windows
    Job/POSIX process group as filesystem, network, PID, user, mount, or image
    isolation. Provision and retain independently verifiable containment before
@@ -559,12 +639,13 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
    `instance_id`, `model_name_or_path`, and `model_patch` interchange. Add
    separately authenticated model/token/trajectory evidence and raw grader
    output without weakening either ledger's fixed-false claims.
-4. Integrate and validate the implemented source/sdist-only synthetic
-   patch-composition preflight before any grader. It must keep using independent
-   base trees, bounded exact Git operations, effective-path overlap refusal, and
-   exact disjoint-manifest composition while all grading/result claims remain
-   false; the pinned v4.1 harness remains vulnerable on 18 rows with hidden
-   additions or renames.
+4. Use the source/sdist-only synthetic patch-composition preflight before any
+   grader, retain each `preflight-exception-not-a-cohort-result` disposition in
+   an outer complete-denominator ledger, and separately prove exact hidden-patch
+   application inside a hardened evaluator. Independent copies and exact
+   disjoint replay do not turn the unsandboxed native Git parser into isolation
+   or grading evidence; the pinned v4.1 harness remains vulnerable on 18 rows
+   with hidden additions or renames.
 5. Build a separately launched candidate adapter for the now source-bound,
    separately result-blind-reviewed tau2-bench v1.0.1 half-duplex text core.
    Keep the complete upstream task, simulator, golden-action, assertion, grader,

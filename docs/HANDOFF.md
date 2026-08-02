@@ -17,8 +17,9 @@ changing or interpreting the recorded comparison. Read the
 and its [strict JSON manifest](../benchmarks/protocols/external-comparison-v1.json)
 before changing candidate selection, adapter identity, resources, datasets, or
 claim rules. Read the [SWE-bench Verified source boundary](SWEBENCH_EVALUATION.md)
-before handling its source rows, task projection, repository snapshots, or
-grader. Read the [tau2-bench text-core boundary](TAU2_EVALUATION.md) before
+before handling its source rows, task projection, repository snapshots,
+patch-composition preflight, or grader. Read the
+[tau2-bench text-core boundary](TAU2_EVALUATION.md) before
 handling its Task objects, scenarios, DBs, simulator, tools, grader, or result
 files. Read [natural-history evidence contracts](NATURAL_HISTORY_EVIDENCE.md),
 the separate
@@ -58,7 +59,7 @@ live-readiness status.
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
-| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation, full-cohort prediction, and synthetic controller-run ledgers; 62 public rows attempted across six repositories (56 prepared, 6 policy-refused, 438 unattempted), with no public candidate/model/agent run, verified isolation, grader execution, resolution, score, or usefulness result |
+| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation, full-cohort prediction, synthetic controller-run, and text-patch composition evidence; 62 public rows attempted across six repositories (56 prepared, 6 policy-refused, 438 unattempted), with no public candidate/model/agent run, verified isolation, grader execution, resolution, score, or usefulness result |
 | tau2-bench intake | Pinned v1.0.1 annotated tag and exact 278-row half-duplex text `base` cohort in actual loader order; source-only verification and security contract, with no adapter, simulator, grader, isolation, execution, reward, score, or usefulness result |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
 | OpenHands integration | Separate `ctxc-openhands` draft alpha; exact current version is owned by its package metadata; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
@@ -332,6 +333,7 @@ and measured duration.
 | `benchmarks/swebench_repository_worker.py` | Staged worker launched with Python isolation flags (`-B -I -S`) for bounded raw Git-object traversal/export, mirror safety checks, and portable regular-file-only output |
 | `benchmarks/swebench_prediction.py` | Source/sdist-only complete-cohort prediction reconciliation, canonical official JSONL emission, source/preparation/system binding, live replay, and fixed-false execution/grading/claim flags |
 | `benchmarks/swebench_run.py` | Source/sdist-only full-cohort controller-run ledger, exact two-field request/literal argv launch, bounded raw streams, workspace before/after replay, stdout-derived captures, exhaustive dispositions, and fixed-false isolation/authentication/grading/result claims |
+| `benchmarks/swebench_patch.py` | Coordinator-only, source/sdist-only text-patch mechanical preflight with canonical source/preparation revalidation, independent copies, bounded effective-path overlap, exact disjoint replay, and fixed-false execution/grading/result/isolation claims |
 | `benchmarks/suites/swebench_verified_v1.json` | Self-hashed 500-row SWE-bench Verified source, selection, license, projection, harness, and claim boundary |
 | `benchmarks/compatibility/` | Result-blind pinned system screens and retained ACON blocker/failure evidence |
 | `conformance/` | Dependency-free connector schema/golden/negative validation and in-process/stdio equivalence |
@@ -748,6 +750,7 @@ operations, validation, and unresolved host requirements.
 | SWE-bench prediction ledger | `ctxc-swebench-prediction-ledger-0.1` |
 | SWE-bench controller result | `ctxc-swebench-controller-result-0.1` |
 | SWE-bench controller-run ledger | `ctxc-swebench-run-ledger-0.1` |
+| SWE-bench patch composition | `ctxc-swebench-patch-composition-0.1` |
 | tau2-bench source suite | `ctxc-tau2-suite-0.1` |
 | tau2-bench source verification | `ctxc-tau2-source-verification-0.1` |
 | Adapter process-environment evidence | `lrcbench-process-environment-0.1` |
@@ -1228,7 +1231,7 @@ audited. Any selected superseded item independently fails verification as
   excludes source construction, `tracemalloc` is not RSS, and the separate
   10,000-to-1,000,000-event characterization remains open.
 
-### SWE-bench Verified source, preparation, prediction, and synthetic run evidence
+### SWE-bench source, preparation, prediction, run, and patch evidence
 
 The source-only suite descriptor pins all 500 official Verified `test` rows at
 dataset revision `91aa3ed51b709be6457e12d00300a6a596d4c6a3`, exact Parquet and
@@ -1299,6 +1302,38 @@ create its fixture because this Windows token lacks directory-symlink
 privilege. All fixtures use synthetic repositories, workspaces, and controller
 processes; no public candidate, model, agent, or grader ran.
 
+The coordinator-only, source/sdist-only `benchmarks.swebench_patch` module adds
+the strict self-hashed `ctxc-swebench-patch-composition-0.1` mechanical
+preflight. It revalidates the canonical source and prepared repository, copies
+the prepared base into independent candidate and hidden trees, applies both
+text patches with bounded literal Git launches, and records bounded tree
+summaries plus complete changed-path states and deltas. Equal and
+ancestor/descendant effective paths conflict; the overlap algorithm is bounded
+near-linear work in changed paths and allowed depth.
+
+Its statuses are `overlap-detected-not-composable`, which retains conflicts and
+no composition, and
+`disjoint-composition-preflight-verified-not-a-grader`, which uses a third clean
+copy and requires exact replay of both deltas. Decode is a structural/self-hash
+check only. Public verify, exclusive write, load, and replay canonically
+snapshot source/preparation evidence, bind the live prepared-tree summary, and
+require exact semantic patch replay. The structural `retained_disjoint`
+property fails closed on malformed evidence and is not a safety decision.
+Inline and payload-free binary diffs, extended copy/rename headers, mode
+changes, and non-`100644` new/deleted-file modes fail before native Git parsing.
+
+Accepted text patches still reach an unsandboxed native Git parser with no
+native memory or filesystem quota. `PatchCompositionError` supplies a
+machine-readable stage and fixed
+`preflight-exception-not-a-cohort-result` disposition; an outer
+complete-denominator ledger must retain and map the exception. Candidate and
+hidden-test execution, official grading, official results, external scores,
+usefulness, mount/network/filesystem isolation, native quotas, parser
+sandboxing, and claim readiness remain false. The finalized focused suite
+passed 22 synthetic/adversarial tests in 62.6 seconds; independent read-only
+re-audit repeated the 22-case pass and found no remaining P0--P2 issue. It
+changed no public cohort count and produced no public result.
+
 The final literal-process/repository/prediction/run integration matrix passed
 126 cases and skipped the expected POSIX-directory-mode and unavailable
 directory-symlink cases in 352.05 seconds. Two deterministic sdist builds were
@@ -1307,8 +1342,15 @@ absent from the wheel, whose installed schema inventory remains the expected
 26. Exact local archive digests are not embedded into an archive member because
 that would make the sdist digest self-referential.
 
-The final full repository run passed 2,320 tests, skipped 27, and passed 112
-subtests in 610.10 seconds on Windows.
+At clean tau2 checkpoint `43e8489`, the full repository run passed 2,337 tests,
+skipped 27, and passed 112 subtests in 681.1 seconds on Windows. Clean packaging
+contained the tau2 source-only artifacts in the sdist and excluded them from
+the wheel. The integrated patch-composition checkpoint then passed 2,359 tests,
+skipped 27, and passed 112 subtests in 675.54 seconds. Its 22 focused cases,
+independent re-audit, Ruff, format, compile, and deterministic Python quality
+checks were clean. Package inspection placed the patch module, test, and
+evaluation contract in the sdist, excluded the patch source artifacts from the
+wheel, and retained the 26-schema installed inventory.
 
 This checkpoint remains source-only. The dataset card declares no license; raw
 source rows remain local, and dataset/repository license and redistribution
@@ -1322,9 +1364,9 @@ candidate execution authentication, controller/system/model producer
 authentication, token and trajectory authentication, official-grader review,
 hardening and execution, exact hidden-test-patch application, resolution,
 scores, and usefulness measurement remain absent or false. Neither the raw
-exporter, run ledger, nor literal lifecycle establishes a candidate sandbox or
-network-isolation guarantee. Opaque HMAC ids do not prevent public-corpus
-relinking or establish unseen model data.
+exporter, run ledger, patch preflight, nor literal lifecycle establishes a
+candidate sandbox, grader, or network-isolation guarantee. Opaque HMAC ids do
+not prevent public-corpus relinking or establish unseen model data.
 Workspace traversal and executable launch remain pathname-based rather than
 descriptor-pinned, so concurrent nested-directory or executable substitution
 is a coordinator-host trust boundary. Process exit, trigger, timing, and cleanup
@@ -1867,18 +1909,22 @@ project work is the external and natural-history evidence path:
    Qwen/inference-service evidence, then rerun the retained diagnostic without
    hiding a failure;
 5. add clean adapters only for included systems and retain every failed run;
-6. complete SWE-bench dataset/repository license and redistribution review,
-   then prepare the remaining 438 selected public tasks through the source-only
-   raw-Git boundary, retaining every success or refusal and both mirror/preparation
-   evidence; provision a separately verified container/VM boundary for candidate
-   mount/filesystem and network isolation before passing any public candidate
-   through the synthetic-tested controller-run ledger; use the complete-cohort
-   prediction ledger for official JSONL; retain separate authenticated
+6. acquire a reviewed scikit-learn mirror, for which no local mirror or exact
+   base-commit license evidence is currently retained, inspect that evidence,
+   and prepare ordinals 349--380 before continuing the other 406 unattempted
+   SWE-bench rows; retain every success or refusal and both
+   mirror/preparation evidence; provision a separately verified container/VM
+   boundary for candidate mount/filesystem and network isolation before passing
+   any public candidate through the synthetic-tested controller-run ledger; use
+   the complete-cohort prediction ledger for official JSONL and the text-patch
+   preflight for mechanical overlap/disjoint evidence; retain every preflight
+   exception in the outer denominator plus separate authenticated
    model/token/trajectory, hidden-test application, grader, resolution, and
    result/score evidence; do not reuse the LRCBench rendered-memory runner for
-   patches or treat the lifecycle, raw exporter, run ledger, or prediction
-   ledger as a sandbox;
-7. select and source-bind a materially different second public suite;
+   patches or treat the lifecycle, raw exporter, run ledger, patch preflight,
+   or prediction ledger as a sandbox;
+7. build the separately launched candidate adapter, simulator/grader evidence,
+   and isolation boundary for the source-bound tau2-bench text core;
 8. collect licensed/consented natural histories under the implemented privacy,
    independent-annotation, adjudication, grouped-split, and no-leakage contracts.
 
@@ -1910,6 +1956,7 @@ python -m benchmarks.swebench verify-suite
 python -m pytest -q tests/test_swebench_repository.py
 python -m pytest -q tests/test_swebench_prediction.py
 python -m pytest -q tests/test_swebench_run.py
+python -m pytest -q tests/test_swebench_patch.py
 python -m benchmarks --verify-report docs/results/lrcbench-local.json
 python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
 python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json

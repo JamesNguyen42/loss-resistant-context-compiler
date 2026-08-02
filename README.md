@@ -39,7 +39,7 @@ meaning can be compressed without loss.
 | External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
-| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, raw-Git preparation, exhaustive deterministic prediction-ledger, and synthetic controller-run boundaries; 62 public rows attempted across six repositories, with 56 prepared, 6 policy-refused, and no public candidate, model, agent, grader, resolution, score, or usefulness result |
+| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, raw-Git preparation, exhaustive deterministic prediction-ledger, synthetic controller-run ledger, and text-patch composition preflight; 62 public rows attempted across six repositories, with 56 prepared, 6 policy-refused, and no public candidate, model, agent, grader, resolution, score, or usefulness result |
 | tau2-bench intake | Exact v1.0.1 annotated-tag source binding and actual-loader-order 278-row half-duplex text-core selection across airline, retail, and telecom; candidate adapter, simulator, grader, execution, isolation, reward, score, and usefulness evidence remain absent |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic structural cases; 20 held out; no model or natural-cohort claim |
 | OpenHands integration | Separately packaged `ctxc-openhands` draft alpha; exact current version is owned by its [package metadata](integrations/openhands/pyproject.toml); reviewed offline fake-runtime foundation only; live execution blocked |
@@ -237,6 +237,12 @@ The repository currently includes:
   only by replaying stdout; and records initial/final workspace summaries and a
   deterministic delta without claiming that the caller-provided workspace is a
   mount or sandbox;
+- a coordinator-only, source/sdist-only SWE-bench text-patch composition
+  preflight that revalidates the canonical source and prepared repository,
+  applies candidate and hidden patches to independent temporary copies, detects
+  bounded effective-path overlap, and replays disjoint patches in a third copy;
+  its strict self-hashed evidence is mechanical preflight evidence, not a
+  grader, result, score, isolation proof, or public-suite denominator change;
 - a source/sdist-only tau2-bench v1.0.1 verifier that binds the annotated tag,
   exact source blobs, actual loader-order 278-row `base` cohort, half-duplex
   text run profile, candidate-visible field partition, and explicit exclusions
@@ -282,8 +288,9 @@ adding more claims to the README:
 - complete SWE-bench dataset/repository license review, retain outcomes for the
   remaining 438 unattempted rows, provision externally verified candidate
   mount/filesystem and network isolation, capture real candidate outputs through
-  the controller-run and prediction ledgers, harden the grader, and add public
-  result evidence; implement and verify the separately launched candidate
+  the controller-run and prediction ledgers, carry patch-preflight exceptions
+  into the complete-denominator ledger, harden the grader, and add public result
+  evidence; implement and verify the separately launched candidate
   adapter, simulator/grader evidence, and isolation boundary for the now
   source-bound, separately result-blind-reviewed tau2-bench text core before
   measuring end-to-end completion;

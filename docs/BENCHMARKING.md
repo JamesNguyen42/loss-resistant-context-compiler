@@ -655,6 +655,43 @@ summary cannot replay missing workspace contents. Current tests launch only
 synthetic controllers and repositories; no public candidate, model, agent,
 grader, resolution, score, or usefulness measurement exists.
 
+### Mechanical patch composition preflight
+
+The coordinator-only, source/sdist-only `benchmarks.swebench_patch` boundary
+adds synthetic text-patch mechanics under schema
+`ctxc-swebench-patch-composition-0.1`; it is absent from the installed wheel.
+It revalidates the canonical source and source-bound preparation, scans the
+prepared base, and applies candidate and hidden patches to independent
+temporary copies without mutating that base. Its bounded near-linear overlap
+check treats equal, ancestor, and descendant effective paths as conflicts.
+
+The two statuses are `overlap-detected-not-composable`, which retains conflict
+evidence and performs no composition, and
+`disjoint-composition-preflight-verified-not-a-grader`, which replays candidate
+then hidden deltas in a third clean copy and verifies both deltas exactly.
+Strict decode checks structure and the self-hash without authenticating the
+producer. Public verify, exclusive write, load, and replay canonically snapshot
+source/preparation evidence, bind the live prepared-tree summary, and require
+exact semantic replay. `retained_disjoint` is a fail-closed structural property,
+not a safety or claim decision.
+
+Inline and payload-free binary diffs, extended copy/rename headers, mode
+changes, and non-`100644` new/deleted-file modes fail before Git parsing.
+Accepted ordinary text content/add/delete patches still reach an unsandboxed
+native Git parser with no native memory or filesystem quota; its tree limits
+are after-the-fact verification rather than OS enforcement.
+`PatchCompositionError` carries a machine-readable stage and fixed
+`preflight-exception-not-a-cohort-result` disposition. An outer ledger must
+retain and map every such exception across the complete source-selected
+denominator. This preflight does not itself create, replace, or narrow that
+ledger.
+
+All candidate execution, hidden-test execution, grader, result, score,
+usefulness, mount/network/filesystem isolation, native quota, parser sandbox,
+and claim-readiness flags remain false. Synthetic tests exercise the mechanism;
+no public row was added, removed, run, graded, or scored, so the public counts
+remain 56 prepared, 6 policy-refused, and 438 unattempted.
+
 The external protocol's coding-task slot therefore remains `pending`: the
 pinned dataset card declares no license, and the remaining public-cohort
 preparation, independently verified candidate mount/filesystem and network

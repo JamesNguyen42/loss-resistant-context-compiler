@@ -310,6 +310,52 @@ readiness remain false. `prediction_captures()` is only an interoperability
 bridge into the separate full-cohort prediction ledger after live replay; it is
 not result or score evidence.
 
+### SWE-bench text-patch composition preflight
+
+`benchmarks.swebench_patch` is a coordinator-only, source/sdist-only mechanical
+preflight for candidate and hidden **text** patches. It is absent from the
+dependency-free wheel and adds no installed schema. Its strict self-hashed
+evidence schema is `ctxc-swebench-patch-composition-0.1`.
+
+`build_patch_composition()` first revalidates the canonical
+`VerifiedSweBenchSource` and its source-bound `PreparedSweBenchRepository`; a
+caller-supplied mapping cannot replace the hidden patch. It rescans the
+prepared base, copies that immutable input into separate candidate and hidden
+temporary trees, and invokes the exact native Git text-patch parser through
+the literal-argv lifecycle. It records bounded tree summaries plus complete
+changed-path pre/post states and deltas. Equal, ancestor, and descendant
+effective paths count as conflicts; overlap work is bounded and near-linear in
+changed paths and path depth.
+
+The evidence has exactly two statuses. `overlap-detected-not-composable`
+retains the conflicting paths and no composition evidence.
+`disjoint-composition-preflight-verified-not-a-grader` creates a third clean
+copy, replays candidate then hidden deltas, and requires both deltas and every
+candidate-owned final state to match. The prepared input is reverified after
+temporary work and is never mutated. `decode_patch_composition()` is a strict
+structural and self-hash check only. Public verify, load, write, and replay
+operations canonically snapshot their source and preparation inputs, bind the
+live prepared-tree summary, and require exact semantic patch replay. The
+structural `retained_disjoint` property fails closed on malformed evidence; it
+is not a safety, authenticity, isolation, or claim-readiness decision.
+
+Inline and payload-free binary diffs, extended copy/rename headers, file-mode
+changes, and new/deleted file modes other than exact regular-file `100644` are
+rejected before the native parser. Accepted ordinary text content/add/delete
+patches still pass through an unsandboxed native Git process with no native
+memory or filesystem quota; tree and artifact limits are verified, not
+enforced by the operating system. A `PatchCompositionError` exposes a
+machine-readable `stage` and fixed disposition
+`preflight-exception-not-a-cohort-result`. The outer complete-denominator
+ledger must retain and map that exception; this single-task preflight cannot
+turn it into a cohort result or silently remove a row.
+
+Candidate-code execution, hidden-test execution, official grading, official
+results, external scores, usefulness, candidate-mount/network/filesystem
+isolation, native quotas, Git-parser sandboxing, and claim readiness remain
+false. The 56 prepared, 6 policy-refused, and 438 unattempted public-row counts
+are unchanged, and no public candidate or grader was run.
+
 ## tau2-bench v1.0.1 text-core source intake
 
 [`suites/tau2_text_v1.json`](suites/tau2_text_v1.json) and

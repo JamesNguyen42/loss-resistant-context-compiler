@@ -2,10 +2,12 @@
 
 This repository now has reproducible **source intake, candidate-input
 projection, raw-Git repository preparation, full-cohort prediction-ledger, and
-synthetic controller-run boundaries** for SWE-bench Verified. The preparation
+synthetic controller-run and text-patch composition boundaries** for SWE-bench
+Verified. The preparation
 boundary has passed local synthetic-mirror tests and retained public
 preparation replay; the prediction and controller-run boundaries have passed
-synthetic contract tests. The retained public cohort has attempted 62 selected
+synthetic contract tests, and the patch boundary has passed synthetic
+mechanical tests. The retained public cohort has attempted 62 selected
 rows across Flask, Seaborn, Requests, Xarray, Pylint, and Pytest: 56 exact base
 commits passed live preparation replay, six Pylint commits were refused because
 their trees contain forbidden symlinks, and 438 rows remain unattempted. No
@@ -303,6 +305,62 @@ directory-symlink-root fixture was unavailable because this Windows token lacks
 directory-symlink privilege. No public candidate, model, agent, or grader was
 used.
 
+## Text-patch composition preflight
+
+`benchmarks.swebench_patch` is a coordinator-only, source/sdist-only mechanical
+preflight. It is not installed in the dependency-free wheel. Its self-hashed
+artifact schema is `ctxc-swebench-patch-composition-0.1`, and its accepted input
+is candidate and hidden **text** patch bytes for one source-bound prepared
+repository. It is neither a public-suite run nor a grader.
+
+`build_patch_composition()` revalidates the canonical
+`VerifiedSweBenchSource` and the corresponding
+`PreparedSweBenchRepository` before taking the hidden `test_patch`; it does not
+trust a caller-supplied record mapping. The prepared base is rescanned and
+copied into independent candidate and hidden temporary trees. Each patch is
+applied through the bounded literal-argv lifecycle, and bounded tree summaries
+plus complete changed-path pre/post states and deltas are retained. The
+effective-path comparison treats the same path and ancestor/descendant
+relationships as conflicts. Its work is bounded and near-linear in changed
+paths and permitted path depth.
+
+The artifact has exactly two statuses:
+
+- `overlap-detected-not-composable` retains the conflict set and no composition
+  object; and
+- `disjoint-composition-preflight-verified-not-a-grader` creates a third clean
+  base copy, applies candidate then hidden patches, and requires exact replay of
+  both deltas without changing a candidate-owned final path.
+
+The source preparation is reverified after temporary work and remains
+unchanged. `decode_patch_composition()` strictly checks fields, types, bounds,
+canonical paths, derivable summaries, and the self-hash, but it does not
+authenticate the producer or prove patch semantics. Public verify, load,
+exclusive write, and replay canonically snapshot source/preparation evidence,
+bind the live prepared-tree summary, and require exact semantic patch replay.
+The fail-closed `retained_disjoint` property reports only structurally retained
+evidence; it is not a safety, isolation, authenticity, or claim decision.
+
+Inline and payload-free binary diffs, extended copy/rename headers, file-mode
+changes, and new/deleted-file modes other than exact regular-file `100644` are
+rejected before Git starts. Accepted ordinary text content/add/delete patches
+still run through an unsandboxed native Git parser. The process has a deadline
+and bounded retained streams, and trees are checked against finite limits, but
+no native memory or filesystem quota is installed; post-operation verification
+is not native resource containment. A `PatchCompositionError` carries a
+machine-readable `stage` and fixed disposition
+`preflight-exception-not-a-cohort-result`. A future outer
+complete-denominator ledger must retain and map the exception. This one-task
+helper must not silently drop the row or manufacture a cohort result.
+
+Candidate-code execution, hidden-test execution, official-grader execution,
+official results, external scores, usefulness, candidate-mount/network/
+filesystem isolation, native quotas, Git-parser sandboxing, and claim readiness
+remain false. Self-hashing does not authenticate an author. The synthetic
+preflight changes no public denominator: 56 rows remain prepared, 6 remain
+policy-refused, and 438 remain unattempted, with no public candidate or grader
+run.
+
 ## Requirements before public execution or scoring
 
 A claim-bearing public executor/grader checkpoint must fail closed unless it can
@@ -316,9 +374,13 @@ retain and verify all of the following:
 3. Separate candidate and evaluator lifetimes and filesystems. Apply hidden
    test material only after candidate termination and never return grader
    feedback to later matched runs.
-4. Exact successful application of the hidden `test_patch`; reject candidate
-   diffs that overlap or pre-create hidden test paths. Retain raw application
-   and before/after workspace evidence. This is required because upstream
+4. Run the mechanical text-patch preflight and retain any
+   `preflight-exception-not-a-cohort-result` disposition in the outer ledger.
+   Then require exact successful application of the hidden `test_patch` in the
+   separately isolated evaluator; reject candidate diffs that overlap or
+   pre-create hidden test paths, and retain raw application plus before/after
+   workspace evidence. The synthetic preflight is not proof of that public
+   evaluator action. These controls are required because upstream
    [issue 538](https://github.com/SWE-bench/SWE-bench/issues/538) documents a
    false-positive path when hidden-test application fails.
 5. A reviewed, immutable harness environment and container/image identities,

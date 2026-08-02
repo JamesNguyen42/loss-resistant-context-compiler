@@ -83,6 +83,18 @@ versioning and release rules in
 
 ### Added
 
+- A coordinator-only, source/sdist-only SWE-bench text-patch composition
+  preflight with strict self-hashed
+  `ctxc-swebench-patch-composition-0.1` evidence. It revalidates the canonical
+  source and preparation, applies candidate and hidden patches to independent
+  temporary copies, detects bounded effective-path overlap, and uses a third
+  copy only for exact disjoint replay. Binary, extended copy/rename,
+  mode-change, and non-`100644` add/delete headers are rejected before the
+  unsandboxed native Git text parser; public verify/load/write require semantic
+  replay, while no native memory or filesystem quota,
+  candidate execution, grader, result, score, usefulness, isolation, or claim
+  readiness is asserted, and preflight exceptions still require retention by
+  an outer complete-denominator ledger.
 - A source/sdist-only tau2-bench v1.0.1 intake that verifies the annotated tag,
   peeled commit, exact source blobs, actual loader-order 278-row half-duplex
   text `base` cohort across airline, retail, and manual-policy telecom, and a
