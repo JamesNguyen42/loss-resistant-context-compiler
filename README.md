@@ -39,7 +39,7 @@ meaning can be compressed without loss.
 | External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
-| SWE-bench Verified intake | Exact 500-row source/selection descriptor and gold-free task projection; no repository preparation, execution, grading, or score |
+| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, and synthetic-tested raw-Git preparation boundary; no public-suite repository prepared, execution, grading, or score |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic structural cases; 20 held out; no model or natural-cohort claim |
 | OpenHands integration | Separately packaged `ctxc-openhands` draft alpha; exact current version is owned by its [package metadata](integrations/openhands/pyproject.toml); reviewed offline fake-runtime foundation only; live execution blocked |
 | Downstream agent task completion | Not measured |
@@ -214,7 +214,13 @@ The repository currently includes:
 - a source-pinned SWE-bench Verified descriptor for all 500 test rows, exact
   Parquet/canonical-snapshot/order anchors, and an allowlisted projection whose
   candidate payload contains only a keyed opaque routing id and the public
-  problem statement; repository execution and scoring remain blocked;
+  problem statement;
+- a separate source-only SWE-bench repository preparer that verifies a local
+  bare mirror, reads exact raw Git objects without checkout/archive filters,
+  materializes only portable regular-file blobs into a fresh tree, and
+  independently reconciles every path, mode, size, blob id, and SHA-256; its
+  origin, license, candidate-mount, network, execution, grader, and score
+  claims remain false, and no public-suite task has been prepared;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
 - a fixed-digest, versioned CI compile-performance gate with latency-growth and
@@ -253,9 +259,10 @@ adding more claims to the README:
 - collect and independently annotate held-out natural coding-agent histories
   under the implemented consent, license, privacy, adjudication, split, and
   no-label-leakage contracts;
-- complete SWE-bench dataset-license review, pristine workspace and network
-  isolation, grader hardening, and execution/result evidence; then select a
-  materially different second suite before measuring end-to-end completion;
+- complete SWE-bench dataset/repository license review, exercise the pinned
+  cohort through the raw-tree preparer, establish candidate mount and network
+  isolation, harden the grader, and add execution/result evidence; then select
+  a materially different second suite before measuring end-to-end completion;
 - test the optional model extractor across providers and novel phrasing;
 - add named provider tokenizers and production framework-specific adapters;
 - optimize incremental connector compilation beyond its current

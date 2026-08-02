@@ -1,8 +1,10 @@
 # SWE-bench Verified source intake
 
-This repository now has a reproducible **source intake and candidate-input
-projection** for SWE-bench Verified. It has not prepared repositories, run an
-agent, invoked the grader, or produced an external score. The external
+This repository now has a reproducible **source intake, candidate-input
+projection, and raw-Git repository-preparation boundary** for SWE-bench
+Verified. The preparation boundary has passed local synthetic-mirror tests; it
+has not prepared the selected public repositories, created a candidate mount,
+run an agent, invoked the grader, or produced an external score. The external
 comparison protocol therefore keeps its coding-task slot `pending` and retains
 blocker `coding-task-suite`.
 
@@ -110,14 +112,79 @@ can permit relinking by a party with the public corpus. Network isolation also
 cannot show that a pretrained model never encountered public benchmark gold.
 Neither unlinkability nor unseen-holdout status is claimed.
 
+## Repository-preparation boundary
+
+`benchmarks.swebench_repository` and its standalone worker are available only
+from source and the sdist. They add no core or wheel dependency. The public
+source-bound entry point is `prepare_task_repository()`, which revalidates the
+canonical source snapshot and derives the repository, base commit, instance
+id, ordinal, and source-record SHA-256 from the selected row. The lower-level
+`prepare_repository_from_commit()` exists for contract tests and retains a
+null suite binding; it must not be substituted for source-bound preparation.
+
+Mirror verification is offline. It accepts absolute paths for an existing
+bare mirror and Git executable, requires SHA-1 object format plus one canonical
+`https://github.com/<owner>/<repo>[.git]` origin and mirror refspec, disables
+system/global config, prompting, lazy fetch, replacements, and optional locks,
+and rejects shallow or partial/promisor state, alternates, grafts, replace
+refs, includes, extra remotes, linked worktrees, worktree-specific config or
+files, links/reparse points, and special entries. The configured origin
+URL and SHA-1 commit name do not authenticate GitHub or the repository author.
+Raw objects also receive independent SHA-256 evidence.
+POSIX mirror regular files must have a single link; locally derived mirrors
+must be acquired with Git hardlinking disabled. This conservative availability
+constraint does not authenticate or strengthen repository provenance.
+
+Preparation stages a release-digest-bound standalone worker beneath the system
+temporary directory and launches it with isolated `python -B -I -S` through
+the generic literal-argv lifecycle. The worker's `git cat-file` descendants
+remain in the same owned Windows Job or POSIX process group. Bounded pipe
+drainers retain no more than their configured caps, and each batch protocol
+must end at clean stdout EOF. The worker reads and recomputes exact commit,
+tree, and blob objects; preflights bounded object counts, per-object bytes,
+aggregate tree and blob bytes, depth, paths, and worker output; and writes each
+blob independently into an unpredictable fresh directory. It never invokes
+checkout, restore, archive, filters, hooks, or patch application.
+
+Only `100644` and `100755` blobs are accepted. Symlinks, gitlinks/submodules,
+special entries, invalid UTF-8, non-NFC paths, controls and format characters,
+Windows reserved names, `.git`/`git~1` aliases, slash/backslash ambiguity,
+case-fold collisions, oversized paths, and unsafe output ancestors fail
+closed. The prepared tree contains no `.git`, history, remotes, manifest,
+raw source snapshot, or evaluator material. After the worker exits, the parent
+independently walks the output, rejects unexpected/link/hard-link/special
+entries or extra empty directories, and recomputes every size, blob id,
+SHA-256, and executable-mode observation available on the platform. It also
+rejects user-visible extended attributes, unexpected Windows file attributes,
+and NTFS alternate data streams. Verification reopens the exact live mirror
+commit and compares its complete raw export rather than trusting retained tree
+evidence alone.
+
+The coordinator-only manifest schemas are
+`ctxc-swebench-bare-mirror-0.1` and
+`ctxc-swebench-repository-preparation-0.1`. They bind exact runtime limits,
+worker and Git bytes, mirror/config observations, source identity, raw-object
+evidence, every materialized entry, export policy, and self-hash. Neither
+self-hash authenticates an author. The preparation manifest permanently keeps
+repository origin/redistribution review, candidate mount, mount/network
+isolation, Git security review, execution, grading, external score,
+usefulness, and claim readiness false.
+
+The current tests use small locally created SHA-1 mirrors. They prove contract
+behavior, not public-cohort coverage, repository redistribution permission,
+hostile-pack parser safety, or candidate isolation. A rejected public
+repository must later become a retained per-task preparation failure rather
+than disappearing from the 500-task denominator.
+
 ## Requirements before execution or scoring
 
 A later executor/grader checkpoint must fail closed unless it can retain and
 verify all of the following:
 
-1. A pristine base-commit tree with no upstream `.git` history, later refs,
-   remotes, evaluator cache, raw dataset, hidden tests, or grader evidence in
-   the candidate mount.
+1. Run all selected source rows through the raw-Git preparer and retain every
+   success or refusal. Independently create a candidate mount from a verified
+   tree with no upstream `.git` history, later refs, remotes, evaluator cache,
+   raw dataset, hidden tests, or grader evidence.
 2. Externally evidenced outbound-network isolation for every candidate run.
 3. Separate candidate and evaluator lifetimes and filesystems. Apply hidden
    test material only after candidate termination and never return grader

@@ -586,16 +586,38 @@ result-blind selection, field partitions, and official harness source identity.
 Its allowlist produces two-field candidate payloads containing only an
 HMAC-derived opaque routing id and `problem_statement`.
 
-This advances source selection only. The external protocol's coding-task slot
-remains `pending`: the pinned dataset card declares no license, and repository
-preparation, candidate mount isolation, network-isolation evidence, grader
-security review, exact hidden-test application, redistribution review,
-execution, and scoring all remain false. HMAC ids do not prevent relinking from
-public problem text or establish that a model has not seen benchmark gold.
+The source/sdist now also includes a separate raw-Git preparation boundary.
+It verifies an offline local SHA-1 bare mirror and configured origin, then
+derives one selected repository/base commit only from a revalidated source
+row. A release-digest-bound worker starts under isolated `python -B -I -S` and
+the generic literal-process owner, reads bounded raw commit/tree/blob frames
+through `git cat-file`, recomputes object identities, requires clean protocol
+EOF, rejects links, gitlinks, empty directories, special or
+cross-platform-unsafe paths, and writes only independent regular files into a
+fresh directory. It never uses checkout, archive, filters, or
+candidate-provided Git state. The parent reopens the exact mirror commit and
+independently reconciles every path, directory, mode, size, blob id, SHA-256,
+user-visible extended attribute, and NTFS stream before returning a self-hashed
+coordinator-only manifest.
+
+That implementation has passed adversarial tests against synthetic local Git
+mirrors only. No selected public repository has been prepared or mounted. A
+configured origin URL is not authenticated provenance; SHA-1 is the source
+corpus's Git identity, while raw object bodies receive separate SHA-256
+evidence. Mirror, worker, and preparation self-hashes do not authenticate an
+author. The manifest keeps redistribution, mount/network isolation, execution,
+grader review, score, usefulness, and claim readiness false.
+
+The external protocol's coding-task slot therefore remains `pending`: the
+pinned dataset card declares no license, and public-cohort preparation,
+candidate mount isolation, network-isolation evidence, grader security review,
+exact hidden-test application, redistribution review, execution, and scoring
+all remain false. HMAC ids do not prevent relinking from public problem text or
+establish that a model has not seen benchmark gold.
 
 The harness code's MIT license does not license the dataset rows or third-party
 repository snapshots. See [SWE-bench Verified source intake](SWEBENCH_EVALUATION.md)
-for exact identities, local commands, and the executor/grader requirements.
+for exact identities, preparation policy, and executor/grader requirements.
 
 ## The exact external “50% better than most” bar
 

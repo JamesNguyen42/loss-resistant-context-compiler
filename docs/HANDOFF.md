@@ -56,7 +56,7 @@ live-readiness status.
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
-| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; no repository preparation, run, grade, or score |
+| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation contract with 26 local synthetic tests, but none of the 500 selected public tasks has been prepared; dataset/repository license review, candidate mount/execution, grader execution, and scoring remain absent |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
 | OpenHands integration | Separate `ctxc-openhands` draft alpha; exact current version is owned by its package metadata; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
 | Installed JSON Schemas | 26 (7 historical ids, 19 current-namespace ids) |
@@ -325,6 +325,8 @@ and measured duration.
 | `benchmarks/literal_process.py` | Wire-neutral literal-argv lifecycle, bounded concurrent stream evidence, whole-lifecycle deadline, and platform-explicit cleanup scope |
 | `benchmarks/natural_history.py` | Bounded corpus/annotation/adjudication/split/gold-free/report contract validation |
 | `benchmarks/swebench.py` | Offline pinned-source verification, exact canonical snapshot materialization, and source/key-bound gold-free task projection |
+| `benchmarks/swebench_repository.py` | Source/sdist-only coordinator for local SHA-1 bare-mirror verification, raw base-commit export, strict self-hashed mirror/preparation evidence, live mirror/output replay, and fixed-false claim flags |
+| `benchmarks/swebench_repository_worker.py` | Staged worker launched with Python isolation flags (`-B -I -S`) for bounded raw Git-object traversal/export, mirror safety checks, and portable regular-file-only output |
 | `benchmarks/suites/swebench_verified_v1.json` | Self-hashed 500-row SWE-bench Verified source, selection, license, projection, harness, and claim boundary |
 | `benchmarks/compatibility/` | Result-blind pinned system screens and retained ACON blocker/failure evidence |
 | `conformance/` | Dependency-free connector schema/golden/negative validation and in-process/stdio equivalence |
@@ -735,6 +737,8 @@ operations, validation, and unresolved host requirements.
 | SWE-bench source suite | `ctxc-swebench-suite-0.1` |
 | SWE-bench task projection | `ctxc-swebench-task-input-0.1` |
 | SWE-bench verification summary | `ctxc-swebench-verification-0.1` |
+| SWE-bench bare-mirror evidence | `ctxc-swebench-bare-mirror-0.1` |
+| SWE-bench repository preparation evidence | `ctxc-swebench-repository-preparation-0.1` |
 | Adapter process-environment evidence | `lrcbench-process-environment-0.1` |
 | Installed schema directory | `share/loss-resistant-context-compiler/schemas` |
 
@@ -1213,7 +1217,7 @@ audited. Any selected superseded item independently fails verification as
   excludes source construction, `tracemalloc` is not RSS, and the separate
   10,000-to-1,000,000-event characterization remains open.
 
-### SWE-bench Verified source evidence
+### SWE-bench Verified source and repository-preparation evidence
 
 The source-only suite descriptor pins all 500 official Verified `test` rows at
 dataset revision `91aa3ed51b709be6457e12d00300a6a596d4c6a3`, exact Parquet and
@@ -1222,11 +1226,34 @@ field partition, and a two-field candidate allowlist. The external protocol
 now exposes typed bindings for every dataset kind and binds its still-pending
 coding slot to this suite self-hash.
 
-This is not downstream evidence. The dataset card declares no license; raw
-source rows remain local. Base-commit workspace isolation, candidate mount and
-network isolation, official-grader review, exact hidden-test-patch application,
-execution/result contracts, model runs, and scores remain absent. Opaque HMAC
-ids do not prevent public-corpus relinking or establish unseen model data.
+The source/sdist-only repository coordinator adds a local preparation boundary,
+not a public-task result. It independently verifies an absolute local SHA-1 bare
+mirror and its exact configured origin URL; that URL comparison is not origin
+authentication. It stages a worker under `python -B -I -S`, walks the requested
+base commit through bounded raw `git cat-file` operations, and exports only the
+raw bytes and executable bit of `100644` and `100755` files into a fresh tree.
+It does not clone, fetch, download, invoke checkout or filters, or place `.git`,
+history, remotes, untracked content, or an evidence manifest in the output tree.
+Mirror reinspection, strict self-hashes, output-tree replay, portable-path rules,
+and rejection of links, gitlinks, special files, and unsafe mirror state are
+enforced by the preparation contract. The exporter is not a candidate sandbox.
+
+`tests/test_swebench_repository.py` contains 26 synthetic and adversarial tests.
+The latest focused local Windows run passed 25 in 88.3 seconds; the POSIX-only
+directory-mode regression skipped. Its fixtures use temporary local SHA-1
+mirrors only: they prepare no public repository and
+exercise none of the selected 500 tasks. This is contract and mechanism
+evidence, not public SWE-bench evaluation evidence.
+
+This checkpoint remains source-only. The dataset card declares no license; raw
+source rows remain local, and dataset/repository license and redistribution
+reviews remain incomplete. No prepared snapshot or preparation evidence exists
+for any of the 500 selected public tasks. Candidate mount/filesystem and network
+isolation, candidate execution, official-grader review, hardening, and execution,
+exact hidden-test-patch application, task result contracts, model runs, and
+scores remain absent. Neither the raw exporter nor the literal lifecycle
+establishes a candidate sandbox or network-isolation guarantee. Opaque HMAC ids
+do not prevent public-corpus relinking or establish unseen model data.
 
 ### Recorded local benchmark
 
@@ -1727,12 +1754,15 @@ project work is the external and natural-history evidence path:
    Qwen/inference-service evidence, then rerun the retained diagnostic without
    hiding a failure;
 5. add clean adapters only for included systems and retain every failed run;
-6. use the wire-neutral literal lifecycle only to launch a separately verified
-   container/VM controller, then complete SWE-bench dataset-license review,
-   pristine base-commit export, candidate mount/network isolation, grader
-   hardening, and task result evidence; do not reuse the LRCBench
-   rendered-memory runner for patches or treat the literal lifecycle as a
-   sandbox;
+6. complete SWE-bench dataset/repository license and redistribution review,
+   then run all 500 selected public tasks through the source-only raw-Git
+   boundary, retaining every success or refusal and both mirror/preparation
+   evidence; use the wire-neutral literal lifecycle only to launch a separately
+   verified container/VM controller for candidate mount/filesystem and network
+   isolation, candidate execution, official-grader hardening and execution,
+   hidden-test-patch application, and task result/score evidence; do not reuse
+   the LRCBench rendered-memory runner for patches or treat either the literal
+   lifecycle or raw exporter as a sandbox;
 7. select and source-bind a materially different second public suite;
 8. collect licensed/consented natural histories under the implemented privacy,
    independent-annotation, adjudication, grouped-split, and no-leakage contracts.
@@ -1762,6 +1792,7 @@ python -m pytest -q tests/test_external_compatibility.py
 python -m benchmarks --self-test
 python -m benchmarks.external_protocol --verify benchmarks/protocols/external-comparison-v1.json
 python -m benchmarks.swebench verify-suite
+python -m pytest -q tests/test_swebench_repository.py
 python -m benchmarks --verify-report docs/results/lrcbench-local.json
 python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
 python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json

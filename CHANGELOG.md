@@ -83,6 +83,11 @@ versioning and release rules in
 
 ### Added
 
+- A source/sdist-only SWE-bench repository-preparation boundary that verifies
+  a local SHA-1 bare mirror, streams raw commit/tree/blob objects without a
+  checkout or archive, rejects non-portable/link/submodule paths, exports only
+  fresh regular files, and retains self-hashed coordinator-only evidence with
+  every provenance, containment, execution, and scoring claim false.
 - A source/sdist-only literal-argv lifecycle for future isolated benchmark
   controllers, with a whole-lifecycle deadline, bounded concurrent pipe
   capture, Windows suspended-Job ownership, anchored POSIX cleanup, explicit

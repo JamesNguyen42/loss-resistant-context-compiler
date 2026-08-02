@@ -660,10 +660,17 @@ Acceptance:
   selection, canonical snapshot/order anchors, official harness source
   identity, exhaustive gold partition, and two-field allowlist projection.
   This is source intake only, not a completed coding-benchmark evaluation.
-- [ ] Complete SWE-bench dataset/repository license review, pristine
-  base-commit workspace construction, retained network isolation, hidden-test
-  and grader hardening, and a task execution/result evidence contract before
-  running or scoring any candidate.
+- [x] Implement a source/sdist-only raw-Git repository-preparation boundary.
+  It verifies an offline local SHA-1 bare mirror, binds the configured origin
+  without authenticating it, recomputes commit/tree/blob identities, rejects
+  symlinks, gitlinks, special/non-portable paths and unbounded trees, exports
+  only fresh regular files, and independently rescans the result. The current
+  evidence is from synthetic local mirrors; no selected public task was
+  prepared and no candidate mount was created.
+- [ ] Complete SWE-bench dataset/repository license review, prepare and retain
+  every selected base-commit outcome, establish candidate mount and network
+  isolation, harden hidden-test application and grading, and add a task
+  execution/result evidence contract before running or scoring any candidate.
 - [ ] Preregister at least two public long-horizon agent suites.
 - [ ] Include a coding benchmark where repository state and exact failures
   matter.

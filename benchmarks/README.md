@@ -160,9 +160,51 @@ allowlisted task payload, with exact fields `opaque_task_id` and
 `problem_statement`, is candidate-facing.
 
 The HMAC ID is pseudonymous, not unlinkable: public problem text and fixed
-suite order can still identify a task. No repository has been prepared, no
-agent or grader has run, no score exists, and the pinned dataset card declares
-no license. See the complete [source, projection, and execution boundary](../docs/SWEBENCH_EVALUATION.md).
+suite order can still identify a task. A raw-Git preparation boundary now has
+synthetic-mirror coverage, but no selected public repository has been
+prepared, no agent or grader has run, no score exists, and the pinned dataset
+card declares no license. See the complete
+[source, projection, and execution boundary](../docs/SWEBENCH_EVALUATION.md).
+
+### SWE-bench repository preparation
+
+`benchmarks.swebench_repository` is a source/sdist-only coordinator boundary;
+it is not part of the dependency-free wheel. `verify_local_bare_mirror()`
+accepts only an absolute local bare mirror and absolute Git executable. It
+requires SHA-1 object format, a single canonical GitHub origin URL and mirror
+refspec, and rejects shallow/partial/promisor repositories, alternates,
+grafts, replace refs, config includes, extra remotes, linked worktrees,
+worktree-specific config, links/reparse points, and special mirror entries.
+The configured origin URL is evidence, not authentication.
+On POSIX, mirror regular files must also have link count one; a mirror derived
+from another local object store must therefore be copied with hardlinking
+disabled (for example Git's `--no-hardlinks`) before verification.
+
+`prepare_task_repository()` derives repository, exact base commit, instance
+id, ordinal, and source-record hash from a revalidated canonical source row.
+An outer literal-process lifecycle owns a release-digest-bound staged
+standalone worker and all Git descendants. Isolated `python -B -I -S` startup
+precedes the worker, Git command pipes retain no more than their configured
+caps, and batch readers require clean protocol EOF. The worker reads raw
+`commit`, `tree`, and `blob` frames through `git cat-file`, recomputes their
+Git object ids, preflights bounded counts and bytes, and never calls checkout,
+restore, archive, or a filter. Only modes
+`100644` and `100755` are materialized. Symlinks, gitlinks, invalid UTF-8,
+non-NFC/control/device/`.git`-alias paths, case-fold collisions, oversized
+objects, and unsafe output types fail closed.
+
+The output is an unpredictable fresh directory containing only independent
+regular files; `.git`, history, remotes, the source manifest, and evaluator
+gold are absent. Empty directories and unexpected metadata are rejected. The
+parent reopens the exact mirror commit, compares its complete live raw export,
+and independently rescans and rehashes every output path through guarded
+regular-file descriptors, including checks for extended attributes and NTFS
+alternate streams. Its self-hashed
+`ctxc-swebench-repository-preparation-0.1` manifest remains coordinator-only
+and serializes exact limits while asserting no author authentication. All
+origin, redistribution, mount, network, execution, grader, score, usefulness,
+and claim-readiness fields remain false. Synthetic Git tests are not evidence
+that any of the 500 public task repositories was prepared or safely mounted.
 
 ## External baselines
 

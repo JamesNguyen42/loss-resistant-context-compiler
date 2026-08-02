@@ -6,30 +6,66 @@ Last updated: 2026-08-01 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Base commit for this in-progress checkpoint: `622822d`
-- Current checkpoint: wire-neutral bounded literal-argv lifecycle for a future
-  external isolation controller. It is not a filesystem/network sandbox and
-  is permanently non-claim-ready for SWE-bench by itself.
-- Previous checkpoint: fail-closed late adapter completion was committed and
-  pushed as `622822d`.
-- Next task: implement the separate SWE-bench repository-preparation and
-  execution/result evidence boundaries around a verified external
-  container/VM controller. Do not encode a repository patch as an LRCBench
-  rendered-memory candidate.
+- Base commit for this in-progress checkpoint: `e3f2d62`
+- Current checkpoint: source-only, coordinator-owned raw-Git repository
+  preparation for an exact SWE-bench base commit. It has synthetic mirror
+  coverage but has not prepared the selected public repositories, created a
+  candidate mount, executed a task, invoked a grader, or produced a score.
+- Previous checkpoint: the bounded literal-argv process lifecycle was committed
+  and pushed as `e3f2d62`.
+- Next task: apply the preparer to license-reviewed public-suite mirrors, then
+  implement prediction/run/result evidence around a separately verified
+  external container/VM controller. Do not encode a repository patch as an
+  LRCBench rendered-memory candidate.
 
 ## Mission status
 
 1. Linux `/proc/<pid>/exe` portability: complete and pushed in `6eae3c4`.
 2. LocalAI 1.0 contract convergence: isolated optional adapter, exact-wheel
    validation, conversion audit, and contract request complete in `c0ee2f9`.
-3. Public long-horizon suite evidence: SWE-bench Verified source selection and
-   candidate-input projection are now pinned, but no repository has been
-   prepared, no model or grader has run, and no external score exists. A second
-   materially different public suite is still required.
+3. Public long-horizon suite evidence: SWE-bench Verified source selection,
+   candidate-input projection, and a synthetic-tested raw-Git preparation
+   boundary are pinned. No selected public repository has been prepared, no
+   model or grader has run, and no external score exists. A second materially
+   different public suite is still required.
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
 ## Current checkpoint
+
+- Added source/sdist-only `benchmarks.swebench_repository` and its standalone
+  staged worker with `ctxc-swebench-bare-mirror-0.1` and
+  `ctxc-swebench-repository-preparation-0.1` evidence. The dependency-free
+  wheel and its installed schema count remain unchanged.
+- Require an absolute local SHA-1 bare mirror and absolute regular Git
+  executable. Local/global/system config inheritance, lazy fetch, prompting,
+  replacement refs, optional locks, shallow/partial/promisor repositories,
+  alternates, grafts, includes, linked-worktree config, extra remotes,
+  links/reparse points, and special mirror entries fail closed. A canonical
+  GitHub origin URL is checked but explicitly not authenticated.
+- Stage one release-digest-bound standalone worker in system temporary storage
+  and launch it as literal argv with `-B -I -S`. Bounded pipe readers prevent
+  Git config/ref output from being retained beyond its cap, and raw
+  `git cat-file --batch` readers require exact object frames and clean EOF.
+- Recompute SHA-1 object ids and SHA-256 evidence for the exact commit, every
+  tree, and every blob without checkout, archive, smudge/clean filters, or a
+  serialized output path. Reject symlinks, gitlinks, special files, empty tree
+  directories, invalid/non-NFC/nonportable names, case collisions, `.git`
+  aliases, Windows device names, and every configured byte/count/depth limit.
+- Materialize only fresh independent regular files. Parent verification
+  reopens the exact mirror commit, compares the complete live raw export with
+  retained evidence, and independently scans paths, directory structure,
+  hashes, Git object ids, hard links, modes, user-visible extended attributes,
+  Windows integrity-changing attributes, and NTFS alternate data streams.
+- Bind source-aware preparation to the exact suite row, ordinal, instance id,
+  repository, base commit, and source-record digest. Any late source or mirror
+  mismatch cleans the fresh output before failing.
+- Keep candidate mount, filesystem/network isolation, repository-origin and
+  license authentication, execution, grading, score, usefulness, and
+  claim-readiness flags false. The 26 focused tests use only synthetic local
+  Git mirrors; they are not public-suite execution evidence.
+
+## Completed literal-process checkpoint (`e3f2d62`)
 
 - Added source/sdist-only `benchmarks.literal_process` without changing the
   dependency-free wheel. Bounded literal arguments, an absolute executable and
@@ -145,6 +181,16 @@ Last updated: 2026-08-01 (America/Los_Angeles)
 All ordinary commands used the repository Python 3.12 virtual environment.
 Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
+- Repository-preparation focused suite: 26 collected on Windows in 88.3
+  seconds; 25 passed and the POSIX-only directory-mode regression skipped.
+  It creates real synthetic local Git mirrors and covers exact commit/tree/blob
+  export, worker isolation and release digest, bounded Git output, clean batch
+  EOF, worktree/partial/promisor/alternate/include rejection, forged evidence,
+  source/limit binding, hard links, symlinks, FIFO/special files, extra empty
+  directories, and readable NTFS alternate data streams. Ruff and `py_compile`
+  passed after the final production repair. The staged worker's release-bound
+  source SHA-256 is
+  `3d40d21af1bdfd8ce7af0b4d445fd62748aa20162b4ff674e40c08c916fb0239`.
 - Literal-process focused suite: 12 passed on Windows, including preflight
   rejection, literal metacharacters, exact environment hashing, exact/cap+1
   stream boundaries, a fast 1 MiB burst, prelaunch and post-launch deadlines,
@@ -157,9 +203,9 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 - External-runner focused deadline tests: 2 passed. The complete
   172-test `tests/test_external_runner.py` file passed with 168 passes and four
   existing platform skips; Ruff passed for the changed module and tests.
-- `python -m pytest -q`: exit 0 in 285.1 seconds; 2,230 collected, with 25
-  existing platform/optional skips and 2,205 passing tests inferred from the
-  complete progress stream.
+- `python -m pytest -q`: exit 0 in 376.1 seconds; 2,256 collected, with 2,230
+  passing tests and 26 platform/optional skips counted from the complete
+  progress stream. A separate collection pass confirmed all 2,256 tests.
 - Focused SWE-bench, benchmark JSON I/O, and external-protocol set: 36 passed.
   It includes missing/extra/duplicate/reordered rows, per-record binding drift,
   hidden-vs-public digest separation, gold canaries, poisoned credential
@@ -188,6 +234,13 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 - External protocol verification passed with protocol self-hash
   `48e0c336878a292819ebd1015f7a9dbf9c5065f91c65411512aec458745fcd46`
   and `claim_ready: false`.
+- Two fixed-epoch sdists built before recording this evidence were byte
+  identical at 1,296,166 bytes with SHA-256
+  `c75d30376ea49412e9b2c9b45a69c94db2dbf9978e73731334ea05328c2d2e91`.
+  Both repository-preparation modules and their test file were present. The
+  companion 316,367-byte wheel had SHA-256
+  `9eef277595dc917519997ee3aa1cde36158bbd02ee1d2e11d2fc9c1e9f5b616b`
+  and excluded both source-only repository modules.
 - A deterministic verification sdist built before recording this evidence at
   `SOURCE_DATE_EPOCH=1760000000` contained
   `benchmarks/literal_process.py` and `tests/test_literal_process.py`:
@@ -206,7 +259,11 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
 - No public long-horizon task has been executed or scored. Do not claim
   external usefulness, task-completion improvement, production readiness, or
-  superiority from this source-intake checkpoint.
+  superiority from this source/preparation checkpoint.
+- Repository preparation has been exercised only against synthetic local Git
+  mirrors. No selected public-suite mirror or base commit has been prepared,
+  and the canonical origin URL plus local object hashes do not authenticate
+  GitHub, authorship, freshness, or license.
 - The canonical source snapshot contains public evaluator gold and must never
   enter a candidate mount. It and the raw Parquet, opaque key, derived task
   document, evaluator cache, grader output, and repository snapshots remain
@@ -223,13 +280,17 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 - The existing `lrcbench-external-run-manifest-0.13` runner accepts bounded
   rendered memory, not repository patches. Reusing that wire would be a false
   equivalence.
+- The preparer trusts the coordinator host, Python runtime, and hashed Git
+  executable/pack parser. Host-level path substitution outside its guarded
+  observations remains a documented trust boundary; the output is not a
+  candidate filesystem, mount, user, PID, or network sandbox.
 
 ## Next exact actions
 
-1. Add a distinct SWE-bench repository-preparation contract: export only the
-   exact base-commit tree, exclude `.git` history/remotes/later refs and all
-   evaluator/Hugging Face caches, bind the resulting tree, and require retained
-   network-isolation evidence before candidate launch.
+1. Complete dataset/repository license review, acquire each selected repository
+   through a separately authenticated channel, and apply the raw-Git preparer
+   to all 500 exact base commits. Retain per-task preparation evidence and keep
+   every failure in the selected cohort rather than silently narrowing it.
 2. Launch only a separately verified external container/VM controller through
    the generic literal-argv lifecycle. Do not treat the lifecycle's Windows
    Job or POSIX process group as filesystem, network, PID, user, or mount
