@@ -6,16 +6,16 @@ Last updated: 2026-08-01 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Base commit for this in-progress checkpoint: `fc966dd`
-- Current checkpoint: fail-closed external-adapter deadline ordering. Launch
-  and containment setup consume the run timeout, and completion first observed
-  at or after the deadline cannot be accepted.
-- Previous checkpoint: source-bound, gold-free SWE-bench Verified intake was
-  committed and pushed as `fc966dd`.
-- Next task: extract the generic bounded literal-argv process lifecycle before
-  implementing the separate SWE-bench repository and execution/result
-  boundaries. Do not encode a repository patch as an LRCBench rendered-memory
-  candidate.
+- Base commit for this in-progress checkpoint: `622822d`
+- Current checkpoint: wire-neutral bounded literal-argv lifecycle for a future
+  external isolation controller. It is not a filesystem/network sandbox and
+  is permanently non-claim-ready for SWE-bench by itself.
+- Previous checkpoint: fail-closed late adapter completion was committed and
+  pushed as `622822d`.
+- Next task: implement the separate SWE-bench repository-preparation and
+  execution/result evidence boundaries around a verified external
+  container/VM controller. Do not encode a repository patch as an LRCBench
+  rendered-memory candidate.
 
 ## Mission status
 
@@ -31,7 +31,36 @@ Last updated: 2026-08-01 (America/Los_Angeles)
 
 ## Current checkpoint
 
-- Reordered the external-runner monitor boundary so it samples elapsed
+- Added source/sdist-only `benchmarks.literal_process` without changing the
+  dependency-free wheel. Bounded literal arguments, an absolute executable and
+  working directory, a portable explicit environment, and immutable numeric
+  limits are validated before `Popen`; placeholder and shell expansion do not
+  exist.
+- Replaced named output spools with two concurrently drained pipes. Each
+  stream counts observed bytes but retains only `limit + 1` bytes and that
+  prefix's digest. A fast 1 MiB writer triggered the limit with only 17 bytes
+  retained and no temporary output path.
+- Made the deadline cover containment setup as well as execution, check it
+  before launch and before Windows resume, and reject values beyond a seven-day
+  operational maximum. Results retain exact limits and separate setup,
+  process, cleanup, and total durations.
+- Reused shared Windows Job and anchored POSIX process-tree primitives. Windows
+  starts suspended and verifies Job membership before resume. POSIX leaders
+  remain waitable until group cleanup, while the result explicitly labels that
+  group escapable.
+- Added an emergency ownership guard for every post-launch exception and
+  granular disarming after normal cleanup. Injected unexpected and expected
+  post-launch failures prove the process is removed and the original error is
+  not replaced by a false cleanup failure.
+- Removed unsafe POSIX `preexec_fn` resource limits. Windows may retain
+  per-process and aggregate Job memory limits; POSIX memory requests fail
+  before launch pending an independently verified external controller.
+- Kept `swebench_containment_claim_ready` permanently false. No repository was
+  prepared, no candidate or grader ran, and no external score was generated.
+
+## Completed deadline checkpoint (`622822d`)
+
+- Reordered the LRCBench external-runner monitor boundary so it samples elapsed
   monotonic time before asking whether the adapter has exited. The deadline
   begins before temporary-directory and process launch setup.
 - Added a deterministic regression in which the first possible completion
@@ -116,16 +145,21 @@ Last updated: 2026-08-01 (America/Los_Angeles)
 All ordinary commands used the repository Python 3.12 virtual environment.
 Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
+- Literal-process focused suite: 12 passed on Windows, including preflight
+  rejection, literal metacharacters, exact environment hashing, exact/cap+1
+  stream boundaries, a fast 1 MiB burst, prelaunch and post-launch deadlines,
+  sanitized `Popen` failure, unexpected-exception cleanup, expected-fatal
+  ownership disarming, Windows Job memory scope, and permanent SWE-bench
+  non-readiness. Focused module coverage is 84%; Ruff and compileall passed.
+- The combined literal-process, external-runner, and compile-deadline set
+  collected 252 tests: 245 passed and seven existing platform skips remained
+  in 37.8 seconds.
 - External-runner focused deadline tests: 2 passed. The complete
   172-test `tests/test_external_runner.py` file passed with 168 passes and four
   existing platform skips; Ruff passed for the changed module and tests.
-- `python -m pytest -q`: exit 0 in 284.2 seconds; 2,217 collected, with 24
-  existing skips and 2,193 passing tests inferred from the complete progress
-  stream. A first attempt correctly failed only after that invocation created
-  an optional-package bytecode cache inside the reviewed LocalAI install. The
-  cache was moved intact to the system temporary directory, the cause was
-  reproduced in one focused test, and the corrected no-bytecode full run
-  passed.
+- `python -m pytest -q`: exit 0 in 285.1 seconds; 2,230 collected, with 25
+  existing platform/optional skips and 2,205 passing tests inferred from the
+  complete progress stream.
 - Focused SWE-bench, benchmark JSON I/O, and external-protocol set: 36 passed.
   It includes missing/extra/duplicate/reordered rows, per-record binding drift,
   hidden-vs-public digest separation, gold canaries, poisoned credential
@@ -154,6 +188,11 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 - External protocol verification passed with protocol self-hash
   `48e0c336878a292819ebd1015f7a9dbf9c5065f91c65411512aec458745fcd46`
   and `claim_ready: false`.
+- A deterministic verification sdist built before recording this evidence at
+  `SOURCE_DATE_EPOCH=1760000000` contained
+  `benchmarks/literal_process.py` and `tests/test_literal_process.py`:
+  1,260,225 bytes, SHA-256
+  `5c46179f35c338dc6fe301532c48b8752f65e10447ee815a2c98b3e632600659`.
 - A deterministic sdist at `SOURCE_DATE_EPOCH=1760000000` contained the new
   module, suite descriptor, documentation, and tests: 1,246,851 bytes,
   SHA-256
@@ -187,14 +226,14 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
 ## Next exact actions
 
-1. Extract only the generic bounded literal-argv subprocess/resource boundary
-   from `benchmarks.external_runner`, with characterization tests preserving
-   timeout, output, process-tree, environment, network, and executable/source
-   evidence. Keep all LRC candidate validation in the current runner.
-2. Add a distinct SWE-bench repository-preparation contract: export only the
+1. Add a distinct SWE-bench repository-preparation contract: export only the
    exact base-commit tree, exclude `.git` history/remotes/later refs and all
    evaluator/Hugging Face caches, bind the resulting tree, and require retained
    network-isolation evidence before candidate launch.
+2. Launch only a separately verified external container/VM controller through
+   the generic literal-argv lifecycle. Do not treat the lifecycle's Windows
+   Job or POSIX process group as filesystem, network, PID, user, or mount
+   isolation.
 3. Add SWE-bench prediction/run/result evidence around the official
    `instance_id`, `model_name_or_path`, and `model_patch` fields. Retain every
    selected task and failure in the denominator, plus prompt/model tokens,

@@ -83,6 +83,10 @@ versioning and release rules in
 
 ### Added
 
+- A source/sdist-only literal-argv lifecycle for future isolated benchmark
+  controllers, with a whole-lifecycle deadline, bounded concurrent pipe
+  capture, Windows suspended-Job ownership, anchored POSIX cleanup, explicit
+  scope evidence, and a permanent non-sandbox/SWE-bench non-claim.
 - A credential-free, source-bound SWE-bench Verified intake that pins the
   immutable 500-row Parquet source, deterministic canonical snapshot, complete
   full-cohort selection, official harness source identity, and allowlisted

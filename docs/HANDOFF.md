@@ -322,6 +322,7 @@ and measured duration.
 | `benchmarks/report_verifier.py` | Bounded strict saved-report verification and deterministic replay |
 | `benchmarks/external_protocol.py` | Strict self-hashed external-protocol validation and claim-readiness gate |
 | `benchmarks/external_runner.py` | Non-interpreting adapter launch, process limits, validation, and self-hashed run manifests |
+| `benchmarks/literal_process.py` | Wire-neutral literal-argv lifecycle, bounded concurrent stream evidence, whole-lifecycle deadline, and platform-explicit cleanup scope |
 | `benchmarks/natural_history.py` | Bounded corpus/annotation/adjudication/split/gold-free/report contract validation |
 | `benchmarks/swebench.py` | Offline pinned-source verification, exact canonical snapshot materialization, and source/key-bound gold-free task projection |
 | `benchmarks/suites/swebench_verified_v1.json` | Self-hashed 500-row SWE-bench Verified source, selection, license, projection, harness, and claim boundary |
@@ -1726,9 +1727,12 @@ project work is the external and natural-history evidence path:
    Qwen/inference-service evidence, then rerun the retained diagnostic without
    hiding a failure;
 5. add clean adapters only for included systems and retain every failed run;
-6. complete SWE-bench dataset-license review, pristine base-commit export,
-   candidate mount/network isolation, grader hardening, and task result
-   evidence; do not reuse the LRCBench rendered-memory runner for patches;
+6. use the wire-neutral literal lifecycle only to launch a separately verified
+   container/VM controller, then complete SWE-bench dataset-license review,
+   pristine base-commit export, candidate mount/network isolation, grader
+   hardening, and task result evidence; do not reuse the LRCBench
+   rendered-memory runner for patches or treat the literal lifecycle as a
+   sandbox;
 7. select and source-bind a materially different second public suite;
 8. collect licensed/consented natural histories under the implemented privacy,
    independent-annotation, adjudication, grouped-split, and no-leakage contracts.

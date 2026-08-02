@@ -281,6 +281,27 @@ inside a frozen protocol, but they cannot count as certificate wins without a
 validated bounded-run manifest. A failed manifest contributes its retained
 reason and hash to the per-system invalid decision and evidence digest.
 
+The source/sdist-only `benchmarks.literal_process` module now separates the
+generic literal-argv lifecycle from any candidate wire format. It validates an
+absolute executable and working directory, a bounded explicit environment,
+and finite immutable limits; launches with `shell=False`; drains stdout and
+stderr concurrently; retains only a `limit + 1` prefix per stream while
+counting all drained bytes; and creates no named spool. Its setup-inclusive
+deadline is checked before launch, before Windows resume, and before every
+completion probe. Results retain exact limits, phase durations, environment
+digest/names, stream prefixes/digests/counts, termination trigger, cleanup
+error, and platform scope.
+
+That lifecycle is an accounting and ownership primitive, not a sandbox.
+Windows uses a suspended child assigned to a Job before resume. POSIX uses an
+anchored, still-waitable session/process-group leader, but deliberate group
+escape remains possible. The module forbids `preexec_fn` and rejects POSIX
+memory-limit requests; a later external container/VM controller must establish
+POSIX memory, filesystem, mount, PID, user, and network isolation.
+`swebench_containment_claim_ready` is permanently false. The existing LRCBench
+runner below retains its candidate validation, inference-service accounting,
+Darwin pre-limiter, and manifest semantics; it has not been silently replaced.
+
 The repository also provides a standard process boundary:
 
 ```console

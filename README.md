@@ -204,6 +204,10 @@ The repository currently includes:
   runner with sequential per-case processes, inherited POSIX per-process
   memory limits, Windows per-process/aggregate Job limits, and valid or failed
   manifests that feed per-system certificate decisions;
+- a separate source-only literal-argv lifecycle for future benchmark isolation
+  controllers, with cap-plus-one in-memory stream evidence, no named spool,
+  one setup-inclusive deadline, Windows Job or escapable POSIX-group scope,
+  and no filesystem, network, or SWE-bench containment claim;
 - result-blind ACON and AMA-Agent compatibility records plus a pinned ACON
   diagnostic adapter whose first bounded run is retained as a failed,
   non-scoreable manifest;

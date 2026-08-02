@@ -256,6 +256,33 @@ Direct `--external-baseline` imports default to 20 MB per candidate; override
 that explicit boundary with `--max-external-candidate-bytes` when a frozen
 protocol requires a different limit.
 
+### Generic literal process lifecycle
+
+`benchmarks.literal_process.run_literal_argv()` is a source/sdist-only building
+block for a future isolated benchmark controller. It accepts only a bounded
+non-string argument sequence with an absolute executable, an absolute working
+directory, a bounded explicit environment, and immutable finite limits. It
+does no placeholder expansion and always passes `shell=False`.
+
+Stdout and stderr are drained concurrently. Each stream records its total
+drained byte count but retains at most `limit + 1` bytes and that prefix's
+SHA-256, so a fast writer cannot create an unbounded spool file or unbounded
+in-memory evidence. Overflow terminates the owned lifecycle. The monotonic
+deadline begins before containment setup, is checked before launch and before
+Windows resume, and wins when completion cannot be proven before it. Results
+retain the exact limits and separate setup, process, cleanup, and total wall
+durations.
+
+Windows children start suspended, enter a per-process and aggregate Job Object,
+and resume only after membership verification. POSIX leaders stay waitable
+until anchored process-group cleanup completes, but a child can deliberately
+leave that group. The generic lifecycle does not use unsafe `preexec_fn` and
+therefore rejects POSIX memory-limit requests; a separately verified
+container/VM controller must provide POSIX memory, filesystem, mount, PID,
+user, and network isolation. `swebench_containment_claim_ready` is always
+false. This helper has not executed or scored SWE-bench and does not replace
+the LRCBench-specific candidate/manifest validator below.
+
 Run an adapter through the standard bounded, non-interpolating process wrapper:
 
 ```powershell

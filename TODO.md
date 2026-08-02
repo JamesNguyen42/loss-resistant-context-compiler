@@ -514,6 +514,13 @@ Acceptance:
   deadline as execution, and test the fail-closed race where completion is
   first observable only at or after that deadline. Such a run is retained as
   a timeout even if the exit probe would then report completion.
+- [x] Extract a source-only literal-argv lifecycle for future benchmark
+  isolation controllers. It uses concurrent pipes with bounded cap-plus-one
+  retention, preserves literal arguments and an explicit environment, owns a
+  Windows Job before resume or an anchored escapable POSIX group, and cleans
+  armed resources after unexpected exceptions. It intentionally rejects
+  POSIX memory limits instead of using unsafe `preexec_fn`; an external
+  container/VM controller must provide memory, filesystem, and network bounds.
 - [x] Account separately for a pre-existing inference service outside the
   adapter process tree. The runner binds PID creation identity and executable
   digest, samples Windows working set or Linux/macOS RSS at the fixed polling
