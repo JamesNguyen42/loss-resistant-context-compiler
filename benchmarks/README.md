@@ -135,6 +135,35 @@ rules, command, resource identity, result audit, and claim boundary are in the
 [paired protocol](../docs/QWEN_PAIRED_EVALUATION.md) and
 [self-hashed report](../docs/results/qwen-heldout-paired-extractors-v1.json).
 
+## SWE-bench Verified source intake
+
+[`suites/swebench_verified_v1.json`](suites/swebench_verified_v1.json) pins the
+official 500-row `test` split at dataset revision
+`91aa3ed51b709be6457e12d00300a6a596d4c6a3`, selects the full physical row
+order without sampling, and records aggregate hashes for every full source row
+and allowlisted candidate input plus all 500 ordered per-instance bindings. It
+separately pins the official harness at
+tag `v4.1.0`, revision `726c5461e2ef52d83cf1ea2107870a8bb3328d57`.
+
+Verify the source-only descriptor without optional dependencies:
+
+```console
+python -m benchmarks.swebench verify-suite
+```
+
+The local `materialize-source` operation requires exact optional
+`pyarrow==25.0.0`; projection and verification remain dependency-free. Keep
+the downloaded Parquet, canonical source snapshot, raw 32-byte opaque-ID key,
+and generated task document under ignored `build/`. The canonical snapshot
+contains evaluator gold and must not enter a candidate mount. Only each
+allowlisted task payload, with exact fields `opaque_task_id` and
+`problem_statement`, is candidate-facing.
+
+The HMAC ID is pseudonymous, not unlinkable: public problem text and fixed
+suite order can still identify a task. No repository has been prepared, no
+agent or grader has run, no score exists, and the pinned dataset card declares
+no license. See the complete [source, projection, and execution boundary](../docs/SWEBENCH_EVALUATION.md).
+
 ## External baselines
 
 The bundled baselines are deterministic controls, not claims about the current

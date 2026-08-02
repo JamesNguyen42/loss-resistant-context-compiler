@@ -234,6 +234,30 @@ class ExternalExecutionContract:
 
 
 @dataclass(frozen=True, slots=True)
+class ExternalDatasetBinding:
+    """Immutable identity fields for one protocol dataset slot."""
+
+    id: str
+    kind: str
+    status: str
+    revision: str | None
+    manifest_sha256: str | None
+    sample_size: int | None
+    seeds: tuple[int, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "status": self.status,
+            "revision": self.revision,
+            "manifest_sha256": self.manifest_sha256,
+            "sample_size": self.sample_size,
+            "seeds": list(self.seeds),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class VerifiedExternalProtocol:
     """Security-relevant summary of one internally consistent protocol."""
 
@@ -243,6 +267,7 @@ class VerifiedExternalProtocol:
     file_sha256: str
     document_sha256: str
     synthetic_dataset_sha256: str | None
+    datasets: tuple[ExternalDatasetBinding, ...]
     registered_systems: tuple[str, ...]
     adapter_revisions: tuple[tuple[str, str], ...]
     environment_ids: tuple[tuple[str, str], ...]
@@ -256,6 +281,14 @@ class VerifiedExternalProtocol:
     blocker_ids: tuple[str, ...]
     claim_ready: bool
 
+    def dataset_by_kind(self, kind: str) -> ExternalDatasetBinding:
+        """Return the one strictly validated dataset binding for ``kind``."""
+
+        matches = tuple(dataset for dataset in self.datasets if dataset.kind == kind)
+        if len(matches) != 1:
+            raise KeyError(kind)
+        return matches[0]
+
     def to_dict(self) -> dict[str, object]:
         return {
             "schema": EXTERNAL_PROTOCOL_SCHEMA,
@@ -266,6 +299,7 @@ class VerifiedExternalProtocol:
             "file_sha256": self.file_sha256,
             "document_sha256": self.document_sha256,
             "synthetic_dataset_sha256": self.synthetic_dataset_sha256,
+            "datasets": [dataset.to_dict() for dataset in self.datasets],
             "registered_systems": list(self.registered_systems),
             "adapter_revisions": {
                 system: revision
@@ -688,12 +722,13 @@ def _validate_datasets(
     value: object,
     *,
     frozen: bool,
-) -> str | None:
+) -> tuple[tuple[ExternalDatasetBinding, ...], str | None]:
     if not isinstance(value, list) or not 4 <= len(value) <= 8:
         raise ExternalProtocolError("datasets must contain 4 to 8 entries")
     seen_ids: set[str] = set()
     seen_kinds: set[str] = set()
     synthetic_dataset_sha256: str | None = None
+    bindings: list[ExternalDatasetBinding] = []
     for index, raw in enumerate(value):
         context = f"datasets[{index}]"
         dataset = _object(raw, context=context, fields=_DATASET_FIELDS)
@@ -786,11 +821,28 @@ def _validate_datasets(
             raise ExternalProtocolError(
                 "frozen protocols require every dataset to be frozen"
             )
+        bindings.append(
+            ExternalDatasetBinding(
+                id=dataset_id,
+                kind=str(kind),
+                status=str(status),
+                revision=revision,
+                manifest_sha256=(
+                    None
+                    if manifest_sha256 is None
+                    else str(manifest_sha256)
+                ),
+                sample_size=(
+                    None if sample_size is None else int(sample_size)
+                ),
+                seeds=tuple(int(seed) for seed in seeds),
+            )
+        )
     if seen_kinds != set(_REQUIRED_DATASET_KINDS):
         raise ExternalProtocolError(
             "datasets must contain each required dataset kind exactly once"
         )
-    return synthetic_dataset_sha256
+    return tuple(bindings), synthetic_dataset_sha256
 
 
 def _validate_statistics(value: object) -> int:
@@ -1012,7 +1064,7 @@ def load_external_protocol(
         included=included,
     )
     _validate_constraints(payload["constraints"])
-    synthetic_dataset_sha256 = _validate_datasets(
+    datasets, synthetic_dataset_sha256 = _validate_datasets(
         payload["datasets"],
         frozen=frozen,
     )
@@ -1057,6 +1109,7 @@ def load_external_protocol(
         file_sha256=document.file_sha256,
         document_sha256=document_sha256,
         synthetic_dataset_sha256=synthetic_dataset_sha256,
+        datasets=datasets,
         registered_systems=registered,
         adapter_revisions=tuple(
             (

@@ -58,6 +58,15 @@ class StrictFileEvidence:
     file_sha256: str
 
 
+@dataclass(frozen=True, slots=True)
+class StrictBinaryDocument:
+    """Exact bounded bytes plus evidence for the opened regular file."""
+
+    value: bytes
+    byte_count: int
+    file_sha256: str
+
+
 def _file_identity(value: os.stat_result) -> tuple[int, int]:
     return value.st_dev, value.st_ino
 
@@ -323,6 +332,36 @@ def hash_bounded_regular_file(
             byte_count=total,
             file_sha256=digest.hexdigest(),
         )
+
+
+def read_bounded_regular_file(
+    path: str | Path,
+    *,
+    max_bytes: int,
+    label: str = "input file",
+) -> StrictBinaryDocument:
+    """Read exact bytes from one safely opened, bounded regular file."""
+
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int):
+        raise TypeError("max_bytes must be an integer")
+    if max_bytes <= 0:
+        raise ValueError("max_bytes must be positive")
+    if not isinstance(label, str) or not label:
+        raise TypeError("label must be a non-empty string")
+    encoded = _read_bounded_regular_file(
+        Path(path),
+        limits=StrictJsonLimits(
+            max_bytes=max_bytes,
+            max_line_chars=1,
+            max_depth=1,
+        ),
+        label=label,
+    )
+    return StrictBinaryDocument(
+        value=encoded,
+        byte_count=len(encoded),
+        file_sha256=hashlib.sha256(encoded).hexdigest(),
+    )
 
 
 def load_strict_json_file(

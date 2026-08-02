@@ -17,6 +17,7 @@ from benchmarks.external_protocol import (
     load_external_protocol,
     main,
 )
+from benchmarks.swebench import load_suite
 
 
 def _sha(character: str) -> str:
@@ -205,13 +206,27 @@ def test_committed_draft_is_verified_but_not_claim_ready() -> None:
     verified = load_external_protocol(DEFAULT_EXTERNAL_PROTOCOL)
 
     assert verified.protocol_sha256 == (
-        "a7ee7a92221728be2988b63c8678d4d88936bc65c97e4ced745d770eafefa08d"
+        "48e0c336878a292819ebd1015f7a9dbf9c5065f91c65411512aec458745fcd46"
     )
     assert verified.status == "draft"
     assert verified.claim_ready is False
     assert verified.synthetic_dataset_sha256 == (
         "421d49585ef9ac96fe2a378f79c18da1791e508789ac0290d3cc5018cda07761"
     )
+    coding_dataset = verified.dataset_by_kind("coding-task")
+    assert coding_dataset.id == "public-coding-suite"
+    assert coding_dataset.status == "pending"
+    assert coding_dataset.revision == (
+        "91aa3ed51b709be6457e12d00300a6a596d4c6a3"
+    )
+    assert coding_dataset.manifest_sha256 == (
+        "2f97bfbcb036553f9203db2a54bca3b553cf2ddac344b40ca5a7d4b9e2d4f34f"
+    )
+    assert coding_dataset.sample_size == 500
+    assert coding_dataset.seeds == ()
+    assert len(verified.datasets) == 4
+    with pytest.raises(KeyError):
+        verified.dataset_by_kind("unknown")
     assert verified.registered_systems == ()
     assert verified.candidate_count == 4
     assert verified.blocker_ids == (
@@ -246,6 +261,13 @@ def test_complete_frozen_protocol_is_claim_ready(tmp_path: Path) -> None:
         "gamma",
     )
     assert verified.synthetic_dataset_sha256 == _sha("6")
+    assert verified.dataset_by_kind("synthetic").manifest_sha256 == _sha("6")
+    coding_dataset = verified.dataset_by_kind("coding-task")
+    assert coding_dataset.status == "frozen"
+    assert coding_dataset.revision == "fixture-coding-suite-v1"
+    assert coding_dataset.manifest_sha256 == _sha("5")
+    assert coding_dataset.sample_size == 32
+    assert coding_dataset.seeds == (101,)
     assert dict(verified.environment_ids) == {
         "alpha": "sha256:" + _sha("1"),
         "beta": "sha256:" + _sha("2"),
@@ -310,6 +332,19 @@ def test_complete_frozen_protocol_is_claim_ready(tmp_path: Path) -> None:
         ),
     }
     assert verified.blocker_ids == ()
+
+
+def test_committed_coding_slot_is_bound_to_swebench_suite() -> None:
+    protocol = load_external_protocol(DEFAULT_EXTERNAL_PROTOCOL)
+    suite = load_suite()
+    coding = protocol.dataset_by_kind("coding-task")
+
+    assert coding.status == "pending"
+    assert coding.revision == suite.document["dataset"]["revision"]
+    assert coding.manifest_sha256 == suite.suite_sha256
+    assert coding.sample_size == suite.document["selection"]["selected_count"]
+    assert coding.seeds == ()
+    assert "coding-task-suite" in protocol.blocker_ids
 
 
 def test_frozen_protocol_fails_closed_on_unresolved_controls(

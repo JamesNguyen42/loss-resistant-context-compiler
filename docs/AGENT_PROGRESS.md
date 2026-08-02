@@ -6,166 +6,185 @@ Last updated: 2026-08-01 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Base commit for this in-progress checkpoint: `6eae3c4`
-- Current checkpoint: LocalAI 1.0 SourceEvent/ContextBundle conversion auditing.
-  Code, schema, tests, documentation, and release-shaped checks are complete
-  and are being committed together.
-- Previous checkpoint: Linux inference-service identity portability was
-  committed and pushed as `6eae3c4`.
-- Next task: begin a credential-free, source-bound SWE-bench evaluation
-  adapter. Freeze the public suite revision and license evidence, ingest
-  gold-free task inputs without inspecting test patches, and emit the existing
-  external-runner manifest/result format before attempting any model-backed
-  score.
+- Base commit for this in-progress checkpoint: `c0ee2f9`
+- Current checkpoint: source-bound, gold-free SWE-bench Verified intake. Code,
+  the 500-row binding descriptor, tests, documentation, external-protocol
+  linkage, CI, and source-distribution checks are complete and are being
+  committed together.
+- Previous checkpoint: LocalAI conversion auditing was committed and pushed as
+  `c0ee2f9`.
+- Next task: implement the separate SWE-bench execution/result boundary. Do
+  not encode a repository patch as an LRCBench rendered-memory candidate.
 
 ## Mission status
 
 1. Linux `/proc/<pid>/exe` portability: complete and pushed in `6eae3c4`.
-2. LocalAI 1.0 contract convergence: the isolated optional adapter, exact-wheel
-   validation, exhaustive conversion audit, golden corpus, and upstream
-   contract request are complete in this checkpoint. The shared wire is
-   unchanged.
-3. Public long-horizon suite evidence: no successful external score exists.
-   Credential-free, source-bound adapters for at least two public suites remain
-   required before any external-usefulness claim.
-4. Natural-history benchmark, maintainability, and performance work: continue
+2. LocalAI 1.0 contract convergence: isolated optional adapter, exact-wheel
+   validation, conversion audit, and contract request complete in `c0ee2f9`.
+3. Public long-horizon suite evidence: SWE-bench Verified source selection and
+   candidate-input projection are now pinned, but no repository has been
+   prepared, no model or grader has run, and no external score exists. A second
+   materially different public suite is still required.
+4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
 ## Completed in this checkpoint
 
-- Added provider-local `ctxc-localai-conversion-audit-0.1` diagnostics without
-  adding a shared manifest field, operation, request wrapper, or response
-  member. Ordinary `context.compile` still returns the exact shared
-  `ContextBundle` document.
-- Classified all 16 shared-to-private SourceEvent paths and all 47
-  private-to-shared ContextBundle paths as represented, normalized, derived,
-  defaulted, omitted, or rejected. Inventory and represented-relation checks
-  also run on the normal wire path without serializing the sidecar.
-- Reconstructed every shared SourceEvent through the private record and
-  compared bounded canonical bytes. Preserved SHA-256, SHA-512, and
-  BLAKE2b-256 content hashes, all seven shared roles, metadata, provenance,
-  trust, and exact authority normalization.
-- Bound `verify_conversion_audit` to actual typed caller SourceEvents and the
-  actual typed output bundle. It recomputes payload/event/output digests,
-  deterministic bundle and source-store identities, exact UTF-8 spans,
-  provenance, canonical list order, token accounting, source coverage, and
-  adapter-fixed omission/overflow shapes.
-- Added a strict machine-readable claim boundary. It distinguishes
-  caller-evidence-bound values, provider assertions, assertion-dependent
-  values, and output-bundle assertions; defines `{ordinal}` path-pattern and
-  output RFC 6901 roots; and states that the self-hash is mutation detection,
-  not authentication.
-- Marked the sidecar privacy-sensitive. Raw ids, content, metadata, and
-  authority issuers are excluded, including digest-shaped canaries, but stable
-  unsalted digests remain linkable and dictionary-testable and are not safe
-  telemetry.
-- Added a 5,716-byte, LF-only, self-hashed seven-role golden fixture. Its final
-  raw SHA-256 is
-  `2e337dd2a20b246d827840639bde6d11e29b39ca2861a6fb986ccb16e98f8762`;
-  the canonical fixture self-hash is
-  `05292bab6287bedf22767b473eceda35332e9ca9de547f01fe2f0559d5827264`.
-  The frozen audit is 17,374 canonical bytes with document SHA-256
-  `525ec1cd2530450ecdeae29fa96724f5e1de7c4f32438af4b5ef8fed837eb7bc`.
-- Added dependency-free routine-CI tests for strict bounded golden decoding,
-  duplicate/non-finite rejection, frozen bytes, canonical self-hash, schema
-  audit, claim-boundary constants, and the trusted-state authentication
-  conditional. Optional exact-wheel tests remain fail-closed when the reviewed
-  wheel is absent.
-- Hardened the clean-install validator so the console and literal `-m`
-  subprocesses remove `PYTHONHOME`, `PYTHONPATH`, and
-  `PYTHONPYCACHEPREFIX`, enable safe-path/no-bytecode behavior, and run from
-  the clean environment rather than the checkout.
-- Added `docs/CONTRACT_REQUESTS.md` with the exact upstream request for
-  operation-specific schema negotiation. It accounts for the closed 1.0
-  manifest, requires an explicit old-peer selection/retry boundary, and uses
-  an RFC 6901 `payload_array_path` plus explicit `each_item` semantics instead
-  of an ambiguous wildcard pointer.
-- Installed schema inventory is now 26 files: 17 shared connector schemas,
-  eight historical/core artifact schemas, and one provider-local conversion
-  audit schema. Wheel/sdist routing and explicit CI archive checks include the
-  new schema, fixture, contract request, validator, and dependency-free tests.
+- Added source/sdist-only `benchmarks.swebench` formats
+  `ctxc-swebench-suite-0.1`, `ctxc-swebench-task-input-0.1`, and
+  `ctxc-swebench-verification-0.1`. The core and wheel retain zero new runtime
+  dependencies and 26 installed schemas.
+- Pinned public, ungated `SWE-bench/SWE-bench_Verified` revision
+  `91aa3ed51b709be6457e12d00300a6a596d4c6a3`, split `test`, and exact
+  `data/test-00000-of-00001.parquet` bytes: 2,090,470 bytes, SHA-256
+  `43ed5a3d1d98da36472c1ade65ddd2085d7b4ff694fcaf6a023a07c5c1f32f21`.
+- Independently reproduced the 500-row, 13-string-column source twice. The
+  deterministic no-newline canonical JSON snapshot is 8,097,924 bytes with
+  SHA-256
+  `e1b70254514c107a92a37514ee94faae646baed60f97bd535097bb910d042df5`.
+  Its ordered instance-id digest is
+  `33e18be7a9bd9f674790b63ed4d0b3fb17c176994802e3062b7d5a430a4e7d16`;
+  its ordered full-record-hash digest is
+  `497c33e6915ef684637fcf9a5417777ac5de034e94fecb48b1202df8b561e798`;
+  and its ordered candidate-input-hash digest is
+  `635f0b58b94a8ffa996cd5b03c6dd47714f0839680cbc58a59de0d4f4919523f`.
+- Committed all 500 ordered `(ordinal, instance_id, source_sha256,
+  candidate_input_sha256)` bindings without source text, patches, test
+  patches, or test outcomes. The suite self-hash is
+  `2f97bfbcb036553f9203db2a54bca3b553cf2ddac344b40ca5a7d4b9e2d4f34f`;
+  the pretty descriptor file SHA-256 is
+  `4ec7973d279838645ac1907e4a107276650412612c1f0571bc30780b1f852570`.
+- Froze the result-blind selection as every row in physical source order, with
+  no sampling. The current external protocol conservatively cannot freeze a
+  seedless task slot, so a future protocol revision must represent an explicit
+  full-population selection rather than inventing an unused seed.
+- Added a safe local Parquet reader/materializer. It bounds and reads one
+  regular file through one descriptor, verifies its exact bytes, lazily
+  requires exact optional `pyarrow==25.0.0`, checks physical field order/type,
+  nullable metadata, zero observed nulls, row count, all row bindings, and the
+  final canonical snapshot, and refuses an existing output.
+- Added a dependency-free snapshot loader and allowlist projection. Candidate
+  payloads contain exactly `opaque_task_id` and `problem_statement`.
+  Coordinator fields and evaluator-only `patch`, `test_patch`, `FAIL_TO_PASS`,
+  and `PASS_TO_PASS` never enter a task payload.
+- HMAC routing ids bind a separately retained raw 32-byte key, suite self-hash,
+  and canonical instance id. Projection, exclusive writing, and CLI
+  verification revalidate publicly constructible source objects and recompute
+  every statement and opaque id from source plus key. Re-signed id or public
+  text substitution fails.
+- Marked all relevant non-claims explicitly: key entropy is not proven by
+  length, opaque ids do not prevent public-corpus relinking, pretrained-data
+  contamination is not excluded, and candidate mount isolation is not yet
+  verified. The task-document envelope is coordinator evidence; only an
+  individual `tasks[]` record is candidate-facing.
+- Pinned the official harness source at tag `v4.1.0`, revision
+  `726c5461e2ef52d83cf1ea2107870a8bb3328d57`, exact license and entrypoint
+  hashes, but labeled it `pinned-not-security-reviewed`. Upstream hidden-test
+  application issue 538 is an explicit fail-closed requirement for the next
+  grader checkpoint.
+- Kept dataset and harness license scopes separate. The pinned dataset card
+  has no declared SPDX license; repository/dataset redistribution review
+  remains false. The harness project's MIT license is not applied to dataset
+  rows or third-party repository snapshots.
+- Added typed `ExternalDatasetBinding` values and `dataset_by_kind()` to the
+  verified external protocol while retaining the legacy
+  `synthetic_dataset_sha256` property. The still-pending coding slot now binds
+  the exact suite revision, self-hash, and 500-task count. All nine blockers
+  remain.
+- Added bounded binary regular-file reading to shared benchmark JSON I/O, with
+  ancestor/path/substitution checks inherited from the existing safe opener.
+- Added routine CI descriptor verification and explicit source-distribution
+  membership checks. PyArrow and the public dataset are not installed or
+  downloaded in routine CI.
 
 ## Verification evidence
 
-All successful commands used the repository Python 3.12 virtual environment.
-Optional-contract checks used `PYTHONDONTWRITEBYTECODE=1` so the independently
-verified installed contracts package was not mutated by cache files.
+All ordinary commands used the repository Python 3.12 virtual environment.
+Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
-- `python -m pytest -q`: 2,170 passed, 24 skipped; 2,194 collected; exit 0 in
-  247.5 seconds.
-- Focused adapter, dependency-free audit conformance, packaging, and connector
-  conformance tests: 147 passed, 3 skipped.
+- `python -m pytest -q`: exit 0 in 284.2 seconds; 2,217 collected, with 24
+  existing skips and 2,193 passing tests inferred from the complete progress
+  stream. A first attempt correctly failed only after that invocation created
+  an optional-package bytecode cache inside the reviewed LocalAI install. The
+  cache was moved intact to the system temporary directory, the cause was
+  reproduced in one focused test, and the corrected no-bytecode full run
+  passed.
+- Focused SWE-bench, benchmark JSON I/O, and external-protocol set: 36 passed.
+  It includes missing/extra/duplicate/reordered rows, per-record binding drift,
+  hidden-vs-public digest separation, gold canaries, poisoned credential
+  variables, forged dataclasses, re-signed opaque-id/text substitution,
+  overwrite refusal, dataset/url/date binding, and fake-PyArrow import,
+  version, schema, null, decode-failure, and success paths.
 - `python -m ruff check .`: passed.
 - `python -m compileall -q src benchmarks tests scripts conformance integrations _ctxc_build_backend.py`:
-  passed with an external temporary bytecode prefix.
+  passed with a temporary external bytecode prefix.
 - `python conformance/run_connector_conformance.py`: 17 schemas, 6 golden
   steps, and 66 negative vectors passed.
-- `python -m benchmarks --self-test`: passed. Checked-in LRCBench, phrase,
-  Qwen phrase, Qwen literal-ablation, and Qwen paired-extractor reports all
-  passed their strict offline `--verify-report` paths.
-- A short-path staged source snapshot produced a 315,731-byte wheel with
+- `python -m benchmarks --self-test`: passed. The LRCBench, phrase, exact-Qwen
+  phrase, literal-ablation, paired-extractor, and natural-history frozen report
+  verifiers all passed offline.
+- `python -m benchmarks.swebench verify-suite`: 500 tasks, source artifact
+  SHA-256 `43ed5a...2f21`, descriptor SHA-256 `4ec797...2570`, suite self-hash
+  `2f97bf...f34f`, `claim_ready: false`.
+- Real immutable Parquet replay with `pyarrow==25.0.0` reproduced all 500 row
+  bindings and snapshot SHA-256 `e1b702...df5`. A random-key 500-task export
+  then passed full source/key reconciliation with task-input self-hash
+  `1900c54c5a88f5197f49f40dc1a8c372ec3799ab750908cb7ed399fd21919345`.
+  The local Windows CPython 3.12 PyArrow wheel was 27,945,954 bytes with
   SHA-256
-  `e1f720fe5047a29cbf219b4b0348b7fc715b66dfd1eff9b3319261a363f59898`
-  and a deterministic sdist. `scripts/release_install_smoke.py` passed both
-  isolated artifacts with `schema_count: 26` and byte-identical materialized
-  context witnesses.
-- `scripts/validate_localai_contracts_install.py` passed provider-only,
-  expected-fail-closed transitive-extra, and direct exact-wheel lanes. The
-  reviewed contracts wheel SHA-256 was
-  `36a02dbc4267402949dddda1da180d800590cc579e0c1ecb022fc96f6a7c29ae`;
-  clean installed Phase 0 reported 22 passed, 0 failed, and
-  `inference_status: not_run`; NDJSON and in-process results matched.
-- Adversarial review and tests covered rehashed evidence substitution,
-  authority/private-digest claim boundaries, output rebinding, deterministic
-  ordering, false span/provenance relations, omission/overflow forgery,
-  incomplete field policy, raw digest-shaped canaries, strict JSON loading,
-  and inherited import-path shadowing. Ruff, AST/JSON parsing, Draft 2020-12
-  metaschema validation, and `git diff --check` passed.
-
-## Environment observations and retained evidence
-
-- The reviewed exact `localai-contracts==0.2.0a2` wheel is a local handoff
-  artifact, not a tracked repository input or configured immutable hosted-CI
-  download. Routine CI therefore runs the new dependency-free schema/golden
-  coverage; exact-wheel adapter and clean-install coverage remains an explicit
-  local/release gate until the contract owner publishes an immutable artifact
-  source.
-- The deep OneDrive checkout can still exceed the legacy Windows path limit
-  when a frontend rebuilds a wheel from the sdist. The staged candidate was
-  exported without mutation to `C:\ctxc-audit-candidate-20260801-01`; the same
-  release build and clean-install checks passed there.
-- An earlier optional-package cache artifact was moved to the system temporary
-  directory rather than deleted. All final optional checks disabled bytecode
-  writes.
+  `3f356afe61186395c861d5cd63dc21ff7d5fa335012a4668d979257df7fea0f5`;
+  it is local decoder evidence, not a portable environment lock.
+- External protocol verification passed with protocol self-hash
+  `48e0c336878a292819ebd1015f7a9dbf9c5065f91c65411512aec458745fcd46`
+  and `claim_ready: false`.
+- A deterministic sdist at `SOURCE_DATE_EPOCH=1760000000` contained the new
+  module, suite descriptor, documentation, and tests: 1,246,851 bytes,
+  SHA-256
+  `45dc501674febb529d70bf90a99ac3d8360f9b34efc7cd9d7468934ecf03a722`.
+  The companion diagnostic wheel was 319,073 bytes, retained all 26 installed
+  schemas, and had SHA-256
+  `c15056ba4a23cc6feab9b7c3bf99d2f9f510a3a84ca201fc49e72a646aeee8b6`.
+- `git diff --check` passed before the final progress update.
 
 ## Honest blockers and claim boundary
 
-- No public external long-horizon suite has successfully scored this compiler;
-  do not claim external usefulness, production readiness, or superiority.
-- The shared `localai-contracts` handshake still negotiates schema names
-  globally rather than binding SourceEvent/ContextBundle versions to
-  `context.compile`. LRCC-001 records the owner-controlled change; CtxC does
-  not claim that its provider-local sidecar fixes the shared protocol.
-- Audit self-hashes do not authenticate an author. Private conversion digests,
-  authority decisions, omission/overflow existence and amount, and private
-  policy identity remain labeled provider assertions. Stable unsalted audit
-  digests are sensitive metadata.
-- Exact model checkpoints, public corpus revisions, inference-service resource
-  ceilings, and retained raw outputs must be frozen before a claim-bearing
-  external comparison can run.
+- No public long-horizon task has been executed or scored. Do not claim
+  external usefulness, task-completion improvement, production readiness, or
+  superiority from this source-intake checkpoint.
+- The canonical source snapshot contains public evaluator gold and must never
+  enter a candidate mount. It and the raw Parquet, opaque key, derived task
+  document, evaluator cache, grader output, and repository snapshots remain
+  ignored local material.
+- Dataset redistribution permission and each underlying repository snapshot's
+  obligations are unresolved. The missing dataset-card license remains a
+  blocker rather than an inferred MIT grant.
+- Network isolation controls live lookup but not training contamination.
+  Public problem statements and fixed suite order can relink opaque task ids.
+- The official harness source is pinned, not security-approved. Claim-bearing
+  grading must prove exact hidden-test-patch application, reject candidate
+  overlap/precreation of hidden test paths, retain raw application evidence,
+  and close the documented upstream false-positive path.
+- The existing `lrcbench-external-run-manifest-0.13` runner accepts bounded
+  rendered memory, not repository patches. Reusing that wire would be a false
+  equivalence.
 
 ## Next exact actions
 
-1. Inspect the existing external-runner/interchange seams and the retained ACON
-   and AMA-Agent screening records so the new adapter reuses current evidence
-   envelopes instead of creating another result format.
-2. Add a credential-free SWE-bench suite descriptor/importer that pins upstream
-   revision, dataset identity, license bytes, task split, and per-instance
-   source hashes while excluding gold patches and test outcomes from candidate
-   inputs.
-3. Emit deterministic runner manifests and metric-ready result records for task
-   completion, prompt/model tokens, wall time, correction recovery,
-   unresolved-question preservation, and failure rate. Add offline fixtures and
-   negative vectors before any credentialed model execution.
-4. Select and freeze a second public long-horizon suite using the same evidence
-   boundary; do not infer external usefulness from synthetic or local replay.
+1. Extract only the generic bounded literal-argv subprocess/resource boundary
+   from `benchmarks.external_runner`, with characterization tests preserving
+   timeout, output, process-tree, environment, network, and executable/source
+   evidence. Keep all LRC candidate validation in the current runner.
+2. Add a distinct SWE-bench repository-preparation contract: export only the
+   exact base-commit tree, exclude `.git` history/remotes/later refs and all
+   evaluator/Hugging Face caches, bind the resulting tree, and require retained
+   network-isolation evidence before candidate launch.
+3. Add SWE-bench prediction/run/result evidence around the official
+   `instance_id`, `model_name_or_path`, and `model_patch` fields. Retain every
+   selected task and failure in the denominator, plus prompt/model tokens,
+   wall time, trajectory, workspace diff, and raw grader evidence.
+4. Review and harden the pinned official grader before any score. Require
+   hidden-test application success and candidate/hidden-test path
+   non-overlap; mark correction recovery and unresolved-question preservation
+   `not_measured` until trajectory evidence supports them.
+5. Select and source-bind a materially different second public long-horizon
+   suite without inspecting comparison results.

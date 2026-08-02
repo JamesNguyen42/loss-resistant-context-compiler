@@ -39,6 +39,7 @@ meaning can be compressed without loss.
 | External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
+| SWE-bench Verified intake | Exact 500-row source/selection descriptor and gold-free task projection; no repository preparation, execution, grading, or score |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic structural cases; 20 held out; no model or natural-cohort claim |
 | OpenHands integration | Separately packaged `ctxc-openhands` draft alpha; exact current version is owned by its [package metadata](integrations/openhands/pyproject.toml); reviewed offline fake-runtime foundation only; live execution blocked |
 | Downstream agent task completion | Not measured |
@@ -206,6 +207,10 @@ The repository currently includes:
 - result-blind ACON and AMA-Agent compatibility records plus a pinned ACON
   diagnostic adapter whose first bounded run is retained as a failed,
   non-scoreable manifest;
+- a source-pinned SWE-bench Verified descriptor for all 500 test rows, exact
+  Parquet/canonical-snapshot/order anchors, and an allowlisted projection whose
+  candidate payload contains only a keyed opaque routing id and the public
+  problem statement; repository execution and scoring remain blocked;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
 - a fixed-digest, versioned CI compile-performance gate with latency-growth and
@@ -244,7 +249,9 @@ adding more claims to the README:
 - collect and independently annotate held-out natural coding-agent histories
   under the implemented consent, license, privacy, adjudication, split, and
   no-label-leakage contracts;
-- measure end-to-end task completion on public long-horizon suites;
+- complete SWE-bench dataset-license review, pristine workspace and network
+  isolation, grader hardening, and execution/result evidence; then select a
+  materially different second suite before measuring end-to-end completion;
 - test the optional model extractor across providers and novel phrasing;
 - add named provider tokenizers and production framework-specific adapters;
 - optimize incremental connector compilation beyond its current
@@ -1744,6 +1751,7 @@ python -m benchmarks --self-test
 python -m benchmarks --histories 24 --export-corpus lrcbench-corpus.json
 python -m benchmarks --verify-report lrcbench-24.json
 python -m benchmarks.external_protocol --verify benchmarks/protocols/external-comparison-v1.json
+python -m benchmarks.swebench verify-suite
 python conformance/run_connector_conformance.py
 python -m benchmarks.natural_history
 python -m pytest -q tests/test_external_compatibility.py
@@ -2006,6 +2014,7 @@ the commands above for the current revision and environment.
 - [Extending extraction with domain packs](docs/EXTENDING_EXTRACTION.md)
 - [Benchmark design and the exact 50% bar](docs/BENCHMARKING.md)
 - [Natural-history evidence contracts](docs/NATURAL_HISTORY_EVIDENCE.md)
+- [SWE-bench Verified source intake](docs/SWEBENCH_EVALUATION.md)
 - [Result-blind external compatibility records](benchmarks/compatibility/README.md)
 - [Novel English phrase diagnostic](docs/PHRASE_EVALUATION.md)
 - [Exact local Qwen phrase-evaluation protocol](docs/QWEN_PHRASE_EVALUATION.md)

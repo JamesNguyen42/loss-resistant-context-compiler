@@ -8,6 +8,9 @@ versioning and release rules in
 
 ### Changed
 
+- Exposed typed bindings for every external-protocol dataset slot and bound the
+  still-pending coding-task slot to the source-only SWE-bench Verified suite;
+  no task execution, grade, or external claim is implied.
 - Closed the connector response error contract over ten stable variants and
   replaced raw exception messages and concrete Python types with fixed public
   messages and normalized connector error types.
@@ -77,6 +80,11 @@ versioning and release rules in
 
 ### Added
 
+- A credential-free, source-bound SWE-bench Verified intake that pins the
+  immutable 500-row Parquet source, deterministic canonical snapshot, complete
+  full-cohort selection, official harness source identity, and allowlisted
+  HMAC-opaque candidate payloads while keeping license, repository isolation,
+  execution, grading, and scoring explicitly blocked.
 - Recursively sealed compiled snapshots with render-time digest checks.
 - Shared source, compilation, artifact, model-output, and benchmark-evidence
   resource limits.

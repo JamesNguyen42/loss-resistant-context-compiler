@@ -549,6 +549,27 @@ working-tree snapshot, not a permanent guarantee. Most importantly, `ISSUED`
 means only that the compiler cleared LRCBench’s local gates against bundled
 baselines. It does not mean that the compiler beat any named external system.
 
+## SWE-bench Verified source binding
+
+The repository now pins the complete 500-row SWE-bench Verified `test` source
+at immutable dataset revision
+`91aa3ed51b709be6457e12d00300a6a596d4c6a3`. The self-hashed suite descriptor
+binds exact Parquet and canonical-snapshot bytes, physical row order, the full
+result-blind selection, field partitions, and official harness source identity.
+Its allowlist produces two-field candidate payloads containing only an
+HMAC-derived opaque routing id and `problem_statement`.
+
+This advances source selection only. The external protocol's coding-task slot
+remains `pending`: the pinned dataset card declares no license, and repository
+preparation, candidate mount isolation, network-isolation evidence, grader
+security review, exact hidden-test application, redistribution review,
+execution, and scoring all remain false. HMAC ids do not prevent relinking from
+public problem text or establish that a model has not seen benchmark gold.
+
+The harness code's MIT license does not license the dataset rows or third-party
+repository snapshots. See [SWE-bench Verified source intake](SWEBENCH_EVALUATION.md)
+for exact identities, local commands, and the executor/grader requirements.
+
 ## The exact external “50% better than most” bar
 
 No external comparison has been performed by this repository. A defensible
@@ -586,8 +607,9 @@ form a verified draft. The result-blind screen records observed revisions and
 license evidence for ACON, FoldAgent, and AMA-Agent, plus the unresolved MemIR
 artifact. Nine explicit blockers cover final candidate decisions/adapters,
 dependency locks, adapter memory, inference-service accounting, the natural
-cohort, two downstream suites, and frozen downstream samples. The draft
-therefore cannot serve as a preregistration or support a production claim yet.
+cohort, SWE-bench execution/grading controls, a second downstream suite, and
+frozen downstream samples. The draft therefore cannot serve as a
+preregistration or support a production claim yet.
 Verify its internal state without claiming readiness:
 
 ```console

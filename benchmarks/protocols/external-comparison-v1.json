@@ -7,7 +7,7 @@
   "freeze_repository_commit": null,
   "protocol_document": {
     "path": "external-comparison-v1.md",
-    "file_sha256": "4c7d0f02ba96aa4bba41ba212bc199cf88255184cdbc314506b096ddbd8519e9"
+    "file_sha256": "ec865c8a66fb57e0610f3b4cb059ed993f3c8b6ac42c3e7e42f106559ec9eabf"
   },
   "comparison_candidates": [
     {
@@ -125,11 +125,11 @@
       "id": "public-coding-suite",
       "kind": "coding-task",
       "status": "pending",
-      "revision": null,
-      "manifest_sha256": null,
-      "sample_size": null,
+      "revision": "91aa3ed51b709be6457e12d00300a6a596d4c6a3",
+      "manifest_sha256": "2f97bfbcb036553f9203db2a54bca3b553cf2ddac344b40ca5a7d4b9e2d4f34f",
+      "sample_size": 500,
       "seeds": [],
-      "annotation": "Public long-horizon coding suite and immutable revision are not selected."
+      "annotation": "SWE-bench Verified source revision and full 500-task physical-order selection are pinned by ctxc-swebench-suite-0.1, but dataset redistribution review, repository isolation, a reviewed grader, and an execution/result contract remain unresolved; this slot is not frozen or claim-ready."
     },
     {
       "id": "public-second-suite",
@@ -188,7 +188,7 @@
     },
     {
       "id": "coding-task-suite",
-      "description": "Select and pin one public long-horizon coding task suite."
+      "description": "Complete the source-pinned SWE-bench Verified repository-isolation, dataset-license, execution, grader, and result-evidence controls before freezing the coding-task slot."
     },
     {
       "id": "downstream-samples",
@@ -211,5 +211,5 @@
       "description": "Select and pin a materially different public tool-use or research task suite."
     }
   ],
-  "protocol_sha256": "a7ee7a92221728be2988b63c8678d4d88936bc65c97e4ced745d770eafefa08d"
+  "protocol_sha256": "48e0c336878a292819ebd1015f7a9dbf9c5065f91c65411512aec458745fcd46"
 }

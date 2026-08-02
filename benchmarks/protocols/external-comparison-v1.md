@@ -140,7 +140,16 @@ The claim-bearing study must include all of:
 
 Natural cohort manifest: **unresolved blocker `natural-history-cohort`**
 
-Coding task suite and revision: **unresolved blocker `coding-task-suite`**
+Coding task source: **SWE-bench Verified**, dataset
+`SWE-bench/SWE-bench_Verified`, immutable revision
+`91aa3ed51b709be6457e12d00300a6a596d4c6a3`, all 500 `test` rows in
+physical order. The source-only `ctxc-swebench-suite-0.1` descriptor is
+self-hashed as
+`2f97bfbcb036553f9203db2a54bca3b553cf2ddac344b40ca5a7d4b9e2d4f34f`.
+This does **not** freeze the coding-task slot: dataset redistribution review,
+base-commit workspace isolation, retained network-isolation evidence, a
+reviewed official grader, and an execution/result contract remain unresolved
+under blocker `coding-task-suite`.
 
 Second task suite and revision: **unresolved blocker `second-task-suite`**
 
@@ -184,8 +193,12 @@ per-task unit. Do not switch to atom weighting after seeing results.
   and exact misses on every frozen cohort
 - at least 5x compression and 100% matched-budget compliance
 
-Sample sizes and task seeds for the two downstream suites: **unresolved
-blocker `downstream-samples`**
+The full 500-row SWE-bench source selection is fixed without sampling. The
+current protocol schema conservatively requires a task seed before a downstream
+slot can become `frozen`, so a future schema revision must represent an
+explicit full-population policy instead of inventing an unused seed. The
+second suite's sample-selection policy and any applicable seed remain under
+**unresolved blocker `downstream-samples`**.
 
 Changing any primary metric, quantile, seed, sample size, comparison system, or
 exclusion rule after results requires a new protocol version and complete

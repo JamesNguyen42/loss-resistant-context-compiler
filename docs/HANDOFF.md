@@ -16,7 +16,9 @@ changing or interpreting the recorded comparison. Read the
 [external comparison protocol](../benchmarks/protocols/external-comparison-v1.md)
 and its [strict JSON manifest](../benchmarks/protocols/external-comparison-v1.json)
 before changing candidate selection, adapter identity, resources, datasets, or
-claim rules. Read [natural-history evidence contracts](NATURAL_HISTORY_EVIDENCE.md),
+claim rules. Read the [SWE-bench Verified source boundary](SWEBENCH_EVALUATION.md)
+before handling its source rows, task projection, repository snapshots, or
+grader. Read [natural-history evidence contracts](NATURAL_HISTORY_EVIDENCE.md),
 the separate
 [materialization retention evaluation](MATERIALIZATION_RETENTION_EVALUATION.md),
 and [result-blind compatibility records](../benchmarks/compatibility/README.md)
@@ -54,6 +56,7 @@ live-readiness status.
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
+| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; no repository preparation, run, grade, or score |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
 | OpenHands integration | Separate `ctxc-openhands` draft alpha; exact current version is owned by its package metadata; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
 | Installed JSON Schemas | 26 (7 historical ids, 19 current-namespace ids) |
@@ -320,6 +323,8 @@ and measured duration.
 | `benchmarks/external_protocol.py` | Strict self-hashed external-protocol validation and claim-readiness gate |
 | `benchmarks/external_runner.py` | Non-interpreting adapter launch, process limits, validation, and self-hashed run manifests |
 | `benchmarks/natural_history.py` | Bounded corpus/annotation/adjudication/split/gold-free/report contract validation |
+| `benchmarks/swebench.py` | Offline pinned-source verification, exact canonical snapshot materialization, and source/key-bound gold-free task projection |
+| `benchmarks/suites/swebench_verified_v1.json` | Self-hashed 500-row SWE-bench Verified source, selection, license, projection, harness, and claim boundary |
 | `benchmarks/compatibility/` | Result-blind pinned system screens and retained ACON blocker/failure evidence |
 | `conformance/` | Dependency-free connector schema/golden/negative validation and in-process/stdio equivalence |
 | `integrations/openhands/src/ctxc_openhands/` | Separate exact-pin host guard, closed event/authority mapping, callback poison, atomic binding, SQLite-WAL generations, immutable request ledger, fake runtime, replay/recovery/rehydration, scenario, soak, and CLI |
@@ -726,6 +731,9 @@ operations, validation, and unresolved host requirements.
 | Connector request/response | `ctxc-connector-request-0.1` / `ctxc-connector-response-0.1` |
 | Connector source/bundle/checkpoint | `localai-source-event-0.1` / `localai-context-bundle-0.1` / `ctxc-incremental-checkpoint-0.1` |
 | Natural-history evidence family | `ctxc-natural-history-*-0.1` contracts; synthetic fixtures only |
+| SWE-bench source suite | `ctxc-swebench-suite-0.1` |
+| SWE-bench task projection | `ctxc-swebench-task-input-0.1` |
+| SWE-bench verification summary | `ctxc-swebench-verification-0.1` |
 | Adapter process-environment evidence | `lrcbench-process-environment-0.1` |
 | Installed schema directory | `share/loss-resistant-context-compiler/schemas` |
 
@@ -1203,6 +1211,21 @@ audited. Any selected superseded item independently fails verification as
 - The performance profile is a broad shared-runner tripwire, not an SLO: it
   excludes source construction, `tracemalloc` is not RSS, and the separate
   10,000-to-1,000,000-event characterization remains open.
+
+### SWE-bench Verified source evidence
+
+The source-only suite descriptor pins all 500 official Verified `test` rows at
+dataset revision `91aa3ed51b709be6457e12d00300a6a596d4c6a3`, exact Parquet and
+canonical-snapshot bytes, physical order, an exhaustive coordinator/evaluator
+field partition, and a two-field candidate allowlist. The external protocol
+now exposes typed bindings for every dataset kind and binds its still-pending
+coding slot to this suite self-hash.
+
+This is not downstream evidence. The dataset card declares no license; raw
+source rows remain local. Base-commit workspace isolation, candidate mount and
+network isolation, official-grader review, exact hidden-test-patch application,
+execution/result contracts, model runs, and scores remain absent. Opaque HMAC
+ids do not prevent public-corpus relinking or establish unseen model data.
 
 ### Recorded local benchmark
 
@@ -1703,7 +1726,11 @@ project work is the external and natural-history evidence path:
    Qwen/inference-service evidence, then rerun the retained diagnostic without
    hiding a failure;
 5. add clean adapters only for included systems and retain every failed run;
-6. collect licensed/consented natural histories under the implemented privacy,
+6. complete SWE-bench dataset-license review, pristine base-commit export,
+   candidate mount/network isolation, grader hardening, and task result
+   evidence; do not reuse the LRCBench rendered-memory runner for patches;
+7. select and source-bind a materially different second public suite;
+8. collect licensed/consented natural histories under the implemented privacy,
    independent-annotation, adjudication, grouped-split, and no-leakage contracts.
 
 The detailed ordered backlog is in [TODO.md](../TODO.md).
@@ -1730,6 +1757,7 @@ ctxc evaluate-materialization --split heldout -o retention-report.json
 python -m pytest -q tests/test_external_compatibility.py
 python -m benchmarks --self-test
 python -m benchmarks.external_protocol --verify benchmarks/protocols/external-comparison-v1.json
+python -m benchmarks.swebench verify-suite
 python -m benchmarks --verify-report docs/results/lrcbench-local.json
 python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
 python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json

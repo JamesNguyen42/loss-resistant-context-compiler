@@ -9,6 +9,7 @@ from benchmarks.json_io import (
     StrictJsonLimits,
     hash_bounded_regular_file,
     load_strict_json_file,
+    read_bounded_regular_file,
 )
 
 
@@ -46,8 +47,22 @@ def test_strict_json_file_records_exact_bytes_and_accepts_utf8_bom(tmp_path) -> 
     )
     assert file_evidence.byte_count == document.byte_count
     assert file_evidence.file_sha256 == document.file_sha256
+    binary = read_bounded_regular_file(
+        path,
+        max_bytes=len(encoded),
+        label="fixture",
+    )
+    assert binary.value == encoded
+    assert binary.byte_count == document.byte_count
+    assert binary.file_sha256 == document.file_sha256
     with pytest.raises(StrictJsonError, match="exceeds"):
         hash_bounded_regular_file(
+            path,
+            max_bytes=len(encoded) - 1,
+            label="fixture",
+        )
+    with pytest.raises(StrictJsonError, match="exceeds"):
+        read_bounded_regular_file(
             path,
             max_bytes=len(encoded) - 1,
             label="fixture",

@@ -645,6 +645,14 @@ Acceptance:
 
 ### P0-E4 Measure real downstream task completion
 
+- [x] Pin the exact 500-row SWE-bench Verified source and full physical-order
+  selection, canonical snapshot/order anchors, official harness source
+  identity, exhaustive gold partition, and two-field allowlist projection.
+  This is source intake only, not a completed coding-benchmark evaluation.
+- [ ] Complete SWE-bench dataset/repository license review, pristine
+  base-commit workspace construction, retained network isolation, hidden-test
+  and grader hardening, and a task execution/result evidence contract before
+  running or scoring any candidate.
 - [ ] Preregister at least two public long-horizon agent suites.
 - [ ] Include a coding benchmark where repository state and exact failures
   matter.
