@@ -4963,6 +4963,15 @@ def run_external_command(
                             raise
 
                     while True:
+                        elapsed = time.monotonic() - started
+                        if elapsed >= limits.timeout_seconds:
+                            # Completion has not been proven before the deadline.
+                            # This also charges launch and containment setup time
+                            # against the same bounded run.
+                            termination_reason = "timeout"
+                            if windows_process_control:
+                                _terminate_process_tree(process, windows_job)
+                            break
                         if windows_process_control:
                             process_exited = process.poll() is not None
                         else:
@@ -4986,7 +4995,6 @@ def run_external_command(
                                 break
                         if process_exited:
                             break
-                        elapsed = time.monotonic() - started
                         service_failure = inference_monitor.sample()
                         if service_failure is not None:
                             termination_reason = service_failure
@@ -4994,8 +5002,6 @@ def run_external_command(
                                 _inference_failure_detail(inference_monitor)
                                 or validation_error
                             )
-                        elif elapsed > limits.timeout_seconds:
-                            termination_reason = "timeout"
                         elif (
                             _stream_size(stdout, label="stdout")
                             > limits.max_stdout_bytes

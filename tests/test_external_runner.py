@@ -3784,6 +3784,69 @@ def test_runner_timeout_is_a_retained_nonwin_and_releases_process(tmp_path) -> N
     assert manifest.termination_reason == "timeout"
 
 
+def test_runner_rejects_completion_first_observed_after_deadline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    write_corpus(corpus_path)
+    candidate_path = tmp_path / "candidate.json"
+    clock_values = iter((0.0, 6.0))
+    completion_probes = 0
+
+    class CompletedProcess:
+        pid = 42
+        returncode: int | None = None
+
+    def monotonic() -> float:
+        return next(clock_values, 6.0)
+
+    def completed_without_reaping(_process: object) -> bool:
+        nonlocal completion_probes
+        completion_probes += 1
+        return True
+
+    def cleanup(process: CompletedProcess) -> int:
+        process.returncode = 0
+        return 0
+
+    monkeypatch.setattr(external_runner_module.time, "monotonic", monotonic)
+    monkeypatch.setattr(
+        external_runner_module,
+        "_uses_windows_process_control",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        external_runner_module.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: CompletedProcess(),
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        completed_without_reaping,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_cleanup_and_reap_posix_process",
+        cleanup,
+    )
+
+    manifest = run_external_command(
+        valid_adapter_command(tmp_path),
+        system="late-completion-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5),
+    )
+
+    assert manifest.termination_reason == "timeout"
+    assert not manifest.process_succeeded
+    assert not manifest.candidate_valid
+    assert not manifest.ready_for_scoring
+    assert completion_probes == 0
+
+
 class _FakeDarwinEnvironmentFile:
     def __init__(self, payload: bytes) -> None:
         self.data = bytearray(payload)

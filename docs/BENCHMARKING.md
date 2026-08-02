@@ -424,6 +424,12 @@ process start succeeded, a cleanup/proof failure is retained as
 `process_group_cleanup_failed` with its controlled validation error and stream
 evidence. Per-case mode records that case and launches no later case; preflight
 and process-start failures remain runner errors.
+The adapter timeout begins before temporary launch setup and `Popen`. Each
+monitor iteration samples that monotonic deadline before probing for process
+completion. A process whose completion is first observable at or after the
+deadline is therefore retained as a timeout; late observation cannot upgrade
+it to success. This is intentionally conservative because the runner has no
+authenticated child-completion timestamp from before the deadline.
 The service PID and service-memory options separately
 capture the pre-existing inference process's creation identity and executable
 digest, then sample Windows working set or Linux/macOS RSS at the runner's

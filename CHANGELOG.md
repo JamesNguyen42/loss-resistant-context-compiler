@@ -8,6 +8,9 @@ versioning and release rules in
 
 ### Changed
 
+- Made external-adapter deadlines fail closed: launch and containment setup
+  consume the same monotonic timeout, and a process first observed complete at
+  or after the deadline is retained as a timeout rather than accepted.
 - Exposed typed bindings for every external-protocol dataset slot and bound the
   still-pending coding-task slot to the source-only SWE-bench Verified suite;
   no task execution, grade, or external claim is implied.

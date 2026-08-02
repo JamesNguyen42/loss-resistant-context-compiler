@@ -6,15 +6,16 @@ Last updated: 2026-08-01 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Base commit for this in-progress checkpoint: `c0ee2f9`
-- Current checkpoint: source-bound, gold-free SWE-bench Verified intake. Code,
-  the 500-row binding descriptor, tests, documentation, external-protocol
-  linkage, CI, and source-distribution checks are complete and are being
-  committed together.
-- Previous checkpoint: LocalAI conversion auditing was committed and pushed as
-  `c0ee2f9`.
-- Next task: implement the separate SWE-bench execution/result boundary. Do
-  not encode a repository patch as an LRCBench rendered-memory candidate.
+- Base commit for this in-progress checkpoint: `fc966dd`
+- Current checkpoint: fail-closed external-adapter deadline ordering. Launch
+  and containment setup consume the run timeout, and completion first observed
+  at or after the deadline cannot be accepted.
+- Previous checkpoint: source-bound, gold-free SWE-bench Verified intake was
+  committed and pushed as `fc966dd`.
+- Next task: extract the generic bounded literal-argv process lifecycle before
+  implementing the separate SWE-bench repository and execution/result
+  boundaries. Do not encode a repository patch as an LRCBench rendered-memory
+  candidate.
 
 ## Mission status
 
@@ -28,7 +29,20 @@ Last updated: 2026-08-01 (America/Los_Angeles)
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
-## Completed in this checkpoint
+## Current checkpoint
+
+- Reordered the external-runner monitor boundary so it samples elapsed
+  monotonic time before asking whether the adapter has exited. The deadline
+  begins before temporary-directory and process launch setup.
+- Added a deterministic regression in which the first possible completion
+  observation occurs one second after a five-second deadline. The process is
+  retained as `timeout`; no exit probe can upgrade it.
+- Kept existing fail-closed cleanup behavior unchanged. POSIX cleanup failure
+  still becomes `process_group_cleanup_failed`; Windows Job, Darwin handoff,
+  descriptor-retention, output-limit, and inference-service behavior remains
+  covered by the full runner test file.
+
+## Completed source-intake checkpoint (`fc966dd`)
 
 - Added source/sdist-only `benchmarks.swebench` formats
   `ctxc-swebench-suite-0.1`, `ctxc-swebench-task-input-0.1`, and
@@ -102,6 +116,9 @@ Last updated: 2026-08-01 (America/Los_Angeles)
 All ordinary commands used the repository Python 3.12 virtual environment.
 Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
+- External-runner focused deadline tests: 2 passed. The complete
+  172-test `tests/test_external_runner.py` file passed with 168 passes and four
+  existing platform skips; Ruff passed for the changed module and tests.
 - `python -m pytest -q`: exit 0 in 284.2 seconds; 2,217 collected, with 24
   existing skips and 2,193 passing tests inferred from the complete progress
   stream. A first attempt correctly failed only after that invocation created
