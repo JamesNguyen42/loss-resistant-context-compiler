@@ -164,8 +164,9 @@ suite order can still identify a task. A raw-Git preparation boundary now has
 synthetic-mirror coverage plus 40 retained public outcomes across five
 repositories: 34 verified preparations, six exact
 `tree-symlink-forbidden` policy refusals, and 460 unattempted rows. These are
-not candidate mounts or executions; no agent or grader has run, no score
-exists, and the pinned dataset card declares no license. See the complete
+not candidate mounts or public executions; no public candidate, model, agent,
+or grader has run, no score exists, and the pinned dataset card declares no
+license. See the complete
 [source, projection, and execution boundary](../docs/SWEBENCH_EVALUATION.md).
 
 ### SWE-bench repository preparation
@@ -246,8 +247,68 @@ useful. All execution, grading, score, and claim-readiness flags remain false,
 and no public-suite prediction artifact is checked in. Rejected raw candidate
 content is deliberately not retained, so its status and the duplicate/unknown
 protocol rows remain coordinator assertions rather than independently
-replayable capture evidence. A later claim-bearing controller/run contract must
-provide the missing origin and execution evidence.
+replayable capture evidence. The separate controller-run ledger below can bind
+future raw capture bytes and workspace observations, but it still does not
+authenticate their producer or establish isolated candidate execution.
+
+### SWE-bench controller-run ledger
+
+`benchmarks.swebench_run` is the source/sdist-only controller/run boundary; it
+is not part of the dependency-free wheel. `build_run_ledger()` (also exported as
+`run_swebench_controller()`) accepts the revalidated source/task projection,
+complete preparation outcomes, one ordered `CandidateWorkspace` binding per
+selected task, an independently expected `SystemIdentity`, and a fixed
+`ControllerSpec`. `decode_run_ledger()`, `verify_run_ledger()`,
+`load_run_ledger()`, and `write_run_ledger()` preserve the same strict replay
+boundary. The artifact schemas are `ctxc-swebench-run-ledger-0.1` and
+`ctxc-swebench-controller-result-0.1`.
+
+For each prepared row with a supplied workspace, the coordinator first requires
+the caller-provided mutable tree to equal the verified preparation, byte and
+path for byte and path. It writes a canonical request containing only
+`opaque_task_id` and `problem_statement`, then appends that request path and the
+workspace path to the fixed literal argv under protocol
+`append-request-json-and-workspace-path-v1`; the controller's working directory
+is the workspace. Workspaces, preparation trees, bare mirrors, and the fresh run
+artifact root may not overlap. Links, reparse points, hard-linked files, special
+entries, unsafe ancestors, and unexpected artifact labels fail closed. The
+coordinator does not create a mount or copy, contain, or clean the workspace.
+Traversal and launch remain pathname-based rather than descriptor-pinned, so a
+concurrent nested-directory or executable substitution is an accepted host
+trust boundary, not an adversarial-filesystem guarantee.
+
+Every source-selected row remains in physical order. Repository-not-attempted,
+preparation-refused, missing/mismatched workspace, launch, timeout, stream,
+process, cleanup, nonzero-exit, malformed/oversized output, final-workspace
+observation, and captured-run outcomes are all explicit dispositions. Raw
+stdout and stderr are retained as bounded exact prefixes with observed/captured
+counts and hashes. A patch capture is constructed only by replaying complete
+successful stdout as one strict five-field controller envelope. Initial and
+final workspace summaries plus a deterministic file delta remain separate from
+the patch capture. Within one internally consistent ledger, a final scan failure
+cannot replace an already reported launch or process disposition. Exit status,
+termination, timing, and cleanup fields remain unauthenticated coordinator
+observations and can be rewritten by a producer that recomputes the self-hash.
+
+Token methods are limited to `not_measured`, `provider_reported`, or a named
+`tokenizer:*` value. The ledger records bounded prompt/model totals, and it
+records only a count/byte/hash summary of the ordered trajectory while the
+trajectory itself remains inside raw stdout. These values, the controller
+executable/argv/environment digests, the expected system identity, and the
+self-hash provide consistency bindings, not signatures, producer attestation,
+loaded-code proof, or model/token/trajectory authentication. The underlying
+literal lifecycle owns a Windows Job or an escapable POSIX process group; it
+does not establish mount, filesystem, network, user, PID, or image isolation.
+
+The focused synthetic suite currently records 42 passes and one skip in
+158.55 seconds. The skip is the directory-symlink-root regression, unavailable
+because this Windows token lacks directory-symlink privilege. No public
+candidate, model, or agent ran. Candidate execution authentication, candidate
+mount creation, every isolation field, hidden-test application, grading,
+resolution, external score, usefulness, producer authentication, and claim
+readiness remain false. `prediction_captures()` is only an interoperability
+bridge into the separate full-cohort prediction ledger after live replay; it is
+not result or score evidence.
 
 ## External baselines
 

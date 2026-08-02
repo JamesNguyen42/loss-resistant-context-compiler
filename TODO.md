@@ -674,10 +674,19 @@ Acceptance:
   evidence, preserve exact patch text only in JSONL, and retain missing,
   duplicate, unexpected, invalid, oversized, and unprepared outputs without
   shrinking the denominator or implying execution, grading, or a score.
+- [x] Add a source/sdist-only controller-run ledger around the generic literal
+  process lifecycle. It reconciles every selected row, verifies caller-provided
+  workspaces against prepared trees before launch, retains bounded raw
+  stdout/stderr evidence, derives captures only by replay, and records final
+  workspace deltas. Its controller, model, token, trajectory, candidate
+  execution, isolation, hidden-test, grading, resolution, score, usefulness,
+  and claim-readiness assertions remain unauthenticated or false. The current
+  evidence is synthetic contract testing only.
 - [ ] Complete SWE-bench dataset/repository license review, prepare and retain
-  every selected base-commit outcome, establish candidate mount and network
-  isolation, harden hidden-test application and grading, and add task
-  run/result evidence before running or scoring any candidate.
+  every selected base-commit outcome, establish externally verified candidate
+  mount/filesystem and network isolation, harden hidden-test application and
+  grading, and add public task result evidence before running or scoring any
+  public candidate.
 - [x] Inspect the exact Flask task base commit's root and discovered
   license-file declarations and exercise selected ordinal 289 through public
   mirror verification and raw-tree preparation. Retain the local manifest
@@ -1235,9 +1244,15 @@ The next chat should start here unless new evidence changes the priority:
    rerun the retained ACON diagnostic;
 7. add clean reproducible adapters only for systems admitted by the frozen
    result-blind protocol;
-8. collect licensed/consented histories under the implemented natural-history
+8. complete SWE-bench dataset/repository license review and the remaining 460
+   preparation outcomes, then provision externally verified candidate
+   mount/filesystem and network isolation before using the synthetic-tested run
+   ledger with any public candidate; keep hidden-test application, grading,
+   resolution, scoring, usefulness, and claim readiness false until separately
+   evidenced;
+9. collect licensed/consented histories under the implemented natural-history
    contracts, perform independent annotation/adjudication and privacy review;
-9. freeze a full natural corpus only after those reviews and split checks pass;
-10. record every failure and result without changing the claim boundary.
+10. freeze a full natural corpus only after those reviews and split checks pass;
+11. record every failure and result without changing the claim boundary.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) before changing code or benchmark rules.

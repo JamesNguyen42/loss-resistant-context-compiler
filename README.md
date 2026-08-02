@@ -39,7 +39,7 @@ meaning can be compressed without loss.
 | External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
-| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, raw-Git preparation, and exhaustive deterministic prediction-ledger boundaries; 40 public rows attempted across five repositories, with 34 prepared, 6 policy-refused, and no candidate mount, prediction, execution, grading, or score |
+| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, raw-Git preparation, exhaustive deterministic prediction-ledger, and synthetic controller-run boundaries; 40 public rows attempted across five repositories, with 34 prepared, 6 policy-refused, and no public candidate, model, agent, grader, resolution, score, or usefulness result |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic structural cases; 20 held out; no model or natural-cohort claim |
 | OpenHands integration | Separately packaged `ctxc-openhands` draft alpha; exact current version is owned by its [package metadata](integrations/openhands/pyproject.toml); reviewed offline fake-runtime foundation only; live execution blocked |
 | Downstream agent task completion | Not measured |
@@ -229,6 +229,13 @@ The repository currently includes:
   duplicate, unexpected, invalid, oversized, or unprepared output into retained
   nonprediction/protocol evidence, and emits one deterministic official
   `instance_id`/`model_name_or_path`/`model_patch` JSONL row per selected task;
+- a source/sdist-only SWE-bench controller-run ledger that closes the same
+  selected denominator over repository, workspace, launch, process, stream,
+  protocol, and capture dispositions; writes only the exact two-field candidate
+  request; retains bounded raw stdout/stderr prefixes; derives patch captures
+  only by replaying stdout; and records initial/final workspace summaries and a
+  deterministic delta without claiming that the caller-provided workspace is a
+  mount or sandbox;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
 - a fixed-digest, versioned CI compile-performance gate with latency-growth and
@@ -268,9 +275,10 @@ adding more claims to the README:
   under the implemented consent, license, privacy, adjudication, split, and
   no-label-leakage contracts;
 - complete SWE-bench dataset/repository license review, retain outcomes for the
-  remaining 460 unattempted rows, capture real candidate outputs through
-  the prediction ledger, establish candidate mount and network isolation,
-  harden the grader, and add run/result evidence; then select
+  remaining 460 unattempted rows, provision externally verified candidate
+  mount/filesystem and network isolation, capture real candidate outputs through
+  the controller-run and prediction ledgers, harden the grader, and add public
+  result evidence; then select
   a materially different second suite before measuring end-to-end completion;
 - test the optional model extractor across providers and novel phrasing;
 - add named provider tokenizers and production framework-specific adapters;

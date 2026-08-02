@@ -56,7 +56,7 @@ live-readiness status.
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
-| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation and full-cohort prediction-ledger contracts; 40 public rows attempted across five repositories (34 prepared, 6 policy-refused, 460 unattempted), with candidate mount/execution, grader execution, and scoring still absent |
+| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation, full-cohort prediction, and synthetic controller-run ledgers; 40 public rows attempted across five repositories (34 prepared, 6 policy-refused, 460 unattempted), with no public candidate/model/agent run, verified isolation, grader execution, resolution, score, or usefulness result |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
 | OpenHands integration | Separate `ctxc-openhands` draft alpha; exact current version is owned by its package metadata; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
 | Installed JSON Schemas | 26 (7 historical ids, 19 current-namespace ids) |
@@ -328,6 +328,7 @@ and measured duration.
 | `benchmarks/swebench_repository.py` | Source/sdist-only coordinator for local SHA-1 bare-mirror verification, raw base-commit export, strict self-hashed mirror/preparation evidence, live mirror/output replay, and fixed-false claim flags |
 | `benchmarks/swebench_repository_worker.py` | Staged worker launched with Python isolation flags (`-B -I -S`) for bounded raw Git-object traversal/export, mirror safety checks, and portable regular-file-only output |
 | `benchmarks/swebench_prediction.py` | Source/sdist-only complete-cohort prediction reconciliation, canonical official JSONL emission, source/preparation/system binding, live replay, and fixed-false execution/grading/claim flags |
+| `benchmarks/swebench_run.py` | Source/sdist-only full-cohort controller-run ledger, exact two-field request/literal argv launch, bounded raw streams, workspace before/after replay, stdout-derived captures, exhaustive dispositions, and fixed-false isolation/authentication/grading/result claims |
 | `benchmarks/suites/swebench_verified_v1.json` | Self-hashed 500-row SWE-bench Verified source, selection, license, projection, harness, and claim boundary |
 | `benchmarks/compatibility/` | Result-blind pinned system screens and retained ACON blocker/failure evidence |
 | `conformance/` | Dependency-free connector schema/golden/negative validation and in-process/stdio equivalence |
@@ -741,6 +742,8 @@ operations, validation, and unresolved host requirements.
 | SWE-bench bare-mirror evidence | `ctxc-swebench-bare-mirror-0.1` |
 | SWE-bench repository preparation evidence | `ctxc-swebench-repository-preparation-0.1` |
 | SWE-bench prediction ledger | `ctxc-swebench-prediction-ledger-0.1` |
+| SWE-bench controller result | `ctxc-swebench-controller-result-0.1` |
+| SWE-bench controller-run ledger | `ctxc-swebench-run-ledger-0.1` |
 | Adapter process-environment evidence | `lrcbench-process-environment-0.1` |
 | Installed schema directory | `share/loss-resistant-context-compiler/schemas` |
 
@@ -1219,7 +1222,7 @@ audited. Any selected superseded item independently fails verification as
   excludes source construction, `tracemalloc` is not RSS, and the separate
   10,000-to-1,000,000-event characterization remains open.
 
-### SWE-bench Verified source, repository-preparation, and prediction evidence
+### SWE-bench Verified source, preparation, prediction, and synthetic run evidence
 
 The source-only suite descriptor pins all 500 official Verified `test` rows at
 dataset revision `91aa3ed51b709be6457e12d00300a6a596d4c6a3`, exact Parquet and
@@ -1267,16 +1270,58 @@ prediction/strict-JSON/atomic/path-safety matrix with three expected platform
 skips. This is contract and mechanism evidence, not a captured public-suite
 prediction.
 
+The source/sdist-only controller-run coordinator closes the same selected
+denominator over repository, workspace, launch, process, stream, output, and
+capture dispositions. For a prepared row it verifies a caller-provided mutable
+workspace against the prepared tree, writes only the exact two-field candidate
+request, appends request/workspace paths to fixed literal argv, and retains
+bounded raw stdout/stderr prefixes. Patch captures are reconstructed only from
+replayed complete stdout. Retained initial and final workspace summaries plus a
+deterministic delta are separately replayed; when the final scan failed, only
+the structural failure code exists and the missing contents cannot be replayed.
+The run artifact root, workspaces, preparation trees, and bare mirrors may not
+overlap.
+
+`tests/test_swebench_run.py` currently records 42 passes and one skip in
+158.55 seconds on Windows. It covers the complete synthetic denominator,
+literal request/argv/environment evidence, success and every process/output
+failure family, bounded oversize witnesses, workspace mismatch and final-scan
+failures, source/preparation/system replay, unsafe paths and artifact
+substitution, fixed-false claims, resigned forgery, and prediction-ledger
+interoperability. The skipped directory-symlink-root regression could not
+create its fixture because this Windows token lacks directory-symlink
+privilege. All fixtures use synthetic repositories, workspaces, and controller
+processes; no public candidate, model, agent, or grader ran.
+
+The final literal-process/repository/prediction/run integration matrix passed
+126 cases and skipped the expected POSIX-directory-mode and unavailable
+directory-symlink cases in 352.05 seconds. Two deterministic sdist builds were
+byte-identical. The exact run module and test are in that sdist; both remain
+absent from the wheel, whose installed schema inventory remains the expected
+26. Exact local archive digests are not embedded into an archive member because
+that would make the sdist digest self-referential.
+
+The final full repository run passed 2,320 tests, skipped 27, and passed 112
+subtests in 610.10 seconds on Windows.
+
 This checkpoint remains source-only. The dataset card declares no license; raw
 source rows remain local, and dataset/repository license and redistribution
 reviews remain incomplete. The retained public-preparation cohort contains 34
 live-replayed trees and six exact Pylint symlink-policy refusals; 460 rows have
-not been attempted. Candidate mount/filesystem and network isolation, candidate
-execution, official-grader review, hardening, and execution,
-exact hidden-test-patch application, task result contracts, model runs, and
-scores remain absent. Neither the raw exporter nor the literal lifecycle
-establishes a candidate sandbox or network-isolation guarantee. Opaque HMAC ids
-do not prevent public-corpus relinking or establish unseen model data.
+not been attempted. The run ledger accepts caller-provided workspaces and does
+not create a candidate mount. Mount/filesystem/network/user/PID/image isolation,
+candidate execution authentication, controller/system/model producer
+authentication, token and trajectory authentication, official-grader review,
+hardening and execution, exact hidden-test-patch application, resolution,
+scores, and usefulness measurement remain absent or false. Neither the raw
+exporter, run ledger, nor literal lifecycle establishes a candidate sandbox or
+network-isolation guarantee. Opaque HMAC ids do not prevent public-corpus
+relinking or establish unseen model data.
+Workspace traversal and executable launch remain pathname-based rather than
+descriptor-pinned, so concurrent nested-directory or executable substitution
+is a coordinator-host trust boundary. Process exit, trigger, timing, and cleanup
+fields are unauthenticated observations that an internally consistent,
+self-hash-resigned ledger can relabel.
 
 ### Recorded local benchmark
 
@@ -1780,13 +1825,14 @@ project work is the external and natural-history evidence path:
 6. complete SWE-bench dataset/repository license and redistribution review,
    then prepare the remaining 460 selected public tasks through the source-only
    raw-Git boundary, retaining every success or refusal and both mirror/preparation
-   evidence; use the complete-cohort prediction ledger for official JSONL, and
-   the wire-neutral literal lifecycle only to launch a separately verified
-   container/VM controller for candidate mount/filesystem and network isolation,
-   candidate execution, official-grader hardening and execution,
-   hidden-test-patch application, and task result/score evidence; do not reuse
-   the LRCBench rendered-memory runner for patches or treat the lifecycle, raw
-   exporter, or prediction ledger as a sandbox;
+   evidence; provision a separately verified container/VM boundary for candidate
+   mount/filesystem and network isolation before passing any public candidate
+   through the synthetic-tested controller-run ledger; use the complete-cohort
+   prediction ledger for official JSONL; retain separate authenticated
+   model/token/trajectory, hidden-test application, grader, resolution, and
+   result/score evidence; do not reuse the LRCBench rendered-memory runner for
+   patches or treat the lifecycle, raw exporter, run ledger, or prediction
+   ledger as a sandbox;
 7. select and source-bind a materially different second public suite;
 8. collect licensed/consented natural histories under the implemented privacy,
    independent-annotation, adjudication, grouped-split, and no-leakage contracts.
@@ -1818,6 +1864,7 @@ python -m benchmarks.external_protocol --verify benchmarks/protocols/external-co
 python -m benchmarks.swebench verify-suite
 python -m pytest -q tests/test_swebench_repository.py
 python -m pytest -q tests/test_swebench_prediction.py
+python -m pytest -q tests/test_swebench_run.py
 python -m benchmarks --verify-report docs/results/lrcbench-local.json
 python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
 python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json

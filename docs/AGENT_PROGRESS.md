@@ -6,18 +6,20 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Base commit for this in-progress checkpoint: `b065e8e`
-- Current checkpoint: 40 selected public SWE-bench rows across five
-  repositories have retained preparation outcomes: 34 exact trees prepared
-  and replayed, six Pylint trees were refused by the link-free policy, and 460
-  rows remain unattempted. No candidate, model, grader, or score exists.
-- Previous checkpoint: the first public Flask preparation and its exact
-  license/acquisition review were committed and pushed as `b065e8e`.
-- Next task: launch a synthetic controller through the bounded literal-process
-  owner and retain a separately replayable source/sdist-only run ledger. Then
-  continue exact-license inspection and preparation across the remaining
-  selected public repositories. Do not encode a repository patch as an
-  LRCBench rendered-memory candidate.
+- Base commit for this in-progress checkpoint: `3009500`
+- Current checkpoint: a source/sdist-only controller-run ledger now reconciles
+  the complete selected SWE-bench denominator, launches the synthetic
+  controller through the bounded literal-process owner, retains raw stream and
+  workspace-delta evidence, and reconstructs prediction captures only through
+  replay. No public candidate, model, agent, grader, resolution, score, or
+  usefulness result exists.
+- Previous checkpoint: the 34 prepared, 6 policy-refused, and 460 unattempted
+  public preparation outcomes were committed and pushed as `3009500`.
+- Next task: continue exact-license inspection and preparation across the
+  remaining selected public repositories, then provision externally verified
+  candidate mount/filesystem and network isolation before any public controller
+  run. Do not encode a repository patch as an LRCBench rendered-memory
+  candidate.
 
 ## Mission status
 
@@ -26,14 +28,50 @@ Last updated: 2026-08-02 (America/Los_Angeles)
    validation, conversion audit, and contract request complete in `c0ee2f9`.
 3. Public long-horizon suite evidence: SWE-bench Verified source selection,
    candidate-input projection, raw-Git preparation, and a full-cohort
-   prediction/official-JSONL boundary are pinned. Forty public rows have been
-   attempted: 34 prepared, 6 policy-refused, and 460 unattempted. No candidate,
-   model, or grader has run and no external score exists. A second materially
-   different public suite is still required.
+   prediction/official-JSONL boundary are pinned. A separately replayable
+   synthetic controller-run ledger now exists. Forty public rows have been
+   attempted: 34 prepared, 6 policy-refused, and 460 unattempted. No public
+   candidate, model, agent, or grader has run and no resolution, external score,
+   or usefulness result exists. A second materially different public suite is
+   still required.
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
-## Current public-preparation checkpoint
+## Current controller-run checkpoint
+
+- Added source/sdist-only `benchmarks.swebench_run` with
+  `ctxc-swebench-run-ledger-0.1`, strict controller result schema
+  `ctxc-swebench-controller-result-0.1`, and protocol
+  `append-request-json-and-workspace-path-v1`. The dependency-free wheel and its
+  26 installed schemas remain unchanged by design.
+- Reconcile every source-selected row in physical order over repository,
+  workspace, launch, process, stream, output, and capture dispositions. Missing
+  workspace and every failure remain in the denominator; a final workspace
+  observation failure cannot replace an already reported launch or process
+  disposition within one internally consistent ledger.
+- For a prepared row, require a caller-provided mutable workspace to equal the
+  prepared tree before launch. Write only the exact two-field task request,
+  append request/workspace paths as literal arguments, retain bounded raw
+  stdout/stderr prefixes, and record initial/final workspace summaries plus a
+  deterministic delta.
+- Reconstruct patch captures only from replayed complete stdout. Bound patch,
+  trajectory, token, request, workspace, executable, artifact, and ledger work;
+  reject overlapping coordinator/workspace/repository paths, unsafe ancestors,
+  links, reparse points, hard-linked workspace files, special entries, and
+  unexpected run artifacts.
+- Keep candidate mount creation, candidate execution authentication,
+  mount/filesystem/network/user/PID/image isolation, controller/system/model
+  producer authentication, token and trajectory authentication, hidden-test
+  application, grading, resolution, score, usefulness, and claim readiness
+  false. The controller executable, argv, environment, raw outputs, system
+  labels, and ledger self-hash are consistency evidence, not attestation.
+- The current 42-pass focused suite uses only synthetic local Git repositories,
+  workspaces, and controller processes. Its one skip is the
+  directory-symlink-root regression, unavailable because this Windows token
+  lacks directory-symlink privilege. No public candidate, model, agent, or
+  grader was launched.
+
+## Completed public-preparation checkpoint (`3009500`)
 
 - Attempted selected ordinals 287--297, 320--348 across local HTTPS bare
   mirrors for Seaborn, Flask, Requests, Pylint, and Pytest. Every configured
@@ -238,6 +276,27 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 All ordinary commands used the repository Python 3.12 virtual environment.
 Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
+- Controller-run focused suite: 42 passed and one skipped in 158.55 seconds on
+  Windows. The skip is explicitly the directory-symlink-root case, which could
+  not create its fixture because the current Windows token lacks
+  directory-symlink privilege. The passing cases use synthetic repositories,
+  workspaces, and controllers; they are mechanism evidence, not a public
+  SWE-bench candidate run or result.
+- Literal-process, repository-preparation, prediction-ledger, and controller-run
+  integration matrix: 126 passed and two skipped in 352.05 seconds on Windows.
+  The skips are the POSIX-directory-mode case and the same unavailable
+  directory-symlink fixture.
+- Full repository suite: 2,320 passed, 27 skipped, and 112 subtests passed in
+  610.10 seconds on Windows.
+- Two independent deterministic sdist builds at `SOURCE_DATE_EPOCH=1700000000`
+  were byte-identical. The sdist's run module and test bytes exactly match the
+  worktree; the wheel excludes both files and retains exactly the expected 26
+  schemas. Exact local archive digests are intentionally not embedded into an
+  archive member that would make the recorded digest self-referential.
+- Ruff passed repository-wide. The offline deterministic quality gate reported
+  no Python findings. Its only documentation signals were advisory whole-file
+  over-sectioning notices for the longstanding TODO, changelog, and handoff
+  structures; no warning or error fired.
 - Public preparation cohort expansion: fresh source-bound replay passed for
   all 34 prepared handles. Seaborn contributed 2 trees / 633 files /
   10,778,538 blob bytes; Requests 8 / 928 / 18,896,934; Pylint 4 / 6,166 /
@@ -383,35 +442,39 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 - The existing `lrcbench-external-run-manifest-0.13` runner accepts bounded
   rendered memory, not repository patches. Reusing that wire would be a false
   equivalence.
-- The prediction ledger requires caller-supplied expected system digests, but
-  it does not authenticate their producer or the candidate-capture producer.
-  Rejected raw capture bytes are not retained, so duplicate/invalid/unexpected
-  protocol findings are coordinator assertions rather than independently
-  replayable evidence. A separately verified controller/run contract must close
-  those boundaries before claim-bearing execution.
+- The controller-run ledger retains raw candidate stdout and reconstructs
+  accepted captures from replay, closing the prior byte-consistency gap for
+  controller-owned runs. It still does not authenticate the controller, model,
+  agent, expected system digests, token counts, trajectory, or raw-output
+  producer. Rejected prediction-ledger captures that did not pass through this
+  run boundary remain coordinator assertions rather than independently
+  replayable evidence.
 - The preparer trusts the coordinator host, Python runtime, and hashed Git
   executable/pack parser. Host-level path substitution outside its guarded
   observations remains a documented trust boundary; the output is not a
   candidate filesystem, mount, user, PID, or network sandbox.
+- Controller workspace traversal and executable launch remain pathname-based,
+  not descriptor-pinned against concurrent nested-directory or executable
+  substitution. Process exit, trigger, timing, and cleanup evidence is also an
+  unauthenticated coordinator observation that a producer can relabel while
+  recomputing an internally consistent self-hash. Rows with a failed final scan
+  have no retained final contents to replay.
 
 ## Next exact actions
 
-1. Add the smallest source/sdist-only controller-run ledger around the generic
-   literal-argv lifecycle. Own the launch, retain exact raw output evidence,
-   totalize launch/timeout/stream/protocol failures, derive candidate captures
-   only from replayed controller bytes, and keep every isolation/grading claim
-   false.
-2. Continue exact base-commit license inspection, acquire the remaining seven
+1. Continue exact base-commit license inspection, acquire the remaining seven
    repositories through reviewed channels, and apply the raw-Git preparer to
    the other 460 selected tasks. Retain every success or refusal without
    silently narrowing the cohort.
-3. Do not treat the literal lifecycle's Windows Job or POSIX process group as
-   filesystem, network, PID, user, or mount isolation. Use the implemented
-   complete-cohort prediction ledger for the official
+2. Do not treat the controller-run ledger or the literal lifecycle's Windows
+   Job/POSIX process group as filesystem, network, PID, user, mount, or image
+   isolation. Provision and retain independently verifiable containment before
+   launching any public candidate, while preserving the ledger's fixed-false
+   authentication and grading fields.
+3. Use the implemented complete-cohort prediction ledger for the official
    `instance_id`, `model_name_or_path`, and `model_patch` interchange. Add
-   separately replayable controller/run/result evidence for prompt/model
-   tokens, wall time, trajectory, raw candidate capture, workspace diff, and
-   raw grader output without weakening any fixed-false ledger claim.
+   separately authenticated model/token/trajectory evidence and raw grader
+   output without weakening either ledger's fixed-false claims.
 4. Review and harden the pinned official grader before any score. Require
    hidden-test application success and candidate/hidden-test path
    non-overlap; mark correction recovery and unresolved-question preservation

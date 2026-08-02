@@ -1,17 +1,18 @@
 # SWE-bench Verified source intake
 
 This repository now has reproducible **source intake, candidate-input
-projection, raw-Git repository preparation, and full-cohort prediction-ledger
-boundaries** for SWE-bench Verified. The preparation boundary has passed local
-synthetic-mirror tests and the prediction boundary has passed synthetic
-contract tests. The first retained public cohort attempted 40 selected rows
-across Flask, Seaborn, Requests, Pylint, and Pytest: 34 exact base commits
-passed live preparation replay, six Pylint commits were refused because their
-trees contain forbidden symlinks, and 460 rows remain unattempted. Preparation
-did not create a candidate mount, capture a prediction, run an agent, invoke a
-grader, or produce an external score. The external comparison protocol
-therefore keeps its coding-task slot `pending` and retains blocker
-`coding-task-suite`.
+projection, raw-Git repository preparation, full-cohort prediction-ledger, and
+synthetic controller-run boundaries** for SWE-bench Verified. The preparation
+boundary has passed local synthetic-mirror tests and retained public
+preparation replay; the prediction and controller-run boundaries have passed
+synthetic contract tests. The first retained public cohort attempted 40
+selected rows across Flask, Seaborn, Requests, Pylint, and Pytest: 34 exact base
+commits passed live preparation replay, six Pylint commits were refused because
+their trees contain forbidden symlinks, and 460 rows remain unattempted. No
+public candidate, model, or agent ran; no candidate mount or verified isolation
+exists; and no grader, resolution, external score, or usefulness result exists.
+The external comparison protocol therefore keeps its coding-task slot `pending`
+and retains blocker `coding-task-suite`.
 
 ## Frozen source identity
 
@@ -241,13 +242,71 @@ and `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
 Because rejected candidate bytes are discarded rather than duplicated beside
 the official JSONL, invalid,
 duplicate, and unexpected-capture dispositions are coordinator assertions and
-are explicitly marked as not independently replayable. The later run contract
-must bind controller-owned raw execution evidence before any claim.
+are explicitly marked as not independently replayable unless the capture came
+through the controller-run boundary below. That boundary binds raw bytes and
+workspace observations, not their producer's authenticity or isolated
+execution.
 
-## Requirements before execution or scoring
+## Controller-run boundary
 
-A later executor/grader checkpoint must fail closed unless it can retain and
-verify all of the following:
+`benchmarks.swebench_run` is available only from source and the sdist. It adds
+`ctxc-swebench-run-ledger-0.1` and strict controller result schema
+`ctxc-swebench-controller-result-0.1`; neither is an installed core-package JSON
+Schema. `build_run_ledger()` and its alias `run_swebench_controller()` reconcile
+the full selected cohort. Load, write, decode, and live verification replay the
+same source, task-input, preparation, system, controller, artifact, and
+workspace bindings.
+
+The caller supplies one ordered `CandidateWorkspace` binding per selected task.
+An unprepared row must have no workspace; a prepared row with no workspace is
+retained as unavailable. Before a launch, the coordinator requires the mutable
+workspace to match the verified preparation and independently reverifies the
+prepared repository. It creates a fresh non-overlapping artifact root, writes a
+canonical request containing only `opaque_task_id` and `problem_statement`, and
+appends the request path followed by the workspace path to the configured
+literal argv under protocol `append-request-json-and-workspace-path-v1`. The
+workspace is the process working directory. This is a caller-provided directory,
+not a mount created or isolated by the coordinator.
+
+The process lifecycle retains bounded exact stdout/stderr prefixes and their
+observed/captured counts. Successful complete stdout must be exactly one strict
+controller-result object with the matching opaque id, patch text, bounded token
+document, and bounded ordered trajectory. Patch captures are derived only by
+replaying those retained stdout bytes. The ledger stores exact patch evidence,
+a trajectory count/byte/hash summary, token totals, initial/final workspace
+summaries, and a deterministic delta. Repository-not-attempted,
+preparation-refused, workspace, launch, timeout, stream, process, cleanup,
+nonzero-exit, malformed/oversized output, final-observation, and captured-run
+dispositions remain exhaustive over the source-selected denominator.
+
+Live replay detects artifact drift and current-workspace content drift only
+where an initial or final summary was retained; a final-scan-failure row replays
+the structural failure code, not the missing contents. Replay also requires the
+expected controller executable bytes, argv, environment, source, task input,
+preparations, and system labels to match. Those checks and the ledger self-hash
+are consistency evidence, not signatures or attestation. They do not prove
+which script or loaded code executed, authenticate process exit, trigger,
+timing, cleanup, the controller, system, agent, model, token counter,
+trajectory, or raw-output producer, or prevent an uncontained controller from
+accessing host paths. Workspace traversal and launch remain pathname-based,
+not descriptor-pinned against concurrent nested-directory or executable
+substitution. `provider_reported` and `tokenizer:*` counts remain controller
+assertions; `not_measured` remains explicit.
+
+The underlying lifecycle owns a Windows Job or an escapable POSIX process
+group. It provides no mount, filesystem, network, user, PID, or immutable-image
+isolation. Every candidate-execution-authentication, isolation, hidden-test,
+grading, resolution, score, usefulness, producer-authentication, and
+claim-readiness field is fixed false. The focused suite passed 42 synthetic
+cases and skipped one in 158.55 seconds on Windows; the skipped
+directory-symlink-root fixture was unavailable because this Windows token lacks
+directory-symlink privilege. No public candidate, model, agent, or grader was
+used.
+
+## Requirements before public execution or scoring
+
+A claim-bearing public executor/grader checkpoint must fail closed unless it can
+retain and verify all of the following:
 
 1. Run the remaining 460 selected source rows through the raw-Git preparer and
    retain every success or refusal. Independently create a candidate mount from
@@ -264,11 +323,12 @@ verify all of the following:
    false-positive path when hidden-test application fails.
 5. A reviewed, immutable harness environment and container/image identities,
    not merely a tag and source-file hash.
-6. An execution/result contract binding code revision, suite and selection,
-   model, prompts, tools, tokens, wall time, trajectory, patch, every failure,
-   and raw official grader evidence. Timeouts, missing output, invalid patches,
-   setup failures, grader failures, and test failures all remain in the
-   denominator.
+6. Use the controller-run ledger for exact requests, raw streams, workspace
+   observations, patches, wall time, and every launch/process/output failure,
+   then add independently authenticated code/controller/model, prompt, tool,
+   token, and trajectory evidence plus raw official grader evidence. Timeouts,
+   missing output, invalid patches, setup failures, grader failures, and test
+   failures all remain in the denominator.
 7. Metrics for task completion, prompt/model tokens, wall time, and failure
    rate. Correction recovery and unresolved-question preservation remain
    explicitly `not_measured` unless the retained trajectory supports them.

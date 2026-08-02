@@ -83,6 +83,15 @@ versioning and release rules in
 
 ### Added
 
+- A source/sdist-only SWE-bench controller-run ledger that reconciles the full
+  selected denominator, verifies caller-provided workspaces against prepared
+  trees, appends exact request/workspace paths to a fixed literal command,
+  retains bounded raw stdout/stderr prefixes, derives candidate captures only
+  from replayed stdout, and records final workspace summaries and deltas. The
+  current evidence is synthetic only: it establishes no public candidate,
+  model, or agent run; mount/filesystem/network/user/PID/image isolation;
+  authenticated controller/model/token/trajectory evidence; hidden-test
+  application; grading; resolution; score; usefulness; or claim readiness.
 - A retained first public SWE-bench preparation cohort: 40 selected rows
   attempted across five repositories, with 34 source-bound trees replayed and
   six Pylint rows retained as exact `tree-symlink-forbidden` policy refusals.

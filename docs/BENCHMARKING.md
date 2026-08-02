@@ -628,15 +628,40 @@ evidence, not proof of candidate execution or grading. Replay requires the
 separately retained expected code/model/agent/prompt/tool/controller identity,
 but those caller-supplied digests are not authenticated producer evidence.
 Rejected raw capture content is not duplicated, so duplicate/invalid/unexpected
-protocol rows remain producer-asserted pending the later controller/run
-evidence contract.
+protocol rows remain producer-asserted unless their bytes came through the
+controller-run evidence boundary below.
+
+The source/sdist-only controller-run ledger now supplies that bounded raw-byte
+and workspace-observation contract for runs launched through it. It requires one
+ordered workspace binding for every selected task, verifies each supplied
+mutable tree against the successful preparation, appends an exact two-field
+request path and workspace path to a fixed literal controller argv, and retains
+bounded raw stdout/stderr prefixes plus initial/final workspace summaries and a
+deterministic delta. Repository, workspace, launch, process, stream, malformed
+output, oversized patch, and captured-run dispositions remain exhaustive over
+the complete source-selected denominator. Candidate captures passed to the
+prediction ledger are reconstructed only from replayed stdout.
+
+That consistency boundary is not an execution attestation or sandbox. The
+workspace is caller-provided, not a created candidate mount. Executable, argv,
+environment, system, token, trajectory, and self-hash bindings do not
+authenticate a controller, agent, model, loaded code, output producer, token
+counter, or trajectory. The underlying Windows Job or escapable POSIX process
+group does not establish mount, filesystem, network, user, PID, or image
+isolation. Workspace traversal and executable launch are pathname-based rather
+than descriptor-pinned, process exit/trigger/timing/cleanup fields are
+unauthenticated coordinator observations, and a row with no retained final
+summary cannot replay missing workspace contents. Current tests launch only
+synthetic controllers and repositories; no public candidate, model, agent,
+grader, resolution, score, or usefulness measurement exists.
 
 The external protocol's coding-task slot therefore remains `pending`: the
 pinned dataset card declares no license, and the remaining public-cohort
-preparation, candidate mount isolation, network-isolation evidence, grader security review,
-exact hidden-test application, redistribution review, execution, and scoring
-all remain false. HMAC ids do not prevent relinking from public problem text or
-establish that a model has not seen benchmark gold.
+preparation, independently verified candidate mount/filesystem and network
+isolation, grader security review, exact hidden-test application,
+redistribution review, public execution, grading, resolution, and scoring all
+remain absent or false. HMAC ids do not prevent relinking from public problem
+text or establish that a model has not seen benchmark gold.
 
 The harness code's MIT license does not license the dataset rows or third-party
 repository snapshots. See [SWE-bench Verified source intake](SWEBENCH_EVALUATION.md)
