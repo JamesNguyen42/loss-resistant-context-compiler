@@ -23,9 +23,11 @@ def test_atomic_writer_requires_text_and_boolean_overwrite(tmp_path: Path) -> No
 def test_exclusive_atomic_install_creates_complete_file(tmp_path: Path) -> None:
     output = tmp_path / "output.json"
 
-    atomic_write_text(output, '{"complete":true}\n', overwrite=False)
+    identity = atomic_write_text(output, '{"complete":true}\n', overwrite=False)
 
     assert output.read_text(encoding="utf-8") == '{"complete":true}\n'
+    value = output.stat()
+    assert identity == (value.st_dev, value.st_ino)
     assert list(tmp_path.glob(".ctxc-*.tmp")) == []
 
 

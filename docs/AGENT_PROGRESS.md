@@ -6,17 +6,17 @@ Last updated: 2026-08-01 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Base commit for this in-progress checkpoint: `e3f2d62`
-- Current checkpoint: source-only, coordinator-owned raw-Git repository
-  preparation for an exact SWE-bench base commit. It has synthetic mirror
+- Base commit for this in-progress checkpoint: `fbb045b`
+- Current checkpoint: source/sdist-only, complete-cohort SWE-bench prediction
+  reconciliation and canonical official JSONL. It has synthetic/adversarial
   coverage but has not prepared the selected public repositories, created a
   candidate mount, executed a task, invoked a grader, or produced a score.
-- Previous checkpoint: the bounded literal-argv process lifecycle was committed
-  and pushed as `e3f2d62`.
-- Next task: apply the preparer to license-reviewed public-suite mirrors, then
-  implement prediction/run/result evidence around a separately verified
-  external container/VM controller. Do not encode a repository patch as an
-  LRCBench rendered-memory candidate.
+- Previous checkpoint: bounded raw-Git repository preparation was committed
+  and pushed as `fbb045b`.
+- Next task: add run/result evidence around a separately verified external
+  container/VM controller, then apply the preparer and prediction ledger to
+  license-reviewed public-suite repositories. Do not encode a repository patch
+  as an LRCBench rendered-memory candidate.
 
 ## Mission status
 
@@ -24,14 +24,43 @@ Last updated: 2026-08-01 (America/Los_Angeles)
 2. LocalAI 1.0 contract convergence: isolated optional adapter, exact-wheel
    validation, conversion audit, and contract request complete in `c0ee2f9`.
 3. Public long-horizon suite evidence: SWE-bench Verified source selection,
-   candidate-input projection, and a synthetic-tested raw-Git preparation
-   boundary are pinned. No selected public repository has been prepared, no
-   model or grader has run, and no external score exists. A second materially
-   different public suite is still required.
+   candidate-input projection, synthetic-tested raw-Git preparation, and a
+   full-cohort prediction/official-JSONL boundary are pinned. No selected public
+   repository has been prepared, no model or grader has run, and no external
+   score exists. A second materially different public suite is still required.
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
 ## Current checkpoint
+
+- Added source/sdist-only `benchmarks.swebench_prediction` and
+  `ctxc-swebench-prediction-ledger-0.1` without changing the dependency-free
+  wheel or its 26 installed schemas.
+- Revalidate the exact source/key-bound task projection and every claimed
+  successful repository preparation, then reconcile the complete selected
+  cohort in physical source order. Every task closes over repository not
+  attempted, preparation refused, prepared without prediction, or prediction
+  recorded; malformed, missing, duplicate, unexpected, oversized, and
+  unprepared-task captures cannot shrink the denominator.
+- Emit a canonical UTF-8/LF JSONL with exactly `instance_id`,
+  `model_name_or_path`, and `model_patch` once per selected task. Strict UTF-8
+  patch text, including NUL, U+FEFF, line endings, and final-newline state, is
+  preserved without normalization. The ledger retains only counts and SHA-256
+  bindings for accepted patch bytes, canonical lines, and the complete JSONL.
+- Require a separately supplied expected code revision/clean-state plus
+  model/agent/prompt/tool/controller identity for construction and every live
+  replay. Keep system-authentication and candidate-capture-origin claims false;
+  rejected raw captures are not retained, so protocol violations are explicitly
+  not independently replayable at this boundary.
+- Bound per-patch bytes, aggregate retained-capture bytes, capture count, JSONL,
+  ledger, and violation work before expensive conversion. Refuse links,
+  reparse/special outputs, writes within a prepared tree or mirror, and
+  substitution-unsafe cleanup after late failures.
+- Keep candidate mount, candidate execution, hidden-test application, grading,
+  external score, usefulness, and claim-readiness flags permanently false.
+  Local tests are mechanism evidence only, not public SWE-bench results.
+
+## Completed repository-preparation checkpoint (`fbb045b`)
 
 - Added source/sdist-only `benchmarks.swebench_repository` and its standalone
   staged worker with `ctxc-swebench-bare-mirror-0.1` and
@@ -181,6 +210,15 @@ Last updated: 2026-08-01 (America/Los_Angeles)
 All ordinary commands used the repository Python 3.12 virtual environment.
 Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
+- Prediction-ledger focused suite: all 47 cases passed on Windows.
+  It covers exact UTF-8 patch preservation, empty predictions, complete-cohort
+  closure, source/key/preparation/system replay, missing/duplicate/unexpected/
+  malformed/oversized captures, hostile subclasses and lying sequences,
+  aggregate work replay, hard links, output-tree/mirror guards, descriptor and
+  A-B-A substitution, identity-safe late cleanup, forged/resigned ledgers, and
+  every fixed-false execution/grading/claim state. The final combined
+  prediction, strict-JSON, atomic, and parent-safety run passed 67 with three
+  expected platform skips in 101.8 seconds.
 - Repository-preparation focused suite: 26 collected on Windows in 88.3
   seconds; 25 passed and the POSIX-only directory-mode regression skipped.
   It creates real synthetic local Git mirrors and covers exact commit/tree/blob
@@ -203,9 +241,8 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 - External-runner focused deadline tests: 2 passed. The complete
   172-test `tests/test_external_runner.py` file passed with 168 passes and four
   existing platform skips; Ruff passed for the changed module and tests.
-- `python -m pytest -q`: exit 0 in 376.1 seconds; 2,256 collected, with 2,230
-  passing tests and 26 platform/optional skips counted from the complete
-  progress stream. A separate collection pass confirmed all 2,256 tests.
+- `python -m pytest -o addopts='' -q -ra`: 2,278 passed, 26 expected
+  platform/optional skips, and 112 subtests passed in 445.52 seconds.
 - Focused SWE-bench, benchmark JSON I/O, and external-protocol set: 36 passed.
   It includes missing/extra/duplicate/reordered rows, per-record binding drift,
   hidden-vs-public digest separation, gold canaries, poisoned credential
@@ -234,6 +271,17 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 - External protocol verification passed with protocol self-hash
   `48e0c336878a292819ebd1015f7a9dbf9c5065f91c65411512aec458745fcd46`
   and `claim_ready: false`.
+- Two `SOURCE_DATE_EPOCH=1700000000` wheel/sdist pairs were byte identical.
+  Each sdist was 1,323,604 bytes with SHA-256
+  `7c1d5089c729f3d28257ffda83960776c671f4cf4a74f8ade0fc0a765a41320c`;
+  each wheel was 316,638 bytes with SHA-256
+  `726ca9ef97f6943c33ba7277dba10180268c00486aaf68fd70a53053d60a4499`.
+  The reproducibility report passed with self-hash
+  `d4af42633fbc07ed105f04ff7fc3f73a8a122ecab41f9b7b6f162b19b0ccafd8`.
+  Both new prediction files were present in the sdist; the source-only module
+  was absent from the wheel, which retained exactly 26 schemas. The clean
+  wheel/sdist install smoke passed for both artifacts with schema count 26 and
+  byte-identical source/wheel/sdist materialization evidence.
 - Two fixed-epoch sdists built before recording this evidence were byte
   identical at 1,296,166 bytes with SHA-256
   `c75d30376ea49412e9b2c9b45a69c94db2dbf9978e73731334ea05328c2d2e91`.
@@ -280,6 +328,12 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 - The existing `lrcbench-external-run-manifest-0.13` runner accepts bounded
   rendered memory, not repository patches. Reusing that wire would be a false
   equivalence.
+- The prediction ledger requires caller-supplied expected system digests, but
+  it does not authenticate their producer or the candidate-capture producer.
+  Rejected raw capture bytes are not retained, so duplicate/invalid/unexpected
+  protocol findings are coordinator assertions rather than independently
+  replayable evidence. A separately verified controller/run contract must close
+  those boundaries before claim-bearing execution.
 - The preparer trusts the coordinator host, Python runtime, and hashed Git
   executable/pack parser. Host-level path substitution outside its guarded
   observations remains a documented trust boundary; the output is not a
@@ -295,10 +349,11 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
    the generic literal-argv lifecycle. Do not treat the lifecycle's Windows
    Job or POSIX process group as filesystem, network, PID, user, or mount
    isolation.
-3. Add SWE-bench prediction/run/result evidence around the official
-   `instance_id`, `model_name_or_path`, and `model_patch` fields. Retain every
-   selected task and failure in the denominator, plus prompt/model tokens,
-   wall time, trajectory, workspace diff, and raw grader evidence.
+3. Use the implemented complete-cohort prediction ledger for the official
+   `instance_id`, `model_name_or_path`, and `model_patch` interchange. Add
+   separately replayable controller/run/result evidence for prompt/model
+   tokens, wall time, trajectory, raw candidate capture, workspace diff, and
+   raw grader output without weakening any fixed-false ledger claim.
 4. Review and harden the pinned official grader before any score. Require
    hidden-test application success and candidate/hidden-test path
    non-overlap; mark correction recovery and unresolved-question preservation

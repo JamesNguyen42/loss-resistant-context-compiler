@@ -40,8 +40,8 @@ def atomic_write_text(
     value: str,
     *,
     overwrite: bool = True,
-) -> None:
-    """Install complete UTF-8 text atomically in the destination directory."""
+) -> tuple[int, int]:
+    """Install UTF-8 text atomically and return its device/inode identity."""
 
     if not isinstance(value, str):
         raise TypeError("atomic text output must be a string")
@@ -228,3 +228,6 @@ def atomic_write_text(
                         )
                         if final_identity == temporary_identity:
                             temporary_path.unlink()
+    if temporary_identity is None:  # pragma: no cover - successful writes set it
+        raise RuntimeError("atomic output identity was not captured")
+    return temporary_identity

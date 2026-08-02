@@ -56,7 +56,7 @@ live-readiness status.
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
-| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation contract with 26 local synthetic tests, but none of the 500 selected public tasks has been prepared; dataset/repository license review, candidate mount/execution, grader execution, and scoring remain absent |
+| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation and full-cohort prediction-ledger contracts with local synthetic/adversarial tests, but none of the 500 selected public tasks has been prepared or run; dataset/repository license review, candidate mount/execution, grader execution, and scoring remain absent |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
 | OpenHands integration | Separate `ctxc-openhands` draft alpha; exact current version is owned by its package metadata; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
 | Installed JSON Schemas | 26 (7 historical ids, 19 current-namespace ids) |
@@ -327,6 +327,7 @@ and measured duration.
 | `benchmarks/swebench.py` | Offline pinned-source verification, exact canonical snapshot materialization, and source/key-bound gold-free task projection |
 | `benchmarks/swebench_repository.py` | Source/sdist-only coordinator for local SHA-1 bare-mirror verification, raw base-commit export, strict self-hashed mirror/preparation evidence, live mirror/output replay, and fixed-false claim flags |
 | `benchmarks/swebench_repository_worker.py` | Staged worker launched with Python isolation flags (`-B -I -S`) for bounded raw Git-object traversal/export, mirror safety checks, and portable regular-file-only output |
+| `benchmarks/swebench_prediction.py` | Source/sdist-only complete-cohort prediction reconciliation, canonical official JSONL emission, source/preparation/system binding, live replay, and fixed-false execution/grading/claim flags |
 | `benchmarks/suites/swebench_verified_v1.json` | Self-hashed 500-row SWE-bench Verified source, selection, license, projection, harness, and claim boundary |
 | `benchmarks/compatibility/` | Result-blind pinned system screens and retained ACON blocker/failure evidence |
 | `conformance/` | Dependency-free connector schema/golden/negative validation and in-process/stdio equivalence |
@@ -739,6 +740,7 @@ operations, validation, and unresolved host requirements.
 | SWE-bench verification summary | `ctxc-swebench-verification-0.1` |
 | SWE-bench bare-mirror evidence | `ctxc-swebench-bare-mirror-0.1` |
 | SWE-bench repository preparation evidence | `ctxc-swebench-repository-preparation-0.1` |
+| SWE-bench prediction ledger | `ctxc-swebench-prediction-ledger-0.1` |
 | Adapter process-environment evidence | `lrcbench-process-environment-0.1` |
 | Installed schema directory | `share/loss-resistant-context-compiler/schemas` |
 
@@ -1217,7 +1219,7 @@ audited. Any selected superseded item independently fails verification as
   excludes source construction, `tracemalloc` is not RSS, and the separate
   10,000-to-1,000,000-event characterization remains open.
 
-### SWE-bench Verified source and repository-preparation evidence
+### SWE-bench Verified source, repository-preparation, and prediction evidence
 
 The source-only suite descriptor pins all 500 official Verified `test` rows at
 dataset revision `91aa3ed51b709be6457e12d00300a6a596d4c6a3`, exact Parquet and
@@ -1244,6 +1246,26 @@ directory-mode regression skipped. Its fixtures use temporary local SHA-1
 mirrors only: they prepare no public repository and
 exercise none of the selected 500 tasks. This is contract and mechanism
 evidence, not public SWE-bench evaluation evidence.
+
+The source/sdist-only prediction coordinator closes the complete selected
+cohort in physical source order and emits the exact official three-field JSONL
+interchange. Every row is retained as repository not attempted, preparation
+refused, prepared without a prediction, or prediction recorded. Missing,
+duplicate, unexpected, malformed, oversized, and unprepared-task captures are
+bounded nonpredictions or protocol violations; they cannot silently shrink the
+denominator. Accepted strict UTF-8 patch text is preserved exactly only in the
+JSONL, while the ledger retains byte counts and SHA-256 bindings. The ledger
+replays the source/key projection and every successful repository preparation,
+requires a separately supplied expected code/model/agent/prompt/tool/controller
+identity, and prevents its outputs from being written inside a prepared tree or
+bare mirror. Those expected digests and caller-supplied candidate observations
+remain unauthenticated coordinator assertions.
+
+`tests/test_swebench_prediction.py` contains 47 synthetic and adversarial
+tests. The final local Windows run passed all 47 as part of a 67-pass focused
+prediction/strict-JSON/atomic/path-safety matrix with three expected platform
+skips. This is contract and mechanism evidence, not a captured public-suite
+prediction.
 
 This checkpoint remains source-only. The dataset card declares no license; raw
 source rows remain local, and dataset/repository license and redistribution
@@ -1755,14 +1777,15 @@ project work is the external and natural-history evidence path:
    hiding a failure;
 5. add clean adapters only for included systems and retain every failed run;
 6. complete SWE-bench dataset/repository license and redistribution review,
-   then run all 500 selected public tasks through the source-only raw-Git
+   then prepare all 500 selected public tasks through the source-only raw-Git
    boundary, retaining every success or refusal and both mirror/preparation
-   evidence; use the wire-neutral literal lifecycle only to launch a separately
-   verified container/VM controller for candidate mount/filesystem and network
-   isolation, candidate execution, official-grader hardening and execution,
+   evidence; use the complete-cohort prediction ledger for official JSONL, and
+   the wire-neutral literal lifecycle only to launch a separately verified
+   container/VM controller for candidate mount/filesystem and network isolation,
+   candidate execution, official-grader hardening and execution,
    hidden-test-patch application, and task result/score evidence; do not reuse
-   the LRCBench rendered-memory runner for patches or treat either the literal
-   lifecycle or raw exporter as a sandbox;
+   the LRCBench rendered-memory runner for patches or treat the lifecycle, raw
+   exporter, or prediction ledger as a sandbox;
 7. select and source-bind a materially different second public suite;
 8. collect licensed/consented natural histories under the implemented privacy,
    independent-annotation, adjudication, grouped-split, and no-leakage contracts.
@@ -1793,6 +1816,7 @@ python -m benchmarks --self-test
 python -m benchmarks.external_protocol --verify benchmarks/protocols/external-comparison-v1.json
 python -m benchmarks.swebench verify-suite
 python -m pytest -q tests/test_swebench_repository.py
+python -m pytest -q tests/test_swebench_prediction.py
 python -m benchmarks --verify-report docs/results/lrcbench-local.json
 python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
 python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json

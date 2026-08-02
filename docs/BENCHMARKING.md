@@ -608,6 +608,25 @@ evidence. Mirror, worker, and preparation self-hashes do not authenticate an
 author. The manifest keeps redistribution, mount/network isolation, execution,
 grader review, score, usefulness, and claim readiness false.
 
+The source/sdist prediction ledger makes the full selected cohort, rather than
+an upstream predictions loader, authoritative for the denominator. It
+revalidates source/key and successful preparation evidence, reconciles
+opaque-id candidate captures exhaustively in physical source order, and
+totalizes refusals plus missing, duplicate, unexpected, invalid, and oversized
+outputs as retained nonpredictions/protocol violations. Its exact three-field
+official JSONL has one row per selected task; per-patch, per-line, and
+whole-file byte/hash bindings make canonical replay deterministic while the
+ledger retains no patch text or runtime path. Contiguous capture ordinals
+replay aggregate retained-byte limits without double-counting task/protocol
+evidence, and guarded reads bind the descriptor actually opened to the
+initial/installed artifact identity. This is prediction interchange
+evidence, not proof of candidate execution or grading. Replay requires the
+separately retained expected code/model/agent/prompt/tool/controller identity,
+but those caller-supplied digests are not authenticated producer evidence.
+Rejected raw capture content is not duplicated, so duplicate/invalid/unexpected
+protocol rows remain producer-asserted pending the later controller/run
+evidence contract.
+
 The external protocol's coding-task slot therefore remains `pending`: the
 pinned dataset card declares no license, and public-cohort preparation,
 candidate mount isolation, network-isolation evidence, grader security review,

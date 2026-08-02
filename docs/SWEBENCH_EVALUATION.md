@@ -1,12 +1,14 @@
 # SWE-bench Verified source intake
 
-This repository now has a reproducible **source intake, candidate-input
-projection, and raw-Git repository-preparation boundary** for SWE-bench
-Verified. The preparation boundary has passed local synthetic-mirror tests; it
-has not prepared the selected public repositories, created a candidate mount,
-run an agent, invoked the grader, or produced an external score. The external
-comparison protocol therefore keeps its coding-task slot `pending` and retains
-blocker `coding-task-suite`.
+This repository now has reproducible **source intake, candidate-input
+projection, raw-Git repository preparation, and full-cohort prediction-ledger
+boundaries** for SWE-bench Verified. The preparation boundary has passed local
+synthetic-mirror tests and the prediction boundary has passed synthetic
+contract tests; neither is public-task evidence. No selected public repository
+has been prepared, candidate mount created, candidate prediction captured,
+agent run, grader invoked, or external score produced. The external comparison
+protocol therefore keeps its coding-task slot `pending` and retains blocker
+`coding-task-suite`.
 
 ## Frozen source identity
 
@@ -175,6 +177,61 @@ behavior, not public-cohort coverage, repository redistribution permission,
 hostile-pack parser safety, or candidate isolation. A rejected public
 repository must later become a retained per-task preparation failure rather
 than disappearing from the 500-task denominator.
+
+## Full-cohort prediction boundary
+
+`benchmarks.swebench_prediction` is source/sdist-only and keeps candidate
+capture separate from repository preparation, execution, and grading. Its
+`ctxc-swebench-prediction-ledger-0.1` document revalidates the exact source,
+source/key-bound task input, and every claimed successful preparation. It then
+reconciles candidate outputs by opaque task id and maps to canonical
+`instance_id` only in the coordinator-owned artifact.
+
+Every selected row remains present in physical source order with one closed
+disposition: repository not attempted, repository preparation refused,
+prepared with no prediction, or prediction recorded. Missing, duplicate,
+unexpected, malformed, invalid-text, oversized, and unprepared-task outputs
+become per-task nonpredictions or bounded protocol violations. They do not
+abort after partial work, disappear from the denominator, or gain a patch by
+best-effort parsing. Unknown identifiers and rejected output content are not
+serialized verbatim.
+
+Accepted patch text is preserved as exact strict UTF-8 without newline or
+Unicode normalization and appears only in the deterministic official
+interchange. This includes NUL and U+FEFF inside the JSON string; Unicode
+surrogate code points fail closed rather than being normalized or repaired.
+That JSONL contains exactly one compact line for every selected task, with
+exact fields `instance_id`, `model_name_or_path`, and `model_patch`.
+Nonpredictions use JSON `null`. The ledger retains the exact byte count and
+SHA-256 of each recorded patch and canonical line plus the complete JSONL byte
+count, line count, and SHA-256; it does not serialize runtime paths, the opaque
+key, problem statements, source gold, or rejected raw output.
+
+Finite limits separately cap patch bytes, candidate-capture count, aggregate
+retained-capture bytes, protocol violations, ledger bytes, and JSONL bytes.
+Contiguous zero-based capture ordinals let replay count each retained capture
+once even when the same evidence appears in both a task row and its protocol
+violation. Guarded file replay binds the identity of the descriptor actually
+read to the initial or installed file identity, so an A-B-A pathname swap
+cannot substitute same-byte evidence while mutating the intended output.
+Every live verification also requires an independently supplied expected
+identity for the code revision/clean-state claim plus model, agent, prompt,
+tool, and controller digests. Reconciliation prevents a ledger-only identity
+rewrite, but the supplied labels and hashes are not signatures, attestation,
+or proof that those components produced a capture.
+
+The ledger is the authoritative denominator and disposition evidence. The
+JSONL is only a harness interchange artifact: upstream loaders may collapse
+duplicate ids or filter empty patches, so replay verifies the exact canonical
+line sequence instead of treating a successful load as completeness proof.
+Self-hashes do not authenticate a model or coordinator. Fixed-false state
+records that no candidate mount, execution, hidden-test application, grading,
+score, usefulness, or claim readiness follows from this checkpoint. No real
+500-row prediction ledger or JSONL is committed. Because rejected candidate
+bytes are discarded rather than duplicated beside the official JSONL, invalid,
+duplicate, and unexpected-capture dispositions are coordinator assertions and
+are explicitly marked as not independently replayable. The later run contract
+must bind controller-owned raw execution evidence before any claim.
 
 ## Requirements before execution or scoring
 

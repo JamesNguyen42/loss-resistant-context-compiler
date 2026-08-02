@@ -206,6 +206,44 @@ origin, redistribution, mount, network, execution, grader, score, usefulness,
 and claim-readiness fields remain false. Synthetic Git tests are not evidence
 that any of the 500 public task repositories was prepared or safely mounted.
 
+### SWE-bench prediction ledger
+
+`benchmarks.swebench_prediction` is another source/sdist-only coordinator
+boundary. Its `ctxc-swebench-prediction-ledger-0.1` document is authoritative
+for the complete selected denominator in physical source order. Construction
+replays the source/key-bound task projection and every claimed successful
+repository preparation; candidate-facing captures remain keyed only by the
+opaque task id until the coordinator performs the canonical-instance mapping.
+
+The reconciler closes every selected row over one of four dispositions:
+repository not attempted, repository preparation refused, prepared with no
+prediction, or prediction recorded. Missing, duplicate, unexpected, malformed,
+and oversized candidate outputs become retained nonpredictions or bounded
+protocol violations instead of aborting after partial work or silently
+shrinking the cohort. Patch text is never normalized: strict UTF-8, including
+NUL, U+FEFF, line endings, and final-newline state, is preserved exactly once
+in the emitted JSONL. Unicode surrogate code points are rejected rather than
+normalized or repaired. The ledger retains only byte counts and SHA-256
+bindings for patches, canonical JSONL lines, and the complete artifact.
+Contiguous capture ordinals let replay de-duplicate task/protocol evidence and
+re-enforce candidate count and aggregate retained-capture bytes separately from
+per-patch and artifact bytes. Construction, load, write, and replay require the
+separately retained expected code/model/agent/prompt/tool/controller identity;
+matching those caller-supplied digests does not authenticate their producer.
+
+The deterministic interchange has exactly one line per selected task and the
+official fields `instance_id`, `model_name_or_path`, and `model_patch`.
+Nonpredictions use `model_patch: null`; the ledger, not an upstream loader, is
+the denominator and disposition authority. The JSONL and its self-hashed
+ledger are coordinator evidence only: they do not prove that a model produced
+the bytes or that a repository was mounted, executed, graded, resolved, or
+useful. All execution, grading, score, and claim-readiness flags remain false,
+and no public-suite prediction artifact is checked in. Rejected raw candidate
+content is deliberately not retained, so its status and the duplicate/unknown
+protocol rows remain coordinator assertions rather than independently
+replayable capture evidence. A later claim-bearing controller/run contract must
+provide the missing origin and execution evidence.
+
 ## External baselines
 
 The bundled baselines are deterministic controls, not claims about the current

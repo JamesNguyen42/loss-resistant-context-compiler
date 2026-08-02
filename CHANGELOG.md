@@ -83,6 +83,12 @@ versioning and release rules in
 
 ### Added
 
+- A source/sdist-only SWE-bench prediction-ledger boundary that reconciles the
+  complete selected cohort in physical source order, totalizes missing,
+  duplicate, unexpected, invalid, oversized, and unprepared candidate outputs,
+  replays aggregate capture limits and opened-file identities, and writes
+  deterministic official three-field JSONL while keeping execution, grading,
+  score, usefulness, and claim-readiness assertions false.
 - A source/sdist-only SWE-bench repository-preparation boundary that verifies
   a local SHA-1 bare mirror, streams raw commit/tree/blob objects without a
   checkout or archive, rejects non-portable/link/submodule paths, exports only

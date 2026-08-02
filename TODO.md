@@ -667,10 +667,15 @@ Acceptance:
   only fresh regular files, and independently rescans the result. The current
   evidence is from synthetic local mirrors; no selected public task was
   prepared and no candidate mount was created.
+- [x] Add a full-selected-cohort SWE-bench prediction ledger and deterministic
+  official JSONL boundary. Revalidate source/key and successful preparation
+  evidence, preserve exact patch text only in JSONL, and retain missing,
+  duplicate, unexpected, invalid, oversized, and unprepared outputs without
+  shrinking the denominator or implying execution, grading, or a score.
 - [ ] Complete SWE-bench dataset/repository license review, prepare and retain
   every selected base-commit outcome, establish candidate mount and network
-  isolation, harden hidden-test application and grading, and add a task
-  execution/result evidence contract before running or scoring any candidate.
+  isolation, harden hidden-test application and grading, and add task
+  run/result evidence before running or scoring any candidate.
 - [ ] Preregister at least two public long-horizon agent suites.
 - [ ] Include a coding benchmark where repository state and exact failures
   matter.

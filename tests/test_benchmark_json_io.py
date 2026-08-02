@@ -30,11 +30,14 @@ def test_strict_json_file_records_exact_bytes_and_accepts_utf8_bom(tmp_path) -> 
     path = tmp_path / "evidence.json"
     encoded = b'\xef\xbb\xbf{"nested":{"value":1}}\r\n'
     path.write_bytes(encoded)
+    value = path.stat()
+    identity = (value.st_dev, value.st_ino)
 
     document = load_strict_json_file(
         path,
         limits=limits(),
         label="fixture",
+        expected_identity=identity,
     )
 
     assert document.value == {"nested": {"value": 1}}
@@ -51,6 +54,7 @@ def test_strict_json_file_records_exact_bytes_and_accepts_utf8_bom(tmp_path) -> 
         path,
         max_bytes=len(encoded),
         label="fixture",
+        expected_identity=identity,
     )
     assert binary.value == encoded
     assert binary.byte_count == document.byte_count
@@ -61,11 +65,45 @@ def test_strict_json_file_records_exact_bytes_and_accepts_utf8_bom(tmp_path) -> 
             max_bytes=len(encoded) - 1,
             label="fixture",
         )
+    with pytest.raises(StrictJsonError, match="identity does not match"):
+        read_bounded_regular_file(
+            path,
+            max_bytes=len(encoded),
+            label="fixture",
+            expected_identity=(identity[0], identity[1] + 1),
+        )
+    with pytest.raises(TypeError, match="expected_identity"):
+        load_strict_json_file(
+            path,
+            limits=limits(),
+            label="fixture",
+            expected_identity=(identity[0], True),  # type: ignore[arg-type]
+        )
     with pytest.raises(StrictJsonError, match="exceeds"):
         read_bounded_regular_file(
             path,
             max_bytes=len(encoded) - 1,
             label="fixture",
+        )
+
+
+def test_strict_json_file_can_reject_utf8_bom_without_a_second_read(tmp_path) -> None:
+    path = tmp_path / "bom-forbidden.json"
+    path.write_bytes(b'\xef\xbb\xbf{"value":1}\n')
+
+    with pytest.raises(StrictJsonError, match="must not contain a BOM"):
+        load_strict_json_file(
+            path,
+            limits=limits(),
+            label="fixture",
+            allow_bom=False,
+        )
+    with pytest.raises(TypeError, match="allow_bom must be a boolean"):
+        load_strict_json_file(
+            path,
+            limits=limits(),
+            label="fixture",
+            allow_bom=1,  # type: ignore[arg-type]
         )
 
 

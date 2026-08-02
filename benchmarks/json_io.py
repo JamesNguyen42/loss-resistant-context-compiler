@@ -71,6 +71,20 @@ def _file_identity(value: os.stat_result) -> tuple[int, int]:
     return value.st_dev, value.st_ino
 
 
+def _expected_file_identity(
+    value: object,
+) -> tuple[int, int] | None:
+    if value is None:
+        return None
+    if (
+        type(value) is not tuple
+        or len(value) != 2
+        or any(type(part) is not int or part < 0 for part in value)
+    ):
+        raise TypeError("expected_identity must be a device/inode integer pair")
+    return value
+
+
 def _file_content_snapshot(
     value: os.stat_result,
 ) -> tuple[int, int, int, int, int, int, int]:
@@ -269,8 +283,16 @@ def _read_bounded_regular_file(
     *,
     limits: StrictJsonLimits,
     label: str,
+    expected_identity: tuple[int, int] | None = None,
 ) -> bytes:
     with _open_regular_file(path, label=label) as (descriptor, file_stat):
+        if (
+            expected_identity is not None
+            and _file_identity(file_stat) != expected_identity
+        ):
+            raise StrictJsonError(
+                f"open {label} identity does not match the expected file: {path}"
+            )
         if file_stat.st_size > limits.max_bytes:
             raise StrictJsonError(f"{label} exceeds {limits.max_bytes} bytes")
         chunks: list[bytes] = []
@@ -339,6 +361,7 @@ def read_bounded_regular_file(
     *,
     max_bytes: int,
     label: str = "input file",
+    expected_identity: tuple[int, int] | None = None,
 ) -> StrictBinaryDocument:
     """Read exact bytes from one safely opened, bounded regular file."""
 
@@ -348,6 +371,7 @@ def read_bounded_regular_file(
         raise ValueError("max_bytes must be positive")
     if not isinstance(label, str) or not label:
         raise TypeError("label must be a non-empty string")
+    selected_identity = _expected_file_identity(expected_identity)
     encoded = _read_bounded_regular_file(
         Path(path),
         limits=StrictJsonLimits(
@@ -356,6 +380,7 @@ def read_bounded_regular_file(
             max_depth=1,
         ),
         label=label,
+        expected_identity=selected_identity,
     )
     return StrictBinaryDocument(
         value=encoded,
@@ -369,6 +394,8 @@ def load_strict_json_file(
     *,
     limits: StrictJsonLimits,
     label: str = "JSON input",
+    allow_bom: bool = True,
+    expected_identity: tuple[int, int] | None = None,
 ) -> StrictJsonDocument:
     """Read one regular UTF-8 file and reject unsafe JSON before decoding."""
 
@@ -376,17 +403,23 @@ def load_strict_json_file(
         raise TypeError("limits must be a StrictJsonLimits value")
     if not isinstance(label, str) or not label:
         raise TypeError("label must be a non-empty string")
+    if not isinstance(allow_bom, bool):
+        raise TypeError("allow_bom must be a boolean")
+    selected_identity = _expected_file_identity(expected_identity)
     input_path = Path(path)
     encoded = _read_bounded_regular_file(
         input_path,
         limits=limits,
         label=label,
+        expected_identity=selected_identity,
     )
     try:
         raw = encoded.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise StrictJsonError(f"{label} must be valid UTF-8: {input_path}") from exc
     if raw.startswith("\ufeff"):
+        if not allow_bom:
+            raise StrictJsonError(f"{label} must not contain a BOM: {input_path}")
         raw = raw[1:]
     if not raw.strip():
         raise StrictJsonError(f"{label} cannot be empty: {input_path}")
