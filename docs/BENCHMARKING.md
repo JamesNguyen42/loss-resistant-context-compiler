@@ -601,11 +601,11 @@ user-visible extended attribute, and NTFS stream before returning a self-hashed
 coordinator-only manifest.
 
 That implementation has passed adversarial tests against synthetic local Git
-mirrors and retained the first 40 selected public outcomes across five
-repositories. Thirty-four exact base commits passed fresh live replay, six
-Pylint commits were refused by the link-free `tree-symlink-forbidden` policy,
-and 460 rows remain unattempted. The verified trees contain 17,307 regular
-files and 114,669,862 blob bytes but no candidate mount. A configured origin
+mirrors and retained 62 selected public outcomes across six repositories.
+Fifty-six exact base commits passed fresh live replay, six Pylint commits were
+refused by the link-free `tree-symlink-forbidden` policy, and 438 rows remain
+unattempted. The verified trees contain 23,467 regular files and 253,569,052
+blob bytes but no candidate mount. A configured origin
 URL is not authenticated provenance; SHA-1 is the source
 corpus's Git identity, while raw object bodies receive separate SHA-256
 evidence. Mirror, worker, and preparation self-hashes do not authenticate an

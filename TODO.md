@@ -665,10 +665,10 @@ Acceptance:
   without authenticating it, recomputes commit/tree/blob identities, rejects
   symlinks, gitlinks, special/non-portable paths and unbounded trees, exports
   only fresh regular files, and independently rescans the result. The current
-  synthetic tests remain mechanism evidence. Forty selected public rows across
-  five repositories have now been attempted: 34 passed live preparation replay,
-  six Pylint rows were retained as `tree-symlink-forbidden` policy refusals,
-  and 460 rows remain unattempted. No candidate mount was created.
+  synthetic tests remain mechanism evidence. Sixty-two selected public rows
+  across six repositories have now been attempted: 56 passed live preparation
+  replay, six Pylint rows were retained as `tree-symlink-forbidden` policy
+  refusals, and 438 rows remain unattempted. No candidate mount was created.
 - [x] Add a full-selected-cohort SWE-bench prediction ledger and deterministic
   official JSONL boundary. Revalidate source/key and successful preparation
   evidence, preserve exact patch text only in JSONL, and retain missing,
@@ -696,6 +696,10 @@ Acceptance:
   290--297, Pylint 320--329, and Pytest 330--348. Retain 34 successful
   manifests and all six exact symlink-policy refusals without treating either
   outcome as candidate execution or a benchmark result.
+- [x] Inspect Xarray's exact selected base-commit declarations and prepare
+  ordinals 298--319. Retain all 22 successful manifests, then replay a 500-row
+  preparation-only ledger with 56 prepared, 6 refused, and 438 unattempted
+  outcomes without treating null predictions as a run.
 - [ ] Preregister at least two public long-horizon agent suites.
 - [ ] Include a coding benchmark where repository state and exact failures
   matter.
@@ -1244,7 +1248,7 @@ The next chat should start here unless new evidence changes the priority:
    rerun the retained ACON diagnostic;
 7. add clean reproducible adapters only for systems admitted by the frozen
    result-blind protocol;
-8. complete SWE-bench dataset/repository license review and the remaining 460
+8. complete SWE-bench dataset/repository license review and the remaining 438
    preparation outcomes, then provision externally verified candidate
    mount/filesystem and network isolation before using the synthetic-tested run
    ledger with any public candidate; keep hidden-test application, grading,

@@ -161,9 +161,9 @@ allowlisted task payload, with exact fields `opaque_task_id` and
 
 The HMAC ID is pseudonymous, not unlinkable: public problem text and fixed
 suite order can still identify a task. A raw-Git preparation boundary now has
-synthetic-mirror coverage plus 40 retained public outcomes across five
-repositories: 34 verified preparations, six exact
-`tree-symlink-forbidden` policy refusals, and 460 unattempted rows. These are
+synthetic-mirror coverage plus 62 retained public outcomes across six
+repositories: 56 verified preparations, six exact
+`tree-symlink-forbidden` policy refusals, and 438 unattempted rows. These are
 not candidate mounts or public executions; no public candidate, model, agent,
 or grader has run, no score exists, and the pinned dataset card declares no
 license. See the complete
@@ -207,7 +207,7 @@ alternate streams. Its self-hashed
 and serializes exact limits while asserting no author authentication. All
 origin, redistribution, mount, network, execution, grader, score, usefulness,
 and claim-readiness fields remain false. Synthetic Git tests prove the
-mechanism. The ignored public evidence currently proves that 34 exact selected
+mechanism. The ignored public evidence currently proves that 56 exact selected
 trees prepared and replayed locally and that six other selected commits were
 refused by the link-free export policy; it does not prove safe mounting,
 candidate execution, or task success.

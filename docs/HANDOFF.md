@@ -56,7 +56,7 @@ live-readiness status.
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
-| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation, full-cohort prediction, and synthetic controller-run ledgers; 40 public rows attempted across five repositories (34 prepared, 6 policy-refused, 460 unattempted), with no public candidate/model/agent run, verified isolation, grader execution, resolution, score, or usefulness result |
+| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation, full-cohort prediction, and synthetic controller-run ledgers; 62 public rows attempted across six repositories (56 prepared, 6 policy-refused, 438 unattempted), with no public candidate/model/agent run, verified isolation, grader execution, resolution, score, or usefulness result |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
 | OpenHands integration | Separate `ctxc-openhands` draft alpha; exact current version is owned by its package metadata; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
 | Installed JSON Schemas | 26 (7 historical ids, 19 current-namespace ids) |
@@ -1247,7 +1247,7 @@ enforced by the preparation contract. The exporter is not a candidate sandbox.
 The latest focused local Windows run passed 25 in 88.3 seconds; the POSIX-only
 directory-mode regression skipped. Its fixtures use temporary local SHA-1
 mirrors and remain contract/mechanism evidence. Separate ignored public
-artifacts now cover 40 selected rows, but they are preparation evidence rather
+artifacts now cover 62 selected rows, but they are preparation evidence rather
 than candidate execution or public SWE-bench result evidence.
 
 The source/sdist-only prediction coordinator closes the complete selected
@@ -1306,9 +1306,11 @@ subtests in 610.10 seconds on Windows.
 
 This checkpoint remains source-only. The dataset card declares no license; raw
 source rows remain local, and dataset/repository license and redistribution
-reviews remain incomplete. The retained public-preparation cohort contains 34
-live-replayed trees and six exact Pylint symlink-policy refusals; 460 rows have
-not been attempted. The run ledger accepts caller-provided workspaces and does
+reviews remain incomplete. The retained public-preparation cohort contains 56
+live-replayed trees and six exact Pylint symlink-policy refusals; 438 rows have
+not been attempted. The latest Xarray expansion prepared all 22 selected exact
+base commits and added 6,160 regular files / 138,899,190 blob bytes without a
+candidate run. The run ledger accepts caller-provided workspaces and does
 not create a candidate mount. Mount/filesystem/network/user/PID/image isolation,
 candidate execution authentication, controller/system/model producer
 authentication, token and trajectory authentication, official-grader review,
@@ -1823,7 +1825,7 @@ project work is the external and natural-history evidence path:
    hiding a failure;
 5. add clean adapters only for included systems and retain every failed run;
 6. complete SWE-bench dataset/repository license and redistribution review,
-   then prepare the remaining 460 selected public tasks through the source-only
+   then prepare the remaining 438 selected public tasks through the source-only
    raw-Git boundary, retaining every success or refusal and both mirror/preparation
    evidence; provision a separately verified container/VM boundary for candidate
    mount/filesystem and network isolation before passing any public candidate

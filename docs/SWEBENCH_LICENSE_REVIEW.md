@@ -16,9 +16,10 @@ repository snapshots.
 | Flask task repository | `pallets/flask@7ee9ceb71e868944a46e1ff00b506772a53a4f1d` | Root `pyproject.toml` declares `BSD-3-Clause`; root `LICENSE.rst` is 1,475 bytes, SHA-256 `489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea`. `docs/license.rst` applies those terms to source, examples, tests, and docs, but applies the separate 780-byte `artwork/LICENSE.rst`, SHA-256 `2e63a3bd3a1f97e2fa9fa33bbf4f61bbb56ee16beb125b5346b0012388dc3b49`, to the Flask logo | Discovered license-file declarations recorded; broader per-path, third-party, and notice review remains incomplete, and this does not approve redistribution or the remaining repositories |
 | Seaborn task repository | `mwaskom/seaborn`, selected ordinals 287--288 | Both prepared commits contain the same 1,491-byte root `LICENSE.md` plus five distinct files under `licences/` | Discovered files inventoried; applicability and redistribution review remain incomplete |
 | Requests task repository | `psf/requests`, selected ordinals 290--297 | All eight prepared commits contain root `LICENSE`, `NOTICE`, and `docs/_themes/LICENSE`; their bytes vary by commit, and ordinals 296--297 also contain `ext/LICENSE` | Variants are retained separately rather than flattened into one project-wide conclusion |
+| Xarray task repository | `pydata/xarray`, selected ordinals 298--319 | All 22 exact commits contain the same 10,273-byte Apache License 2.0 root `LICENSE`; packaging metadata declares `Apache` through ordinal 315 and `Apache-2.0` at 316--319 | All 22 trees prepared; broader per-path, notice, third-party, and redistribution review remains incomplete |
 | Pylint task repository | `pylint-dev/pylint`, selected ordinals 320--329 | All ten exact commits contain the same 17,984-byte root `LICENSE`; ordinals 324--329 also contain two symlink entries rejected by preparation policy | Four trees prepared and six policy refusals retained; this is not a legal determination or task result |
 | Pytest task repository | `pytest-dev/pytest`, selected ordinals 330--348 | Nineteen prepared commits contain three root-`LICENSE` byte variants, four `doc/en/license.rst` variants, and a theme license in ordinals 333--341 | Discovered variants inventoried; per-path and redistribution review remain incomplete |
-| Remaining 7 task repositories | Astropy, Django, Matplotlib, Xarray, scikit-learn, Sphinx, and Sympy exact base commits selected by the pinned source | Not yet inspected across all selected commits | 460 rows remain unattempted; local preparation and redistribution review remain incomplete |
+| Remaining 6 task repositories | Astropy, Django, Matplotlib, scikit-learn, Sphinx, and Sympy exact base commits selected by the pinned source | Not yet inspected across all selected commits | 438 rows remain unattempted; local preparation and redistribution review remain incomplete |
 
 The official pinned [dataset tree](https://huggingface.co/datasets/SWE-bench/SWE-bench_Verified/tree/91aa3ed51b709be6457e12d00300a6a596d4c6a3)
 contains the dataset card and data but no standalone license file. The
@@ -66,29 +67,33 @@ candidate-mount, filesystem/network-isolation, execution, grading, score,
 usefulness, and claim-readiness fields all remain false. This is one real
 public base-commit preparation, not a candidate run or a SWE-bench result.
 
-Subsequent local work retained every outcome for selected ordinals 287--288,
-290--297, and 320--348. Together with the earlier Flask ordinal 289, the
-current full-cohort state is:
+Subsequent local work retained every outcome for the contiguous selected range
+287--348. The latest expansion verified the configured
+`https://github.com/pydata/xarray.git` mirror and prepared ordinals 298--319.
+Those 22 ignored manifests total 1,558,923 bytes and bind 6,160 regular files,
+138,899,190 blob bytes, 681 tree objects, and 285,569 raw tree bytes. No Xarray
+row was refused. The current full-cohort state is:
 
 | Repository | Selected rows attempted | Prepared | Policy-refused | Mirror self-hash |
 | --- | ---: | ---: | ---: | --- |
 | `mwaskom/seaborn` | 2 | 2 | 0 | `a93f6cc0806e2808992a344e7d84df4e1b4b8c7400808f00965b5daa355c735b` |
 | `pallets/flask` | 1 | 1 | 0 | `6c27b7e76301f535974ccb144efe7e56612f0d7325364e628d47a0e2ba70ac63` |
 | `psf/requests` | 8 | 8 | 0 | `224d636f04eaa8bafcd3a2dbb9bd16d8e38d354626ebc8e6a6b08608daac7a67` |
+| `pydata/xarray` | 22 | 22 | 0 | `35b8f2ac2aba3d3860fc1da39c6211f4d1c953f7d7a22d7493551eadab413cf9` |
 | `pylint-dev/pylint` | 10 | 4 | 6 | `49214f704d579df8ea995e6e234fe4f6c72d3d5fb8088148dc95355b62cb7773` |
 | `pytest-dev/pytest` | 19 | 19 | 0 | `cb339b9072d403a97f1192ee53e682ce9b013e8f8c87a20744a3b8b11e2a7fd9` |
-| **Cohort total** | **40** | **34** | **6** | n/a |
+| **Cohort total** | **62** | **56** | **6** | n/a |
 
-All 34 successful handles passed a fresh source-bound mirror and output-tree
-replay. Their ignored manifests total 4,460,409 bytes and bind 17,307 portable
-regular files, 114,669,862 blob bytes, 2,063 tree objects, and 867,348 raw tree
-bytes. The other 460 selected source rows were not attempted.
+All 56 successful handles passed a fresh source-bound mirror and output-tree
+replay. Their ignored manifests total 6,019,332 bytes and bind 23,467 portable
+regular files, 253,569,052 blob bytes, 2,744 tree objects, and 1,152,917 raw tree
+bytes. The other 438 selected source rows were not attempted.
 
 An ignored preparation-only prediction ledger reconciles those outcomes over
-all 500 source rows. Its 487,299-byte JSON file has SHA-256
-`8397d853d7d15bbacb20e56d784d8a270d7b506e39231015b934207670ae63cb`
+all 500 source rows. Its 488,750-byte JSON file has SHA-256
+`2219e2f1526c51f4c965a7af41364c393075151fecc2e2b4553eb037e359b772`
 and self-hash
-`cfedda6985ca5c088bf123db678793fc9031461c92ebc755c8a0af80a14e24ff`.
+`b5668f76a4949d42310ce644de007696a6d9ee3725d3d0514edabf6887082f34`.
 The companion 53,734-byte official-format JSONL has 500 null patches and
 SHA-256
 `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
@@ -126,6 +131,12 @@ governs every file:
   common 1,861-byte docs-theme license, and a 51-byte `ext/LICENSE` only at
   296--297. The prepared manifests preserve the commit-specific path/hash
   binding; no single variant is substituted for another;
+- all 22 Xarray commits have the same 10,273-byte
+  [root `LICENSE`](https://raw.githubusercontent.com/pydata/xarray/7c4e2ac83f7b4306296ff9b7b51aaf016e5ad614/LICENSE), SHA-256
+  `73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68`.
+  The file declares Apache License 2.0. Root packaging metadata uses the label
+  `Apache` through ordinal 315 and `Apache-2.0` at ordinals 316--319; both are
+  inventory observations, not a whole-tree legal conclusion;
 - all ten inspected Pylint commits have the same 17,984-byte root `LICENSE`,
   SHA-256
   `f97b14080de8b8490d60eb3d620ebc419943e0779466d1dd0d5d6f68fe195dcd`;

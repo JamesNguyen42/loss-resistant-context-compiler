@@ -83,6 +83,12 @@ versioning and release rules in
 
 ### Added
 
+- A retained Xarray SWE-bench preparation expansion: all 22 selected exact base
+  commits passed source-bound raw-tree export and replay. The full preparation
+  state is now 56 prepared, 6 Pylint symlink-policy refusals, and 438
+  unattempted rows. Xarray's common Apache-2.0 license bytes and commit-specific
+  packaging declarations are inventoried without claiming authenticated origin,
+  redistribution approval, candidate execution, grading, or a result.
 - A source/sdist-only SWE-bench controller-run ledger that reconciles the full
   selected denominator, verifies caller-provided workspaces against prepared
   trees, appends exact request/workspace paths to a fixed literal command,

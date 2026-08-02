@@ -6,20 +6,19 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Base commit for this in-progress checkpoint: `3009500`
-- Current checkpoint: a source/sdist-only controller-run ledger now reconciles
-  the complete selected SWE-bench denominator, launches the synthetic
-  controller through the bounded literal-process owner, retains raw stream and
-  workspace-delta evidence, and reconstructs prediction captures only through
-  replay. No public candidate, model, agent, grader, resolution, score, or
+- Base commit for this in-progress checkpoint: `6109de1`
+- Current checkpoint: all 22 selected Xarray base commits passed source-bound
+  raw-Git preparation and replay. The 500-row preparation-only ledger now
+  reconciles 56 prepared, 6 policy-refused, and 438 unattempted rows with no
+  predictions. No public candidate, model, agent, grader, resolution, score, or
   usefulness result exists.
-- Previous checkpoint: the 34 prepared, 6 policy-refused, and 460 unattempted
-  public preparation outcomes were committed and pushed as `3009500`.
-- Next task: continue exact-license inspection and preparation across the
-  remaining selected public repositories, then provision externally verified
-  candidate mount/filesystem and network isolation before any public controller
-  run. Do not encode a repository patch as an LRCBench rendered-memory
-  candidate.
+- Previous checkpoint: the source/sdist-only controller-run ledger was committed
+  and pushed as `6109de1`.
+- Next task: source-bind the independently result-blind-ratified tau2-bench text
+  core, implement synthetic candidate/hidden-patch composition preflight for the
+  pinned SWE-bench issue-538 path, and continue exact-license preparation across
+  the remaining six task repositories. Do not encode a repository patch as an
+  LRCBench rendered-memory candidate.
 
 ## Mission status
 
@@ -29,15 +28,52 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 3. Public long-horizon suite evidence: SWE-bench Verified source selection,
    candidate-input projection, raw-Git preparation, and a full-cohort
    prediction/official-JSONL boundary are pinned. A separately replayable
-   synthetic controller-run ledger now exists. Forty public rows have been
-   attempted: 34 prepared, 6 policy-refused, and 460 unattempted. No public
+   synthetic controller-run ledger now exists. Sixty-two public rows have been
+   attempted: 56 prepared, 6 policy-refused, and 438 unattempted. No public
    candidate, model, agent, or grader has run and no resolution, external score,
-   or usefulness result exists. A second materially different public suite is
-   still required.
+   or usefulness result exists. Tau2-bench's 278-row half-duplex text core has
+   passed independent result-blind structural selection but is not yet locally
+   source-bound.
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
-## Current controller-run checkpoint
+## Current Xarray preparation expansion
+
+- Verified the configured `https://github.com/pydata/xarray.git` local bare
+  mirror with Git `2.55.0.windows.3`. Its non-authenticating mirror self-hash is
+  `35b8f2ac2aba3d3860fc1da39c6211f4d1c953f7d7a22d7493551eadab413cf9`.
+- Prepared every selected Xarray row, contiguous ordinals 298--319: 22 prepared
+  and zero refused. The manifests total 1,558,923 bytes and bind 6,160 regular
+  files, 138,899,190 blob bytes, 681 tree objects, and 285,569 tree-object
+  bytes.
+- Inspected license/notice filenames and root packaging declarations from every
+  exact selected base commit without checkout or candidate execution. All 22
+  commits contain the same 10,273-byte Apache License 2.0 root `LICENSE`,
+  SHA-256
+  `73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68`.
+  Packaging metadata uses `Apache` through ordinal 315 and `Apache-2.0` at
+  316--319. This is discovery evidence, not legal approval.
+- Rebuilt the ignored 500-row preparation-only ledger after two complete live
+  preparation replays. Its 488,750-byte JSON file has SHA-256
+  `2219e2f1526c51f4c965a7af41364c393075151fecc2e2b4553eb037e359b772`
+  and self-hash
+  `b5668f76a4949d42310ce644de007696a6d9ee3725d3d0514edabf6887082f34`.
+  The unchanged 53,734-byte null-prediction JSONL has SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
+  A fresh interpreter reloaded and replayed all 500 rows plus the live JSONL in
+  229.25 seconds with the same cohort, file hashes, and self-hash.
+- The current full public-preparation evidence therefore binds 56 trees / 23,467
+  files / 253,569,052 blob bytes, plus the six exact Pylint symlink-policy
+  refusals. Origin authentication, redistribution approval, candidate mount,
+  execution, isolation, hidden-test application, grading, score, usefulness,
+  and claim readiness remain absent or false.
+- The focused SWE-bench source, repository, and prediction regressions passed in
+  191.8 seconds; the one expected POSIX directory-mode case skipped on Windows.
+  The deterministic documentation gate reported no warning or error. Its only
+  signals were the longstanding document-level over-sectioning advisories for
+  TODO, changelog, and handoff.
+
+## Completed controller-run checkpoint (`6109de1`)
 
 - Added source/sdist-only `benchmarks.swebench_run` with
   `ctxc-swebench-run-ledger-0.1`, strict controller result schema
@@ -422,10 +458,10 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 - No public long-horizon task has been executed or scored. Do not claim
   external usefulness, task-completion improvement, production readiness, or
   superiority from this source/preparation checkpoint.
-- Repository preparation has now been exercised against 40 selected public
-  rows across five repositories in addition to synthetic local mirrors. The
-  34 preparations and six policy refusals do not authenticate GitHub,
-  authorship, freshness, or license; 460 rows remain unattempted.
+- Repository preparation has now been exercised against 62 selected public
+  rows across six repositories in addition to synthetic local mirrors. The
+  56 preparations and six policy refusals do not authenticate GitHub,
+  authorship, freshness, or license; 438 rows remain unattempted.
 - The canonical source snapshot contains public evaluator gold and must never
   enter a candidate mount. It and the raw Parquet, opaque key, derived task
   document, evaluator cache, grader output, and repository snapshots remain
@@ -462,9 +498,9 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
 ## Next exact actions
 
-1. Continue exact base-commit license inspection, acquire the remaining seven
+1. Continue exact base-commit license inspection, acquire the remaining six
    repositories through reviewed channels, and apply the raw-Git preparer to
-   the other 460 selected tasks. Retain every success or refusal without
+   the other 438 selected tasks. Retain every success or refusal without
    silently narrowing the cohort.
 2. Do not treat the controller-run ledger or the literal lifecycle's Windows
    Job/POSIX process group as filesystem, network, PID, user, mount, or image
@@ -475,9 +511,13 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
    `instance_id`, `model_name_or_path`, and `model_patch` interchange. Add
    separately authenticated model/token/trajectory evidence and raw grader
    output without weakening either ledger's fixed-false claims.
-4. Review and harden the pinned official grader before any score. Require
-   hidden-test application success and candidate/hidden-test path
-   non-overlap; mark correction recovery and unresolved-question preservation
-   `not_measured` until trajectory evidence supports them.
-5. Select and source-bind a materially different second public long-horizon
-   suite without inspecting comparison results.
+4. Add a source/sdist-only synthetic patch-composition preflight before any
+   grader. Re-export independent base trees, apply candidate and evaluator
+   patches through bounded exact Git operations, refuse effective-path overlap,
+   and require disjoint manifest composition. Keep all grading/result claims
+   false; the pinned v4.1 harness remains vulnerable on 18 rows with hidden
+   additions or renames.
+5. Source-bind the independently result-blind-ratified tau2-bench v1.0.1
+   half-duplex text core in actual loader order. Keep the complete upstream task,
+   simulator, golden-action, assertion, grader, result, and checkout material
+   outside the candidate boundary.

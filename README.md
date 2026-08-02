@@ -39,7 +39,7 @@ meaning can be compressed without loss.
 | External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
-| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, raw-Git preparation, exhaustive deterministic prediction-ledger, and synthetic controller-run boundaries; 40 public rows attempted across five repositories, with 34 prepared, 6 policy-refused, and no public candidate, model, agent, grader, resolution, score, or usefulness result |
+| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, raw-Git preparation, exhaustive deterministic prediction-ledger, and synthetic controller-run boundaries; 62 public rows attempted across six repositories, with 56 prepared, 6 policy-refused, and no public candidate, model, agent, grader, resolution, score, or usefulness result |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic structural cases; 20 held out; no model or natural-cohort claim |
 | OpenHands integration | Separately packaged `ctxc-openhands` draft alpha; exact current version is owned by its [package metadata](integrations/openhands/pyproject.toml); reviewed offline fake-runtime foundation only; live execution blocked |
 | Downstream agent task completion | Not measured |
@@ -220,10 +220,10 @@ The repository currently includes:
   materializes only portable regular-file blobs into a fresh tree, and
   independently reconciles every path, mode, size, blob id, and SHA-256; its
   origin, license, candidate-mount, network, execution, grader, and score
-  claims remain false; 34 selected base commits across Flask, Seaborn,
-  Requests, Pylint, and Pytest have passed live preparation replay, six later
-  Pylint commits are retained as `tree-symlink-forbidden` policy refusals,
-  and 460 selected tasks have not been attempted;
+  claims remain false; 56 selected base commits across Flask, Seaborn,
+  Requests, Xarray, Pylint, and Pytest have passed live preparation replay, six
+  later Pylint commits are retained as `tree-symlink-forbidden` policy
+  refusals, and 438 selected tasks have not been attempted;
 - a source-only full-cohort SWE-bench prediction ledger that revalidates source,
   opaque-key, and successful preparation bindings, turns every missing,
   duplicate, unexpected, invalid, oversized, or unprepared output into retained
@@ -275,11 +275,11 @@ adding more claims to the README:
   under the implemented consent, license, privacy, adjudication, split, and
   no-label-leakage contracts;
 - complete SWE-bench dataset/repository license review, retain outcomes for the
-  remaining 460 unattempted rows, provision externally verified candidate
+  remaining 438 unattempted rows, provision externally verified candidate
   mount/filesystem and network isolation, capture real candidate outputs through
   the controller-run and prediction ledgers, harden the grader, and add public
-  result evidence; then select
-  a materially different second suite before measuring end-to-end completion;
+  result evidence; source-bind the structurally selected, independently
+  result-blind-reviewed second suite before measuring end-to-end completion;
 - test the optional model extractor across providers and novel phrasing;
 - add named provider tokenizers and production framework-specific adapters;
 - optimize incremental connector compilation beyond its current

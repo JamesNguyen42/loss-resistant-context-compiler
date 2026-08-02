@@ -5,10 +5,10 @@ projection, raw-Git repository preparation, full-cohort prediction-ledger, and
 synthetic controller-run boundaries** for SWE-bench Verified. The preparation
 boundary has passed local synthetic-mirror tests and retained public
 preparation replay; the prediction and controller-run boundaries have passed
-synthetic contract tests. The first retained public cohort attempted 40
-selected rows across Flask, Seaborn, Requests, Pylint, and Pytest: 34 exact base
+synthetic contract tests. The retained public cohort has attempted 62 selected
+rows across Flask, Seaborn, Requests, Xarray, Pylint, and Pytest: 56 exact base
 commits passed live preparation replay, six Pylint commits were refused because
-their trees contain forbidden symlinks, and 460 rows remain unattempted. No
+their trees contain forbidden symlinks, and 438 rows remain unattempted. No
 public candidate, model, or agent ran; no candidate mount or verified isolation
 exists; and no grader, resolution, external score, or usefulness result exists.
 The external comparison protocol therefore keeps its coding-task slot `pending`
@@ -181,8 +181,8 @@ usefulness, and claim readiness false.
 The synthetic tests use small locally created SHA-1 mirrors and prove contract
 behavior, not repository redistribution permission, hostile-pack parser
 safety, or candidate isolation. Separately retained public evidence currently
-covers 40 rows. Its six symlink-policy refusals stay in the 500-task denominator
-alongside 34 verified preparations and 460 explicitly unattempted rows; none is
+covers 62 rows. Its six symlink-policy refusals stay in the 500-task denominator
+alongside 56 verified preparations and 438 explicitly unattempted rows; none is
 a candidate result.
 
 ## Full-cohort prediction boundary
@@ -234,10 +234,10 @@ line sequence instead of treating a successful load as completeness proof.
 Self-hashes do not authenticate a model or coordinator. Fixed-false state
 records that no candidate mount, execution, hidden-test application, grading,
 score, usefulness, or claim readiness follows from this checkpoint. One
-ignored, preparation-only 500-row ledger and JSONL reconcile the 34 prepared,
-6 refused, and 460 unattempted outcomes with 500 null predictions; neither is
+ignored, preparation-only 500-row ledger and JSONL reconcile the 56 prepared,
+6 refused, and 438 unattempted outcomes with 500 null predictions; neither is
 committed or a candidate run. Their file SHA-256 values are respectively
-`8397d853d7d15bbacb20e56d784d8a270d7b506e39231015b934207670ae63cb`
+`2219e2f1526c51f4c965a7af41364c393075151fecc2e2b4553eb037e359b772`
 and `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
 Because rejected candidate bytes are discarded rather than duplicated beside
 the official JSONL, invalid,
@@ -308,7 +308,7 @@ used.
 A claim-bearing public executor/grader checkpoint must fail closed unless it can
 retain and verify all of the following:
 
-1. Run the remaining 460 selected source rows through the raw-Git preparer and
+1. Run the remaining 438 selected source rows through the raw-Git preparer and
    retain every success or refusal. Independently create a candidate mount from
    a verified tree with no upstream `.git` history, later refs, remotes,
    evaluator cache, raw dataset, hidden tests, or grader evidence.
