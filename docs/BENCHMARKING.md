@@ -667,6 +667,44 @@ The harness code's MIT license does not license the dataset rows or third-party
 repository snapshots. See [SWE-bench Verified source intake](SWEBENCH_EVALUATION.md)
 for exact identities, preparation policy, and executor/grader requirements.
 
+## tau2-bench v1.0.1 source binding
+
+The second structurally distinct public suite is now selected and source-bound,
+but not executed. Its source/sdist-only descriptor pins tau2-bench's annotated
+`v1.0.1` tag object `b711c1ead46f55111bf765cf44d5da8bacc2d28c`, peeled
+commit `fc0055dc4e0a316c3f83133267fbd6faaa770992`, exact raw-object and
+required-file identities, and the complete half-duplex text `base` cohort for
+airline, retail, and manual-policy telecom. The selected counts are 50, 114,
+and 114, respectively.
+
+Within each domain, the frozen order is the physical `tasks.json` array order
+filtered by membership in `split_tasks.json["base"]`. This reproduces the
+pinned upstream loaders and intentionally differs from the literal base-array
+order. The canonical 278-line `domain<TAB>task_id<LF>` manifest is 15,948
+bytes with SHA-256
+`61336d42294a9265ea4b70748e7be0988a98b6064e20e366dbf5d4088b0426a5`.
+The verifier reads only bounded raw local Git objects, strictly checks every
+source byte before parsing task JSON, and retains selection/evidence records
+rather than full Task documents or raw upstream task ids. The descriptor itself
+is coordinator-only and cannot enter a candidate mount.
+
+The source-task candidate field allowlist is empty. Future candidate-visible
+semantics are restricted to the normal agent prompt and policy, ordered
+serialized tool schemas, observed agent-view messages, and
+coordinator-produced tool results. Task descriptions, scenarios, initial
+state, evaluator criteria, golden actions, annotations/issues/tickets, DBs,
+simulator/grader material, results, and the upstream checkout remain outside
+candidate bytes and mounts. The upstream in-process agent-factory path is
+prohibited because it hands arbitrary factories the full Task and live
+environment-backed tools.
+
+This is source and protocol evidence only. No candidate adapter, simulator,
+grader, dependency environment, sandbox, public run, reward, score, usefulness
+result, or claim-ready evidence exists. The retail natural-language grader also
+requires a fail-closed wrapper before use because its upstream free-form JSON
+path can accept an empty result list vacuously. See the complete
+[tau2-bench evaluation contract](TAU2_EVALUATION.md).
+
 ## The exact external “50% better than most” bar
 
 No external comparison has been performed by this repository. A defensible
@@ -704,8 +742,9 @@ form a verified draft. The result-blind screen records observed revisions and
 license evidence for ACON, FoldAgent, and AMA-Agent, plus the unresolved MemIR
 artifact. Nine explicit blockers cover final candidate decisions/adapters,
 dependency locks, adapter memory, inference-service accounting, the natural
-cohort, SWE-bench execution/grading controls, a second downstream suite, and
-frozen downstream samples. The draft therefore cannot serve as a
+cohort, SWE-bench execution/grading controls, tau2-bench
+candidate/simulator/grader/isolation controls, and frozen downstream samples.
+The draft therefore cannot serve as a
 preregistration or support a production claim yet.
 Verify its internal state without claiming readiness:
 

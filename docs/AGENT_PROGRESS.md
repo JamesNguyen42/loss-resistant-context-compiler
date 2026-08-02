@@ -6,18 +6,19 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Base commit for this in-progress checkpoint: `6109de1`
-- Current checkpoint: all 22 selected Xarray base commits passed source-bound
-  raw-Git preparation and replay. The 500-row preparation-only ledger now
-  reconciles 56 prepared, 6 policy-refused, and 438 unattempted rows with no
-  predictions. No public candidate, model, agent, grader, resolution, score, or
-  usefulness result exists.
-- Previous checkpoint: the source/sdist-only controller-run ledger was committed
-  and pushed as `6109de1`.
-- Next task: source-bind the independently result-blind-ratified tau2-bench text
-  core, implement synthetic candidate/hidden-patch composition preflight for the
-  pinned SWE-bench issue-538 path, and continue exact-license preparation across
-  the remaining six task repositories. Do not encode a repository patch as an
+- Base commit for this in-progress checkpoint: `c119ebd`
+- Current checkpoint: the separately result-blind-reviewed tau2-bench v1.0.1
+  half-duplex text core is source-bound in actual loader order. A local bare
+  mirror replay verified the annotated tag, peeled commit, root tree, 12 exact
+  source files, and all 278 selected rows without importing tau2-bench or
+  executing a candidate, simulator, or grader.
+- Previous checkpoint: the 22-row Xarray preparation expansion and replayed
+  56/6/438 full-cohort preparation ledger were committed and pushed as
+  `c119ebd`.
+- Next task: commit and push this source-only tau2 checkpoint, then integrate
+  the synthetic candidate/hidden-patch composition preflight for the pinned
+  SWE-bench issue-538 path and continue exact-license preparation across the
+  remaining six task repositories. Do not encode a repository patch as an
   LRCBench rendered-memory candidate.
 
 ## Mission status
@@ -31,11 +32,58 @@ Last updated: 2026-08-02 (America/Los_Angeles)
    synthetic controller-run ledger now exists. Sixty-two public rows have been
    attempted: 56 prepared, 6 policy-refused, and 438 unattempted. No public
    candidate, model, agent, or grader has run and no resolution, external score,
-   or usefulness result exists. Tau2-bench's 278-row half-duplex text core has
-   passed independent result-blind structural selection but is not yet locally
-   source-bound.
+   or usefulness result exists. Tau2-bench's materially different 278-row
+   half-duplex text core is now locally source-bound after a separate internal
+   result-blind review, but its candidate adapter, dependency environment,
+   simulator/grader evidence, isolation, execution, reward, score, usefulness,
+   and claim readiness remain absent or false.
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
+
+## Current tau2-bench source-binding checkpoint
+
+- Added source/sdist-only `benchmarks.tau2` and
+  `benchmarks/suites/tau2_text_v1.json`. The descriptor pins annotated tag
+  object `b711c1ead46f55111bf765cf44d5da8bacc2d28c`, peeled commit
+  `fc0055dc4e0a316c3f83133267fbd6faaa770992`, root tree
+  `4837da1c2b310152f63d3d7987f4325183ca6f7c`, exact license/lock/task/split
+  bytes, and all three loader implementations. Its self-hash is
+  `6c9c6042c380fc82eb26a0f13d9bbd47aae9d8ef7aa07f2f6a49110b947c3163`;
+  the 64,244-byte descriptor file has SHA-256
+  `e2ebe9deca75c6420b48094f5ec7479afbdcd627c2fae4de8eae46bbee85b807`.
+- Reproduced the upstream within-domain loader rule: physical `tasks.json`
+  order filtered by `split_tasks.json["base"]`, under the explicitly frozen
+  cross-domain order airline, retail, telecom. The selected counts are 50,
+  114, and 114. The 15,948-byte `domain<TAB>task_id<LF>` manifest has SHA-256
+  `61336d42294a9265ea4b70748e7be0988a98b6064e20e366dbf5d4088b0426a5`.
+- Replayed the verifier against ignored `build/tau2-bench-mirror.git` with the
+  absolute Git executable. The non-authenticating mirror self-hash was
+  `28a70e4a24ca0932288be78359683a7361d9ad67ebc9f6e44991de1d0a6ab83e`;
+  the source-verification self-hash was
+  `8997eb7e6ed12d40b39395560ce3216d0b82757dbdb7db798c60383f76b7a3fe`.
+  A matching configured origin is not provenance authentication, and neither
+  Git SHA-1 nor a document self-hash authenticates an author.
+- Added `docs/TAU2_EVALUATION.md` after a result-blind source/security review.
+  It prohibits the upstream in-process candidate factory because the pinned
+  builder passes arbitrary factories live environment-backed tools and the
+  full hidden Task. It also records the retail NL-grader empty-results defect,
+  external user-simulator nondeterminism, committed-result exclusions, a
+  recursive candidate-visible allowlist, and complete failure dispositions.
+- Bound the still-pending external-protocol second-task slot to the exact commit,
+  suite self-hash, and 278-row full selection. All nine blockers remain; the
+  `second-task-suite` blocker now covers the adapter, simulator/grader,
+  isolation, execution, reward, and result controls rather than source
+  selection.
+- The focused tau2 source suite passed 16 tests, including a
+  synthetic annotated-tag mirror, re-signed identity/selection mutations,
+  loader-order divergence, strict task/split failures, bounded Git lifecycle,
+  CLI output, and proof that the upstream `tau2` package is not imported. The
+  eight external-protocol tests also passed with the pending second-slot binding,
+  and Ruff reported no tau2 source/test findings.
+- The source-task candidate allowlist is empty, and all adapter, dependency,
+  runtime-boundary, network/filesystem/process-isolation, candidate/simulator/
+  grader execution, reward, score, usefulness, legal/redistribution, and
+  claim-readiness fields remain false.
 
 ## Current Xarray preparation expansion
 
@@ -511,13 +559,13 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
    `instance_id`, `model_name_or_path`, and `model_patch` interchange. Add
    separately authenticated model/token/trajectory evidence and raw grader
    output without weakening either ledger's fixed-false claims.
-4. Add a source/sdist-only synthetic patch-composition preflight before any
-   grader. Re-export independent base trees, apply candidate and evaluator
-   patches through bounded exact Git operations, refuse effective-path overlap,
-   and require disjoint manifest composition. Keep all grading/result claims
+4. Integrate and validate the implemented source/sdist-only synthetic
+   patch-composition preflight before any grader. It must keep using independent
+   base trees, bounded exact Git operations, effective-path overlap refusal, and
+   exact disjoint-manifest composition while all grading/result claims remain
    false; the pinned v4.1 harness remains vulnerable on 18 rows with hidden
    additions or renames.
-5. Source-bind the independently result-blind-ratified tau2-bench v1.0.1
-   half-duplex text core in actual loader order. Keep the complete upstream task,
-   simulator, golden-action, assertion, grader, result, and checkout material
-   outside the candidate boundary.
+5. Build a separately launched candidate adapter for the now source-bound,
+   separately result-blind-reviewed tau2-bench v1.0.1 half-duplex text core.
+   Keep the complete upstream task, simulator, golden-action, assertion, grader,
+   result, and checkout material outside the candidate boundary.

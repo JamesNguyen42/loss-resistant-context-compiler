@@ -83,6 +83,13 @@ versioning and release rules in
 
 ### Added
 
+- A source/sdist-only tau2-bench v1.0.1 intake that verifies the annotated tag,
+  peeled commit, exact source blobs, actual loader-order 278-row half-duplex
+  text `base` cohort across airline, retail, and manual-policy telecom, and a
+  fail-closed candidate-source field partition. The accompanying security
+  contract prohibits the upstream in-process agent factory and keeps adapter,
+  simulator, grader, isolation, execution, reward, score, usefulness, legal,
+  and claim-readiness assertions false.
 - A retained Xarray SWE-bench preparation expansion: all 22 selected exact base
   commits passed source-bound raw-tree export and replay. The full preparation
   state is now 56 prepared, 6 Pylint symlink-policy refusals, and 438

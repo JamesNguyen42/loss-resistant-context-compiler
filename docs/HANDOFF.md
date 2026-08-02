@@ -18,7 +18,9 @@ and its [strict JSON manifest](../benchmarks/protocols/external-comparison-v1.js
 before changing candidate selection, adapter identity, resources, datasets, or
 claim rules. Read the [SWE-bench Verified source boundary](SWEBENCH_EVALUATION.md)
 before handling its source rows, task projection, repository snapshots, or
-grader. Read [natural-history evidence contracts](NATURAL_HISTORY_EVIDENCE.md),
+grader. Read the [tau2-bench text-core boundary](TAU2_EVALUATION.md) before
+handling its Task objects, scenarios, DBs, simulator, tools, grader, or result
+files. Read [natural-history evidence contracts](NATURAL_HISTORY_EVIDENCE.md),
 the separate
 [materialization retention evaluation](MATERIALIZATION_RETENTION_EVALUATION.md),
 and [result-blind compatibility records](../benchmarks/compatibility/README.md)
@@ -57,6 +59,7 @@ live-readiness status.
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
 | SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation, full-cohort prediction, and synthetic controller-run ledgers; 62 public rows attempted across six repositories (56 prepared, 6 policy-refused, 438 unattempted), with no public candidate/model/agent run, verified isolation, grader execution, resolution, score, or usefulness result |
+| tau2-bench intake | Pinned v1.0.1 annotated tag and exact 278-row half-duplex text `base` cohort in actual loader order; source-only verification and security contract, with no adapter, simulator, grader, isolation, execution, reward, score, or usefulness result |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
 | OpenHands integration | Separate `ctxc-openhands` draft alpha; exact current version is owned by its package metadata; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
 | Installed JSON Schemas | 26 (7 historical ids, 19 current-namespace ids) |
@@ -340,6 +343,7 @@ and measured duration.
 | `benchmarks/qwen_phrase_eval.py` | Sequential exact-Qwen prompt/output capture, model-only/recovery scoring, and offline replay |
 | `benchmarks/qwen_literal_ablation.py` | Model-free frozen-output offset ablation, literal replay, self-hashed report, and strict regeneration |
 | `benchmarks/qwen_paired_eval.py` | Clean-tree paired coordinate/literal capture, alternating order, comparison metrics, and offline replay |
+| `benchmarks/tau2.py` / `benchmarks/suites/tau2_text_v1.json` | Source/sdist-only tau2-bench v1.0.1 raw-Git verifier and exact 278-row text-core descriptor; absent from the wheel |
 | `benchmarks/protocols/` | Human-readable and machine-verifiable external comparison protocol; v1 is a valid non-claim-bearing draft with explicit blockers |
 | `schemas/` | Eight historical/core artifact contracts, 17 shared connector contracts, and one provider-local LocalAI conversion-audit schema |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
@@ -744,6 +748,8 @@ operations, validation, and unresolved host requirements.
 | SWE-bench prediction ledger | `ctxc-swebench-prediction-ledger-0.1` |
 | SWE-bench controller result | `ctxc-swebench-controller-result-0.1` |
 | SWE-bench controller-run ledger | `ctxc-swebench-run-ledger-0.1` |
+| tau2-bench source suite | `ctxc-tau2-suite-0.1` |
+| tau2-bench source verification | `ctxc-tau2-source-verification-0.1` |
 | Adapter process-environment evidence | `lrcbench-process-environment-0.1` |
 | Installed schema directory | `share/loss-resistant-context-compiler/schemas` |
 
@@ -1324,6 +1330,43 @@ descriptor-pinned, so concurrent nested-directory or executable substitution
 is a coordinator-host trust boundary. Process exit, trigger, timing, and cleanup
 fields are unauthenticated observations that an internally consistent,
 self-hash-resigned ledger can relabel.
+
+### tau2-bench v1.0.1 source and secrecy contract
+
+The second public long-horizon suite is structurally selected and source-bound,
+not evaluated. The source/sdist-only descriptor fixes the annotated `v1.0.1`
+tag, peeled commit, exact required Git objects and blobs, half-duplex text
+profile, and the complete `base` cohort across airline, retail, and
+manual-policy telecom. The exact 50 + 114 + 114 selection is reconstructed in
+physical task-file order filtered by base membership, not in the different
+literal split-array order. Its 278-line canonical manifest is 15,948 bytes with
+SHA-256
+`61336d42294a9265ea4b70748e7be0988a98b6064e20e366dbf5d4088b0426a5`.
+
+The verifier accepts only an absolute local bare mirror and Git executable,
+reuses the strict mirror boundary, reads bounded raw Git objects with literal
+argv, recomputes Git/SHA-256 identities, and strictly validates task and split
+shapes after exact byte checks. It retains only selection/evidence records, not
+full Task documents or raw upstream task ids, and does not import tau2-bench or
+inspect committed result payloads. The descriptor is coordinator-only and must
+not enter a candidate mount.
+
+The source-task candidate field allowlist is empty. The future external adapter
+may receive only the normal prompt/policy, serialized tool schemas, agent-view
+messages, and coordinator-created tool results. Full Task objects, scenarios,
+initial state, evaluator criteria, golden actions, annotations, DBs,
+simulator/grader state, results, mirrors, and source checkouts remain trusted
+coordinator-side. Never register candidate code through tau2-bench's in-process
+factory: the pinned upstream builder passes arbitrary factories live tools and
+the full hidden Task.
+
+No tau2-bench candidate adapter, dependency environment, filesystem/network or
+process isolation, user-simulator evidence, hardened grader evidence, public
+execution, reward, score, usefulness result, or claim-ready evidence exists.
+The retail NL grader requires structural reconciliation before use because its
+current free-form response path can treat an empty result list as a pass. See
+[`docs/TAU2_EVALUATION.md`](TAU2_EVALUATION.md) for the complete field
+partition, failure dispositions, and negative-test requirements.
 
 ### Recorded local benchmark
 

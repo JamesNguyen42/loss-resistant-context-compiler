@@ -40,6 +40,7 @@ meaning can be compressed without loss.
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
 | SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, raw-Git preparation, exhaustive deterministic prediction-ledger, and synthetic controller-run boundaries; 62 public rows attempted across six repositories, with 56 prepared, 6 policy-refused, and no public candidate, model, agent, grader, resolution, score, or usefulness result |
+| tau2-bench intake | Exact v1.0.1 annotated-tag source binding and actual-loader-order 278-row half-duplex text-core selection across airline, retail, and telecom; candidate adapter, simulator, grader, execution, isolation, reward, score, and usefulness evidence remain absent |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic structural cases; 20 held out; no model or natural-cohort claim |
 | OpenHands integration | Separately packaged `ctxc-openhands` draft alpha; exact current version is owned by its [package metadata](integrations/openhands/pyproject.toml); reviewed offline fake-runtime foundation only; live execution blocked |
 | Downstream agent task completion | Not measured |
@@ -236,6 +237,10 @@ The repository currently includes:
   only by replaying stdout; and records initial/final workspace summaries and a
   deterministic delta without claiming that the caller-provided workspace is a
   mount or sandbox;
+- a source/sdist-only tau2-bench v1.0.1 verifier that binds the annotated tag,
+  exact source blobs, actual loader-order 278-row `base` cohort, half-duplex
+  text run profile, candidate-visible field partition, and explicit exclusions
+  without importing tau2-bench or claiming execution, grading, or a score;
 - an API-free, single-inference adapter for the exact local
   `qwen/qwen3.6-35b-a3b@q4_k_m` LM Studio model;
 - a fixed-digest, versioned CI compile-performance gate with latency-growth and
@@ -278,8 +283,10 @@ adding more claims to the README:
   remaining 438 unattempted rows, provision externally verified candidate
   mount/filesystem and network isolation, capture real candidate outputs through
   the controller-run and prediction ledgers, harden the grader, and add public
-  result evidence; source-bind the structurally selected, independently
-  result-blind-reviewed second suite before measuring end-to-end completion;
+  result evidence; implement and verify the separately launched candidate
+  adapter, simulator/grader evidence, and isolation boundary for the now
+  source-bound, separately result-blind-reviewed tau2-bench text core before
+  measuring end-to-end completion;
 - test the optional model extractor across providers and novel phrasing;
 - add named provider tokenizers and production framework-specific adapters;
 - optimize incremental connector compilation beyond its current
@@ -2043,6 +2050,7 @@ the commands above for the current revision and environment.
 - [Benchmark design and the exact 50% bar](docs/BENCHMARKING.md)
 - [Natural-history evidence contracts](docs/NATURAL_HISTORY_EVIDENCE.md)
 - [SWE-bench Verified source intake](docs/SWEBENCH_EVALUATION.md)
+- [tau2-bench text-core evaluation contract](docs/TAU2_EVALUATION.md)
 - [Result-blind external compatibility records](benchmarks/compatibility/README.md)
 - [Novel English phrase diagnostic](docs/PHRASE_EVALUATION.md)
 - [Exact local Qwen phrase-evaluation protocol](docs/QWEN_PHRASE_EVALUATION.md)

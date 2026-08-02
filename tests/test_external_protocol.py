@@ -18,6 +18,7 @@ from benchmarks.external_protocol import (
     main,
 )
 from benchmarks.swebench import load_suite
+from benchmarks.tau2 import load_suite as load_tau2_suite
 
 
 def _sha(character: str) -> str:
@@ -206,7 +207,7 @@ def test_committed_draft_is_verified_but_not_claim_ready() -> None:
     verified = load_external_protocol(DEFAULT_EXTERNAL_PROTOCOL)
 
     assert verified.protocol_sha256 == (
-        "48e0c336878a292819ebd1015f7a9dbf9c5065f91c65411512aec458745fcd46"
+        "725b4a67691a5bd62ac00dba226a8ba23229c83a4645c11beca6256ba4d144e5"
     )
     assert verified.status == "draft"
     assert verified.claim_ready is False
@@ -224,6 +225,17 @@ def test_committed_draft_is_verified_but_not_claim_ready() -> None:
     )
     assert coding_dataset.sample_size == 500
     assert coding_dataset.seeds == ()
+    second_dataset = verified.dataset_by_kind("second-task")
+    assert second_dataset.id == "public-second-suite"
+    assert second_dataset.status == "pending"
+    assert second_dataset.revision == (
+        "fc0055dc4e0a316c3f83133267fbd6faaa770992"
+    )
+    assert second_dataset.manifest_sha256 == (
+        "6c9c6042c380fc82eb26a0f13d9bbd47aae9d8ef7aa07f2f6a49110b947c3163"
+    )
+    assert second_dataset.sample_size == 278
+    assert second_dataset.seeds == ()
     assert len(verified.datasets) == 4
     with pytest.raises(KeyError):
         verified.dataset_by_kind("unknown")
@@ -345,6 +357,19 @@ def test_committed_coding_slot_is_bound_to_swebench_suite() -> None:
     assert coding.sample_size == suite.document["selection"]["selected_count"]
     assert coding.seeds == ()
     assert "coding-task-suite" in protocol.blocker_ids
+
+
+def test_committed_second_slot_is_bound_to_tau2_suite() -> None:
+    protocol = load_external_protocol(DEFAULT_EXTERNAL_PROTOCOL)
+    suite = load_tau2_suite()
+    second = protocol.dataset_by_kind("second-task")
+
+    assert second.status == "pending"
+    assert second.revision == suite.document["source"]["commit_object"]["oid"]
+    assert second.manifest_sha256 == suite.suite_sha256
+    assert second.sample_size == suite.document["selection"]["task_count"]
+    assert second.seeds == ()
+    assert "second-task-suite" in protocol.blocker_ids
 
 
 def test_frozen_protocol_fails_closed_on_unresolved_controls(

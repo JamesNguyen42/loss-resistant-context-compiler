@@ -7,7 +7,7 @@
   "freeze_repository_commit": null,
   "protocol_document": {
     "path": "external-comparison-v1.md",
-    "file_sha256": "ec865c8a66fb57e0610f3b4cb059ed993f3c8b6ac42c3e7e42f106559ec9eabf"
+    "file_sha256": "795ff7974ff058be6dc4cb0340e0070ee41504ec3ef119509c20239fef2f4e3c"
   },
   "comparison_candidates": [
     {
@@ -135,11 +135,11 @@
       "id": "public-second-suite",
       "kind": "second-task",
       "status": "pending",
-      "revision": null,
-      "manifest_sha256": null,
-      "sample_size": null,
+      "revision": "fc0055dc4e0a316c3f83133267fbd6faaa770992",
+      "manifest_sha256": "6c9c6042c380fc82eb26a0f13d9bbd47aae9d8ef7aa07f2f6a49110b947c3163",
+      "sample_size": 278,
       "seeds": [],
-      "annotation": "Materially different public tool-use or research suite is not selected."
+      "annotation": "tau2-bench v1.0.1 half-duplex text core source and full 278-row actual-loader-order selection are pinned by ctxc-tau2-suite-0.1, but the candidate adapter, runtime isolation, simulator/grader evidence, execution, reward, and result contract remain unresolved; this slot is not frozen or claim-ready."
     }
   ],
   "statistics": {
@@ -208,8 +208,8 @@
     },
     {
       "id": "second-task-suite",
-      "description": "Select and pin a materially different public tool-use or research task suite."
+      "description": "Complete the source-pinned tau2-bench candidate projection/adapter, dependency environment, simulator and grader evidence, retail NL-grader hardening, runtime isolation, execution, reward, and result controls before freezing the second-task slot."
     }
   ],
-  "protocol_sha256": "48e0c336878a292819ebd1015f7a9dbf9c5065f91c65411512aec458745fcd46"
+  "protocol_sha256": "725b4a67691a5bd62ac00dba226a8ba23229c83a4645c11beca6256ba4d144e5"
 }

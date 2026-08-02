@@ -703,8 +703,11 @@ Acceptance:
 - [ ] Preregister at least two public long-horizon agent suites.
 - [ ] Include a coding benchmark where repository state and exact failures
   matter.
-- [ ] Include a second tool-using or research benchmark with materially
-  different trajectories.
+- [x] Select and source-bind a second suite with materially different
+  trajectories: tau2-bench v1.0.1's 278-row half-duplex text `base` core across
+  airline, retail, and manual-policy telecom, in actual loader order. Keep its
+  candidate adapter, simulator/grader evidence, isolation, execution, reward,
+  score, usefulness, and claim readiness explicitly incomplete.
 - [ ] Use the same underlying model, tools, prompts, context budget, retry
   budget, and stopping rules for all memory policies.
 - [ ] Compare full history where it fits, head truncation, tail truncation,

@@ -310,6 +310,49 @@ readiness remain false. `prediction_captures()` is only an interoperability
 bridge into the separate full-cohort prediction ledger after live replay; it is
 not result or score evidence.
 
+## tau2-bench v1.0.1 text-core source intake
+
+[`suites/tau2_text_v1.json`](suites/tau2_text_v1.json) and
+`benchmarks.tau2` form a source/sdist-only, dependency-free intake boundary for
+the separately result-blind-reviewed tau2-bench v1.0.1 half-duplex text
+core. The descriptor binds the annotated tag and peeled commit, exact raw Git
+objects and required blobs, the `base` split for airline, retail, and
+manual-policy telecom, and an exact 278-row manifest. Within each domain the
+verifier reproduces the upstream loader's physical `tasks.json` order filtered
+by base-split membership; it deliberately does not use the literal split-array
+order. Per-row bindings retain only SHA-256 task-key and full-source hashes, not
+raw upstream task ids. The descriptor remains coordinator-only and must not be
+mounted into a future candidate process.
+
+Verify the self-hashed descriptor without tau2-bench installed:
+
+```console
+python -m benchmarks.tau2 verify-suite
+```
+
+Given an absolute, already populated local bare mirror and an absolute Git
+executable, `verify-source` revalidates the mirror, reads bounded raw tag,
+commit, tree, and blob objects with literal argv, recomputes their Git and
+SHA-256 identities, strictly parses the task/split JSON only after byte
+verification, and reconstructs the complete cohort. It neither clones nor
+fetches, imports tau2-bench, opens committed result payloads, launches a
+candidate, constructs a user simulator, or invokes a grader.
+
+The source-task candidate allowlist is empty. Future candidate requests may
+contain only a separately specified normal-agent prompt/policy, serialized tool
+schemas, observed agent-view messages and coordinator-produced tool results;
+the full Task and every scenario, initial state, assertion, golden action,
+grader field, DB, result, and upstream checkout remain trusted-side only. The
+upstream in-process agent factory is prohibited because it passes live tools
+and the full Task to registered factories. See the complete
+[evaluation and secrecy contract](../docs/TAU2_EVALUATION.md).
+
+This checkpoint fixes source and selection facts only. Repository-origin and
+signature authentication, legal/redistribution review, dependency
+reproduction, candidate adapter, runtime boundary, filesystem/network/process
+isolation, simulator and grader evidence, execution, reward, score,
+usefulness, and claim readiness remain false.
+
 ## External baselines
 
 The bundled baselines are deterministic controls, not claims about the current
