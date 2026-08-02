@@ -1,22 +1,23 @@
 # Agent progress
 
-Last updated: 2026-08-01 (America/Los_Angeles)
+Last updated: 2026-08-02 (America/Los_Angeles)
 
 ## Resume point
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Base commit for this in-progress checkpoint: `fbb045b`
-- Current checkpoint: source/sdist-only, complete-cohort SWE-bench prediction
-  reconciliation and canonical official JSONL. It has synthetic/adversarial
-  coverage but has not prepared the selected public repositories, created a
-  candidate mount, executed a task, invoked a grader, or produced a score.
-- Previous checkpoint: bounded raw-Git repository preparation was committed
-  and pushed as `fbb045b`.
-- Next task: add run/result evidence around a separately verified external
-  container/VM controller, then apply the preparer and prediction ledger to
-  license-reviewed public-suite repositories. Do not encode a repository patch
-  as an LRCBench rendered-memory candidate.
+- Base commit for this in-progress checkpoint: `3c79856`
+- Current checkpoint: the first selected public SWE-bench base commit has
+  passed local raw-Git preparation. Discovered Flask license-file declarations,
+  acquisition, mirror, and preparation evidence are recorded without implying
+  redistribution approval, a candidate mount, execution, grading, or a score.
+- Previous checkpoint: complete-cohort SWE-bench prediction reconciliation was
+  committed and pushed as `3c79856`.
+- Next task: launch a synthetic controller through the bounded literal-process
+  owner and retain a separately replayable source/sdist-only run ledger. Then
+  continue exact-license inspection and preparation across the remaining
+  selected public repositories. Do not encode a repository patch as an
+  LRCBench rendered-memory candidate.
 
 ## Mission status
 
@@ -24,14 +25,45 @@ Last updated: 2026-08-01 (America/Los_Angeles)
 2. LocalAI 1.0 contract convergence: isolated optional adapter, exact-wheel
    validation, conversion audit, and contract request complete in `c0ee2f9`.
 3. Public long-horizon suite evidence: SWE-bench Verified source selection,
-   candidate-input projection, synthetic-tested raw-Git preparation, and a
-   full-cohort prediction/official-JSONL boundary are pinned. No selected public
-   repository has been prepared, no model or grader has run, and no external
-   score exists. A second materially different public suite is still required.
+   candidate-input projection, raw-Git preparation, and a full-cohort
+   prediction/official-JSONL boundary are pinned. Selected Flask ordinal 289
+   has passed local public-tree preparation; the other 499 tasks remain
+   unprepared. No candidate, model, or grader has run and no external score
+   exists. A second materially different public suite is still required.
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
-## Current checkpoint
+## Current public-preparation checkpoint
+
+- Acquired `https://github.com/pallets/flask.git` as a local bare mirror over
+  Git HTTPS and verified exact selected base commit
+  `7ee9ceb71e868944a46e1ff00b506772a53a4f1d` for source ordinal 289,
+  `pallets__flask-5014`. The retained origin URL is still not authenticated
+  provenance.
+- Inspected the exact base commit's root and discovered license-file
+  declarations. `pyproject.toml` declares
+  `BSD-3-Clause`; the 1,475-byte `LICENSE.rst` has SHA-256
+  `489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea`.
+  The Flask logo has separate 780-byte artwork terms, SHA-256
+  `2e63a3bd3a1f97e2fa9fa33bbf4f61bbb56ee16beb125b5346b0012388dc3b49`.
+  The missing dataset-card license remains a separate blocker.
+- Passed the existing source-bound raw-object preparer against the public
+  commit: 251 portable regular files, 1,578,533 blob bytes, mirror self-hash
+  `6c27b7e76301f535974ccb144efe7e56612f0d7325364e628d47a0e2ba70ac63`,
+  and preparation self-hash
+  `992a2418b677c220cf351f6e00f33ca667907e113a0dcc912772b846533e75a0`.
+- Retained the 69,106-byte manifest under ignored local `build/` storage; its
+  file SHA-256 is
+  `b0aa8335fd90447e417df3ac5888bd29df6c3954d77dbf47febe56d476d04635`.
+  The prepared tree and manifest are neither packaged nor published.
+- Kept repository-origin authentication, redistribution approval, candidate
+  mount, filesystem/network isolation, execution, grading, score, usefulness,
+  and claim readiness false. This is one public preparation pilot, not a
+  SWE-bench result.
+- Added [the exact review inventory](SWEBENCH_LICENSE_REVIEW.md) and corrected
+  stale documentation that claimed zero selected public tasks had prepared.
+
+## Completed prediction checkpoint (`3c79856`)
 
 - Added source/sdist-only `benchmarks.swebench_prediction` and
   `ctxc-swebench-prediction-ledger-0.1` without changing the dependency-free
@@ -210,6 +242,17 @@ Last updated: 2026-08-01 (America/Los_Angeles)
 All ordinary commands used the repository Python 3.12 virtual environment.
 Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
+- Public Flask preparation pilot: exact source ordinal 289 and commit
+  `7ee9ceb71e868944a46e1ff00b506772a53a4f1d` passed bare-mirror verification,
+  raw-object export, live mirror replay, and independent output-tree replay in
+  11.7 seconds. The result contained 251 files / 1,578,533 blob bytes and kept
+  `claim_ready: false`. The root and artwork license files plus project
+  metadata were read directly from that commit; no repository code was
+  imported or executed.
+- Post-pilot source, repository, and prediction regression run: 94 passed and
+  the one POSIX-only directory-mode case skipped on Windows in 189.29 seconds.
+  A fresh live reconstruction of the ignored Flask preparation handle also
+  passed source-bound mirror and tree replay before the test run.
 - Prediction-ledger focused suite: all 47 cases passed on Windows.
   It covers exact UTF-8 patch preservation, empty predictions, complete-cohort
   closure, source/key/preparation/system replay, missing/duplicate/unexpected/
@@ -308,10 +351,10 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 - No public long-horizon task has been executed or scored. Do not claim
   external usefulness, task-completion improvement, production readiness, or
   superiority from this source/preparation checkpoint.
-- Repository preparation has been exercised only against synthetic local Git
-  mirrors. No selected public-suite mirror or base commit has been prepared,
-  and the canonical origin URL plus local object hashes do not authenticate
-  GitHub, authorship, freshness, or license.
+- Repository preparation has now been exercised against one selected public
+  Flask base commit in addition to synthetic local mirrors. The other 499
+  selected tasks remain unprepared, and the configured origin URL plus local
+  object hashes do not authenticate GitHub, authorship, freshness, or license.
 - The canonical source snapshot contains public evaluator gold and must never
   enter a candidate mount. It and the raw Parquet, opaque key, derived task
   document, evaluator cache, grader output, and repository snapshots remain
@@ -341,15 +384,18 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
 ## Next exact actions
 
-1. Complete dataset/repository license review, acquire each selected repository
-   through a separately authenticated channel, and apply the raw-Git preparer
-   to all 500 exact base commits. Retain per-task preparation evidence and keep
-   every failure in the selected cohort rather than silently narrowing it.
-2. Launch only a separately verified external container/VM controller through
-   the generic literal-argv lifecycle. Do not treat the lifecycle's Windows
-   Job or POSIX process group as filesystem, network, PID, user, or mount
-   isolation.
-3. Use the implemented complete-cohort prediction ledger for the official
+1. Add the smallest source/sdist-only controller-run ledger around the generic
+   literal-argv lifecycle. Own the launch, retain exact raw output evidence,
+   totalize launch/timeout/stream/protocol failures, derive candidate captures
+   only from replayed controller bytes, and keep every isolation/grading claim
+   false.
+2. Continue exact base-commit license inspection, acquire the remaining 11
+   repositories through reviewed channels, and apply the raw-Git preparer to
+   the other 499 selected tasks. Retain every success or refusal without
+   silently narrowing the cohort.
+3. Do not treat the literal lifecycle's Windows Job or POSIX process group as
+   filesystem, network, PID, user, or mount isolation. Use the implemented
+   complete-cohort prediction ledger for the official
    `instance_id`, `model_name_or_path`, and `model_patch` interchange. Add
    separately replayable controller/run/result evidence for prompt/model
    tokens, wall time, trajectory, raw candidate capture, workspace diff, and

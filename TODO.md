@@ -665,8 +665,9 @@ Acceptance:
   without authenticating it, recomputes commit/tree/blob identities, rejects
   symlinks, gitlinks, special/non-portable paths and unbounded trees, exports
   only fresh regular files, and independently rescans the result. The current
-  evidence is from synthetic local mirrors; no selected public task was
-  prepared and no candidate mount was created.
+  synthetic tests remain mechanism evidence. One selected Flask base commit
+  has also passed local preparation; the other 499 tasks remain unprepared and
+  no candidate mount was created.
 - [x] Add a full-selected-cohort SWE-bench prediction ledger and deterministic
   official JSONL boundary. Revalidate source/key and successful preparation
   evidence, preserve exact patch text only in JSONL, and retain missing,
@@ -676,6 +677,11 @@ Acceptance:
   every selected base-commit outcome, establish candidate mount and network
   isolation, harden hidden-test application and grading, and add task
   run/result evidence before running or scoring any candidate.
+- [x] Inspect the exact Flask task base commit's root and discovered
+  license-file declarations and exercise selected ordinal 289 through public
+  mirror verification and raw-tree preparation. Retain the local manifest
+  while keeping origin, redistribution, mount, execution, grading, score, and
+  claim readiness false.
 - [ ] Preregister at least two public long-horizon agent suites.
 - [ ] Include a coding benchmark where repository state and exact failures
   matter.

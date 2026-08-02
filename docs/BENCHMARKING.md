@@ -601,8 +601,10 @@ user-visible extended attribute, and NTFS stream before returning a self-hashed
 coordinator-only manifest.
 
 That implementation has passed adversarial tests against synthetic local Git
-mirrors only. No selected public repository has been prepared or mounted. A
-configured origin URL is not authenticated provenance; SHA-1 is the source
+mirrors and locally prepared the exact Flask base commit for selected ordinal
+289. The pilot prepared 251 regular files but created no candidate mount; the
+other 499 selected tasks remain unprepared. A configured origin URL is not
+authenticated provenance; SHA-1 is the source
 corpus's Git identity, while raw object bodies receive separate SHA-256
 evidence. Mirror, worker, and preparation self-hashes do not authenticate an
 author. The manifest keeps redistribution, mount/network isolation, execution,
@@ -628,7 +630,7 @@ protocol rows remain producer-asserted pending the later controller/run
 evidence contract.
 
 The external protocol's coding-task slot therefore remains `pending`: the
-pinned dataset card declares no license, and public-cohort preparation,
+pinned dataset card declares no license, and complete public-cohort preparation,
 candidate mount isolation, network-isolation evidence, grader security review,
 exact hidden-test application, redistribution review, execution, and scoring
 all remain false. HMAC ids do not prevent relinking from public problem text or

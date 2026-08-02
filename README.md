@@ -39,7 +39,7 @@ meaning can be compressed without loss.
 | External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
-| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, synthetic-tested raw-Git preparation, and exhaustive deterministic prediction-ledger boundaries; no public-suite repository prepared, candidate prediction captured, execution, grading, or score |
+| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, raw-Git preparation, and exhaustive deterministic prediction-ledger boundaries; one Flask base commit prepared locally, with no candidate mount, prediction, execution, grading, or score |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic structural cases; 20 held out; no model or natural-cohort claim |
 | OpenHands integration | Separately packaged `ctxc-openhands` draft alpha; exact current version is owned by its [package metadata](integrations/openhands/pyproject.toml); reviewed offline fake-runtime foundation only; live execution blocked |
 | Downstream agent task completion | Not measured |
@@ -220,7 +220,8 @@ The repository currently includes:
   materializes only portable regular-file blobs into a fresh tree, and
   independently reconciles every path, mode, size, blob id, and SHA-256; its
   origin, license, candidate-mount, network, execution, grader, and score
-  claims remain false, and no public-suite task has been prepared;
+  claims remain false; one selected Flask base commit has passed local
+  preparation, while the other 499 selected tasks remain unprepared;
 - a source-only full-cohort SWE-bench prediction ledger that revalidates source,
   opaque-key, and successful preparation bindings, turns every missing,
   duplicate, unexpected, invalid, oversized, or unprepared output into retained

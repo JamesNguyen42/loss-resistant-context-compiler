@@ -4,9 +4,10 @@ This repository now has reproducible **source intake, candidate-input
 projection, raw-Git repository preparation, and full-cohort prediction-ledger
 boundaries** for SWE-bench Verified. The preparation boundary has passed local
 synthetic-mirror tests and the prediction boundary has passed synthetic
-contract tests; neither is public-task evidence. No selected public repository
-has been prepared, candidate mount created, candidate prediction captured,
-agent run, grader invoked, or external score produced. The external comparison
+contract tests. In addition, one selected Flask base commit has passed local
+public-tree preparation. That pilot did not create a candidate mount, capture a
+prediction, run an agent, invoke a grader, or produce an external score. The
+other 499 selected tasks remain unprepared. The external comparison
 protocol therefore keeps its coding-task slot `pending` and retains blocker
 `coding-task-suite`.
 
@@ -36,7 +37,9 @@ The immutable dataset card has no declared SPDX license. The harness source is
 MIT-licensed, but that does not establish a license for dataset rows, issue
 text, patches, tests, or repository snapshots. Raw/derived source rows and
 generated task documents remain local and ignored until redistribution review
-is complete.
+is complete. The current artifact-by-artifact inventory and first public
+preparation pilot are recorded in
+[SWE-bench license and acquisition review](SWEBENCH_LICENSE_REVIEW.md).
 
 ## Offline workflow
 

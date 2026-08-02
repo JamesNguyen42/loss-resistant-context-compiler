@@ -83,6 +83,12 @@ versioning and release rules in
 
 ### Added
 
+- A first public SWE-bench preparation pilot for selected Flask ordinal 289.
+  The exact base-commit BSD-3-Clause source and separate artwork declarations,
+  acquisition limits, mirror and preparation hashes, and 251-file tree result
+  are recorded without
+  claiming authenticated origin, redistribution approval, candidate isolation,
+  execution, grading, or a score.
 - A source/sdist-only SWE-bench prediction-ledger boundary that reconciles the
   complete selected cohort in physical source order, totalizes missing,
   duplicate, unexpected, invalid, oversized, and unprepared candidate outputs,

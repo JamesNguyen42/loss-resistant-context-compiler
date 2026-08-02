@@ -56,7 +56,7 @@ live-readiness status.
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
-| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation and full-cohort prediction-ledger contracts with local synthetic/adversarial tests, but none of the 500 selected public tasks has been prepared or run; dataset/repository license review, candidate mount/execution, grader execution, and scoring remain absent |
+| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation and full-cohort prediction-ledger contracts; one selected Flask base commit prepared locally, with the other 499 tasks, candidate mount/execution, grader execution, and scoring still absent |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
 | OpenHands integration | Separate `ctxc-openhands` draft alpha; exact current version is owned by its package metadata; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
 | Installed JSON Schemas | 26 (7 historical ids, 19 current-namespace ids) |
@@ -1269,9 +1269,10 @@ prediction.
 
 This checkpoint remains source-only. The dataset card declares no license; raw
 source rows remain local, and dataset/repository license and redistribution
-reviews remain incomplete. No prepared snapshot or preparation evidence exists
-for any of the 500 selected public tasks. Candidate mount/filesystem and network
-isolation, candidate execution, official-grader review, hardening, and execution,
+reviews remain incomplete. A later local pilot prepared selected Flask ordinal
+289 and retained its ignored manifest; the other 499 tasks remain unprepared.
+Candidate mount/filesystem and network isolation, candidate execution,
+official-grader review, hardening, and execution,
 exact hidden-test-patch application, task result contracts, model runs, and
 scores remain absent. Neither the raw exporter nor the literal lifecycle
 establishes a candidate sandbox or network-isolation guarantee. Opaque HMAC ids
