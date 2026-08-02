@@ -4,11 +4,13 @@ This repository now has reproducible **source intake, candidate-input
 projection, raw-Git repository preparation, and full-cohort prediction-ledger
 boundaries** for SWE-bench Verified. The preparation boundary has passed local
 synthetic-mirror tests and the prediction boundary has passed synthetic
-contract tests. In addition, one selected Flask base commit has passed local
-public-tree preparation. That pilot did not create a candidate mount, capture a
-prediction, run an agent, invoke a grader, or produce an external score. The
-other 499 selected tasks remain unprepared. The external comparison
-protocol therefore keeps its coding-task slot `pending` and retains blocker
+contract tests. The first retained public cohort attempted 40 selected rows
+across Flask, Seaborn, Requests, Pylint, and Pytest: 34 exact base commits
+passed live preparation replay, six Pylint commits were refused because their
+trees contain forbidden symlinks, and 460 rows remain unattempted. Preparation
+did not create a candidate mount, capture a prediction, run an agent, invoke a
+grader, or produce an external score. The external comparison protocol
+therefore keeps its coding-task slot `pending` and retains blocker
 `coding-task-suite`.
 
 ## Frozen source identity
@@ -37,8 +39,8 @@ The immutable dataset card has no declared SPDX license. The harness source is
 MIT-licensed, but that does not establish a license for dataset rows, issue
 text, patches, tests, or repository snapshots. Raw/derived source rows and
 generated task documents remain local and ignored until redistribution review
-is complete. The current artifact-by-artifact inventory and first public
-preparation pilot are recorded in
+is complete. The current artifact-by-artifact inventory and public preparation
+cohort are recorded in
 [SWE-bench license and acquisition review](SWEBENCH_LICENSE_REVIEW.md).
 
 ## Offline workflow
@@ -175,11 +177,12 @@ repository origin/redistribution review, candidate mount, mount/network
 isolation, Git security review, execution, grading, external score,
 usefulness, and claim readiness false.
 
-The current tests use small locally created SHA-1 mirrors. They prove contract
-behavior, not public-cohort coverage, repository redistribution permission,
-hostile-pack parser safety, or candidate isolation. A rejected public
-repository must later become a retained per-task preparation failure rather
-than disappearing from the 500-task denominator.
+The synthetic tests use small locally created SHA-1 mirrors and prove contract
+behavior, not repository redistribution permission, hostile-pack parser
+safety, or candidate isolation. Separately retained public evidence currently
+covers 40 rows. Its six symlink-policy refusals stay in the 500-task denominator
+alongside 34 verified preparations and 460 explicitly unattempted rows; none is
+a candidate result.
 
 ## Full-cohort prediction boundary
 
@@ -229,9 +232,14 @@ duplicate ids or filter empty patches, so replay verifies the exact canonical
 line sequence instead of treating a successful load as completeness proof.
 Self-hashes do not authenticate a model or coordinator. Fixed-false state
 records that no candidate mount, execution, hidden-test application, grading,
-score, usefulness, or claim readiness follows from this checkpoint. No real
-500-row prediction ledger or JSONL is committed. Because rejected candidate
-bytes are discarded rather than duplicated beside the official JSONL, invalid,
+score, usefulness, or claim readiness follows from this checkpoint. One
+ignored, preparation-only 500-row ledger and JSONL reconcile the 34 prepared,
+6 refused, and 460 unattempted outcomes with 500 null predictions; neither is
+committed or a candidate run. Their file SHA-256 values are respectively
+`8397d853d7d15bbacb20e56d784d8a270d7b506e39231015b934207670ae63cb`
+and `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
+Because rejected candidate bytes are discarded rather than duplicated beside
+the official JSONL, invalid,
 duplicate, and unexpected-capture dispositions are coordinator assertions and
 are explicitly marked as not independently replayable. The later run contract
 must bind controller-owned raw execution evidence before any claim.
@@ -241,10 +249,10 @@ must bind controller-owned raw execution evidence before any claim.
 A later executor/grader checkpoint must fail closed unless it can retain and
 verify all of the following:
 
-1. Run all selected source rows through the raw-Git preparer and retain every
-   success or refusal. Independently create a candidate mount from a verified
-   tree with no upstream `.git` history, later refs, remotes, evaluator cache,
-   raw dataset, hidden tests, or grader evidence.
+1. Run the remaining 460 selected source rows through the raw-Git preparer and
+   retain every success or refusal. Independently create a candidate mount from
+   a verified tree with no upstream `.git` history, later refs, remotes,
+   evaluator cache, raw dataset, hidden tests, or grader evidence.
 2. Externally evidenced outbound-network isolation for every candidate run.
 3. Separate candidate and evaluator lifetimes and filesystems. Apply hidden
    test material only after candidate termination and never return grader

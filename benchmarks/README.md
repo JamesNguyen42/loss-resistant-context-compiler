@@ -161,10 +161,11 @@ allowlisted task payload, with exact fields `opaque_task_id` and
 
 The HMAC ID is pseudonymous, not unlinkable: public problem text and fixed
 suite order can still identify a task. A raw-Git preparation boundary now has
-synthetic-mirror coverage plus one local public Flask base-commit pilot. The
-pilot is not a candidate mount or execution; the other 499 selected tasks are
-unprepared, no agent or grader has run, no score exists, and the pinned dataset
-card declares no license. See the complete
+synthetic-mirror coverage plus 40 retained public outcomes across five
+repositories: 34 verified preparations, six exact
+`tree-symlink-forbidden` policy refusals, and 460 unattempted rows. These are
+not candidate mounts or executions; no agent or grader has run, no score
+exists, and the pinned dataset card declares no license. See the complete
 [source, projection, and execution boundary](../docs/SWEBENCH_EVALUATION.md).
 
 ### SWE-bench repository preparation
@@ -204,9 +205,11 @@ alternate streams. Its self-hashed
 `ctxc-swebench-repository-preparation-0.1` manifest remains coordinator-only
 and serializes exact limits while asserting no author authentication. All
 origin, redistribution, mount, network, execution, grader, score, usefulness,
-and claim-readiness fields remain false. Synthetic Git tests prove only the
-mechanism; the separately recorded Flask pilot proves one selected tree
-prepared locally, not that it was safely mounted or executed.
+and claim-readiness fields remain false. Synthetic Git tests prove the
+mechanism. The ignored public evidence currently proves that 34 exact selected
+trees prepared and replayed locally and that six other selected commits were
+refused by the link-free export policy; it does not prove safe mounting,
+candidate execution, or task success.
 
 ### SWE-bench prediction ledger
 

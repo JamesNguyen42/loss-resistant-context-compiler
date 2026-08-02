@@ -56,7 +56,7 @@ live-readiness status.
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
-| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation and full-cohort prediction-ledger contracts; one selected Flask base commit prepared locally, with the other 499 tasks, candidate mount/execution, grader execution, and scoring still absent |
+| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation and full-cohort prediction-ledger contracts; 40 public rows attempted across five repositories (34 prepared, 6 policy-refused, 460 unattempted), with candidate mount/execution, grader execution, and scoring still absent |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
 | OpenHands integration | Separate `ctxc-openhands` draft alpha; exact current version is owned by its package metadata; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
 | Installed JSON Schemas | 26 (7 historical ids, 19 current-namespace ids) |
@@ -1243,9 +1243,9 @@ enforced by the preparation contract. The exporter is not a candidate sandbox.
 `tests/test_swebench_repository.py` contains 26 synthetic and adversarial tests.
 The latest focused local Windows run passed 25 in 88.3 seconds; the POSIX-only
 directory-mode regression skipped. Its fixtures use temporary local SHA-1
-mirrors only: they prepare no public repository and
-exercise none of the selected 500 tasks. This is contract and mechanism
-evidence, not public SWE-bench evaluation evidence.
+mirrors and remain contract/mechanism evidence. Separate ignored public
+artifacts now cover 40 selected rows, but they are preparation evidence rather
+than candidate execution or public SWE-bench result evidence.
 
 The source/sdist-only prediction coordinator closes the complete selected
 cohort in physical source order and emits the exact official three-field JSONL
@@ -1269,10 +1269,10 @@ prediction.
 
 This checkpoint remains source-only. The dataset card declares no license; raw
 source rows remain local, and dataset/repository license and redistribution
-reviews remain incomplete. A later local pilot prepared selected Flask ordinal
-289 and retained its ignored manifest; the other 499 tasks remain unprepared.
-Candidate mount/filesystem and network isolation, candidate execution,
-official-grader review, hardening, and execution,
+reviews remain incomplete. The retained public-preparation cohort contains 34
+live-replayed trees and six exact Pylint symlink-policy refusals; 460 rows have
+not been attempted. Candidate mount/filesystem and network isolation, candidate
+execution, official-grader review, hardening, and execution,
 exact hidden-test-patch application, task result contracts, model runs, and
 scores remain absent. Neither the raw exporter nor the literal lifecycle
 establishes a candidate sandbox or network-isolation guarantee. Opaque HMAC ids
@@ -1778,8 +1778,8 @@ project work is the external and natural-history evidence path:
    hiding a failure;
 5. add clean adapters only for included systems and retain every failed run;
 6. complete SWE-bench dataset/repository license and redistribution review,
-   then prepare all 500 selected public tasks through the source-only raw-Git
-   boundary, retaining every success or refusal and both mirror/preparation
+   then prepare the remaining 460 selected public tasks through the source-only
+   raw-Git boundary, retaining every success or refusal and both mirror/preparation
    evidence; use the complete-cohort prediction ledger for official JSONL, and
    the wire-neutral literal lifecycle only to launch a separately verified
    container/VM controller for candidate mount/filesystem and network isolation,

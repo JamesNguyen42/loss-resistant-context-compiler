@@ -6,13 +6,13 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Base commit for this in-progress checkpoint: `3c79856`
-- Current checkpoint: the first selected public SWE-bench base commit has
-  passed local raw-Git preparation. Discovered Flask license-file declarations,
-  acquisition, mirror, and preparation evidence are recorded without implying
-  redistribution approval, a candidate mount, execution, grading, or a score.
-- Previous checkpoint: complete-cohort SWE-bench prediction reconciliation was
-  committed and pushed as `3c79856`.
+- Base commit for this in-progress checkpoint: `b065e8e`
+- Current checkpoint: 40 selected public SWE-bench rows across five
+  repositories have retained preparation outcomes: 34 exact trees prepared
+  and replayed, six Pylint trees were refused by the link-free policy, and 460
+  rows remain unattempted. No candidate, model, grader, or score exists.
+- Previous checkpoint: the first public Flask preparation and its exact
+  license/acquisition review were committed and pushed as `b065e8e`.
 - Next task: launch a synthetic controller through the bounded literal-process
   owner and retain a separately replayable source/sdist-only run ledger. Then
   continue exact-license inspection and preparation across the remaining
@@ -26,42 +26,38 @@ Last updated: 2026-08-02 (America/Los_Angeles)
    validation, conversion audit, and contract request complete in `c0ee2f9`.
 3. Public long-horizon suite evidence: SWE-bench Verified source selection,
    candidate-input projection, raw-Git preparation, and a full-cohort
-   prediction/official-JSONL boundary are pinned. Selected Flask ordinal 289
-   has passed local public-tree preparation; the other 499 tasks remain
-   unprepared. No candidate, model, or grader has run and no external score
-   exists. A second materially different public suite is still required.
+   prediction/official-JSONL boundary are pinned. Forty public rows have been
+   attempted: 34 prepared, 6 policy-refused, and 460 unattempted. No candidate,
+   model, or grader has run and no external score exists. A second materially
+   different public suite is still required.
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
 ## Current public-preparation checkpoint
 
-- Acquired `https://github.com/pallets/flask.git` as a local bare mirror over
-  Git HTTPS and verified exact selected base commit
-  `7ee9ceb71e868944a46e1ff00b506772a53a4f1d` for source ordinal 289,
-  `pallets__flask-5014`. The retained origin URL is still not authenticated
-  provenance.
-- Inspected the exact base commit's root and discovered license-file
-  declarations. `pyproject.toml` declares
-  `BSD-3-Clause`; the 1,475-byte `LICENSE.rst` has SHA-256
-  `489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea`.
-  The Flask logo has separate 780-byte artwork terms, SHA-256
-  `2e63a3bd3a1f97e2fa9fa33bbf4f61bbb56ee16beb125b5346b0012388dc3b49`.
-  The missing dataset-card license remains a separate blocker.
-- Passed the existing source-bound raw-object preparer against the public
-  commit: 251 portable regular files, 1,578,533 blob bytes, mirror self-hash
-  `6c27b7e76301f535974ccb144efe7e56612f0d7325364e628d47a0e2ba70ac63`,
-  and preparation self-hash
-  `992a2418b677c220cf351f6e00f33ca667907e113a0dcc912772b846533e75a0`.
-- Retained the 69,106-byte manifest under ignored local `build/` storage; its
-  file SHA-256 is
-  `b0aa8335fd90447e417df3ac5888bd29df6c3954d77dbf47febe56d476d04635`.
-  The prepared tree and manifest are neither packaged nor published.
+- Attempted selected ordinals 287--297, 320--348 across local HTTPS bare
+  mirrors for Seaborn, Flask, Requests, Pylint, and Pytest. Every configured
+  origin URL remains unauthenticated provenance.
+- Retained 34 successful source-bound manifests: 2 Seaborn, 1 Flask,
+  8 Requests, 4 Pylint, and 19 Pytest. Every handle passed a fresh live mirror
+  and output-tree replay. In aggregate they bind 17,307 portable regular files,
+  114,669,862 blob bytes, 2,063 tree objects, and 867,348 tree-object bytes.
+- Retained exact `tree-symlink-forbidden` refusals for Pylint ordinals
+  324--329. Each commit contains the same two mode-`120000` paths. These are
+  preparation-policy refusals, not candidate or test failures.
+- The full selected state is therefore 34 prepared, 6 refused, and 460 not
+  attempted. The 34 ignored manifests total 4,460,409 bytes. No row disappeared
+  from the 500-task denominator.
+- Expanded the discovered license-file inventory without flattening
+  commit-specific variants: Seaborn includes five third-party license files;
+  Requests varies root `LICENSE` and `NOTICE` bytes and has theme/extension
+  licenses; all ten inspected Pylint commits share one root license; Pytest has
+  root, documentation, and theme variants. The pinned dataset card still has
+  no declared license, and per-path/legal/redistribution review is incomplete.
 - Kept repository-origin authentication, redistribution approval, candidate
   mount, filesystem/network isolation, execution, grading, score, usefulness,
-  and claim readiness false. This is one public preparation pilot, not a
-  SWE-bench result.
-- Added [the exact review inventory](SWEBENCH_LICENSE_REVIEW.md) and corrected
-  stale documentation that claimed zero selected public tasks had prepared.
+  and claim readiness false. This is preparation coverage, not a SWE-bench
+  result.
 
 ## Completed prediction checkpoint (`3c79856`)
 
@@ -242,6 +238,22 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 All ordinary commands used the repository Python 3.12 virtual environment.
 Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
+- Public preparation cohort expansion: fresh source-bound replay passed for
+  all 34 prepared handles. Seaborn contributed 2 trees / 633 files /
+  10,778,538 blob bytes; Requests 8 / 928 / 18,896,934; Pylint 4 / 6,166 /
+  12,823,506; Pytest 19 / 9,329 / 70,592,351. Six independent Pylint attempts
+  reproduced the exact `tree-symlink-forbidden` refusal for the same two
+  symlink entries. With the earlier Flask tree, the cohort is 34 prepared,
+  6 refused, and 460 unattempted.
+- Preparation-only prediction replay: one ignored 487,299-byte ledger closes
+  the full 500-row denominator with 34 prepared/no-prediction, 6 refused,
+  460 not attempted, 0 predictions, and 0 protocol violations. Its file
+  SHA-256 is
+  `8397d853d7d15bbacb20e56d784d8a270d7b506e39231015b934207670ae63cb`
+  and self-hash is
+  `cfedda6985ca5c088bf123db678793fc9031461c92ebc755c8a0af80a14e24ff`.
+  The 53,734-byte, 500-line null-prediction JSONL has SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
 - Public Flask preparation pilot: exact source ordinal 289 and commit
   `7ee9ceb71e868944a46e1ff00b506772a53a4f1d` passed bare-mirror verification,
   raw-object export, live mirror replay, and independent output-tree replay in
@@ -351,10 +363,10 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 - No public long-horizon task has been executed or scored. Do not claim
   external usefulness, task-completion improvement, production readiness, or
   superiority from this source/preparation checkpoint.
-- Repository preparation has now been exercised against one selected public
-  Flask base commit in addition to synthetic local mirrors. The other 499
-  selected tasks remain unprepared, and the configured origin URL plus local
-  object hashes do not authenticate GitHub, authorship, freshness, or license.
+- Repository preparation has now been exercised against 40 selected public
+  rows across five repositories in addition to synthetic local mirrors. The
+  34 preparations and six policy refusals do not authenticate GitHub,
+  authorship, freshness, or license; 460 rows remain unattempted.
 - The canonical source snapshot contains public evaluator gold and must never
   enter a candidate mount. It and the raw Parquet, opaque key, derived task
   document, evaluator cache, grader output, and repository snapshots remain
@@ -389,9 +401,9 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
    totalize launch/timeout/stream/protocol failures, derive candidate captures
    only from replayed controller bytes, and keep every isolation/grading claim
    false.
-2. Continue exact base-commit license inspection, acquire the remaining 11
+2. Continue exact base-commit license inspection, acquire the remaining seven
    repositories through reviewed channels, and apply the raw-Git preparer to
-   the other 499 selected tasks. Retain every success or refusal without
+   the other 460 selected tasks. Retain every success or refusal without
    silently narrowing the cohort.
 3. Do not treat the literal lifecycle's Windows Job or POSIX process group as
    filesystem, network, PID, user, or mount isolation. Use the implemented

@@ -665,9 +665,10 @@ Acceptance:
   without authenticating it, recomputes commit/tree/blob identities, rejects
   symlinks, gitlinks, special/non-portable paths and unbounded trees, exports
   only fresh regular files, and independently rescans the result. The current
-  synthetic tests remain mechanism evidence. One selected Flask base commit
-  has also passed local preparation; the other 499 tasks remain unprepared and
-  no candidate mount was created.
+  synthetic tests remain mechanism evidence. Forty selected public rows across
+  five repositories have now been attempted: 34 passed live preparation replay,
+  six Pylint rows were retained as `tree-symlink-forbidden` policy refusals,
+  and 460 rows remain unattempted. No candidate mount was created.
 - [x] Add a full-selected-cohort SWE-bench prediction ledger and deterministic
   official JSONL boundary. Revalidate source/key and successful preparation
   evidence, preserve exact patch text only in JSONL, and retain missing,
@@ -682,6 +683,10 @@ Acceptance:
   mirror verification and raw-tree preparation. Retain the local manifest
   while keeping origin, redistribution, mount, execution, grading, score, and
   claim readiness false.
+- [x] Extend public preparation through Seaborn ordinals 287--288, Requests
+  290--297, Pylint 320--329, and Pytest 330--348. Retain 34 successful
+  manifests and all six exact symlink-policy refusals without treating either
+  outcome as candidate execution or a benchmark result.
 - [ ] Preregister at least two public long-horizon agent suites.
 - [ ] Include a coding benchmark where repository state and exact failures
   matter.

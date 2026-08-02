@@ -601,10 +601,12 @@ user-visible extended attribute, and NTFS stream before returning a self-hashed
 coordinator-only manifest.
 
 That implementation has passed adversarial tests against synthetic local Git
-mirrors and locally prepared the exact Flask base commit for selected ordinal
-289. The pilot prepared 251 regular files but created no candidate mount; the
-other 499 selected tasks remain unprepared. A configured origin URL is not
-authenticated provenance; SHA-1 is the source
+mirrors and retained the first 40 selected public outcomes across five
+repositories. Thirty-four exact base commits passed fresh live replay, six
+Pylint commits were refused by the link-free `tree-symlink-forbidden` policy,
+and 460 rows remain unattempted. The verified trees contain 17,307 regular
+files and 114,669,862 blob bytes but no candidate mount. A configured origin
+URL is not authenticated provenance; SHA-1 is the source
 corpus's Git identity, while raw object bodies receive separate SHA-256
 evidence. Mirror, worker, and preparation self-hashes do not authenticate an
 author. The manifest keeps redistribution, mount/network isolation, execution,
@@ -630,8 +632,8 @@ protocol rows remain producer-asserted pending the later controller/run
 evidence contract.
 
 The external protocol's coding-task slot therefore remains `pending`: the
-pinned dataset card declares no license, and complete public-cohort preparation,
-candidate mount isolation, network-isolation evidence, grader security review,
+pinned dataset card declares no license, and the remaining public-cohort
+preparation, candidate mount isolation, network-isolation evidence, grader security review,
 exact hidden-test application, redistribution review, execution, and scoring
 all remain false. HMAC ids do not prevent relinking from public problem text or
 establish that a model has not seen benchmark gold.

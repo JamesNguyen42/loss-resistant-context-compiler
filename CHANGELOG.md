@@ -83,6 +83,11 @@ versioning and release rules in
 
 ### Added
 
+- A retained first public SWE-bench preparation cohort: 40 selected rows
+  attempted across five repositories, with 34 source-bound trees replayed and
+  six Pylint rows retained as exact `tree-symlink-forbidden` policy refusals.
+  The 460 unattempted rows, unauthenticated origins, incomplete license review,
+  and absent candidate execution, grading, and score remain explicit.
 - A first public SWE-bench preparation pilot for selected Flask ordinal 289.
   The exact base-commit BSD-3-Clause source and separate artwork declarations,
   acquisition limits, mirror and preparation hashes, and 251-file tree result
