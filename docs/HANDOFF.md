@@ -56,7 +56,7 @@ live-readiness status.
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
 | OpenHands integration | Separate `ctxc-openhands` draft alpha; exact current version is owned by its package metadata; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
-| Installed JSON Schemas | 25 (7 historical ids, 18 current-namespace ids) |
+| Installed JSON Schemas | 26 (7 historical ids, 19 current-namespace ids) |
 | External 50%-better claim | Not established |
 | Downstream task completion evidence | None yet |
 | Confirmed fail-closed blockers | Four identified in-process paths closed |
@@ -311,9 +311,9 @@ and measured duration.
 | `src/context_compiler/schema_compatibility.py` | Machine-readable artifact reader/writer window and no-silent-migration policy |
 | `src/context_compiler/redaction.py` | Fixed common-secret content detectors, masking policy, immutable result, audit report, and exact replay |
 | `src/context_compiler/cli.py` | `ctxc` parsing, atomic output transactions, versioned error/completion diagnostics, and exit codes |
-| `src/context_compiler/localai_contracts_adapter.py` | Lazy exact-version canonical adapter, pre/post import origin and installed-tree gate, closed authority projection, direct ContextBundle result, typed request server, and 22-case probe |
+| `src/context_compiler/localai_contracts_adapter.py` | Lazy exact-version canonical adapter, pre/post import origin and installed-tree gate, closed authority projection, direct ContextBundle result, provider-local evidence-bound conversion audit, typed request server, and 22-case probe |
 | `src/context_compiler/localai_contracts_connector.py` | Optional bounded NDJSON module/console entry point; exits closed when the contracts wheel is absent |
-| `scripts/validate_localai_contracts_install.py` | Offline provider-only and exact-contracts clean-wheel lanes, subprocess equivalence, and clean-installed Phase 0 conformance |
+| `scripts/validate_localai_contracts_install.py` | Offline provider-only and exact-contracts clean-wheel lanes, subprocess equivalence, conversion-audit binding checks, and clean-installed Phase 0 conformance |
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
 | `benchmarks/json_io.py` | Shared bounded regular-file hashing and strict JSON decoding for benchmark evidence |
 | `benchmarks/report_verifier.py` | Bounded strict saved-report verification and deterministic replay |
@@ -331,7 +331,7 @@ and measured duration.
 | `benchmarks/qwen_literal_ablation.py` | Model-free frozen-output offset ablation, literal replay, self-hashed report, and strict regeneration |
 | `benchmarks/qwen_paired_eval.py` | Clean-tree paired coordinate/literal capture, alternating order, comparison metrics, and offline replay |
 | `benchmarks/protocols/` | Human-readable and machine-verifiable external comparison protocol; v1 is a valid non-claim-bearing draft with explicit blockers |
-| `schemas/` | Eight historical/core artifact contracts plus 17 connector request/response/source/bundle/checkpoint/operation contracts |
+| `schemas/` | Eight historical/core artifact contracts, 17 shared connector contracts, and one provider-local LocalAI conversion-audit schema |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
 | `CHANGELOG.md` | Versioned release notes and the unreleased change ledger |
 | `SUPPORT.md` | Runtime, platform, format, installation, and maintenance matrix |
@@ -506,6 +506,24 @@ wheel-archive authentication, an atomic import transaction, or containment of
 writable site-packages, code already run by startup/custom-finder/preload
 hooks, or arbitrary same-origin module forgery in a compromised process. The
 root API and ordinary `ctxc` behavior remain standalone.
+
+The submodule-only `compile_with_conversion_audit` API returns the actual
+shared ContextBundle and a separate provider-local
+`ctxc-localai-conversion-audit-0.1` record. Fixed dispositions cover complete
+JSON subtrees, SourceEvents reconstruct exactly through the private mapping,
+and the evidence-bound verifier requires the typed shared inputs and output.
+The sidecar omits raw ids/content/metadata/issuers and claims no semantic
+completeness. Its self-hash is not authentication; private bundle digests and
+authority decisions remain provider assertions. Its strict `claim_boundary`
+machine-labels that distinction, including output omissions, overflow, policy
+identity, and trust partitions. Stable unsalted digests make the sidecar
+linkable and dictionary-testable, so it is sensitive diagnostic evidence and
+must not be treated as de-identified telemetry. Ordinary `context.compile`
+runs the inventory and relation checks but neither serializes nor emits the
+sidecar. The shared operation/manifest remain unchanged, and
+[`docs/CONTRACT_REQUESTS.md`](CONTRACT_REQUESTS.md) records the exact upstream
+operation-schema negotiation gap.
+
 Custom token accounting requires both a callback and a stable
 `token_counter_id`. Artifact verification must receive the identical callback
 and id or fail with `unverifiable_token_counter`.
@@ -902,7 +920,7 @@ audited. Any selected superseded item independently fails verification as
   Python 3.13 filesystem, external-runner/process-deadline/exact-Qwen transport
   regressions, and clean wheel/sdist release smoke.
 - Distribution metadata, `ctxc`, package version, and the installed schema path
-  are regression-tested. CI verifies all 25 wheel schemas, source-distribution
+  are regression-tested. CI verifies all 26 wheel schemas, source-distribution
   conformance/natural/compatibility assets, and separate clean installs with
   `ctxc --help`, compile, trust-create, and trust-verify round trips.
 - CI runs connector golden/negative conformance, natural-history contract
@@ -1731,7 +1749,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert len(wheels) == 1, wheels
     assert wheels[0].name.startswith('loss_resistant_context_compiler-')
     names = zipfile.ZipFile(wheels[0]).namelist()
-    assert sum(name.endswith('.schema.json') for name in names) == 25
+    assert sum(name.endswith('.schema.json') for name in names) == 26
 "
 ```
 

@@ -42,9 +42,54 @@ LOCALAI_CONTRACTS_WHEEL_SHA256 = (
 )
 LOCALAI_CONTRACTS_SOURCE_COMMIT = "3858190e8b458847da94e9ed24be83f4928b7d1a"
 CONTEXT_COMPILE_OPERATION = "context.compile"
+LOCALAI_CONVERSION_AUDIT_SCHEMA = "ctxc-localai-conversion-audit-0.1"
 MAX_CONTEXT_SOURCE_EVENTS = 8
 MAX_CONTEXT_SPANS = 10_000
 _PROJECTION_VERSION = "ctxc-localai-context-bundle-projection-v1"
+_SOURCE_EVENT_CONVERSION_VERSION = (
+    "localai-source-event-1.0.0-to-ctxc-localai-source-event-0.1-v1"
+)
+_CONTEXT_BUNDLE_CONVERSION_VERSION = (
+    "ctxc-localai-context-bundle-0.1-to-localai-context-bundle-1.0.0-v1"
+)
+_CONVERSION_PATH_SEMANTICS = (
+    "listed_path_classifies_the_complete_json_subtree_unless_a_child_path_"
+    "supplies_a_more_specific_disposition"
+)
+_CONVERSION_AUDIT_CALLER_EVIDENCE_PATHS = (
+    "/input_payload_sha256",
+    "/source_event_conversion/records/{ordinal}/input_document_sha256",
+    "/source_event_conversion/records/{ordinal}/round_trip_document_sha256",
+    "/context_bundle_conversion/output_document_sha256",
+    "/context_bundle_conversion/output_round_trip_sha256",
+)
+_CONVERSION_AUDIT_PROVIDER_ASSERTED_PATHS = (
+    "/source_event_conversion/records/{ordinal}/private_document_sha256",
+    "/source_event_conversion/records/{ordinal}/round_trip_exact",
+    "/source_event_conversion/records/{ordinal}/loss_detected",
+    "/source_event_conversion/records/{ordinal}/independently_authenticated",
+    "/source_event_conversion/records/{ordinal}/trusted_for_state",
+    "/source_event_conversion/all_round_trips_exact",
+    "/source_event_conversion/loss_detected",
+    "/context_bundle_conversion/private_document_sha256",
+    "/context_bundle_conversion/private_bundle_sha256",
+    "/context_bundle_conversion/private_round_trip_supported",
+    "/context_bundle_conversion/loss_detected",
+    "/context_bundle_conversion/omitted_private_values_retained",
+)
+_CONVERSION_AUDIT_PROVIDER_DEPENDENT_PATHS = (
+    "/source_event_conversion/records/{ordinal}/execution_role_normalized",
+    "/context_bundle_conversion/source_coverage",
+)
+_CONVERSION_AUDIT_PROVIDER_ASSERTED_OUTPUT_PATHS = (
+    "/omissions",
+    "/overflow",
+    "/policy_identity/digest",
+)
+_CONVERSION_AUDIT_PROVIDER_DEPENDENT_OUTPUT_PATHS = (
+    "/trusted_active_memory",
+    "/untrusted_retrieved_spans",
+)
 _CONTRACTS_IMPORT_NAME = "localai_contracts"
 _CONTRACTS_VALIDATION_ERROR = (
     "localai-contracts 0.2.0a2 failed optional-adapter validation"
@@ -1428,13 +1473,484 @@ def _digest(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
 def _digest_record(value: str) -> dict[str, str]:
     return {"algorithm": "sha256", "value": value}
+
+
+def _conversion_audit_claim_boundary() -> dict[str, Any]:
+    return {
+        "self_hash": "mutation_detection_only_not_authentication",
+        "audit_path_pattern_semantics": (
+            "rfc6901_after_braced_ordinal_is_replaced_by_zero_based_record_index"
+        ),
+        "output_path_semantics": "rfc6901_against_caller_supplied_context_bundle",
+        "caller_evidence_bound_path_patterns": list(
+            _CONVERSION_AUDIT_CALLER_EVIDENCE_PATHS
+        ),
+        "provider_asserted_path_patterns": list(
+            _CONVERSION_AUDIT_PROVIDER_ASSERTED_PATHS
+        ),
+        "provider_assertion_dependent_path_patterns": list(
+            _CONVERSION_AUDIT_PROVIDER_DEPENDENT_PATHS
+        ),
+        "provider_asserted_output_paths": list(
+            _CONVERSION_AUDIT_PROVIDER_ASSERTED_OUTPUT_PATHS
+        ),
+        "provider_assertion_dependent_output_paths": list(
+            _CONVERSION_AUDIT_PROVIDER_DEPENDENT_OUTPUT_PATHS
+        ),
+        "digest_privacy": (
+            "sensitive_unsalted_linkable_dictionary_testable_not_safe_telemetry"
+        ),
+    }
 
 
 def _stable_id(kind: str, *parts: object) -> str:
     body = "\x00".join(str(part) for part in parts).encode("utf-8")
     return f"ctxc-{kind}-{_digest(body)}"
+
+
+def _projected_bundle_id(
+    contracts: Any,
+    body: Mapping[str, Any],
+    *,
+    limits: Any,
+) -> str:
+    body_bytes = contracts.bounded_canonical_bytes(body, limits=limits)
+    digest_input = _PROJECTION_VERSION.encode("utf-8") + b"\x00" + body_bytes
+    return f"ctxc-context-{_digest(digest_input)}"
+
+
+def _projection_accounting(
+    connector: LocalAIConnector,
+) -> tuple[Callable[[str], int], str, str]:
+    exact_counter = connector.token_counter
+    if exact_counter is None:
+        return (
+            _estimated_tokens,
+            "estimated",
+            "ctxc_projected_span_contents_estimated_"
+            "ceil_unicode_characters_divided_by_4;framing_excluded",
+        )
+    identity = connector.token_counter_id
+    if not isinstance(identity, str) or not identity:
+        raise ValueError("exact token counter lacks a stable identity")
+    return (
+        exact_counter,
+        "exact",
+        "ctxc_projected_span_contents_exact_"
+        f"tokenizer_identity_sha256={_sha256_text(identity)};framing_excluded",
+    )
+
+
+def _conversion_disposition(
+    source_path: str | None,
+    target_paths: Sequence[str],
+    status: str,
+    reason: str,
+    *,
+    lossy: bool,
+) -> dict[str, Any]:
+    return {
+        "source_path": source_path,
+        "target_paths": list(target_paths),
+        "status": status,
+        "lossy": lossy,
+        "reason": reason,
+    }
+
+
+def _source_event_conversion_policy() -> list[dict[str, Any]]:
+    entries = [
+        _conversion_disposition(
+            "/schema_version",
+            ["/metadata/localai_contracts_event/schema_version"],
+            "represented",
+            "namespaced_exact",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/source_event_id",
+            ["/id", "/provenance/source_event_id"],
+            "represented",
+            "renamed_exact",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/sequence",
+            ["/sequence"],
+            "represented",
+            "preserved_exact",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/role",
+            ["/metadata/localai_contracts_event/original_role"],
+            "represented",
+            "namespaced_original_exact",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/role",
+            ["/role"],
+            "normalized",
+            "execution_authority_normalization",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/trust",
+            ["/metadata/localai_contracts_event/declared_trust"],
+            "represented",
+            "serialized_claim_isolated_original_exact",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/content",
+            ["/content"],
+            "represented",
+            "preserved_exact",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/metadata",
+            ["/metadata/localai_contracts_event/metadata"],
+            "represented",
+            "namespaced_exact",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/content_hash",
+            ["/metadata/localai_contracts_event/content_hash"],
+            "represented",
+            "namespaced_exact",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/content_hash",
+            ["/content_sha256"],
+            "derived",
+            "sha256_value_or_empty_for_non_sha256",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            None,
+            ["/schema"],
+            "defaulted",
+            "private_contract_version",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            None,
+            ["/timestamp"],
+            "defaulted",
+            "shared_contract_has_no_timestamp",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            None,
+            ["/authority"],
+            "derived",
+            "host_authentication_decision",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            None,
+            ["/redaction"],
+            "defaulted",
+            "shared_contract_has_no_redaction_envelope",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            None,
+            ["/provenance"],
+            "derived",
+            "adapter_conversion_provenance",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            None,
+            ["/record_sha256"],
+            "defaulted",
+            "private_record_hash_computed_after_mapping",
+            lossy=False,
+        ),
+    ]
+    return sorted(
+        entries,
+        key=lambda item: (
+            item["source_path"] or "",
+            item["status"],
+            item["target_paths"],
+        ),
+    )
+
+
+def _context_bundle_projection_policy() -> list[dict[str, Any]]:
+    entries = [
+        _conversion_disposition(
+            "/schema",
+            ["/policy_identity/version"],
+            "represented",
+            "private_schema_identity_retained",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/protocol_version",
+            [],
+            "omitted",
+            "shared_contract_has_no_private_protocol_field",
+            lossy=True,
+        ),
+        _conversion_disposition(
+            "/artifact",
+            [],
+            "omitted",
+            "shared_contract_has_no_private_artifact_field",
+            lossy=True,
+        ),
+        _conversion_disposition(
+            "/trusted_memory",
+            [
+                "/trusted_active_memory",
+                "/untrusted_retrieved_spans",
+                "/provenance",
+                "/omissions",
+                "/overflow",
+            ],
+            "normalized",
+            "private_memory_projected_by_field_policy",
+            lossy=True,
+        ),
+        _conversion_disposition(
+            "/bindings",
+            ["/policy_identity"],
+            "normalized",
+            "private_bindings_projected_by_field_policy",
+            lossy=True,
+        ),
+        _conversion_disposition(
+            "/certificate",
+            [],
+            "omitted",
+            "shared_contract_has_no_detector_certificate_field",
+            lossy=True,
+        ),
+        _conversion_disposition(
+            "/token_accounting",
+            ["/token_accounting"],
+            "normalized",
+            "recomputed_for_emitted_components",
+            lossy=True,
+        ),
+        _conversion_disposition(
+            "/bundle_sha256",
+            [],
+            "omitted",
+            "private_digest_not_equivalent_to_shared_bundle_id",
+            lossy=True,
+        ),
+        _conversion_disposition(
+            "/trusted_memory/source_spans",
+            [
+                "/trusted_active_memory",
+                "/untrusted_retrieved_spans",
+                "/provenance",
+            ],
+            "normalized",
+            "exact_quotes_projected_with_utf8_byte_offsets",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/trusted_memory/source_hashes",
+            [],
+            "omitted",
+            "individual_private_source_hashes_not_representable",
+            lossy=True,
+        ),
+        _conversion_disposition(
+            "/trusted_memory/omitted_or_overflowed_protected_items",
+            ["/omissions", "/overflow"],
+            "normalized",
+            "protected_loss_ledger_projected_without_private_items",
+            lossy=True,
+        ),
+        _conversion_disposition(
+            "/bindings/compiler_policy_sha256",
+            ["/policy_identity/digest"],
+            "represented",
+            "digest_retained_exact",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/bindings/token_accounting",
+            ["/token_accounting/kind"],
+            "represented",
+            "accounting_kind_retained",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/bindings/token_accounting_exact",
+            ["/token_accounting/kind"],
+            "normalized",
+            "accounting_boolean_normalized_to_kind",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/token_accounting/mode",
+            ["/token_accounting/kind"],
+            "represented",
+            "accounting_kind_retained",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            "/token_accounting/exact",
+            ["/token_accounting/kind"],
+            "normalized",
+            "accounting_boolean_normalized_to_kind",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            None,
+            ["/schema_version"],
+            "defaulted",
+            "shared_contract_version",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            None,
+            ["/bundle_id"],
+            "derived",
+            "hash_of_deterministic_shared_projection",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            None,
+            ["/untrusted_retrieved_spans", "/provenance"],
+            "derived",
+            "complete_shared_source_event_evidence",
+            lossy=False,
+        ),
+        _conversion_disposition(
+            None,
+            ["/source_store_identity"],
+            "derived",
+            "canonical_shared_source_document_digest",
+            lossy=False,
+        ),
+    ]
+    for field in (
+        "active_goals",
+        "constraints",
+        "user_corrections",
+        "decisions",
+        "confirmed_facts",
+        "unresolved_questions",
+        "exact_errors",
+        "exact_references",
+    ):
+        entries.append(
+            _conversion_disposition(
+                f"/trusted_memory/{field}",
+                [],
+                "omitted",
+                "private_semantic_item_not_representable",
+                lossy=True,
+            )
+        )
+    for field in (
+        "session_id",
+        "source_digest",
+        "source_count",
+        "archive_chain_head_sha256",
+        "archive_head_verified",
+        "compiler_policy",
+        "tokenizer_identity",
+        "rendered_memory_sha256",
+        "artifact_sha256",
+    ):
+        entries.append(
+            _conversion_disposition(
+                f"/bindings/{field}",
+                [],
+                "omitted",
+                "private_binding_not_representable",
+                lossy=True,
+            )
+        )
+    for field in (
+        "issued",
+        "claim",
+        "scope",
+        "detected_protected_commitments",
+        "retained_detected_protected_commitments",
+        "semantic_completeness_claimed",
+    ):
+        entries.append(
+            _conversion_disposition(
+                f"/certificate/{field}",
+                [],
+                "omitted",
+                "private_certificate_field_not_representable",
+                lossy=True,
+            )
+        )
+    for field in (
+        "tokenizer_identity",
+        "source_tokens",
+        "rendered_tokens",
+        "field_name_compatibility_note",
+    ):
+        entries.append(
+            _conversion_disposition(
+                f"/token_accounting/{field}",
+                [],
+                "omitted",
+                "private_accounting_scope_not_representable",
+                lossy=True,
+            )
+        )
+    return sorted(
+        entries,
+        key=lambda item: (
+            item["source_path"] or "",
+            item["status"],
+            item["target_paths"],
+        ),
+    )
+
+
+def _root_pointer(path: str) -> str:
+    return "/" + path.lstrip("/").split("/", 1)[0]
+
+
+def _disposition_counts(
+    dispositions: Sequence[Mapping[str, Any]],
+) -> dict[str, int]:
+    counts = {
+        status: 0
+        for status in (
+            "represented",
+            "normalized",
+            "derived",
+            "defaulted",
+            "omitted",
+            "rejected",
+        )
+    }
+    for disposition in dispositions:
+        status = disposition.get("status")
+        if status not in counts:
+            raise ValueError("conversion disposition status is unsupported")
+        counts[status] += 1
+    return counts
 
 
 class LocalAIContractsAdapter:
@@ -1558,9 +2074,454 @@ class LocalAIContractsAdapter:
                 "source events"
             )
 
+        projected, _audit = self._compile_source_documents(
+            documents,
+            include_conversion_audit=False,
+        )
+        return projected.to_dict()
+
+    def compile_with_conversion_audit(
+        self,
+        source_events: Sequence[Any],
+    ) -> tuple[Any, dict[str, Any]]:
+        """Compile typed shared events and return a provider-local loss audit.
+
+        The returned tuple is an in-process diagnostic API, not a new shared
+        connector response shape. The first value is an actual shared
+        ``ContextBundle``; the second is a self-hashed CtxC audit record.
+        """
+
+        if (
+            not isinstance(source_events, Sequence)
+            or isinstance(source_events, (str, bytes, bytearray))
+            or not source_events
+            or len(source_events) > MAX_CONTEXT_SOURCE_EVENTS
+        ):
+            raise ValueError(
+                f"conversion audit requires 1 to {MAX_CONTEXT_SOURCE_EVENTS} "
+                "SourceEvents"
+            )
+        documents: list[dict[str, Any]] = []
+        for event in source_events:
+            if type(event) is not self._contracts.SourceEvent:
+                raise TypeError(
+                    "conversion audit events must be actual "
+                    "localai_contracts.SourceEvent values"
+                )
+            event.validate()
+            documents.append(event.to_dict())
+        bounded = self._bounded_json(
+            {"source_events": documents},
+            label="conversion audit payload",
+        )
+        projected, audit = self._compile_source_documents(
+            bounded["source_events"],
+            include_conversion_audit=True,
+        )
+        if audit is None:
+            raise RuntimeError("conversion audit was not produced")
+        return projected, audit
+
+    def verify_conversion_audit(
+        self,
+        audit: Mapping[str, Any],
+        *,
+        source_events: Sequence[Any],
+        output_bundle: Any,
+    ) -> dict[str, Any]:
+        """Verify one sidecar against its shared inputs and output bundle.
+
+        The audit self-hash detects accidental mutation; it is not an
+        authentication signature. ``claim_boundary`` machine-labels private
+        digests and authority decisions as provider assertions because the
+        public API deliberately does not return that richer private bundle or
+        an independently authenticated authority receipt. Stable unsalted
+        digests also make this sidecar privacy-sensitive, not safe telemetry.
+        """
+
+        if type(audit) is not dict:
+            raise TypeError("conversion audit must be a plain JSON object")
+        bounded = self._bounded_json(audit, label="conversion audit")
+        expected_keys = {
+            "schema",
+            "operation",
+            "scope",
+            "adapter_identity",
+            "version_negotiation",
+            "claim_boundary",
+            "input_payload_sha256",
+            "source_event_conversion",
+            "context_bundle_conversion",
+            "summary",
+            "audit_sha256",
+        }
+        if set(bounded) != expected_keys:
+            raise ValueError("conversion audit fields are invalid")
+        claimed = bounded["audit_sha256"]
+        if not _is_sha256(claimed):
+            raise ValueError("conversion audit digest is invalid")
+        unsigned = {
+            key: value for key, value in bounded.items() if key != "audit_sha256"
+        }
+        actual = _digest(
+            self._contracts.bounded_canonical_bytes(
+                unsigned,
+                limits=self._limits,
+            )
+        )
+        if claimed != actual:
+            raise ValueError("conversion audit digest mismatch")
+        if (
+            bounded["schema"] != LOCALAI_CONVERSION_AUDIT_SCHEMA
+            or bounded["operation"] != CONTEXT_COMPILE_OPERATION
+            or bounded["scope"]
+            != "provider_local_diagnostic_not_shared_connector_payload"
+            or bounded["adapter_identity"]
+            != {
+                "component_name": "loss-resistant-context-compiler",
+                "component_version": _component_version(),
+                "projection_version": _PROJECTION_VERSION,
+                "contracts_distribution": LOCALAI_CONTRACTS_DISTRIBUTION,
+                "contracts_distribution_version": LOCALAI_CONTRACTS_VERSION,
+                "contracts_protocol_version": LOCALAI_CONTRACTS_PROTOCOL_VERSION,
+                "contracts_wheel_sha256": LOCALAI_CONTRACTS_WHEEL_SHA256,
+            }
+            or not _is_sha256(bounded["input_payload_sha256"])
+        ):
+            raise ValueError("conversion audit identity is invalid")
+        if bounded["version_negotiation"] != {
+            "conversion_contract_schema_versions": {
+                "SourceEvent": [LOCALAI_CONTRACTS_PROTOCOL_VERSION],
+                "ContextBundle": [LOCALAI_CONTRACTS_PROTOCOL_VERSION],
+            },
+            "accepted_documents_require_exact_model_versions": True,
+            "operation_schema_binding_available": False,
+            "operation_schema_binding_enforced": False,
+            "limitation": (
+                "localai-contracts 0.2.0a2 negotiates schema names globally "
+                "but does not bind required schemas to context.compile"
+            ),
+        }:
+            raise ValueError("conversion audit negotiation statement is invalid")
+        if bounded["claim_boundary"] != _conversion_audit_claim_boundary():
+            raise ValueError("conversion audit claim boundary is invalid")
+
+        source = bounded["source_event_conversion"]
+        expected_source_keys = {
+            "conversion_version",
+            "input_contract",
+            "private_contract",
+            "path_semantics",
+            "field_dispositions",
+            "records",
+            "all_round_trips_exact",
+            "loss_detected",
+            "unclassified_source_paths",
+            "unclassified_target_paths",
+        }
+        if not isinstance(source, dict) or set(source) != expected_source_keys:
+            raise ValueError("conversion audit SourceEvent section is invalid")
+        records = source["records"]
+        expected_record_keys = {
+            "ordinal",
+            "input_document_sha256",
+            "private_document_sha256",
+            "round_trip_document_sha256",
+            "round_trip_exact",
+            "loss_detected",
+            "independently_authenticated",
+            "trusted_for_state",
+            "execution_role_normalized",
+        }
+        if (
+            source["conversion_version"] != _SOURCE_EVENT_CONVERSION_VERSION
+            or source["input_contract"]
+            != {
+                "name": "SourceEvent",
+                "version": LOCALAI_CONTRACTS_PROTOCOL_VERSION,
+            }
+            or source["private_contract"]
+            != {"name": "SourceEvent", "version": "localai-source-event-0.1"}
+            or source["path_semantics"] != _CONVERSION_PATH_SEMANTICS
+            or source["field_dispositions"] != _source_event_conversion_policy()
+            or source["all_round_trips_exact"] is not True
+            or source["loss_detected"] is not False
+            or source["unclassified_source_paths"] != []
+            or source["unclassified_target_paths"] != []
+            or not isinstance(records, list)
+            or not 1 <= len(records) <= MAX_CONTEXT_SOURCE_EVENTS
+        ):
+            raise ValueError("conversion audit SourceEvent policy is invalid")
+        for ordinal, record in enumerate(records):
+            if (
+                not isinstance(record, dict)
+                or set(record) != expected_record_keys
+                or record["ordinal"] != ordinal
+                or record["round_trip_exact"] is not True
+                or record["loss_detected"] is not False
+                or record["input_document_sha256"]
+                != record["round_trip_document_sha256"]
+                or (
+                    record["trusted_for_state"] is True
+                    and record["independently_authenticated"] is not True
+                )
+                or any(
+                    not _is_sha256(record[name])
+                    for name in (
+                        "input_document_sha256",
+                        "private_document_sha256",
+                        "round_trip_document_sha256",
+                    )
+                )
+                or any(
+                    not isinstance(record[name], bool)
+                    for name in (
+                        "independently_authenticated",
+                        "trusted_for_state",
+                        "execution_role_normalized",
+                    )
+                )
+            ):
+                raise ValueError("conversion audit SourceEvent record is invalid")
+
+        if (
+            not isinstance(source_events, Sequence)
+            or isinstance(source_events, (str, bytes, bytearray))
+            or len(source_events) != len(records)
+        ):
+            raise ValueError("conversion audit SourceEvent evidence is invalid")
+        source_documents: list[dict[str, Any]] = []
+        evidence_authenticated: dict[str, bool] = {}
+        seen_source_ids: set[str] = set()
+        seen_sequences: set[int] = set()
+        for ordinal, (record, event) in enumerate(
+            zip(records, source_events, strict=True)
+        ):
+            if type(event) is not self._contracts.SourceEvent:
+                raise TypeError(
+                    "conversion audit evidence must contain actual "
+                    "localai_contracts.SourceEvent values"
+                )
+            event.validate()
+            if (
+                event.source_event_id in seen_source_ids
+                or event.sequence in seen_sequences
+            ):
+                raise ValueError("conversion audit SourceEvent evidence is duplicated")
+            seen_source_ids.add(event.source_event_id)
+            seen_sequences.add(event.sequence)
+            evidence_authenticated[event.source_event_id] = record[
+                "independently_authenticated"
+            ]
+            document = event.to_dict()
+            source_documents.append(document)
+            document_sha256 = _digest(
+                self._contracts.bounded_canonical_bytes(
+                    document,
+                    limits=self._limits,
+                )
+            )
+            if (
+                record["ordinal"] != ordinal
+                or record["input_document_sha256"] != document_sha256
+                or record["round_trip_document_sha256"] != document_sha256
+                or (
+                    record["independently_authenticated"] is True
+                    and event.trust != "trusted"
+                )
+                or (
+                    record["trusted_for_state"] is True
+                    and event.role != "tool"
+                )
+                or record["execution_role_normalized"]
+                is not (
+                    record["independently_authenticated"] is not True
+                    and event.role != "assistant"
+                )
+            ):
+                raise ValueError("conversion audit SourceEvent evidence mismatch")
+        payload_sha256 = _digest(
+            self._contracts.bounded_canonical_bytes(
+                {"source_events": source_documents},
+                limits=self._limits,
+            )
+        )
+        if bounded["input_payload_sha256"] != payload_sha256:
+            raise ValueError("conversion audit input payload evidence mismatch")
+
+        projection = bounded["context_bundle_conversion"]
+        expected_projection_keys = {
+            "conversion_version",
+            "private_contract",
+            "output_contract",
+            "path_semantics",
+            "private_document_sha256",
+            "private_bundle_sha256",
+            "output_document_sha256",
+            "output_round_trip_sha256",
+            "output_round_trip_exact",
+            "private_round_trip_supported",
+            "loss_detected",
+            "omitted_private_values_retained",
+            "source_coverage",
+            "field_dispositions",
+            "unclassified_source_paths",
+            "unclassified_target_paths",
+        }
+        if (
+            not isinstance(projection, dict)
+            or set(projection) != expected_projection_keys
+            or projection["conversion_version"]
+            != _CONTEXT_BUNDLE_CONVERSION_VERSION
+            or projection["private_contract"]
+            != {
+                "name": "ContextBundle",
+                "version": "localai-context-bundle-0.1",
+            }
+            or projection["output_contract"]
+            != {
+                "name": "ContextBundle",
+                "version": LOCALAI_CONTRACTS_PROTOCOL_VERSION,
+            }
+            or projection["path_semantics"] != _CONVERSION_PATH_SEMANTICS
+            or projection["field_dispositions"]
+            != _context_bundle_projection_policy()
+            or projection["output_round_trip_exact"] is not True
+            or projection["output_document_sha256"]
+            != projection["output_round_trip_sha256"]
+            or projection["private_round_trip_supported"] is not False
+            or projection["loss_detected"] is not True
+            or projection["omitted_private_values_retained"] is not False
+            or projection["unclassified_source_paths"] != []
+            or projection["unclassified_target_paths"] != []
+            or any(
+                not _is_sha256(projection[name])
+                for name in (
+                    "private_document_sha256",
+                    "private_bundle_sha256",
+                    "output_document_sha256",
+                    "output_round_trip_sha256",
+                )
+            )
+        ):
+            raise ValueError("conversion audit ContextBundle policy is invalid")
+        if type(output_bundle) is not self._contracts.ContextBundle:
+            raise TypeError(
+                "conversion audit output must be an actual "
+                "localai_contracts.ContextBundle value"
+            )
+        output_bundle.validate()
+        output_document = output_bundle.to_dict()
+        output_bytes = self._contracts.bounded_canonical_bytes(
+            output_document,
+            limits=self._limits,
+        )
+        output_round_trip = self._contracts.ContextBundle.from_dict(
+            self._contracts.parse_json(output_bytes, limits=self._limits)
+        )
+        output_round_trip_bytes = self._contracts.bounded_canonical_bytes(
+            output_round_trip.to_dict(),
+            limits=self._limits,
+        )
+        output_sha256 = _digest(output_bytes)
+        if (
+            output_bytes != output_round_trip_bytes
+            or projection["output_document_sha256"] != output_sha256
+            or projection["output_round_trip_sha256"] != output_sha256
+        ):
+            raise ValueError("conversion audit ContextBundle evidence mismatch")
+        if (
+            output_document["policy_identity"].get("name")
+            != "ctxc-private-compilation-policy"
+            or output_document["policy_identity"].get("version")
+            != "localai-context-bundle-0.1"
+        ):
+            raise ValueError("conversion audit policy identity mismatch")
+        canonical_source_documents = [
+            event.to_dict()
+            for event in sorted(
+                source_events,
+                key=lambda item: (item.sequence, item.source_event_id),
+            )
+        ]
+        canonical_source_sha256 = _digest(
+            self._contracts.bounded_canonical_bytes(
+                canonical_source_documents,
+                limits=self._limits,
+            )
+        )
+        if output_document["source_store_identity"] != {
+            "name": "localai-contracts-exact-source-events",
+            "version": LOCALAI_CONTRACTS_PROTOCOL_VERSION,
+            "digest": _digest_record(canonical_source_sha256),
+        }:
+            raise ValueError("conversion audit source-store evidence mismatch")
+        output_body = {
+            key: value
+            for key, value in output_document.items()
+            if key not in {"schema_version", "bundle_id"}
+        }
+        if output_bundle.bundle_id != _projected_bundle_id(
+            self._contracts,
+            output_body,
+            limits=self._limits,
+        ):
+            raise ValueError("conversion audit ContextBundle identity mismatch")
+        verification_connector = self._connector_factory()
+        if not isinstance(verification_connector, LocalAIConnector):
+            raise TypeError("connector_factory must return LocalAIConnector")
+        coverage = projection["source_coverage"]
+        expected_coverage = self._assert_projected_source_coverage(
+            output_bundle,
+            source_events,
+            authenticated=evidence_authenticated,
+            connector=verification_connector,
+        )
+        if coverage != expected_coverage:
+            raise ValueError("conversion audit source coverage is invalid")
+        summary = bounded["summary"]
+        if summary != {
+            "count_scope": "conversion_policy_paths_not_payload_values",
+            "source_event_records": len(records),
+            "disposition_counts": _disposition_counts(
+                [
+                    *_source_event_conversion_policy(),
+                    *_context_bundle_projection_policy(),
+                ]
+            ),
+            "source_event_round_trip": "exact",
+            "context_bundle_projection": "declared_lossy",
+            "unexpected_loss_detected": False,
+            "semantic_completeness_claimed": False,
+        }:
+            raise ValueError("conversion audit summary is invalid")
+        return bounded
+
+    def _compile_source_documents(
+        self,
+        documents: list[Any],
+        *,
+        include_conversion_audit: bool,
+    ) -> tuple[Any, dict[str, Any] | None]:
         events, private_events, authenticated = self._map_source_events(documents)
+        for event, private_event in zip(events, private_events, strict=True):
+            input_bytes = self._contracts.bounded_canonical_bytes(
+                event.to_dict(),
+                limits=self._limits,
+            )
+            round_trip_bytes = self._contracts.bounded_canonical_bytes(
+                self._shared_source_event_from_private(private_event).to_dict(),
+                limits=self._limits,
+            )
+            if input_bytes != round_trip_bytes:
+                raise ValueError(
+                    "canonical SourceEvent conversion did not round trip exactly"
+                )
         payload_digest = _digest(
-            self._contracts.bounded_canonical_bytes(bounded, limits=self._limits)
+            self._contracts.bounded_canonical_bytes(
+                {"source_events": documents},
+                limits=self._limits,
+            )
         )
         connector = self._connector_factory()
         if not isinstance(connector, LocalAIConnector):
@@ -1585,7 +2546,22 @@ class LocalAIContractsAdapter:
         )
         parsed = self._contracts.parse_json(encoded, limits=self._limits)
         checked = self._contracts.ContextBundle.from_dict(parsed)
-        return checked.to_dict()
+        source_coverage = self._assert_projected_source_coverage(
+            checked,
+            events,
+            authenticated=authenticated,
+            connector=connector,
+        )
+        checked_audit = self._build_conversion_audit(
+            payload_digest=payload_digest,
+            events=events,
+            private_events=private_events,
+            rich_bundle=rich_bundle,
+            projected=checked,
+            source_coverage=source_coverage,
+            include_conversion_audit=include_conversion_audit,
+        )
+        return checked, checked_audit
 
     def handle_request(self, request: Any) -> Any:
         """Accept an actual ``ConnectorRequest`` and return ``ConnectorResponse``."""
@@ -1748,6 +2724,668 @@ class LocalAIContractsAdapter:
 
         return parsed_events, private_events, authenticated
 
+    def _shared_source_event_from_private(
+        self,
+        private_event: PrivateSourceEvent,
+    ) -> Any:
+        """Reconstruct one shared event from the adapter-owned private record."""
+
+        if type(private_event) is not PrivateSourceEvent:
+            raise TypeError("private conversion value must be a CtxC SourceEvent")
+        private_document = private_event.to_dict()
+        metadata = private_document.get("metadata")
+        if not isinstance(metadata, dict) or set(metadata) != {
+            "localai_contracts_event"
+        }:
+            raise ValueError("private SourceEvent conversion metadata is invalid")
+        retained = metadata["localai_contracts_event"]
+        expected_retained_fields = {
+            "schema_version",
+            "original_role",
+            "declared_trust",
+            "metadata",
+            "content_hash",
+            "independently_authenticated",
+            "authority_issuer",
+        }
+        if not isinstance(retained, dict) or set(retained) != expected_retained_fields:
+            raise ValueError("private SourceEvent retained fields are invalid")
+        provenance = private_document.get("provenance")
+        expected_provenance_fields = {
+            "producer",
+            "schema_version",
+            "source_event_id",
+            "original_role",
+            "declared_trust",
+        }
+        if (
+            not isinstance(provenance, dict)
+            or set(provenance) != expected_provenance_fields
+            or provenance.get("producer") != "localai-contracts-adapter"
+            or provenance.get("schema_version") != retained["schema_version"]
+            or provenance.get("source_event_id") != private_document.get("id")
+            or provenance.get("original_role") != retained["original_role"]
+            or provenance.get("declared_trust") != retained["declared_trust"]
+        ):
+            raise ValueError("private SourceEvent provenance is inconsistent")
+        content_hash = retained["content_hash"]
+        if not isinstance(content_hash, dict):
+            raise TypeError("private SourceEvent retained content hash is invalid")
+        expected_private_sha256 = (
+            content_hash.get("value")
+            if content_hash.get("algorithm") == "sha256"
+            else ""
+        )
+        if private_document.get("content_sha256") != expected_private_sha256:
+            raise ValueError("private SourceEvent content digest projection changed")
+
+        independently_authenticated = retained["independently_authenticated"]
+        authority_issuer = retained["authority_issuer"]
+        authority = private_document.get("authority")
+        if type(independently_authenticated) is not bool:
+            raise TypeError("private SourceEvent authentication marker is invalid")
+        if independently_authenticated:
+            if (
+                type(authority_issuer) is not str
+                or not authority_issuer
+                or authority_issuer != authority_issuer.strip()
+                or len(authority_issuer) > 256
+                or not isinstance(authority, dict)
+                or set(authority)
+                != {"authenticated", "trusted_for_state", "issuer"}
+                or authority.get("authenticated") is not True
+                or type(authority.get("trusted_for_state")) is not bool
+                or authority.get("issuer") != authority_issuer
+                or private_document.get("role") != retained["original_role"]
+                or (
+                    authority.get("trusted_for_state") is True
+                    and retained["original_role"] != "tool"
+                )
+            ):
+                raise ValueError(
+                    "private SourceEvent authenticated authority is inconsistent"
+                )
+        elif (
+            authority_issuer is not None
+            or authority
+            != {"authenticated": False, "trusted_for_state": False}
+            or private_document.get("role") != "assistant"
+        ):
+            raise ValueError(
+                "private SourceEvent unauthenticated authority is inconsistent"
+            )
+        if (
+            private_document.get("schema") != "localai-source-event-0.1"
+            or private_document.get("timestamp") is not None
+            or private_document.get("redaction") is not None
+            or private_document.get("record_sha256") != ""
+        ):
+            raise ValueError("private SourceEvent defaults are inconsistent")
+
+        shared_document = {
+            "schema_version": retained["schema_version"],
+            "source_event_id": private_document.get("id"),
+            "sequence": private_document.get("sequence"),
+            "role": retained["original_role"],
+            "trust": retained["declared_trust"],
+            "content": private_document.get("content"),
+            "metadata": retained["metadata"],
+            "content_hash": content_hash,
+        }
+        event = self._contracts.SourceEvent.from_dict(shared_document)
+        event.validate()
+        return event
+
+    def _source_event_conversion_record(
+        self,
+        ordinal: int,
+        event: Any,
+        private_event: PrivateSourceEvent,
+    ) -> dict[str, Any]:
+        input_document = event.to_dict()
+        private_document = private_event.to_dict()
+        round_trip = self._shared_source_event_from_private(private_event)
+        input_bytes = self._contracts.bounded_canonical_bytes(
+            input_document,
+            limits=self._limits,
+        )
+        private_bytes = self._contracts.bounded_canonical_bytes(
+            private_document,
+            limits=self._limits,
+        )
+        round_trip_bytes = self._contracts.bounded_canonical_bytes(
+            round_trip.to_dict(),
+            limits=self._limits,
+        )
+        if input_bytes != round_trip_bytes:
+            raise ValueError("SourceEvent conversion lost canonical fields")
+        retained = private_document["metadata"]["localai_contracts_event"]
+        authority = private_document["authority"]
+        return {
+            "ordinal": ordinal,
+            "input_document_sha256": _digest(input_bytes),
+            "private_document_sha256": _digest(private_bytes),
+            "round_trip_document_sha256": _digest(round_trip_bytes),
+            "round_trip_exact": True,
+            "loss_detected": False,
+            "independently_authenticated": retained[
+                "independently_authenticated"
+            ],
+            "trusted_for_state": authority.get("trusted_for_state") is True,
+            "execution_role_normalized": private_event.role != event.role,
+        }
+
+    @staticmethod
+    def _assert_projected_source_coverage(
+        projected: Any,
+        events: Sequence[Any],
+        *,
+        authenticated: Mapping[str, bool],
+        connector: LocalAIConnector,
+    ) -> dict[str, Any]:
+        events_by_id = {event.source_event_id: event for event in events}
+        if len(events_by_id) != len(events) or set(authenticated) != set(events_by_id):
+            raise ValueError("shared ContextBundle source inventory is inconsistent")
+        if any(type(value) is not bool for value in authenticated.values()):
+            raise TypeError("shared ContextBundle authentication inventory is invalid")
+
+        located_spans = [
+            *((span, True) for span in projected.trusted_active_memory),
+            *((span, False) for span in projected.untrusted_retrieved_spans),
+        ]
+        provenance = projected.provenance
+        span_ids = [span.get("span_id") for span, _trusted in located_spans]
+        provenance_ids = [item.get("item_id") for item in provenance]
+        if (
+            len(span_ids) != len(set(span_ids))
+            or len(provenance_ids) != len(set(provenance_ids))
+            or set(span_ids) != set(provenance_ids)
+        ):
+            raise ValueError("shared ContextBundle span provenance inventory changed")
+
+        full_source_span_count = 0
+        full_source_ids: set[str] = set()
+        for span, is_trusted in located_spans:
+            source_event_id = span.get("source_event_id")
+            event = events_by_id.get(source_event_id)
+            if event is None:
+                raise ValueError("shared ContextBundle span has an unknown source")
+            start_byte = span.get("start_byte")
+            end_byte = span.get("end_byte")
+            content = span.get("content")
+            source_bytes = event.content.encode("utf-8")
+            if (
+                isinstance(start_byte, bool)
+                or not isinstance(start_byte, int)
+                or isinstance(end_byte, bool)
+                or not isinstance(end_byte, int)
+                or start_byte < 0
+                or end_byte < start_byte
+                or end_byte > len(source_bytes)
+                or not isinstance(content, str)
+            ):
+                raise ValueError("shared ContextBundle span byte range is invalid")
+            try:
+                expected_content = source_bytes[start_byte:end_byte].decode("utf-8")
+            except UnicodeDecodeError:
+                raise ValueError(
+                    "shared ContextBundle span splits a UTF-8 character"
+                ) from None
+            content_sha256 = _sha256_text(content)
+            if (
+                content != expected_content
+                or span.get("content_hash") != _digest_record(content_sha256)
+            ):
+                raise ValueError("shared ContextBundle exact source span changed")
+
+            expected_source_id = _stable_id(
+                "source",
+                event.source_event_id,
+                event.sequence,
+                _sha256_text(event.content),
+            )
+            expected_active_id = _stable_id(
+                "active",
+                event.source_event_id,
+                start_byte,
+                end_byte,
+                content_sha256,
+            )
+            if span.get("span_id") == expected_source_id:
+                if (
+                    is_trusted
+                    or start_byte != 0
+                    or end_byte != len(source_bytes)
+                    or content != event.content
+                    or source_event_id in full_source_ids
+                ):
+                    raise ValueError("shared ContextBundle full source span changed")
+                transform = "exact_source_event_projection"
+                full_source_ids.add(source_event_id)
+                full_source_span_count += 1
+            elif span.get("span_id") == expected_active_id:
+                if is_trusted is not authenticated[source_event_id]:
+                    raise ValueError(
+                        "shared ContextBundle active span trust placement changed"
+                    )
+                transform = "verified_active_exact_source_span_projection"
+            else:
+                raise ValueError("shared ContextBundle span identity changed")
+
+            matching_provenance = [
+                item
+                for item in provenance
+                if item.get("item_id") == span.get("span_id")
+                and item.get("source_event_id") == event.source_event_id
+                and item.get("transform") == transform
+                and item.get("producer")
+                == {
+                    "name": "loss-resistant-context-compiler",
+                    "version": _component_version(),
+                }
+            ]
+            if len(matching_provenance) != 1:
+                raise ValueError(
+                    "shared ContextBundle exact source provenance changed"
+                )
+
+        if full_source_ids != set(events_by_id):
+            raise ValueError(
+                "shared ContextBundle does not contain one exact full source span"
+            )
+        expected_full_source_ids = [
+            _stable_id(
+                "source",
+                event.source_event_id,
+                event.sequence,
+                _sha256_text(event.content),
+            )
+            for event in sorted(
+                events,
+                key=lambda item: (item.sequence, item.source_event_id),
+            )
+        ]
+        retrieved_spans = projected.untrusted_retrieved_spans
+        if [
+            span.get("span_id")
+            for span in retrieved_spans[: len(expected_full_source_ids)]
+        ] != expected_full_source_ids:
+            raise ValueError("shared ContextBundle canonical span order changed")
+
+        def active_span_key(span: Mapping[str, Any]) -> tuple[Any, ...]:
+            content_hash = span.get("content_hash")
+            return (
+                span.get("source_event_id"),
+                span.get("start_byte"),
+                span.get("end_byte"),
+                content_hash.get("value")
+                if isinstance(content_hash, Mapping)
+                else None,
+            )
+
+        untrusted_active_spans = retrieved_spans[len(expected_full_source_ids) :]
+        if (
+            projected.trusted_active_memory
+            != sorted(projected.trusted_active_memory, key=active_span_key)
+            or untrusted_active_spans
+            != sorted(untrusted_active_spans, key=active_span_key)
+        ):
+            raise ValueError("shared ContextBundle canonical span order changed")
+        if provenance != sorted(
+            provenance,
+            key=lambda item: (
+                item.get("source_event_id"),
+                item.get("item_id"),
+                item.get("transform"),
+            ),
+        ):
+            raise ValueError("shared ContextBundle canonical provenance order changed")
+        accounting = projected.token_accounting
+        counter, accounting_kind, accounting_method = _projection_accounting(
+            connector
+        )
+        for span, _is_trusted in located_spans:
+            expected_tokens = counter(span["content"])
+            if (
+                isinstance(expected_tokens, bool)
+                or not isinstance(expected_tokens, int)
+                or expected_tokens < 0
+                or span["token_count"] != expected_tokens
+            ):
+                raise ValueError("shared ContextBundle span token count changed")
+        trusted_tokens = sum(
+            span["token_count"] for span in projected.trusted_active_memory
+        )
+        retrieved_tokens = sum(
+            span["token_count"] for span in projected.untrusted_retrieved_spans
+        )
+        if (
+            accounting.get("kind") != accounting_kind
+            or accounting.get("method") != accounting_method
+            or accounting.get("trusted_tokens") != trusted_tokens
+            or accounting.get("retrieved_tokens") != retrieved_tokens
+            or accounting.get("total_tokens") != trusted_tokens + retrieved_tokens
+        ):
+            raise ValueError("shared ContextBundle span accounting changed")
+        omissions = projected.omissions
+        omission_source_ids: list[str] = []
+        for omission in omissions:
+            if (
+                not isinstance(omission, dict)
+                or set(omission)
+                != {"source_event_id", "reason", "estimated_tokens"}
+                or omission.get("source_event_id") not in events_by_id
+                or omission.get("reason")
+                != "private_protected_item_not_selected"
+                or omission.get("estimated_tokens") is not None
+            ):
+                raise ValueError("shared ContextBundle omission shape changed")
+            omission_source_ids.append(omission["source_event_id"])
+        if (
+            len(omission_source_ids) != len(set(omission_source_ids))
+            or omissions
+            != sorted(
+                omissions,
+                key=lambda item: (item["source_event_id"], item["reason"]),
+            )
+        ):
+            raise ValueError("shared ContextBundle omission order changed")
+        overflow = projected.overflow
+        if overflow.get("occurred") is True:
+            dropped_tokens = overflow.get("dropped_tokens")
+            valid_dropped_tokens = (
+                isinstance(dropped_tokens, int)
+                and not isinstance(dropped_tokens, bool)
+                and dropped_tokens > 0
+                if accounting_kind == "exact"
+                else dropped_tokens is None
+            )
+            if (
+                overflow.get("dropped_items") != 0
+                or overflow.get("reason")
+                != "private_protected_budget_overflow_retained"
+                or not valid_dropped_tokens
+            ):
+                raise ValueError("shared ContextBundle overflow shape changed")
+        elif overflow != {
+            "occurred": False,
+            "dropped_items": 0,
+            "dropped_tokens": 0,
+            "reason": None,
+        }:
+            raise ValueError("shared ContextBundle overflow shape changed")
+        return {
+            "source_event_count": len(events),
+            "full_source_span_count": full_source_span_count,
+            "all_source_events_represented_exactly": True,
+        }
+
+    @staticmethod
+    def _assert_context_projection_relations(
+        private_bundle: dict[str, Any],
+        projected_bundle: dict[str, Any],
+    ) -> None:
+        bindings = private_bundle.get("bindings")
+        private_accounting = private_bundle.get("token_accounting")
+        policy_identity = projected_bundle.get("policy_identity")
+        projected_accounting = projected_bundle.get("token_accounting")
+        if not all(
+            isinstance(value, dict)
+            for value in (
+                bindings,
+                private_accounting,
+                policy_identity,
+                projected_accounting,
+            )
+        ):
+            raise TypeError("ContextBundle projection relation inputs are invalid")
+        private_mode = bindings.get("token_accounting")
+        private_exact = bindings.get("token_accounting_exact")
+        if (
+            policy_identity.get("version") != private_bundle.get("schema")
+            or policy_identity.get("digest")
+            != _digest_record(bindings.get("compiler_policy_sha256"))
+            or private_accounting.get("mode") != private_mode
+            or private_accounting.get("exact") is not private_exact
+            or projected_accounting.get("kind") != private_mode
+            or private_exact is not (private_mode == "exact")
+        ):
+            raise ValueError("ContextBundle projection disposition is inconsistent")
+
+    def _build_conversion_audit(
+        self,
+        *,
+        payload_digest: str,
+        events: list[Any],
+        private_events: list[PrivateSourceEvent],
+        rich_bundle: Any,
+        projected: Any,
+        source_coverage: dict[str, Any],
+        include_conversion_audit: bool,
+    ) -> dict[str, Any] | None:
+        if len(events) != len(private_events):
+            raise ValueError("SourceEvent conversion inventory is inconsistent")
+        private_bundle = rich_bundle.to_dict()
+        expected_private_bundle_fields = {
+            "schema",
+            "protocol_version",
+            "artifact",
+            "trusted_memory",
+            "bindings",
+            "certificate",
+            "token_accounting",
+            "bundle_sha256",
+        }
+        if set(private_bundle) != expected_private_bundle_fields:
+            raise ValueError("private ContextBundle field inventory changed")
+        private_bundle_sha256 = private_bundle["bundle_sha256"]
+        if not _is_sha256(private_bundle_sha256):
+            raise ValueError("private ContextBundle digest is invalid")
+        projected_document = projected.to_dict()
+        self._assert_context_projection_relations(
+            private_bundle,
+            projected_document,
+        )
+
+        source_policy = _source_event_conversion_policy()
+        expected_shared_source_paths = {
+            f"/{name}" for name in events[0].to_dict()
+        }
+        classified_shared_source_paths = {
+            item["source_path"]
+            for item in source_policy
+            if item["source_path"] is not None
+        }
+        expected_private_source_paths = {
+            f"/{name}" for name in private_events[0].to_dict()
+        }
+        classified_private_source_paths = {
+            _root_pointer(path)
+            for item in source_policy
+            for path in item["target_paths"]
+        }
+        unclassified_shared_source_paths = sorted(
+            expected_shared_source_paths - classified_shared_source_paths
+        )
+        unclassified_private_source_paths = sorted(
+            expected_private_source_paths - classified_private_source_paths
+        )
+        if (
+            unclassified_shared_source_paths
+            or unclassified_private_source_paths
+            or classified_shared_source_paths != expected_shared_source_paths
+            or classified_private_source_paths != expected_private_source_paths
+        ):
+            raise ValueError("SourceEvent conversion field policy is incomplete")
+
+        context_policy = _context_bundle_projection_policy()
+        observed_private_bundle_paths = {
+            f"/{name}" for name in private_bundle
+        }
+        for container in (
+            "trusted_memory",
+            "bindings",
+            "certificate",
+            "token_accounting",
+        ):
+            value = private_bundle[container]
+            if not isinstance(value, dict):
+                raise TypeError(f"private ContextBundle {container} is invalid")
+            observed_private_bundle_paths.update(
+                f"/{container}/{name}" for name in value
+            )
+        classified_private_bundle_paths = {
+            item["source_path"]
+            for item in context_policy
+            if item["source_path"] is not None
+        }
+        observed_output_paths = {
+            f"/{name}" for name in projected.to_dict()
+        }
+        classified_output_paths = {
+            _root_pointer(path)
+            for item in context_policy
+            for path in item["target_paths"]
+        }
+        unclassified_private_bundle_paths = sorted(
+            observed_private_bundle_paths - classified_private_bundle_paths
+        )
+        unclassified_output_paths = sorted(
+            observed_output_paths - classified_output_paths
+        )
+        if (
+            unclassified_private_bundle_paths
+            or unclassified_output_paths
+            or classified_private_bundle_paths != observed_private_bundle_paths
+            or classified_output_paths != observed_output_paths
+        ):
+            raise ValueError("ContextBundle conversion field policy is incomplete")
+        if not include_conversion_audit:
+            return None
+
+        private_document_sha256 = _digest(
+            self._contracts.bounded_canonical_bytes(
+                private_bundle,
+                limits=self._limits,
+            )
+        )
+        projected_bytes = self._contracts.bounded_canonical_bytes(
+            projected_document,
+            limits=self._limits,
+        )
+        projected_round_trip = self._contracts.ContextBundle.from_dict(
+            self._contracts.parse_json(projected_bytes, limits=self._limits)
+        )
+        projected_round_trip_bytes = self._contracts.bounded_canonical_bytes(
+            projected_round_trip.to_dict(),
+            limits=self._limits,
+        )
+        if projected_bytes != projected_round_trip_bytes:
+            raise ValueError("ContextBundle shared-contract round trip changed")
+        disposition_counts = _disposition_counts(
+            [*source_policy, *context_policy]
+        )
+
+        unsigned = {
+            "schema": LOCALAI_CONVERSION_AUDIT_SCHEMA,
+            "operation": CONTEXT_COMPILE_OPERATION,
+            "scope": "provider_local_diagnostic_not_shared_connector_payload",
+            "adapter_identity": {
+                "component_name": "loss-resistant-context-compiler",
+                "component_version": _component_version(),
+                "projection_version": _PROJECTION_VERSION,
+                "contracts_distribution": LOCALAI_CONTRACTS_DISTRIBUTION,
+                "contracts_distribution_version": LOCALAI_CONTRACTS_VERSION,
+                "contracts_protocol_version": LOCALAI_CONTRACTS_PROTOCOL_VERSION,
+                "contracts_wheel_sha256": LOCALAI_CONTRACTS_WHEEL_SHA256,
+            },
+            "version_negotiation": {
+                "conversion_contract_schema_versions": {
+                    "SourceEvent": [LOCALAI_CONTRACTS_PROTOCOL_VERSION],
+                    "ContextBundle": [LOCALAI_CONTRACTS_PROTOCOL_VERSION],
+                },
+                "accepted_documents_require_exact_model_versions": True,
+                "operation_schema_binding_available": False,
+                "operation_schema_binding_enforced": False,
+                "limitation": (
+                    "localai-contracts 0.2.0a2 negotiates schema names globally "
+                    "but does not bind required schemas to context.compile"
+                ),
+            },
+            "claim_boundary": _conversion_audit_claim_boundary(),
+            "input_payload_sha256": payload_digest,
+            "source_event_conversion": {
+                "conversion_version": _SOURCE_EVENT_CONVERSION_VERSION,
+                "input_contract": {
+                    "name": "SourceEvent",
+                    "version": LOCALAI_CONTRACTS_PROTOCOL_VERSION,
+                },
+                "private_contract": {
+                    "name": "SourceEvent",
+                    "version": "localai-source-event-0.1",
+                },
+                "path_semantics": _CONVERSION_PATH_SEMANTICS,
+                "field_dispositions": source_policy,
+                "records": [
+                    self._source_event_conversion_record(
+                        ordinal,
+                        event,
+                        private_event,
+                    )
+                    for ordinal, (event, private_event) in enumerate(
+                        zip(events, private_events, strict=True)
+                    )
+                ],
+                "all_round_trips_exact": True,
+                "loss_detected": False,
+                "unclassified_source_paths": unclassified_shared_source_paths,
+                "unclassified_target_paths": unclassified_private_source_paths,
+            },
+            "context_bundle_conversion": {
+                "conversion_version": _CONTEXT_BUNDLE_CONVERSION_VERSION,
+                "private_contract": {
+                    "name": "ContextBundle",
+                    "version": "localai-context-bundle-0.1",
+                },
+                "output_contract": {
+                    "name": "ContextBundle",
+                    "version": LOCALAI_CONTRACTS_PROTOCOL_VERSION,
+                },
+                "path_semantics": _CONVERSION_PATH_SEMANTICS,
+                "private_document_sha256": private_document_sha256,
+                "private_bundle_sha256": private_bundle_sha256,
+                "output_document_sha256": _digest(projected_bytes),
+                "output_round_trip_sha256": _digest(projected_round_trip_bytes),
+                "output_round_trip_exact": True,
+                "private_round_trip_supported": False,
+                "loss_detected": True,
+                "omitted_private_values_retained": False,
+                "source_coverage": source_coverage,
+                "field_dispositions": context_policy,
+                "unclassified_source_paths": unclassified_private_bundle_paths,
+                "unclassified_target_paths": unclassified_output_paths,
+            },
+            "summary": {
+                "count_scope": "conversion_policy_paths_not_payload_values",
+                "source_event_records": len(events),
+                "disposition_counts": disposition_counts,
+                "source_event_round_trip": "exact",
+                "context_bundle_projection": "declared_lossy",
+                "unexpected_loss_detected": False,
+                "semantic_completeness_claimed": False,
+            },
+        }
+        audit_bytes = self._contracts.bounded_canonical_bytes(
+            unsigned,
+            limits=self._limits,
+        )
+        audit = {**unsigned, "audit_sha256": _digest(audit_bytes)}
+        return self.verify_conversion_audit(
+            audit,
+            source_events=events,
+            output_bundle=projected,
+        )
+
     def _project_bundle(
         self,
         *,
@@ -1868,25 +3506,9 @@ class LocalAIContractsAdapter:
         if len(trusted_spans) + len(retrieved_spans) > MAX_CONTEXT_SPANS:
             raise ValueError("canonical ContextBundle exceeds the span count bound")
 
-        exact_counter = connector.token_counter
-        if exact_counter is None:
-            counter = _estimated_tokens
-            accounting_kind = "estimated"
-            accounting_method = (
-                "ctxc_projected_span_contents_estimated_"
-                "ceil_unicode_characters_divided_by_4;framing_excluded"
-            )
-        else:
-            counter = exact_counter
-            accounting_kind = "exact"
-            identity = connector.token_counter_id
-            if not isinstance(identity, str) or not identity:
-                raise ValueError("exact token counter lacks a stable identity")
-            accounting_method = (
-                "ctxc_projected_span_contents_exact_"
-                f"tokenizer_identity_sha256={_sha256_text(identity)};"
-                "framing_excluded"
-            )
+        counter, accounting_kind, accounting_method = _projection_accounting(
+            connector
+        )
 
         for span in trusted_spans + retrieved_spans:
             span["token_count"] = counter(span["content"])
@@ -1895,7 +3517,7 @@ class LocalAIContractsAdapter:
 
         omissions, overflow = self._project_omissions_and_overflow(
             rich_bundle,
-            exact_accounting=exact_counter is not None,
+            exact_accounting=connector.token_counter is not None,
         )
         policy_digest = rich_bundle.bindings.get("compiler_policy_sha256")
         if not isinstance(policy_digest, str) or len(policy_digest) != 64:
@@ -1947,17 +3569,12 @@ class LocalAIContractsAdapter:
                 "digest": _digest_record(source_digest),
             },
         }
-        body_bytes = self._contracts.bounded_canonical_bytes(
-            body,
-            limits=self._limits,
-        )
-        bundle_digest = _digest(
-            _PROJECTION_VERSION.encode("utf-8")
-            + b"\x00"
-            + body_bytes
-        )
         projected = self._contracts.ContextBundle(
-            bundle_id=f"ctxc-context-{bundle_digest}",
+            bundle_id=_projected_bundle_id(
+                self._contracts,
+                body,
+                limits=self._limits,
+            ),
             **body,
         )
         projected.validate()
@@ -2051,6 +3668,7 @@ __all__ = [
     "LOCALAI_CONTRACTS_SOURCE_COMMIT",
     "LOCALAI_CONTRACTS_VERSION",
     "LOCALAI_CONTRACTS_WHEEL_SHA256",
+    "LOCALAI_CONVERSION_AUDIT_SCHEMA",
     "LocalAIContractsAdapter",
     "LocalAIContractsUnavailableError",
     "MAX_CONTEXT_SOURCE_EVENTS",

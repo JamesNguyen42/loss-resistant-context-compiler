@@ -64,7 +64,7 @@ def test_schema_install_path_matches_the_distribution_and_all_schemas_parse() ->
         ]
     }
     schemas = sorted((ROOT / "schemas").glob("*.json"))
-    assert len(schemas) == 25
+    assert len(schemas) == 26
     schema_ids: dict[str, str] = {}
     for schema in schemas:
         decoded = json.loads(schema.read_text(encoding="utf-8"))
@@ -160,7 +160,7 @@ def test_release_documents_freeze_name_versioning_and_support_boundaries() -> No
         "include requirements-build.lock",
         "include SUPPORT.md",
         "recursive-include benchmarks *.json *.md *.py",
-        "recursive-include conformance *.jsonl *.py",
+        "recursive-include conformance *.json *.jsonl *.py",
         "recursive-include docs *.json *.md",
         "include src/context_compiler/data/materialized_retention_pack_v1.json",
     } <= set(manifest.splitlines())

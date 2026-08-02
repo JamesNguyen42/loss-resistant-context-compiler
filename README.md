@@ -161,7 +161,7 @@ The repository currently includes:
   POSIX process group or Windows Job Object, signals the owned POSIX group or
   terminates the Windows Job on timeout, and reconstructs successful output
   from bounded strict JSON;
-- a portable JSON artifact, compact prompt renderer, and 25 installed JSON Schemas;
+- a portable JSON artifact, compact prompt renderer, and 26 installed JSON Schemas;
 - a stable `materialize_context()` consumer wrapper and `ctxc materialize`
   command that emit the existing materialized v1 plan, structured runtime
   payload, fixed untrusted-retrieval insertion marker, and independently
@@ -182,7 +182,8 @@ The repository currently includes:
   event inventory, retains immutable source history in SQLite WAL, and
   exercises compaction, recovery, rehydration, and exact fake-request replay
   without claiming a successful live OpenHands run;
-- seventeen packaged connector schemas, six-operation golden JSONL, 66
+- seventeen packaged connector schemas, one provider-local conversion-audit
+  schema, six-operation golden JSONL, 66
   intentional negative vectors, and a standalone conformance runner that proves
   in-process and stdio semantic equivalence;
 - a machine-readable artifact reader/writer registry with an explicit
@@ -997,6 +998,48 @@ certificate. Those richer structures remain private and independently
 replay-verified. A canonical `ContextBundle` is not a replacement certificate,
 does not authenticate its producer, and makes no semantic-completeness claim.
 
+For boundary diagnostics, the optional adapter exposes
+`compile_with_conversion_audit(source_events)`. It returns the same actual
+shared `ContextBundle` plus a provider-local
+`ctxc-localai-conversion-audit-0.1` sidecar. The sidecar classifies every
+shared `SourceEvent` and private `ContextBundle` contract field as represented,
+normalized, derived, defaulted, omitted, or rejected. A listed path covers its
+complete JSON subtree unless a child path supplies a more specific
+disposition. SourceEvent conversion is reconstructed and compared as bounded
+canonical bytes; the bundle projection is explicitly declared lossy and every
+input must still appear as one exact full-source span with exact provenance.
+
+The sidecar contains digests, ordinals, and booleans, not raw source ids,
+content, metadata, or authority issuers. Its self-hash detects mutation but is
+not an authentication signature. `verify_conversion_audit` therefore also
+requires the actual shared source events and output bundle and recomputes their
+bindings; private-bundle digests and authentication decisions remain provider
+assertions. The audit's machine-readable `claim_boundary` lists the
+caller-evidence-bound, provider-asserted, and provider-assertion-dependent
+path patterns instead of making a blanket verification claim. Its fixed
+semantics replace the exact `{ordinal}` segment with a zero-based record index
+before interpreting an audit pattern as RFC 6901; output paths are RFC 6901
+pointers rooted at the caller-supplied ContextBundle document.
+Its `version_negotiation.conversion_contract_schema_versions` map is the
+SourceEvent/ContextBundle subset relevant to this conversion; it is not a copy
+of the connector manifest's full six-schema advertisement.
+
+The sidecar is privacy-sensitive despite excluding raw values. Its stable,
+unsalted input and private-document digests allow cross-run linkage and can be
+dictionary-tested when private values are predictable. Do not send it to
+ordinary telemetry or treat it as de-identified. Keep it access-controlled,
+or remove/key private digests in a separate policy if confidentiality requires
+unlinkability. The schema is
+[localai-contract-conversion-audit.schema.json](schemas/localai-contract-conversion-audit.schema.json),
+and the seven-role, three-hash-algorithm fixture is
+[golden-localai-contract-conversion-v1.json](conformance/fixtures/golden-localai-contract-conversion-v1.json).
+
+This API does not add the sidecar to `context.compile`, the connector manifest,
+or NDJSON. The exact upstream request for operation-specific SourceEvent and
+ContextBundle schema negotiation is recorded in
+[CONTRACT_REQUESTS.md](docs/CONTRACT_REQUESTS.md); the audit reports that this
+binding is unavailable rather than claiming a local extension solved it.
+
 The clean-installed exact-wheel conformance gate requires all 22 fresh-session in-process
 and NDJSON cases and retains the non-inference scope:
 
@@ -1027,6 +1070,11 @@ handshake followed by `context.compile`, requires the direct `ContextBundle`
 payload to match the in-process digest, and runs the same 22-case gate with
 `failed_count: 0` and `inference_status: not_run`. No concrete temporary
 interpreter path is retained in the repository.
+The direct lane also calls `compile_with_conversion_audit`, binds the sidecar
+to the typed source and output bundle, independently recomputes its self-hash,
+input/event/output digests, and exact disposition summary, and proves that raw
+source ids and content are absent. The NDJSON response remains the unwrapped
+shared ContextBundle.
 
 Exact provider reconciliation for implementation head
 `0f20b8a1c131fe3c0908f7d6738790529f42338c`, tree
@@ -1663,7 +1711,7 @@ python -m ruff check src tests benchmarks scripts conformance _ctxc_build_backen
 python -m compileall -q src benchmarks tests scripts conformance _ctxc_build_backend.py
 ```
 
-Build the wheel and verify the 25 packaged schemas:
+Build the wheel and verify the 26 packaged schemas:
 
 ```console
 python -c "
@@ -1678,7 +1726,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert len(wheels) == 1, wheels
     assert wheels[0].name.startswith('loss_resistant_context_compiler-')
     names = zipfile.ZipFile(wheels[0]).namelist()
-    assert sum(name.endswith('.schema.json') for name in names) == 25
+    assert sum(name.endswith('.schema.json') for name in names) == 26
 "
 ```
 

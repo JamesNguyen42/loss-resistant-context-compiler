@@ -45,11 +45,12 @@ a production PyPI upload, or a broader product/evidence claim.
 ## Distribution gates
 
 - [ ] Build exactly one wheel and one source distribution from the candidate.
-- [ ] Inspect the wheel for the expected package, CLI entry point, and all 25
-  installed core/connector JSON Schemas.
+- [ ] Inspect the wheel for the expected package, CLI entry point, and all 26
+  installed core, shared-connector, and provider-local JSON Schemas.
 - [ ] Inspect the source distribution separately for release documentation,
-  connector conformance assets, six natural-history schemas, seven contract
-  fixtures, and the source copies of the 25 installed schemas.
+  connector conformance assets, six natural-history schemas, seven
+  natural-history contract fixtures, the LocalAI conversion golden, and the
+  source copies of the 26 installed schemas.
 - [ ] Install the wheel and sdist into separate clean environments and run
   import, metadata, schema parsing, `ctxc --help`, compile, trust-create, and
   trust-verify smoke tests. Require lexical real distribution paths and
@@ -89,6 +90,13 @@ a production PyPI upload, or a broader product/evidence claim.
   "context_compiler.localai_contracts_connector"]` (literal argv tail
   `-m context_compiler.localai_contracts_connector`) for a real
   handshake/compile NDJSON round trip and repeat the 22-case non-inference gate.
+  In the direct interpreter, require a provider-local conversion audit whose
+  self-hash, input/event/output bindings, disposition counts, exact-source
+  coverage, canonical span/provenance order, omission/overflow shape,
+  machine-readable claim boundary, and raw-source exclusion all verify;
+  require the NDJSON response shape to remain the unwrapped shared
+  ContextBundle. Treat the sidecar as sensitive diagnostic evidence, not safe
+  telemetry.
   All lanes use `--no-index --no-compile`. Provider-only and direct lanes also
   use `--no-deps`; the transitive lane resolves only from its local
   `--find-links` directory. Keep argv-level `-B` out of the shared connector

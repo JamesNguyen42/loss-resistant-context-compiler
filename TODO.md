@@ -133,6 +133,12 @@ raw evidence when completing benchmark work.
   omissions/overflow, recompute component-grain accounting without relabeling
   estimates, and exclude private certificate/session/time fields from the
   deterministic canonical bundle id.
+- [x] Add a provider-local, self-hashed LocalAI conversion-audit sidecar with
+  exhaustive path dispositions, exact SourceEvent reconstruction, shared
+  bundle/source-coverage binding, seven-role golden vectors, adversarial
+  mutation tests, and clean-wheel validation. Keep it outside the shared wire;
+  record the unresolved operation-specific schema-negotiation proposal in
+  `docs/CONTRACT_REQUESTS.md`.
 - [x] Pass the exact installed-wheel Phase 0 gate with 22 of 22 fresh-session
   in-process/NDJSON cases and `inference_status: not_run` against immutable
   `localai-contracts==0.2.0a2`; no local model or runtime endpoint was loaded,
@@ -1054,7 +1060,7 @@ evidence of sublinear compilation.
   matrix.
 - [x] Build and install wheel and sdist separately in clean environments on
   Ubuntu plus provisional Windows/macOS Python 3.13 smoke hosts; verify metadata,
-  all 25 schemas, `ctxc --help`, compile, trust-create, and trust-verify.
+  all 26 schemas, `ctxc --help`, compile, trust-create, and trust-verify.
 - [ ] Publish signed source and wheel artifacts to an explicitly approved test
   package index and retain install evidence from that index.
 - [x] Add immutable GitHub Action pins, Python/Actions Dependabot, CODEOWNERS,

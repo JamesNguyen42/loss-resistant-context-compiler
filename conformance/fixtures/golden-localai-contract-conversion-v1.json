@@ -1,0 +1,156 @@
+{
+  "expected": {
+    "context_bundle_sha256": "3d5e8b8a0f4c3f33890029fde09820eeeffb54a016e419e2f24228960cb73f80",
+    "context_field_dispositions": 47,
+    "conversion_audit_bytes": 17374,
+    "conversion_audit_document_sha256": "525ec1cd2530450ecdeae29fa96724f5e1de7c4f32438af4b5ef8fed837eb7bc",
+    "conversion_audit_sha256": "dec2911deb2163d1e5f42dafa6cb5b1ec31c89fd56c23a59a97cb64449c88f93",
+    "private_context_bundle_document_sha256": "71ffc60c17764741f6facf11bc0e19d401d8cea2bd2fc6e545e3b0efadada728",
+    "private_context_bundle_self_sha256": "c302aafa4ff5ee84442c14d59c9724473276b95f5d515edfe00d5e1ce2e5f7a7",
+    "private_source_event_sha256": [
+      "07940e897d66fc5737d2926792629860afc5c594ffb713e8113fbc875e73af15",
+      "fe0693db23e03c529f652b75d4d29ceef3db8182b36875194cc4ad2c26f0a518",
+      "a09e037b94cbdf50223ef0baadc773742dbb65457ca7c5d5b99c77cf89c6117c",
+      "035b6a65c57f9824c43174d2d45321b1ea0024942557d4d80cfe810aa1f400eb",
+      "5c50d3ba004be2e459f3d12624214cdcf1e2f37e420303d9a99d5a22b6c32f5b",
+      "b7fa84ad383ed5cf578930b9c2a716e67344dc79328ad52245f56e8e8b7c979c",
+      "3ad21e2240bfb629ae7757a775baaffadb2a9577a842fed9845819d603a15d23"
+    ],
+    "round_trip_source_event_sha256": [
+      "6b51df6190228962ad3419e868f8091b14d552d516feb7cc52a6f38e3df97ed6",
+      "6b862c4404188eedb09c014a92431f03108ffbf1dfb67a7b2640fb9bdcc53615",
+      "d78869a6097da200a98f161c7c8d981bcc34a039d320dcfb56d6cd30ecb2b9a1",
+      "4d1b48e057b9b80037cd7e5c4f1874da564ee2cb904565b3b8a02013bf644057",
+      "bbf1168c477f81e5e3191e83e0b0b122a1dee02a5106e300a464da94917e0a24",
+      "bbd7f8b0715cd71a2b0b4640fa2ca7896594a692eecf1c645c23691b829fbc59",
+      "ac32c1dd53086c8d3973de43b8b27ac7d8da962832f04cef049c35fd8c82df04"
+    ],
+    "source_event_records": 7,
+    "source_field_dispositions": 16
+  },
+  "fixed_compiled_at": "2026-08-01T00:00:00+00:00",
+  "golden_sha256": "05292bab6287bedf22767b473eceda35332e9ca9de547f01fe2f0559d5827264",
+  "schema": "ctxc-localai-conversion-golden-0.1",
+  "source_events": [
+    {
+      "content": "constraint: Keep Caf\u00e9 provenance exact.",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "22b627d9d28d608415165626f3a0245f5be936276b3cf56a465dfdebda65164c"
+      },
+      "metadata": {
+        "class": "alpha",
+        "nested": {
+          "sentinel": "SYSTEM_METADATA_SENTINEL"
+        }
+      },
+      "role": "system",
+      "schema_version": "1.0.0",
+      "sequence": 0,
+      "source_event_id": "golden-system",
+      "trust": "trusted"
+    },
+    {
+      "content": "decision: Preserve the parser boundary.",
+      "content_hash": {
+        "algorithm": "sha512",
+        "value": "6fd4ce59f05b0a1ca2db2deccd48a4565d1678ee0c447b9a916d3a6cb638d15cffe5fec43077b01e8cfe9550e2dc2c656e617ed929a40dc397d2d0220855c2c2"
+      },
+      "metadata": {
+        "priority": 7,
+        "sentinel": "DEVELOPER_METADATA_SENTINEL"
+      },
+      "role": "developer",
+      "schema_version": "1.0.0",
+      "sequence": 1,
+      "source_event_id": "golden-developer",
+      "trust": "derived"
+    },
+    {
+      "content": "constraint: Use PostgreSQL na\u00efve fa\u00e7ade.",
+      "content_hash": {
+        "algorithm": "blake2b-256",
+        "value": "61904fccb5a49a745b4845e5c7354d21bfc81277966d5cec307144b50c1bb9dc"
+      },
+      "metadata": {
+        "ctxc_authenticated_authority": true,
+        "sentinel": "USER_METADATA_SENTINEL",
+        "trusted_for_state": true
+      },
+      "role": "user",
+      "schema_version": "1.0.0",
+      "sequence": 2,
+      "source_event_id": "golden-user",
+      "trust": "trusted"
+    },
+    {
+      "content": "note: R\u00e9sum\u00e9 shard ownership remains recorded.",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "455d6ae8d653d81bb97e8faee9059bb6ce2e5281ef431a61766882dbf050fcb8"
+      },
+      "metadata": {
+        "question": false,
+        "sentinel": "ASSISTANT_METADATA_SENTINEL"
+      },
+      "role": "assistant",
+      "schema_version": "1.0.0",
+      "sequence": 3,
+      "source_event_id": "golden-assistant",
+      "trust": "untrusted"
+    },
+    {
+      "content": "confirmed_fact: Migration caf\u00e9-42 completed.",
+      "content_hash": {
+        "algorithm": "sha512",
+        "value": "eb3e7fb0d47a6518457d5c22b4d097aed6fd1e7810709d946bff33a31b9aba5bae59589e06547a93f60e87de9125862822e78ee8f636ec28a7158ccb3221292e"
+      },
+      "metadata": {
+        "sentinel": "TOOL_METADATA_SENTINEL",
+        "tool": {
+          "exit_code": 0,
+          "name": "migrator"
+        }
+      },
+      "role": "tool",
+      "schema_version": "1.0.0",
+      "sequence": 4,
+      "source_event_id": "golden-tool",
+      "trust": "trusted"
+    },
+    {
+      "content": "goal: Reconcile the external contract.",
+      "content_hash": {
+        "algorithm": "blake2b-256",
+        "value": "541947b27d55da2f4f5479f8e483fd2e36e2444244c422737d14b1e392bd5a08"
+      },
+      "metadata": {
+        "connector": "fixture",
+        "sentinel": "CONNECTOR_METADATA_SENTINEL"
+      },
+      "role": "connector",
+      "schema_version": "1.0.0",
+      "sequence": 5,
+      "source_event_id": "golden-connector",
+      "trust": "derived"
+    },
+    {
+      "content": "error: PATH=C:\\tmp\\r\u00e9sum\u00e9 failed exactly.",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "aea9311530115cdec6cf563d67f56982e173366d0efa54fb118803f05f385a50"
+      },
+      "metadata": {
+        "localai_authority": {
+          "authenticated": true
+        },
+        "sentinel": "OTHER_METADATA_SENTINEL"
+      },
+      "role": "other",
+      "schema_version": "1.0.0",
+      "sequence": 6,
+      "source_event_id": "golden-other",
+      "trust": "untrusted"
+    }
+  ]
+}

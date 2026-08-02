@@ -13,12 +13,19 @@ import stat
 import subprocess
 import sys
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+import context_compiler.compiler as compiler_module
 import context_compiler.localai_contracts_adapter as adapter_module
+from conformance.run_connector_conformance import (
+    _read_bounded_text,
+    _strict_json_loads,
+)
+from conformance.schema_validation import SchemaValidationError, validate_instance
 from context_compiler import CompilationPolicy, ExactTokenCounterAdapter, LocalAIConnector
 from context_compiler.localai_contracts_adapter import (
     CONTEXT_COMPILE_OPERATION,
@@ -26,6 +33,7 @@ from context_compiler.localai_contracts_adapter import (
     LOCALAI_CONTRACTS_SOURCE_COMMIT,
     LOCALAI_CONTRACTS_VERSION,
     LOCALAI_CONTRACTS_WHEEL_SHA256,
+    LOCALAI_CONVERSION_AUDIT_SCHEMA,
     AuthenticatedAuthority,
     LocalAIContractsAdapter,
 )
@@ -36,6 +44,12 @@ contracts = pytest.importorskip(
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+CONVERSION_GOLDEN = (
+    ROOT
+    / "conformance"
+    / "fixtures"
+    / "golden-localai-contract-conversion-v1.json"
+)
 CONTRACTS_INSTALL_ROOT = Path(contracts.__file__).resolve().parent.parent
 VALIDATION_ERROR = (
     "localai-contracts 0.2.0a2 failed optional-adapter validation"
@@ -441,6 +455,141 @@ def _event(
     if digest is None:
         value.validate()
     return value
+
+
+def _load_conversion_golden() -> dict[str, Any]:
+    text = _read_bounded_text(CONVERSION_GOLDEN, label="conversion golden")
+    raw = text.encode("utf-8")
+    assert len(raw) == 5_716
+    assert b"\r" not in raw
+    assert raw.endswith(b"\n")
+    assert hashlib.sha256(raw).hexdigest() == (
+        "2e337dd2a20b246d827840639bde6d11e29b39ca2861a6fb986ccb16e98f8762"
+    )
+    fixture = _strict_json_loads(text, label="conversion golden")
+    assert fixture["schema"] == "ctxc-localai-conversion-golden-0.1"
+    unsigned = {
+        key: value for key, value in fixture.items() if key != "golden_sha256"
+    }
+    assert hashlib.sha256(contracts.canonical_bytes(unsigned)).hexdigest() == fixture[
+        "golden_sha256"
+    ]
+    return fixture
+
+
+def _golden_authority(event: Any) -> AuthenticatedAuthority | None:
+    if event.source_event_id == "golden-user":
+        return AuthenticatedAuthority("FIXTURE_AUTHORITY_SENTINEL")
+    if event.source_event_id == "golden-tool":
+        return AuthenticatedAuthority(
+            "FIXTURE_AUTHORITY_SENTINEL",
+            trusted_for_state=True,
+        )
+    return None
+
+
+def _golden_connector_factory() -> LocalAIConnector:
+    return LocalAIConnector(
+        policy=CompilationPolicy(token_budget=100_000),
+        token_counter=ExactTokenCounterAdapter(
+            "golden-utf8-bytes-v1",
+            lambda text: len(text.encode("utf-8")),
+        ),
+    )
+
+
+def _compile_conversion_golden(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[
+    dict[str, Any],
+    LocalAIContractsAdapter,
+    list[Any],
+    Any,
+    dict[str, Any],
+]:
+    fixture = _load_conversion_golden()
+    monkeypatch.setattr(
+        compiler_module,
+        "utc_now",
+        lambda: fixture["fixed_compiled_at"],
+    )
+    monkeypatch.setattr(
+        compiler_module,
+        "time",
+        type("FixedClock", (), {"perf_counter": staticmethod(lambda: 1.0)}),
+    )
+    adapter = LocalAIContractsAdapter(
+        connector_factory=_golden_connector_factory,
+        authority_verifier=_golden_authority,
+    )
+    events = [
+        contracts.SourceEvent.from_dict(document)
+        for document in fixture["source_events"]
+    ]
+    bundle, audit = adapter.compile_with_conversion_audit(events)
+    return fixture, adapter, events, bundle, audit
+
+
+def _recompute_projected_bundle_id(
+    adapter: LocalAIContractsAdapter,
+    document: dict[str, Any],
+) -> None:
+    body = {
+        key: value
+        for key, value in document.items()
+        if key not in {"schema_version", "bundle_id"}
+    }
+    document["bundle_id"] = adapter_module._projected_bundle_id(
+        contracts,
+        body,
+        limits=adapter.limits,
+    )
+
+
+def _rebind_audit_output(
+    adapter: LocalAIContractsAdapter,
+    audit: dict[str, Any],
+    output_bundle: Any,
+) -> dict[str, Any]:
+    rebound = json.loads(json.dumps(audit))
+    output_sha256 = output_bundle.canonical_digest()
+    rebound["context_bundle_conversion"]["output_document_sha256"] = (
+        output_sha256
+    )
+    rebound["context_bundle_conversion"]["output_round_trip_sha256"] = (
+        output_sha256
+    )
+    unsigned = {
+        key: value for key, value in rebound.items() if key != "audit_sha256"
+    }
+    rebound["audit_sha256"] = hashlib.sha256(
+        contracts.bounded_canonical_bytes(unsigned, limits=adapter.limits)
+    ).hexdigest()
+    return rebound
+
+
+def _rehash_conversion_audit(
+    adapter: LocalAIContractsAdapter,
+    audit: dict[str, Any],
+) -> None:
+    unsigned = {
+        key: value for key, value in audit.items() if key != "audit_sha256"
+    }
+    audit["audit_sha256"] = hashlib.sha256(
+        contracts.bounded_canonical_bytes(unsigned, limits=adapter.limits)
+    ).hexdigest()
+
+
+def _string_leaves(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        return [
+            leaf
+            for child in value.values()
+            for leaf in _string_leaves(child)
+        ]
+    if isinstance(value, list):
+        return [leaf for child in value for leaf in _string_leaves(child)]
+    return [value] if isinstance(value, str) else []
 
 
 def _handshake_request(
@@ -1856,6 +2005,605 @@ def test_deterministic_projection_excludes_private_time_and_session_identity() -
     )
     assert contracts.canonical_bytes(first) == contracts.canonical_bytes(second)
     assert first["bundle_id"] == second["bundle_id"]
+
+
+def test_conversion_audit_matches_self_hashed_golden_and_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture, adapter, events, bundle, audit = _compile_conversion_golden(
+        monkeypatch
+    )
+    expected = fixture["expected"]
+    parsed_events, private_events, _authenticated = adapter._map_source_events(
+        fixture["source_events"]
+    )
+    private_hashes = [
+        hashlib.sha256(
+            contracts.bounded_canonical_bytes(
+                event.to_dict(),
+                limits=adapter.limits,
+            )
+        ).hexdigest()
+        for event in private_events
+    ]
+    round_trips = [
+        adapter._shared_source_event_from_private(event)
+        for event in private_events
+    ]
+
+    assert [event.to_dict() for event in parsed_events] == fixture["source_events"]
+    assert private_hashes == expected["private_source_event_sha256"]
+    assert [event.to_dict() for event in round_trips] == fixture["source_events"]
+    assert [event.canonical_digest() for event in round_trips] == expected[
+        "round_trip_source_event_sha256"
+    ]
+    assert bundle.canonical_digest() == expected["context_bundle_sha256"]
+    assert audit["context_bundle_conversion"]["private_document_sha256"] == (
+        expected["private_context_bundle_document_sha256"]
+    )
+    assert audit["context_bundle_conversion"]["private_bundle_sha256"] == (
+        expected["private_context_bundle_self_sha256"]
+    )
+    assert audit["context_bundle_conversion"]["output_document_sha256"] == (
+        expected["context_bundle_sha256"]
+    )
+    assert audit["audit_sha256"] == expected["conversion_audit_sha256"]
+    audit_bytes = contracts.bounded_canonical_bytes(
+        audit,
+        limits=adapter.limits,
+    )
+    assert len(audit_bytes) == expected["conversion_audit_bytes"]
+    assert hashlib.sha256(audit_bytes).hexdigest() == expected[
+        "conversion_audit_document_sha256"
+    ]
+    assert len(audit["source_event_conversion"]["records"]) == expected[
+        "source_event_records"
+    ]
+    assert len(audit["source_event_conversion"]["field_dispositions"]) == (
+        expected["source_field_dispositions"]
+    )
+    assert len(audit["context_bundle_conversion"]["field_dispositions"]) == (
+        expected["context_field_dispositions"]
+    )
+    assert adapter.verify_conversion_audit(
+        audit,
+        source_events=events,
+        output_bundle=bundle,
+    ) == audit
+    assert audit["schema"] == LOCALAI_CONVERSION_AUDIT_SCHEMA
+
+    schema_path = ROOT / "schemas" / "localai-contract-conversion-audit.schema.json"
+    schema_name = schema_path.name
+    validate_instance(
+        audit,
+        schema_name,
+        documents={
+            schema_name: json.loads(schema_path.read_text(encoding="utf-8"))
+        },
+    )
+
+    serialized_audit = json.dumps(audit, ensure_ascii=False, sort_keys=True)
+    for document in fixture["source_events"]:
+        assert document["source_event_id"] not in serialized_audit
+        assert document["content"] not in serialized_audit
+        sentinel = document["metadata"].get("sentinel")
+        if sentinel is None:
+            sentinel = document["metadata"]["nested"]["sentinel"]
+        assert sentinel not in serialized_audit
+    assert "FIXTURE_AUTHORITY_SENTINEL" not in serialized_audit
+
+    wire_document = adapter.handle(
+        CONTEXT_COMPILE_OPERATION,
+        {"source_events": fixture["source_events"]},
+    )
+    assert wire_document == bundle.to_dict()
+    assert "conversion_audit" not in wire_document
+    assert set(wire_document) == set(contracts.ContextBundle.from_dict(wire_document).to_dict())
+    assert all(type(event) is contracts.SourceEvent for event in events)
+
+
+def test_conversion_audit_machine_labels_provider_assertions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fixture, adapter, events, bundle, audit = _compile_conversion_golden(
+        monkeypatch
+    )
+    boundary = audit["claim_boundary"]
+    assert boundary["self_hash"] == "mutation_detection_only_not_authentication"
+    assert boundary["digest_privacy"] == (
+        "sensitive_unsalted_linkable_dictionary_testable_not_safe_telemetry"
+    )
+    assert (
+        "/source_event_conversion/records/{ordinal}/independently_authenticated"
+        in boundary["provider_asserted_path_patterns"]
+    )
+    assert (
+        "/context_bundle_conversion/private_document_sha256"
+        in boundary["provider_asserted_path_patterns"]
+    )
+    assert (
+        "/context_bundle_conversion/source_coverage"
+        in boundary["provider_assertion_dependent_path_patterns"]
+    )
+
+    relabeled = json.loads(json.dumps(audit))
+    relabeled["claim_boundary"]["self_hash"] = "authenticated"
+    _rehash_conversion_audit(adapter, relabeled)
+    with pytest.raises(ValueError, match="claim boundary is invalid"):
+        adapter.verify_conversion_audit(
+            relabeled,
+            source_events=events,
+            output_bundle=bundle,
+        )
+
+
+def test_conversion_audit_provider_asserted_private_digests_are_not_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fixture, adapter, events, bundle, audit = _compile_conversion_golden(
+        monkeypatch
+    )
+    changed = json.loads(json.dumps(audit))
+    changed["source_event_conversion"]["records"][0][
+        "private_document_sha256"
+    ] = "0" * 64
+    changed["context_bundle_conversion"]["private_document_sha256"] = "1" * 64
+    changed["context_bundle_conversion"]["private_bundle_sha256"] = "2" * 64
+    _rehash_conversion_audit(adapter, changed)
+
+    assert adapter.verify_conversion_audit(
+        changed,
+        source_events=events,
+        output_bundle=bundle,
+    ) == changed
+
+
+def test_conversion_audit_excludes_digest_shaped_raw_values() -> None:
+    source_id = "a" * 64
+    content = "b" * 64
+    metadata_value = "c" * 64
+    authority_issuer = "d" * 64
+    adapter = LocalAIContractsAdapter(
+        authority_verifier=lambda _event: AuthenticatedAuthority(authority_issuer)
+    )
+    event = _event(
+        source_event_id=source_id,
+        content=content,
+        metadata={"sentinel": metadata_value},
+    )
+
+    _bundle, audit = adapter.compile_with_conversion_audit([event])
+
+    leaves = _string_leaves(audit)
+    for raw_value in (source_id, content, metadata_value, authority_issuer):
+        assert raw_value not in leaves
+
+
+def test_conversion_audit_retains_non_sha256_source_hashes_exactly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture, adapter, _events, _bundle, _audit = _compile_conversion_golden(
+        monkeypatch
+    )
+    _parsed, private_events, _authenticated = adapter._map_source_events(
+        fixture["source_events"]
+    )
+    for document, private_event in zip(
+        fixture["source_events"],
+        private_events,
+        strict=True,
+    ):
+        if document["content_hash"]["algorithm"] == "sha256":
+            assert private_event.content_sha256 == document["content_hash"]["value"]
+        else:
+            assert private_event.content_sha256 == ""
+        assert (
+            private_event.metadata["localai_contracts_event"]["content_hash"]
+            == document["content_hash"]
+        )
+        assert (
+            adapter._shared_source_event_from_private(private_event).to_dict()
+            == document
+        )
+
+
+def test_private_source_event_retention_mutation_fails_closed() -> None:
+    fixture = _load_conversion_golden()
+    adapter = LocalAIContractsAdapter()
+    _events, private_events, _authenticated = adapter._map_source_events(
+        [fixture["source_events"][0]]
+    )
+    private_event = private_events[0]
+    metadata = private_event.to_dict()["metadata"]
+    metadata["localai_contracts_event"]["original_role"] = "tool"
+    mutated = replace(private_event, metadata=metadata)
+
+    with pytest.raises(ValueError, match="provenance is inconsistent"):
+        adapter._shared_source_event_from_private(mutated)
+
+
+def test_private_source_event_authority_mutation_fails_closed() -> None:
+    fixture = _load_conversion_golden()
+    adapter = LocalAIContractsAdapter(authority_verifier=_golden_authority)
+    user_document = next(
+        document
+        for document in fixture["source_events"]
+        if document["source_event_id"] == "golden-user"
+    )
+    _events, private_events, _authenticated = adapter._map_source_events(
+        [user_document]
+    )
+    mutated = replace(
+        private_events[0],
+        authority={"authenticated": False, "trusted_for_state": False},
+    )
+
+    with pytest.raises(ValueError, match="authenticated authority is inconsistent"):
+        adapter._shared_source_event_from_private(mutated)
+
+
+def test_conversion_audit_tampering_is_rejected_even_when_rehashed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fixture, adapter, events, bundle, audit = _compile_conversion_golden(
+        monkeypatch
+    )
+    tampered = json.loads(json.dumps(audit))
+    tampered["summary"]["semantic_completeness_claimed"] = True
+
+    with pytest.raises(ValueError, match="digest mismatch"):
+        adapter.verify_conversion_audit(
+            tampered,
+            source_events=events,
+            output_bundle=bundle,
+        )
+
+    unsigned = {
+        key: value for key, value in tampered.items() if key != "audit_sha256"
+    }
+    tampered["audit_sha256"] = hashlib.sha256(
+        contracts.bounded_canonical_bytes(unsigned, limits=adapter.limits)
+    ).hexdigest()
+    with pytest.raises(ValueError, match="summary is invalid"):
+        adapter.verify_conversion_audit(
+            tampered,
+            source_events=events,
+            output_bundle=bundle,
+        )
+
+
+@pytest.mark.parametrize(
+    ("section", "expected_error"),
+    [
+        ("source", "SourceEvent record is invalid"),
+        ("bundle", "ContextBundle policy is invalid"),
+    ],
+)
+def test_conversion_audit_rejects_rehashed_round_trip_contradictions(
+    monkeypatch: pytest.MonkeyPatch,
+    section: str,
+    expected_error: str,
+) -> None:
+    _fixture, adapter, events, bundle, audit = _compile_conversion_golden(
+        monkeypatch
+    )
+    tampered = json.loads(json.dumps(audit))
+    if section == "source":
+        tampered["source_event_conversion"]["records"][0][
+            "round_trip_document_sha256"
+        ] = "0" * 64
+    else:
+        tampered["context_bundle_conversion"][
+            "output_round_trip_sha256"
+        ] = "0" * 64
+    unsigned = {
+        key: value for key, value in tampered.items() if key != "audit_sha256"
+    }
+    tampered["audit_sha256"] = hashlib.sha256(
+        contracts.bounded_canonical_bytes(unsigned, limits=adapter.limits)
+    ).hexdigest()
+
+    with pytest.raises(ValueError, match=expected_error):
+        adapter.verify_conversion_audit(
+            tampered,
+            source_events=events,
+            output_bundle=bundle,
+        )
+
+
+def test_conversion_audit_rejects_rehashed_evidence_substitution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fixture, adapter, events, bundle, audit = _compile_conversion_golden(
+        monkeypatch
+    )
+    tampered = json.loads(json.dumps(audit))
+    tampered["input_payload_sha256"] = "0" * 64
+    for record in tampered["source_event_conversion"]["records"]:
+        record["input_document_sha256"] = "1" * 64
+        record["round_trip_document_sha256"] = "1" * 64
+    tampered["context_bundle_conversion"]["output_document_sha256"] = "2" * 64
+    tampered["context_bundle_conversion"]["output_round_trip_sha256"] = "2" * 64
+    unsigned = {
+        key: value for key, value in tampered.items() if key != "audit_sha256"
+    }
+    tampered["audit_sha256"] = hashlib.sha256(
+        contracts.bounded_canonical_bytes(unsigned, limits=adapter.limits)
+    ).hexdigest()
+
+    with pytest.raises(ValueError, match="SourceEvent evidence mismatch"):
+        adapter.verify_conversion_audit(
+            tampered,
+            source_events=events,
+            output_bundle=bundle,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    [
+        ("producer", "exact source provenance changed"),
+        ("bundle-id", "ContextBundle identity mismatch"),
+        ("trusted-span", "exact source span changed"),
+        ("accounting", "span token count changed"),
+        ("policy", "policy identity mismatch"),
+        ("source-store", "source-store evidence mismatch"),
+        ("span-order", "canonical span order changed"),
+        ("provenance-order", "canonical provenance order changed"),
+        ("omission", "omission shape changed"),
+        ("overflow", "overflow shape changed"),
+    ],
+)
+def test_conversion_audit_rejects_rebound_output_semantic_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    expected_error: str,
+) -> None:
+    _fixture, adapter, events, bundle, audit = _compile_conversion_golden(
+        monkeypatch
+    )
+    output_document = bundle.to_dict()
+    if mutation == "producer":
+        source_provenance = next(
+            item
+            for item in output_document["provenance"]
+            if item["transform"] == "exact_source_event_projection"
+        )
+        source_provenance["producer"] = {
+            "name": "forged-producer",
+            "version": "9.9",
+        }
+        _recompute_projected_bundle_id(adapter, output_document)
+    elif mutation == "bundle-id":
+        output_document["bundle_id"] = "ctxc-context-" + ("0" * 64)
+    elif mutation == "trusted-span":
+        span = output_document["trusted_active_memory"][0]
+        original_span_id = span["span_id"]
+        span["content"] = "X" + span["content"][1:]
+        content_sha256 = hashlib.sha256(span["content"].encode("utf-8")).hexdigest()
+        span["content_hash"] = {
+            "algorithm": "sha256",
+            "value": content_sha256,
+        }
+        span["span_id"] = adapter_module._stable_id(
+            "active",
+            span["source_event_id"],
+            span["start_byte"],
+            span["end_byte"],
+            content_sha256,
+        )
+        provenance = next(
+            item
+            for item in output_document["provenance"]
+            if item["item_id"] == original_span_id
+        )
+        provenance["item_id"] = span["span_id"]
+        _recompute_projected_bundle_id(adapter, output_document)
+    elif mutation == "accounting":
+        output_document["trusted_active_memory"][0]["token_count"] += 1
+        output_document["token_accounting"]["trusted_tokens"] += 1
+        output_document["token_accounting"]["total_tokens"] += 1
+        _recompute_projected_bundle_id(adapter, output_document)
+    elif mutation == "policy":
+        output_document["policy_identity"]["name"] = "forged-policy"
+        output_document["policy_identity"]["version"] = "forged-version"
+        _recompute_projected_bundle_id(adapter, output_document)
+    elif mutation == "source-store":
+        output_document["source_store_identity"]["digest"]["value"] = "0" * 64
+        _recompute_projected_bundle_id(adapter, output_document)
+    elif mutation == "span-order":
+        output_document["untrusted_retrieved_spans"].reverse()
+        _recompute_projected_bundle_id(adapter, output_document)
+    elif mutation == "provenance-order":
+        output_document["provenance"].reverse()
+        _recompute_projected_bundle_id(adapter, output_document)
+    elif mutation == "omission":
+        output_document["omissions"].append(
+            {
+                "source_event_id": "ghost-event",
+                "reason": "forged-omission",
+                "estimated_tokens": None,
+            }
+        )
+        _recompute_projected_bundle_id(adapter, output_document)
+    else:
+        output_document["overflow"] = {
+            "occurred": True,
+            "dropped_items": 17,
+            "dropped_tokens": 9,
+            "reason": "forged-overflow",
+        }
+        _recompute_projected_bundle_id(adapter, output_document)
+    mutated_bundle = contracts.ContextBundle.from_dict(output_document)
+    rebound_audit = _rebind_audit_output(adapter, audit, mutated_bundle)
+
+    with pytest.raises(ValueError, match=expected_error):
+        adapter.verify_conversion_audit(
+            rebound_audit,
+            source_events=events,
+            output_bundle=mutated_bundle,
+        )
+
+
+def test_conversion_audit_schema_rejects_digest_line_terminator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fixture, _adapter, _events, _bundle, audit = _compile_conversion_golden(
+        monkeypatch
+    )
+    schema_path = ROOT / "schemas" / "localai-contract-conversion-audit.schema.json"
+    schema_name = schema_path.name
+    documents = {
+        schema_name: json.loads(schema_path.read_text(encoding="utf-8"))
+    }
+    tampered = json.loads(json.dumps(audit))
+    tampered["audit_sha256"] += "\n"
+
+    with pytest.raises(SchemaValidationError):
+        validate_instance(
+            tampered,
+            schema_name,
+            documents=documents,
+        )
+
+    invalid_disposition = json.loads(json.dumps(audit))
+    disposition = invalid_disposition["source_event_conversion"][
+        "field_dispositions"
+    ][0]
+    disposition["status"] = "omitted"
+    disposition["lossy"] = False
+    with pytest.raises(SchemaValidationError):
+        validate_instance(
+            invalid_disposition,
+            schema_name,
+            documents=documents,
+        )
+
+    invalid_authority = json.loads(json.dumps(audit))
+    record = invalid_authority["source_event_conversion"]["records"][0]
+    record["trusted_for_state"] = True
+    record["independently_authenticated"] = False
+    with pytest.raises(SchemaValidationError):
+        validate_instance(
+            invalid_authority,
+            schema_name,
+            documents=documents,
+        )
+
+
+def test_wire_compile_rejects_incomplete_context_field_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _load_conversion_golden()
+    monkeypatch.setattr(
+        compiler_module,
+        "utc_now",
+        lambda: fixture["fixed_compiled_at"],
+    )
+    adapter = LocalAIContractsAdapter(
+        connector_factory=_golden_connector_factory,
+        authority_verifier=_golden_authority,
+    )
+    complete_policy = adapter_module._context_bundle_projection_policy()
+    monkeypatch.setattr(
+        adapter_module,
+        "_context_bundle_projection_policy",
+        lambda: complete_policy[1:],
+    )
+
+    with pytest.raises(ValueError, match="field policy is incomplete"):
+        adapter.handle(
+            CONTEXT_COMPILE_OPERATION,
+            {"source_events": fixture["source_events"]},
+        )
+
+
+def test_wire_compile_checks_canonical_source_round_trip_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter = LocalAIContractsAdapter()
+    event = _event(metadata={"numeric_sentinel": 1.0})
+    real_map = adapter._map_source_events
+
+    def mutate_private(documents: list[Any]) -> Any:
+        events, private_events, authenticated = real_map(documents)
+        metadata = private_events[0].to_dict()["metadata"]
+        metadata["localai_contracts_event"]["metadata"]["numeric_sentinel"] = 1
+        private_events[0] = replace(private_events[0], metadata=metadata)
+        return events, private_events, authenticated
+
+    monkeypatch.setattr(adapter, "_map_source_events", mutate_private)
+    with pytest.raises(ValueError, match="did not round trip exactly"):
+        adapter.handle(
+            CONTEXT_COMPILE_OPERATION,
+            {"source_events": [event.to_dict()]},
+        )
+
+
+def test_wire_compile_rejects_false_projection_disposition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_project = LocalAIContractsAdapter._project_bundle
+
+    def mutate_policy_version(self: Any, **kwargs: Any) -> Any:
+        projected = real_project(self, **kwargs)
+        document = projected.to_dict()
+        document["policy_identity"]["version"] = "mutated-private-version"
+        return contracts.ContextBundle.from_dict(document)
+
+    monkeypatch.setattr(
+        LocalAIContractsAdapter,
+        "_project_bundle",
+        mutate_policy_version,
+    )
+    with pytest.raises(ValueError, match="projection disposition is inconsistent"):
+        LocalAIContractsAdapter().handle(
+            CONTEXT_COMPILE_OPERATION,
+            {"source_events": [_event().to_dict()]},
+        )
+
+
+def test_wire_compile_does_not_serialize_discarded_conversion_audit() -> None:
+    limits = contracts.ParseLimits(max_bytes=4_096)
+    adapter = LocalAIContractsAdapter(limits=limits)
+    event = _event("constraint: Keep the database stable.")
+    payload = {"source_events": [event.to_dict()]}
+
+    result = adapter.handle(CONTEXT_COMPILE_OPERATION, payload)
+
+    assert len(contracts.canonical_bytes(payload)) < limits.max_bytes
+    assert len(contracts.canonical_bytes(result)) < limits.max_bytes
+    assert "conversion_audit" not in result
+
+
+def test_conversion_audit_rejects_missing_full_source_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_project = LocalAIContractsAdapter._project_bundle
+
+    def omit_full_source(self: Any, **kwargs: Any) -> Any:
+        projected = real_project(self, **kwargs)
+        document = projected.to_dict()
+        source_provenance = next(
+            item
+            for item in document["provenance"]
+            if item["transform"] == "exact_source_event_projection"
+        )
+        span_id = source_provenance["item_id"]
+        document["untrusted_retrieved_spans"] = [
+            span
+            for span in document["untrusted_retrieved_spans"]
+            if span["span_id"] != span_id
+        ]
+        document["provenance"] = [
+            item for item in document["provenance"] if item["item_id"] != span_id
+        ]
+        return contracts.ContextBundle.from_dict(document)
+
+    monkeypatch.setattr(LocalAIContractsAdapter, "_project_bundle", omit_full_source)
+    adapter = LocalAIContractsAdapter()
+    with pytest.raises(ValueError, match="one exact full source span"):
+        adapter.compile_with_conversion_audit([_event()])
 
 
 def test_token_accounting_covers_actual_projected_components_only() -> None:

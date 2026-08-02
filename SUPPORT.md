@@ -64,6 +64,7 @@ in-process module forgery are not reversible by the adapter.
 | CLI diagnostics/events | Generic errors use `ctxc-diagnostic-0.1`; materialization overflow details use `ctxc-diagnostic-0.2` with nested `loss-resistant-materialization-refusal-diagnostic-v1`; completion events use `ctxc-event-0.1` |
 | Connector wire contracts | Seventeen Draft 2020-12 schemas for request/response, source event, bundle, checkpoint, and six payload/result pairs; runtime semantic verification remains authoritative |
 | Canonical optional connector | `localai-contracts` protocol, SourceEvent, ContextBundle, request/response, error, and manifest `1.0.0`; only `context.compile` is executed |
+| Provider-local conversion audit | `ctxc-localai-conversion-audit-0.1`; diagnostic sidecar only, never a shared connector payload |
 | LRCBench reports | Current `lrcbench-0.2` plus the explicit retained local-only `0.1` replay path |
 | Natural-history evidence | Six strict source-distribution schemas and seven self-hashed contract fixtures; no collected natural cohort exists |
 | External compatibility evidence | Result-blind ACON and AMA-Agent screening records plus one retained failed ACON diagnostic; no scoreable candidate exists |
@@ -72,8 +73,8 @@ No format is silently migrated. See
 [docs/SCHEMA_COMPATIBILITY.md](docs/SCHEMA_COMPATIBILITY.md) and
 [docs/RELEASE_POLICY.md](docs/RELEASE_POLICY.md).
 The seven schemas that predate the distribution rename retain their historical
-`lossless-context-compiler` `$id` URI values for compatibility. Eighteen newer
-schemas use the current `loss-resistant-context-compiler` namespace. All 25
+`lossless-context-compiler` `$id` URI values for compatibility. Nineteen newer
+schemas use the current `loss-resistant-context-compiler` namespace. All 26
 files install under the current distribution's schema directory. The separate
 natural-history schemas and connector transcript fixtures are source-
 distribution conformance assets rather than installed runtime schemas.

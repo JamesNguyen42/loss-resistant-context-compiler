@@ -105,6 +105,13 @@ versioning and release rules in
   component-grain accounting, a 22-case non-inference conformance gate, and
   provider-only, expected-fail-closed transitive-extra, and direct
   provider-plus-contracts clean-install validation.
+- A provider-local LocalAI conversion-audit sidecar with exhaustive declared
+  field dispositions, canonical SourceEvent reconstruction, evidence-bound
+  verification, a machine-readable assertion/privacy boundary, deterministic
+  output-order and omission/overflow validation, a strict installed schema,
+  and a self-hashed seven-role golden fixture. The shared manifest, handshake,
+  operation payload, and ContextBundle response remain unchanged; the upstream
+  operation-schema negotiation request is recorded separately.
 - Six strict natural-history evidence schemas with bounded self-hashed corpus,
   annotation, adjudication, repository/task-group split, gold-free export, and
   report contract fixtures. These fixtures are not a collected natural cohort.

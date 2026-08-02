@@ -1,0 +1,586 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/loss-resistant-context-compiler/localai-contract-conversion-audit.schema.json",
+  "title": "CtxC-owned LocalAI contract conversion audit sidecar",
+  "description": "Provider-local diagnostic evidence. This is not a shared LocalAI wire contract or a replacement SourceEvent or ContextBundle schema.",
+  "type": "object",
+  "required": [
+    "schema",
+    "operation",
+    "scope",
+    "adapter_identity",
+    "version_negotiation",
+    "claim_boundary",
+    "input_payload_sha256",
+    "source_event_conversion",
+    "context_bundle_conversion",
+    "summary",
+    "audit_sha256"
+  ],
+  "properties": {
+    "schema": {
+      "const": "ctxc-localai-conversion-audit-0.1"
+    },
+    "operation": {
+      "const": "context.compile"
+    },
+    "scope": {
+      "const": "provider_local_diagnostic_not_shared_connector_payload"
+    },
+    "adapter_identity": {
+      "type": "object",
+      "required": [
+        "component_name",
+        "component_version",
+        "projection_version",
+        "contracts_distribution",
+        "contracts_distribution_version",
+        "contracts_protocol_version",
+        "contracts_wheel_sha256"
+      ],
+      "properties": {
+        "component_name": {
+          "const": "loss-resistant-context-compiler"
+        },
+        "component_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "projection_version": {
+          "const": "ctxc-localai-context-bundle-projection-v1"
+        },
+        "contracts_distribution": {
+          "const": "localai-contracts"
+        },
+        "contracts_distribution_version": {
+          "const": "0.2.0a2"
+        },
+        "contracts_protocol_version": {
+          "const": "1.0.0"
+        },
+        "contracts_wheel_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    },
+    "version_negotiation": {
+      "type": "object",
+      "required": [
+        "conversion_contract_schema_versions",
+        "accepted_documents_require_exact_model_versions",
+        "operation_schema_binding_available",
+        "operation_schema_binding_enforced",
+        "limitation"
+      ],
+      "properties": {
+        "conversion_contract_schema_versions": {
+          "type": "object",
+          "required": ["SourceEvent", "ContextBundle"],
+          "properties": {
+            "SourceEvent": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": { "const": "1.0.0" }
+            },
+            "ContextBundle": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": { "const": "1.0.0" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "accepted_documents_require_exact_model_versions": {
+          "const": true
+        },
+        "operation_schema_binding_available": {
+          "const": false
+        },
+        "operation_schema_binding_enforced": {
+          "const": false
+        },
+        "limitation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "additionalProperties": false
+    },
+    "claim_boundary": {
+      "$ref": "#/$defs/claim_boundary"
+    },
+    "input_payload_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "source_event_conversion": {
+      "$ref": "#/$defs/source_event_conversion"
+    },
+    "context_bundle_conversion": {
+      "$ref": "#/$defs/context_bundle_conversion"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "audit_sha256": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "claim_boundary": {
+      "description": "Claim labels rooted at this audit use path patterns that become RFC 6901 pointers after replacing the exact {ordinal} segment with a zero-based source-event record index. Output paths are RFC 6901 pointers rooted at the caller-supplied ContextBundle document.",
+      "type": "object",
+      "required": [
+        "self_hash",
+        "audit_path_pattern_semantics",
+        "output_path_semantics",
+        "caller_evidence_bound_path_patterns",
+        "provider_asserted_path_patterns",
+        "provider_assertion_dependent_path_patterns",
+        "provider_asserted_output_paths",
+        "provider_assertion_dependent_output_paths",
+        "digest_privacy"
+      ],
+      "properties": {
+        "self_hash": {
+          "const": "mutation_detection_only_not_authentication"
+        },
+        "audit_path_pattern_semantics": {
+          "const": "rfc6901_after_braced_ordinal_is_replaced_by_zero_based_record_index"
+        },
+        "output_path_semantics": {
+          "const": "rfc6901_against_caller_supplied_context_bundle"
+        },
+        "caller_evidence_bound_path_patterns": {
+          "const": [
+            "/input_payload_sha256",
+            "/source_event_conversion/records/{ordinal}/input_document_sha256",
+            "/source_event_conversion/records/{ordinal}/round_trip_document_sha256",
+            "/context_bundle_conversion/output_document_sha256",
+            "/context_bundle_conversion/output_round_trip_sha256"
+          ]
+        },
+        "provider_asserted_path_patterns": {
+          "const": [
+            "/source_event_conversion/records/{ordinal}/private_document_sha256",
+            "/source_event_conversion/records/{ordinal}/round_trip_exact",
+            "/source_event_conversion/records/{ordinal}/loss_detected",
+            "/source_event_conversion/records/{ordinal}/independently_authenticated",
+            "/source_event_conversion/records/{ordinal}/trusted_for_state",
+            "/source_event_conversion/all_round_trips_exact",
+            "/source_event_conversion/loss_detected",
+            "/context_bundle_conversion/private_document_sha256",
+            "/context_bundle_conversion/private_bundle_sha256",
+            "/context_bundle_conversion/private_round_trip_supported",
+            "/context_bundle_conversion/loss_detected",
+            "/context_bundle_conversion/omitted_private_values_retained"
+          ]
+        },
+        "provider_assertion_dependent_path_patterns": {
+          "const": [
+            "/source_event_conversion/records/{ordinal}/execution_role_normalized",
+            "/context_bundle_conversion/source_coverage"
+          ]
+        },
+        "provider_asserted_output_paths": {
+          "const": [
+            "/omissions",
+            "/overflow",
+            "/policy_identity/digest"
+          ]
+        },
+        "provider_assertion_dependent_output_paths": {
+          "const": [
+            "/trusted_active_memory",
+            "/untrusted_retrieved_spans"
+          ]
+        },
+        "digest_privacy": {
+          "const": "sensitive_unsalted_linkable_dictionary_testable_not_safe_telemetry"
+        }
+      },
+      "additionalProperties": false
+    },
+    "contract_ref": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "additionalProperties": false
+    },
+    "json_pointer": {
+      "type": "string",
+      "pattern": "^/",
+      "maxLength": 256
+    },
+    "disposition": {
+      "type": "object",
+      "required": [
+        "source_path",
+        "target_paths",
+        "status",
+        "lossy",
+        "reason"
+      ],
+      "properties": {
+        "source_path": {
+          "oneOf": [
+            { "$ref": "#/$defs/json_pointer" },
+            { "type": "null" }
+          ]
+        },
+        "target_paths": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/json_pointer" }
+        },
+        "status": {
+          "enum": [
+            "represented",
+            "normalized",
+            "derived",
+            "defaulted",
+            "omitted",
+            "rejected"
+          ]
+        },
+        "lossy": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$",
+          "minLength": 1,
+          "maxLength": 128,
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": ["omitted", "rejected"]
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "source_path": { "$ref": "#/$defs/json_pointer" },
+              "target_paths": { "maxItems": 0 },
+              "lossy": { "const": true }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": ["represented", "normalized"]
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "source_path": { "$ref": "#/$defs/json_pointer" },
+              "target_paths": { "minItems": 1 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": { "const": "represented" }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "lossy": { "const": false }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": ["derived", "defaulted"]
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "target_paths": { "minItems": 1 },
+              "lossy": { "const": false }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": { "const": "defaulted" }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "source_path": { "type": "null" }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "source_event_record": {
+      "type": "object",
+      "required": [
+        "ordinal",
+        "input_document_sha256",
+        "private_document_sha256",
+        "round_trip_document_sha256",
+        "round_trip_exact",
+        "loss_detected",
+        "independently_authenticated",
+        "trusted_for_state",
+        "execution_role_normalized"
+      ],
+      "properties": {
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "input_document_sha256": { "$ref": "#/$defs/sha256" },
+        "private_document_sha256": { "$ref": "#/$defs/sha256" },
+        "round_trip_document_sha256": { "$ref": "#/$defs/sha256" },
+        "round_trip_exact": { "const": true },
+        "loss_detected": { "const": false },
+        "independently_authenticated": { "type": "boolean" },
+        "trusted_for_state": { "type": "boolean" },
+        "execution_role_normalized": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "trusted_for_state": { "const": true }
+            },
+            "required": ["trusted_for_state"]
+          },
+          "then": {
+            "properties": {
+              "independently_authenticated": { "const": true }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "source_event_conversion": {
+      "type": "object",
+      "required": [
+        "conversion_version",
+        "input_contract",
+        "private_contract",
+        "path_semantics",
+        "field_dispositions",
+        "records",
+        "all_round_trips_exact",
+        "loss_detected",
+        "unclassified_source_paths",
+        "unclassified_target_paths"
+      ],
+      "properties": {
+        "conversion_version": {
+          "const": "localai-source-event-1.0.0-to-ctxc-localai-source-event-0.1-v1"
+        },
+        "input_contract": { "$ref": "#/$defs/contract_ref" },
+        "private_contract": { "$ref": "#/$defs/contract_ref" },
+        "path_semantics": {
+          "const": "listed_path_classifies_the_complete_json_subtree_unless_a_child_path_supplies_a_more_specific_disposition"
+        },
+        "field_dispositions": {
+          "type": "array",
+          "minItems": 16,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/disposition" }
+        },
+        "records": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/source_event_record" }
+        },
+        "all_round_trips_exact": { "const": true },
+        "loss_detected": { "const": false },
+        "unclassified_source_paths": {
+          "type": "array",
+          "maxItems": 0,
+          "items": { "$ref": "#/$defs/json_pointer" }
+        },
+        "unclassified_target_paths": {
+          "type": "array",
+          "maxItems": 0,
+          "items": { "$ref": "#/$defs/json_pointer" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "source_coverage": {
+      "type": "object",
+      "required": [
+        "source_event_count",
+        "full_source_span_count",
+        "all_source_events_represented_exactly"
+      ],
+      "properties": {
+        "source_event_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "full_source_span_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "all_source_events_represented_exactly": { "const": true }
+      },
+      "additionalProperties": false
+    },
+    "context_bundle_conversion": {
+      "type": "object",
+      "required": [
+        "conversion_version",
+        "private_contract",
+        "output_contract",
+        "path_semantics",
+        "private_document_sha256",
+        "private_bundle_sha256",
+        "output_document_sha256",
+        "output_round_trip_sha256",
+        "output_round_trip_exact",
+        "private_round_trip_supported",
+        "loss_detected",
+        "omitted_private_values_retained",
+        "source_coverage",
+        "field_dispositions",
+        "unclassified_source_paths",
+        "unclassified_target_paths"
+      ],
+      "properties": {
+        "conversion_version": {
+          "const": "ctxc-localai-context-bundle-0.1-to-localai-context-bundle-1.0.0-v1"
+        },
+        "private_contract": { "$ref": "#/$defs/contract_ref" },
+        "output_contract": { "$ref": "#/$defs/contract_ref" },
+        "path_semantics": {
+          "const": "listed_path_classifies_the_complete_json_subtree_unless_a_child_path_supplies_a_more_specific_disposition"
+        },
+        "private_document_sha256": { "$ref": "#/$defs/sha256" },
+        "private_bundle_sha256": { "$ref": "#/$defs/sha256" },
+        "output_document_sha256": { "$ref": "#/$defs/sha256" },
+        "output_round_trip_sha256": { "$ref": "#/$defs/sha256" },
+        "output_round_trip_exact": { "const": true },
+        "private_round_trip_supported": { "const": false },
+        "loss_detected": { "const": true },
+        "omitted_private_values_retained": { "const": false },
+        "source_coverage": { "$ref": "#/$defs/source_coverage" },
+        "field_dispositions": {
+          "type": "array",
+          "minItems": 47,
+          "maxItems": 47,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/disposition" }
+        },
+        "unclassified_source_paths": {
+          "type": "array",
+          "maxItems": 0,
+          "items": { "$ref": "#/$defs/json_pointer" }
+        },
+        "unclassified_target_paths": {
+          "type": "array",
+          "maxItems": 0,
+          "items": { "$ref": "#/$defs/json_pointer" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "disposition_counts": {
+      "type": "object",
+      "required": [
+        "represented",
+        "normalized",
+        "derived",
+        "defaulted",
+        "omitted",
+        "rejected"
+      ],
+      "properties": {
+        "represented": { "type": "integer", "minimum": 0 },
+        "normalized": { "type": "integer", "minimum": 0 },
+        "derived": { "type": "integer", "minimum": 0 },
+        "defaulted": { "type": "integer", "minimum": 0 },
+        "omitted": { "type": "integer", "minimum": 0 },
+        "rejected": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "count_scope",
+        "source_event_records",
+        "disposition_counts",
+        "source_event_round_trip",
+        "context_bundle_projection",
+        "unexpected_loss_detected",
+        "semantic_completeness_claimed"
+      ],
+      "properties": {
+        "count_scope": {
+          "const": "conversion_policy_paths_not_payload_values"
+        },
+        "source_event_records": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "disposition_counts": { "$ref": "#/$defs/disposition_counts" },
+        "source_event_round_trip": { "const": "exact" },
+        "context_bundle_projection": { "const": "declared_lossy" },
+        "unexpected_loss_detected": { "const": false },
+        "semantic_completeness_claimed": { "const": false }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

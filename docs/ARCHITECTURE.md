@@ -192,6 +192,35 @@ because canonical `ContextBundle` has no lossless field for them. Therefore it
 is neither a private-bundle replacement nor a semantic-completeness,
 authenticity, or final-request-accounting certificate.
 
+The optional in-process `compile_with_conversion_audit` seam runs the same
+compilation and returns a provider-local
+`ctxc-localai-conversion-audit-0.1` sidecar beside the actual shared bundle.
+All shared SourceEvent and private ContextBundle root/immediate contract fields
+have fixed dispositions; a listed JSON Pointer classifies its complete subtree
+unless a child pointer overrides it. The assertions and inventory checks run
+on the ordinary wire path too, while construction and bounded serialization of
+the roughly 17 KiB diagnostic record occur only when the audit API is called.
+Thus a caller's shared-operation parse limit is not consumed by a discarded
+sidecar.
+
+SourceEvent conversion reconstructs the exact shared model from the private
+namespaced record and compares bounded canonical bytes. The output bundle must
+round-trip through the exact shared model, retain every full source event and
+its provenance, and satisfy the relations claimed by represented fields.
+`verify_conversion_audit` binds the self-hashed sidecar to caller-supplied
+actual SourceEvents and the actual output ContextBundle. The self-hash is
+integrity framing, not authentication; private-bundle hashes and host authority
+decisions remain provider assertions and the sidecar claims no semantic
+completeness. A strict `claim_boundary` labels caller-evidence bindings,
+provider assertions, assertion-dependent fields, and output-bundle assertions.
+Raw ids, content, metadata, and issuers are excluded, but the stable unsalted
+digests remain linkable and dictionary-testable. The sidecar is sensitive
+diagnostic evidence, not de-identified telemetry.
+
+The audit is not a shared operation or response member. The unresolved
+operation-specific schema-negotiation requirement and a minimal upstream
+proposal are recorded in [CONTRACT_REQUESTS.md](CONTRACT_REQUESTS.md).
+
 ### Source events and authority
 
 `source_event_to_record()` accepts `localai-source-event-0.1`. It validates any

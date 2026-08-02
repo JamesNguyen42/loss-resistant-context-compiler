@@ -17,9 +17,10 @@ with the distribution; the import package and CLI identity are also unchanged.
 The seven JSON Schemas that existed before the rename retain their historical
 `https://example.invalid/lossless-context-compiler/...` `$id` values because
 those URIs are stored-format identifiers, not distribution branding or live
-network endpoints. The detached trust manifest and the seventeen connector
-wire-contract schemas use the `loss-resistant-context-compiler` namespace. All
-25 installed schema files live under the current distribution path.
+network endpoints. The detached trust manifest, the seventeen shared connector
+wire-contract schemas, and the provider-local LocalAI conversion-audit schema
+use the `loss-resistant-context-compiler` namespace. All 26 installed schema
+files live under the current distribution path.
 
 ## Semantic versions
 
@@ -70,7 +71,7 @@ commit:
 3. offline source-distribution and wheel builds;
 4. exact distribution name/version/entry-point metadata checks;
 5. separate clean-environment wheel and source-distribution installation;
-6. inclusion and parseability of all 25 installed JSON Schemas plus the
+6. inclusion and parseability of all 26 installed JSON Schemas plus the
    source-distribution conformance and natural-history contract assets;
 7. connector golden/negative transcript conformance and in-process/stdio
    semantic-equivalence checks;

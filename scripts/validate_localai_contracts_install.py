@@ -16,6 +16,11 @@ EXPECTED_CONTRACTS_SHA256 = (
     "36a02dbc4267402949dddda1da180d800590cc579e0c1ecb022fc96f6a7c29ae"
 )
 EXPECTED_CONTRACTS_FILENAME = "localai_contracts-0.2.0a2-py3-none-any.whl"
+_PYTHON_PATH_ENVIRONMENT_NAMES = {
+    "PYTHONHOME",
+    "PYTHONPATH",
+    "PYTHONPYCACHEPREFIX",
+}
 
 
 def _sha256(path: Path) -> str:
@@ -24,6 +29,17 @@ def _sha256(path: Path) -> str:
         while chunk := stream.read(1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _clean_connector_environment() -> dict[str, str]:
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if name.upper() not in _PYTHON_PATH_ENVIRONMENT_NAMES
+    }
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment["PYTHONSAFEPATH"] = "1"
+    return environment
 
 
 def _venv_python(root: Path) -> Path:
@@ -161,11 +177,12 @@ else:
 """
     _run([str(python), "-I", "-B", "-c", script])
     connector = _venv_connector(root)
-    connector_environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    connector_environment = _clean_connector_environment()
     completed = subprocess.run(
         [str(connector)],
         input=b"",
         env=connector_environment,
+        cwd=root,
         capture_output=True,
         timeout=30,
         check=False,
@@ -253,6 +270,7 @@ import context_compiler
 import localai_contracts as contracts
 from context_compiler.localai_contracts_adapter import (
     CONTEXT_COMPILE_OPERATION,
+    LOCALAI_CONVERSION_AUDIT_SCHEMA,
     LocalAIContractsAdapter,
 )
 
@@ -307,7 +325,13 @@ wire_input = (
     + contracts.bounded_canonical_bytes(request.to_dict(), limits=limits)
     + b"\n"
 )
-connector_environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+connector_environment = {
+    name: value
+    for name, value in os.environ.items()
+    if name.upper() not in {"PYTHONHOME", "PYTHONPATH", "PYTHONPYCACHEPREFIX"}
+}
+connector_environment["PYTHONDONTWRITEBYTECODE"] = "1"
+connector_environment["PYTHONSAFEPATH"] = "1"
 completed = subprocess.run(
     [
         sys.executable,
@@ -316,6 +340,7 @@ completed = subprocess.run(
     ],
     input=wire_input,
     env=connector_environment,
+    cwd=Path(sys.prefix).resolve(),
     stdout=subprocess.PIPE,
     stderr=subprocess.PIPE,
     timeout=30,
@@ -340,6 +365,49 @@ direct = contracts.ContextBundle.from_dict(
     )
 )
 assert serialized.canonical_digest() == direct.canonical_digest()
+audited, conversion_audit = adapter.compile_with_conversion_audit([event])
+assert audited.canonical_digest() == direct.canonical_digest()
+assert conversion_audit["schema"] == LOCALAI_CONVERSION_AUDIT_SCHEMA
+assert adapter.verify_conversion_audit(
+    conversion_audit,
+    source_events=[event],
+    output_bundle=audited,
+) == conversion_audit
+unsigned_audit = {
+    key: value
+    for key, value in conversion_audit.items()
+    if key != "audit_sha256"
+}
+assert conversion_audit["audit_sha256"] == hashlib.sha256(
+    contracts.bounded_canonical_bytes(unsigned_audit, limits=limits)
+).hexdigest()
+assert conversion_audit["input_payload_sha256"] == hashlib.sha256(
+    contracts.bounded_canonical_bytes(
+        {"source_events": [event.to_dict()]},
+        limits=limits,
+    )
+).hexdigest()
+source_record = conversion_audit["source_event_conversion"]["records"][0]
+assert source_record["input_document_sha256"] == event.canonical_digest()
+assert source_record["round_trip_document_sha256"] == event.canonical_digest()
+projection = conversion_audit["context_bundle_conversion"]
+assert projection["output_document_sha256"] == audited.canonical_digest()
+assert projection["output_round_trip_sha256"] == audited.canonical_digest()
+assert projection["private_document_sha256"] != projection["private_bundle_sha256"]
+assert conversion_audit["summary"]["disposition_counts"] == {
+    "represented": 12,
+    "normalized": 8,
+    "derived": 6,
+    "defaulted": 5,
+    "omitted": 32,
+    "rejected": 0,
+}
+assert conversion_audit["summary"]["source_event_round_trip"] == "exact"
+assert conversion_audit["summary"]["context_bundle_projection"] == "declared_lossy"
+assert conversion_audit["summary"]["unexpected_loss_detected"] is False
+serialized_audit = json.dumps(conversion_audit, ensure_ascii=False, sort_keys=True)
+assert event.source_event_id not in serialized_audit
+assert event.content not in serialized_audit
 probe = adapter.build_phase0_probe([event])
 report = contracts.assert_phase0_conformant(
     LocalAIContractsAdapter,
