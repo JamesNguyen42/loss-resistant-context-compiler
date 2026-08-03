@@ -65,8 +65,12 @@ binds the native prefix to the architecture-matched reviewed distlib 0.3.9
 console stub without consulting an ambient pip installation at runtime. An
 installer that emits another native stub is unsupported and fails closed. The
 adapter then verifies exact sizes plus a canonically framed SHA-256 over the
-reviewed installed source/resource files. Any package-local executable
-bytecode is parsed only by one empty-environment, memory/deadline/process-tree
+reviewed installed source/resource files. Each bounded validation reader for
+an installed file or package-local bytecode cache rejects regular-mode Windows
+reparse targets at its pre-open, opened-descriptor, and post-read observations;
+a file rejected by these reader-level checks does not advance the tree-digest
+state. Any package-local executable bytecode is parsed only by one
+empty-environment, memory/deadline/process-tree
 bounded no-site batch worker. It compiles the verified source associated with
 every cache before unmarshalling any cache, fully consumes each marshal record,
 and binds const-stripped format-2 serialized metadata, raw adaptive

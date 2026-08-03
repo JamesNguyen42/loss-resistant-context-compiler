@@ -248,6 +248,71 @@ assert manifest.supported_operations == ["context.compile"]
     assert completed.stderr == ""
 
 
+@pytest.mark.parametrize("reader", ["hash", "bounded", "exact"])
+@pytest.mark.parametrize("reparse_check", [1, 2, 3, 4])
+def test_contracts_file_readers_reject_regular_mode_reparse_targets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reader: str,
+    reparse_check: int,
+) -> None:
+    path = tmp_path / f"{reader}-reparse.bin"
+    contents = b"0123456789abcdef"
+    path.write_bytes(contents)
+    checks = 0
+    open_calls = 0
+    read_calls = 0
+    real_open = adapter_module.os.open
+    real_read = adapter_module.os.read
+
+    def simulated_reparse(_value: os.stat_result) -> bool:
+        nonlocal checks
+        checks += 1
+        return checks == reparse_check
+
+    def tracked_open(*args: Any, **kwargs: Any) -> int:
+        nonlocal open_calls
+        open_calls += 1
+        return real_open(*args, **kwargs)
+
+    def tracked_read(*args: Any, **kwargs: Any) -> bytes:
+        nonlocal read_calls
+        read_calls += 1
+        return real_read(*args, **kwargs)
+
+    monkeypatch.setattr(adapter_module, "_is_link_or_reparse", simulated_reparse)
+    monkeypatch.setattr(adapter_module.os, "open", tracked_open)
+    monkeypatch.setattr(adapter_module.os, "read", tracked_read)
+    tree_digest = hashlib.sha256()
+    initial_tree_digest = tree_digest.digest()
+
+    with pytest.raises(ValueError, match="contracts .* (identity mismatch|changed)"):
+        if reader == "hash":
+            adapter_module._hash_expected_regular_file(
+                path,
+                relative=path.name,
+                expected_size=len(contents),
+                tree_digest=tree_digest,
+            )
+        elif reader == "bounded":
+            adapter_module._read_bounded_regular_file(
+                path,
+                maximum_size=len(contents),
+            )
+        else:
+            adapter_module._read_exact_regular_file(
+                path,
+                expected_size=len(contents),
+                maximum_size=len(contents),
+            )
+
+    assert checks == reparse_check
+    assert open_calls == (0 if reparse_check == 1 else 1)
+    assert (read_calls == 0) is (reparse_check <= 2)
+    if reader == "hash":
+        assert tree_digest.digest() == initial_tree_digest
+
+
 def test_posix_launcher_record_path_is_platform_canonical(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

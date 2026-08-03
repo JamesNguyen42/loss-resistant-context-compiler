@@ -956,11 +956,15 @@ On Windows, that launcher must use the architecture-matched reviewed distlib
 0.3.9 console stub; another installer stub fails closed without making pip a
 runtime dependency. The empty `REQUESTED` marker is optional but exact when
 present. Exact sizes plus a canonically framed SHA-256 also bind the reviewed
-installed source/resource tree. Any package-local executable bytecode cache
-is read under the same file/size checks and parsed only by one isolated
-`-I -S -B` batch worker. Windows and non-Darwin POSIX use a 256 MiB process or
-address-space ceiling; macOS uses an exact 1 TiB virtual-address-space ceiling
-that accommodates its large baseline mappings. A ten-second latest-acceptance
+installed source/resource tree. Each bounded validation read of an installed
+file or package-local bytecode cache rejects regular-mode Windows reparse
+targets before open, on the opened descriptor, and after the read; a file
+rejected by these reader-level checks does not advance the tree-digest state.
+Any package-local executable bytecode cache is then parsed only by one
+isolated `-I -S -B` batch worker. Windows and non-Darwin POSIX use a
+256 MiB process or address-space ceiling; macOS uses an exact 1 TiB
+virtual-address-space ceiling that accommodates its large baseline mappings.
+A ten-second latest-acceptance
 deadline covers cache-batch construction through comparison; mandatory owned
 process-tree cleanup has separately bounded grace. The worker compiles the
 verified source associated with every cache before parsing any cache, requires

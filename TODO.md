@@ -108,6 +108,10 @@ raw evidence when completing benchmark work.
   marker and reject every other generated row. Reject external bytecode-cache
   prefixes, loader
   overrides, non-string registry/namespace keys, and linked/reparse entries;
+  in each bounded installed-file/cache validation read, reject regular-mode
+  reparse targets at the pre-open, opened-descriptor, and post-read
+  observations, and advance the installed tree digest only after the reader's
+  post-read identity/reparse checks pass;
   bind package-local executable bytecode to fresh compilation of verified
   source through one memory/deadline/process-tree bounded no-site batch worker.
   Compile every cache-associated verified source before cache parsing; require

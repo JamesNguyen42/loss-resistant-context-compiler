@@ -337,16 +337,24 @@ def test_optional_adapter_rejects_changed_constant_sharing(
         dont_inherit=True,
         optimize=0,
     )
-    outer = expected.co_consts[0]
-    assert type(outer) is tuple
+    matching_constants = [
+        (index, constant)
+        for index, constant in enumerate(expected.co_consts)
+        if type(constant) is tuple
+        and len(constant) == 2
+        and constant[0] == (1000, 2000)
+        and constant[1] == (1000, 2000)
+    ]
+    assert len(matching_constants) == 1
+    constant_index, outer = matching_constants[0]
     assert outer[0] is outer[1]
     first = tuple(list(outer[0]))
     second = tuple(list(outer[1]))
     assert first == second
     assert first is not second
-    forged = expected.replace(
-        co_consts=((first, second), *expected.co_consts[1:]),
-    )
+    forged_constants = list(expected.co_consts)
+    forged_constants[constant_index] = (first, second)
+    forged = expected.replace(co_consts=tuple(forged_constants))
     assert marshal.dumps(forged, 2) == marshal.dumps(expected, 2)
     cache = tmp_path / "constant-sharing.pyc"
     cache.write_bytes(

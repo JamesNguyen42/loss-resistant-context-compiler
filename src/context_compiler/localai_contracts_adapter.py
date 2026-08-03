@@ -777,14 +777,15 @@ def _hash_expected_regular_file(
 ) -> bytes:
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
+    before = os.stat(path, follow_symlinks=False)
+    if not stat.S_ISREG(before.st_mode) or _is_link_or_reparse(before):
+        raise ValueError("contracts file identity mismatch")
     descriptor = os.open(path, flags)
     try:
-        before = os.stat(path, follow_symlinks=False)
         opened = os.fstat(descriptor)
         if (
-            not stat.S_ISREG(before.st_mode)
-            or _is_link_or_reparse(before)
-            or not stat.S_ISREG(opened.st_mode)
+            not stat.S_ISREG(opened.st_mode)
+            or _is_link_or_reparse(opened)
             or before.st_dev != opened.st_dev
             or before.st_ino != opened.st_ino
             or before.st_size != expected_size
@@ -792,27 +793,35 @@ def _hash_expected_regular_file(
         ):
             raise ValueError("contracts file identity mismatch")
         encoded_name = relative.encode("utf-8")
-        tree_digest.update(len(encoded_name).to_bytes(4, "big"))
-        tree_digest.update(encoded_name)
-        tree_digest.update(expected_size.to_bytes(8, "big"))
         remaining = expected_size
         contents = bytearray()
         while remaining:
             chunk = os.read(descriptor, min(remaining, 65_536))
             if not chunk:
                 raise ValueError("contracts file truncated")
-            tree_digest.update(chunk)
             contents.extend(chunk)
             remaining -= len(chunk)
         if os.read(descriptor, 1):
             raise ValueError("contracts file exceeds expected size")
         after = os.fstat(descriptor)
+        final_path = os.stat(path, follow_symlinks=False)
         if (
-            after.st_dev != opened.st_dev
+            not stat.S_ISREG(after.st_mode)
+            or _is_link_or_reparse(after)
+            or after.st_dev != opened.st_dev
             or after.st_ino != opened.st_ino
             or after.st_size != opened.st_size
+            or not stat.S_ISREG(final_path.st_mode)
+            or _is_link_or_reparse(final_path)
+            or final_path.st_dev != opened.st_dev
+            or final_path.st_ino != opened.st_ino
+            or final_path.st_size != opened.st_size
         ):
             raise ValueError("contracts file changed during validation")
+        tree_digest.update(len(encoded_name).to_bytes(4, "big"))
+        tree_digest.update(encoded_name)
+        tree_digest.update(expected_size.to_bytes(8, "big"))
+        tree_digest.update(contents)
         return bytes(contents)
     finally:
         os.close(descriptor)
@@ -821,16 +830,18 @@ def _hash_expected_regular_file(
 def _read_bounded_regular_file(path: Path, *, maximum_size: int) -> bytes:
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
+    before = os.stat(path, follow_symlinks=False)
+    if not stat.S_ISREG(before.st_mode) or _is_link_or_reparse(before):
+        raise ValueError("contracts bytecode identity mismatch")
     descriptor = os.open(path, flags)
     try:
-        before = os.stat(path, follow_symlinks=False)
         opened = os.fstat(descriptor)
         if (
-            not stat.S_ISREG(before.st_mode)
-            or _is_link_or_reparse(before)
-            or not stat.S_ISREG(opened.st_mode)
+            not stat.S_ISREG(opened.st_mode)
+            or _is_link_or_reparse(opened)
             or before.st_dev != opened.st_dev
             or before.st_ino != opened.st_ino
+            or before.st_size != opened.st_size
             or opened.st_size < 16
             or opened.st_size > maximum_size
         ):
@@ -846,10 +857,18 @@ def _read_bounded_regular_file(path: Path, *, maximum_size: int) -> bytes:
         if os.read(descriptor, 1):
             raise ValueError("contracts bytecode exceeds expected size")
         after = os.fstat(descriptor)
+        final_path = os.stat(path, follow_symlinks=False)
         if (
-            after.st_dev != opened.st_dev
+            not stat.S_ISREG(after.st_mode)
+            or _is_link_or_reparse(after)
+            or after.st_dev != opened.st_dev
             or after.st_ino != opened.st_ino
             or after.st_size != opened.st_size
+            or not stat.S_ISREG(final_path.st_mode)
+            or _is_link_or_reparse(final_path)
+            or final_path.st_dev != opened.st_dev
+            or final_path.st_ino != opened.st_ino
+            or final_path.st_size != opened.st_size
         ):
             raise ValueError("contracts bytecode changed during validation")
         return bytes(contents)
@@ -880,14 +899,15 @@ def _read_exact_regular_file(
         raise ValueError("contracts recorded file size is invalid")
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
+    before = os.stat(path, follow_symlinks=False)
+    if not stat.S_ISREG(before.st_mode) or _is_link_or_reparse(before):
+        raise ValueError("contracts recorded file identity mismatch")
     descriptor = os.open(path, flags)
     try:
-        before = os.stat(path, follow_symlinks=False)
         opened = os.fstat(descriptor)
         if (
-            not stat.S_ISREG(before.st_mode)
-            or _is_link_or_reparse(before)
-            or not stat.S_ISREG(opened.st_mode)
+            not stat.S_ISREG(opened.st_mode)
+            or _is_link_or_reparse(opened)
             or before.st_dev != opened.st_dev
             or before.st_ino != opened.st_ino
             or before.st_size != expected_size
@@ -907,13 +927,16 @@ def _read_exact_regular_file(
         after = os.fstat(descriptor)
         final_path = os.stat(path, follow_symlinks=False)
         if (
-            after.st_dev != opened.st_dev
+            not stat.S_ISREG(after.st_mode)
+            or _is_link_or_reparse(after)
+            or after.st_dev != opened.st_dev
             or after.st_ino != opened.st_ino
             or after.st_size != opened.st_size
+            or not stat.S_ISREG(final_path.st_mode)
+            or _is_link_or_reparse(final_path)
             or final_path.st_dev != opened.st_dev
             or final_path.st_ino != opened.st_ino
             or final_path.st_size != opened.st_size
-            or _is_link_or_reparse(final_path)
         ):
             raise ValueError("contracts recorded file changed during validation")
         return bytes(contents)

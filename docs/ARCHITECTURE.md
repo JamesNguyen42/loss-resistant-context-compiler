@@ -126,8 +126,12 @@ empty hash/size fields. Required generated rows are an exact pip marker,
 exact-wheel PEP 610 direct-archive document, and one platform-canonical
 launcher. An exact empty `REQUESTED` marker is optional; every other generated
 row fails closed. The adapter then checks exact sizes and a canonically framed
-SHA-256 over every reviewed source/resource file. Package-local executable
-bytecode is parsed only by one empty-environment no-site batch worker. Windows
+SHA-256 over every reviewed source/resource file. Each bounded validation read
+of an installed file or package-local bytecode cache rejects regular-mode
+Windows reparse targets before open, on the opened descriptor, and after the
+read; the tree digest advances only after the reader's post-read
+identity/reparse checks pass. Package-local executable bytecode is parsed only
+by one empty-environment no-site batch worker. Windows
 and non-Darwin POSIX apply a 256 MiB process/address-space ceiling; macOS uses
 an exact 1 TiB virtual-address-space ceiling. A ten-second latest-acceptance
 deadline covers cache-batch construction through comparison, with separately

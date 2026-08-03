@@ -8,6 +8,10 @@ versioning and release rules in
 
 ### Changed
 
+- Hardened each bounded optional LocalAI validation read of an installed file
+  or package-local bytecode cache against regular-mode Windows reparse targets
+  at the pre-open, opened-descriptor, and post-read checks. Files rejected by
+  these reader-level checks do not advance the tree-digest state.
 - Made serialized core and benchmark readers reject regular-mode Windows
   reparse targets both before and after open, and aligned SWE-bench repository
   and patch path checks with Windows device aliases that contain spaces before
