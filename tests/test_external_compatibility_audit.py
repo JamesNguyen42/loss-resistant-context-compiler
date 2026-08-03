@@ -301,6 +301,40 @@ def test_external_compatibility_audit_rejects_nonportable_adapter_source_member(
         audit_repository(tmp_path)
 
 
+def test_external_compatibility_audit_rejects_adapter_source_case_collision(
+    tmp_path: Path,
+) -> None:
+    _copy_evidence(tmp_path)
+    manifest_path = tmp_path / "benchmarks/compatibility/acon-diagnostic-failed-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    source = manifest["adapter_source"]
+    collision = dict(source["files"][0])
+    collision["relative_path"] = "readme.md"
+    source["files"].append(collision)
+    source["files"].sort(key=lambda item: item["relative_path"])
+    source["file_count"] = len(source["files"])
+    source["total_bytes"] = sum(
+        item["file_bytes"] for item in source["files"]
+    )
+    source["tree_sha256"] = _canonical_sha256(
+        {
+            "algorithm": source["tree_algorithm"],
+            "files": source["files"],
+        }
+    )
+    _resign_failed_manifest(manifest)
+    _write_json(manifest_path, manifest)
+
+    with pytest.raises(
+        CompatibilityAuditError,
+        match=(
+            "adapter source is invalid.*"
+            "ASCII case-insensitive materialization"
+        ),
+    ):
+        audit_repository(tmp_path)
+
+
 def test_external_compatibility_audit_rejects_bare_required_options(
     tmp_path: Path,
 ) -> None:

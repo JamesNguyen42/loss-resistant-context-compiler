@@ -76,6 +76,10 @@ _ADAPTER_SOURCE_MAX_FILE_BYTES = 256_000_000
 _ADAPTER_SOURCE_MAX_TOTAL_BYTES = 512_000_000
 _ADAPTER_SOURCE_MAX_RELATIVE_PATH_BYTES = 4_096
 _ADAPTER_SOURCE_MAX_PATH_BYTES = 1_000_000
+_ASCII_CASE_TRANSLATION = bytes.maketrans(
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    b"abcdefghijklmnopqrstuvwxyz",
+)
 _ADAPTER_RUNTIME_EXECUTABLE_MAX_BYTES = 2_000_000_000
 _PROCESS_ENVIRONMENT_ALGORITHM = "lrcbench-process-environment-0.1"
 _PROCESS_ENVIRONMENT_MAX_VARIABLES = 1_024
@@ -666,6 +670,45 @@ class AdapterSourceFileEvidence:
             )
 
 
+def _adapter_source_paths_have_ascii_case_collision(
+    files: Sequence[AdapterSourceFileEvidence],
+) -> bool:
+    keyed_paths: list[tuple[tuple[bytes, ...], tuple[str, ...]]] = []
+    for item in files:
+        parts = PurePosixPath(item.relative_path).parts
+        keyed_paths.append(
+            (
+                tuple(
+                    part.encode("utf-8").translate(_ASCII_CASE_TRANSLATION)
+                    for part in parts
+                ),
+                parts,
+            )
+        )
+    keyed_paths.sort()
+    for (previous_key, previous_parts), (current_key, current_parts) in zip(
+        keyed_paths,
+        keyed_paths[1:],
+        strict=False,
+    ):
+        shared_parts = 0
+        for previous_folded, current_folded, previous, current in zip(
+            previous_key,
+            current_key,
+            previous_parts,
+            current_parts,
+            strict=False,
+        ):
+            if previous_folded != current_folded:
+                break
+            shared_parts += 1
+            if previous != current:
+                return True
+        if shared_parts == min(len(previous_key), len(current_key)):
+            return True
+    return False
+
+
 @dataclass(frozen=True, slots=True)
 class AdapterSourceEvidence:
     """Bounded recursive file inventory for one immutable adapter source root."""
@@ -744,6 +787,11 @@ class AdapterSourceEvidence:
         ):
             raise ValueError(
                 "adapter source evidence file inventory is inconsistent"
+            )
+        if _adapter_source_paths_have_ascii_case_collision(self.files):
+            raise ValueError(
+                "adapter source evidence paths collide under ASCII "
+                "case-insensitive materialization"
             )
         if _adapter_source_tree_sha256(self.files) != self.tree_sha256:
             raise ValueError(

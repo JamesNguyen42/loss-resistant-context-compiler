@@ -569,6 +569,10 @@ Acceptance:
   trailing dots/spaces, and the complete supported device-alias set. Apply the
   invariant to capture, manifest replay, and compatibility-audit decoding
   without rewriting a member or changing the tree-digest algorithm.
+- [x] Reject stable ASCII-case collisions across every implicit directory
+  prefix and full file path in an adapter-source inventory, including
+  file/directory prefix conflicts. Keep non-ASCII bytes exact so manifest
+  acceptance does not inherit a host or Python Unicode case table.
 - [x] Reconstruct every one-case corpus during manifest replay and require the
   case audit to be the ordered parent-corpus prefix with exact self/file
   digests and runner-owned temporary path structure.

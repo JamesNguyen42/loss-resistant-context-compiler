@@ -6,14 +6,14 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Current committed HEAD and base for this in-progress checkpoint: `06e06c9`.
-- Current checkpoint: every normalized POSIX-relative adapter-source inventory
-  record now applies the shared Windows component-safety policy to every path
-  part. This is an accepted-domain tightening; members are rejected rather than
-  rewritten and no manifest, protocol, or tree-algorithm version changes.
-- Previous checkpoint: complete Windows device-alias rejection in the root and
-  OpenHands archive validators and pinned build-wheel inspector was tested,
-  independently reviewed, committed, and pushed as `06e06c9`.
+- Current committed HEAD and base for this in-progress checkpoint: `c06b07a`.
+- Current checkpoint: adapter-source inventories now reject stable ASCII-case
+  collisions across every represented directory prefix and file path, including
+  file/directory prefix conflicts. Paths are rejected rather than rewritten;
+  non-ASCII bytes remain exact and no embedded version changes.
+- Previous checkpoint: relative adapter-source member component safety was
+  tested on CPython 3.12/3.14, independently reviewed, committed, and pushed as
+  `c06b07a`.
 - Next public preparation target: scikit-learn ordinals 349--380 (32 selected
   rows). No local mirror or exact base-commit license evidence has yet been
   retained for that repository. Do not encode a repository patch as an
@@ -39,7 +39,48 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
-## Current adapter-source relative-member portability
+## Current adapter-source ASCII-case collision hardening
+
+- After the existing file-count and aggregate path-byte bounds pass,
+  `AdapterSourceEvidence` builds at most 10,000 stable keys from each path's
+  component tuple. Each key translates only UTF-8 bytes `A`--`Z` to `a`--`z`;
+  every non-ASCII byte stays exact. Sorting these bounded tuples makes shared
+  directory prefixes adjacent without allocating joined prefix strings.
+- Adjacent paths are compared component by component. The inventory rejects
+  ASCII-case aliases at a leaf or any implicit directory, plus a terminal file
+  reused as a directory, without changing a retained path. Exact shared
+  directories and distinct leaves remain valid. Non-ASCII controls including
+  `Straße`/`STRASSE`, composed/decomposed `café`, `É`/`é`, and the
+  Python-3.12/3.14-sensitive U+1C89/U+1C8A pair remain distinct.
+- The aggregate evidence record is the common boundary for bounded source-tree
+  capture, manifest replay, and compatibility-audit decoding. Adversarial
+  replay and audit fixtures add colliding records, then recompute file counts,
+  byte totals, nested source-tree digests, and outer manifest digests before
+  expecting this invariant to reject them.
+- The focused 15-case collision selection completed on CPython 3.12 and clean
+  CPython 3.14.6 with 14 passed and one expected case-insensitive-filesystem skip
+  on each runtime. The complete external-runner, external-compatibility, and
+  compatibility-audit modules collected 235 tests on CPython 3.12 and completed
+  with 229 passed, six expected platform skips, zero failures, and zero errors
+  in 16.306 seconds. Ignored JUnit reports are
+  `build/adapter-source-ascii-collision-focused-py312-v2.xml`,
+  `build/adapter-source-ascii-collision-focused-py314-v2.xml`, and
+  `build/adapter-source-ascii-collision-full-py312-v2.xml`. The deterministic
+  two-case benchmark interchange self-test, focused Ruff, and diff checks pass.
+- Independent read-only review matched the tuple-sort result to a trie oracle
+  across 33,100 adversarial inventories. A separate near-cap probe with 976,976
+  aggregate path bytes and 488,244 components completed in 0.47 seconds with
+  about 7.86 MB traced peak allocation; this is a boundedness check, not an SLO.
+- Runner manifest `0.13`, external protocol `0.10`, and adapter source-tree
+  algorithm `0.1` remain unchanged. Accepted records retain their prior bytes
+  and digests. The narrow ASCII rule does not claim non-ASCII case or
+  normalization portability, path-length collision freedom, native reopening
+  of foreign roots, coverage of imports outside the retained root, or proof of
+  which files an adapter loaded.
+- No live or external benchmark candidate, model, grader, GPU, or inference
+  runtime is involved.
+
+## Previous adapter-source relative-member portability (`c06b07a`)
 
 - `AdapterSourceFileEvidence` now rejects a record when any `PurePosixPath`
   component fails the existing Windows lexical safety rule. This covers invalid

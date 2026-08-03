@@ -580,9 +580,14 @@ rejected, never normalized.
 Every normalized POSIX-relative adapter-source inventory record applies the
 same Windows component rule to each path part before the record is accepted.
 This keeps a POSIX capture from blessing a specifically Windows-unsafe member;
-it does not establish case-folding, Unicode-normalization, or path-length
-materializability on every filesystem. Relative members are rejected, never
-rewritten, and accepted records keep the existing tree-digest algorithm.
+the aggregate inventory also rejects stable ASCII-case collisions across each
+implicit directory prefix and full file path, including file/directory prefix
+conflicts. Only UTF-8 bytes for ASCII `A`--`Z` are folded; non-ASCII bytes stay
+exact so accepted evidence does not inherit a host or Python Unicode case
+table. The rule does not establish non-ASCII case, Unicode-normalization, or
+path-length materializability on every filesystem. Relative members are
+rejected, never rewritten, and accepted records keep the existing tree-digest
+algorithm.
 For a complete run, it also reconstructs every normalized one-case candidate
 envelope from the registered producer and corresponding raw merged case, then
 matches its self-digest to the case audit. It also rehashes the retained

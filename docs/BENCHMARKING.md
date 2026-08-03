@@ -374,9 +374,13 @@ in the recorded command and in the bounded recursive inventory of
 link-free source tree and recomputes the portable command-contract digest. Each
 normalized POSIX-relative source member must also pass the same Windows
 component rule before capture or replay accepts it. The rule rejects members
-rather than rewriting them and does not claim to solve cross-filesystem case,
-Unicode-normalization, or path-length collisions. It does not make a foreign
-absolute source root native-reopenable. External scoring matches the
+rather than rewriting them. The aggregate inventory also rejects stable
+ASCII-case collisions across every implicit directory prefix and full file
+path, including file/directory prefix conflicts. Only UTF-8 bytes for ASCII
+`A`--`Z` are folded; non-ASCII bytes remain exact so validity does not inherit a
+host or Python Unicode case table. This does not claim to solve non-ASCII case,
+Unicode-normalization, or path-length collisions, and it does not make a
+foreign absolute source root native-reopenable. External scoring matches the
 entrypoint, source-tree, resolved-runtime, and portable
 command-contract digests to the frozen per-system protocol fields. The
 contract uses typed tokens for runner substitutions and bound paths, so

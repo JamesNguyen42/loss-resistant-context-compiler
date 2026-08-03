@@ -8,6 +8,10 @@ versioning and release rules in
 
 ### Changed
 
+- Rejected stable ASCII-case collisions across every represented directory
+  prefix and file path in retained adapter-source inventories, including
+  file/directory prefix conflicts. Paths remain unmodified and non-ASCII bytes
+  remain outside this deliberately narrow comparison rule.
 - Made normalized relative adapter-source inventory records apply the existing
   Windows component-safety policy to every path part. Invalid characters,
   trailing dots/spaces, and reserved device aliases are rejected rather than

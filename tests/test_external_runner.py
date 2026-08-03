@@ -1214,6 +1214,101 @@ def _adapter_source_evidence(
     return capture_adapter_source_evidence(source_root)
 
 
+def _adapter_source_inventory(
+    tmp_path: Path,
+    relative_paths: tuple[str, ...],
+) -> external_runner_module.AdapterSourceEvidence:
+    files = tuple(
+        sorted(
+            (
+                external_runner_module.AdapterSourceFileEvidence(
+                    relative_path=relative_path,
+                    file_sha256="0" * 64,
+                    file_bytes=0,
+                )
+                for relative_path in relative_paths
+            ),
+            key=lambda item: item.relative_path,
+        )
+    )
+    return external_runner_module.AdapterSourceEvidence(
+        source_root=str(tmp_path.resolve()),
+        tree_sha256=external_runner_module._adapter_source_tree_sha256(files),
+        file_count=len(files),
+        total_bytes=0,
+        files=files,
+    )
+
+
+@pytest.mark.parametrize(
+    "relative_paths",
+    [
+        ("pkg/Adapter.py", "pkg/adapter.py"),
+        ("Lib/a.py", "lib/b.py"),
+        ("a", "A/b.py"),
+        ("a", "a/b.py"),
+        ("foo", "foo!x", "foo/bar.py"),
+        ("Pkg/a.py", "pkg!x.py", "pkg/b.py"),
+    ],
+)
+def test_adapter_source_inventory_rejects_ascii_case_collisions(
+    tmp_path: Path,
+    relative_paths: tuple[str, ...],
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="ASCII case-insensitive materialization",
+    ):
+        _adapter_source_inventory(tmp_path, relative_paths)
+
+
+@pytest.mark.parametrize(
+    "relative_paths",
+    [
+        ("lib/a.py", "lib/b.py"),
+        ("one/Name.py", "two/name.py"),
+        ("Stra\u00dfe.py", "STRASSE.py"),
+        ("caf\u00e9.py", "cafe\u0301.py"),
+        ("\u00c9.py", "\u00e9.py"),
+        ("\u1c89.py", "\u1c8a.py"),
+    ],
+)
+def test_adapter_source_inventory_retains_non_ascii_case_controls(
+    tmp_path: Path,
+    relative_paths: tuple[str, ...],
+) -> None:
+    evidence = _adapter_source_inventory(tmp_path, relative_paths)
+
+    assert tuple(item.relative_path for item in evidence.files) == tuple(
+        sorted(relative_paths)
+    )
+
+
+def test_adapter_source_capture_rejects_ascii_case_directory_collisions(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "case-collision-source"
+    source_root.mkdir()
+    upper_directory = source_root / "Lib"
+    lower_directory = source_root / "lib"
+    upper_directory.mkdir()
+    try:
+        lower_directory.mkdir()
+    except FileExistsError:
+        pytest.skip("filesystem does not preserve ASCII case-distinct directories")
+    observed_names = {entry.name for entry in os.scandir(source_root)}
+    if not {"Lib", "lib"} <= observed_names:
+        pytest.skip("filesystem does not preserve ASCII case-distinct directories")
+    (upper_directory / "a.py").write_text("A = 1\n", encoding="utf-8")
+    (lower_directory / "b.py").write_text("B = 2\n", encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="ASCII case-insensitive materialization",
+    ):
+        capture_adapter_source_evidence(source_root)
+
+
 @pytest.mark.parametrize(
     "relative_path",
     [
@@ -2005,6 +2100,44 @@ def test_adapter_source_tree_is_bounded_complete_and_immutable(
     ):
         load_external_run_manifest(
             tampered_source_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
+    colliding_source = retained_manifest.to_dict()
+    colliding_files = list(colliding_source["adapter_source"]["files"])
+    colliding_source["adapter_source"]["files"] = colliding_files
+    colliding_record = dict(colliding_files[0])
+    colliding_record["relative_path"] = "Support/other.py"
+    colliding_files.append(colliding_record)
+    colliding_files.sort(key=lambda item: item["relative_path"])
+    colliding_source["adapter_source"]["file_count"] = len(colliding_files)
+    colliding_source["adapter_source"]["total_bytes"] = sum(
+        item["file_bytes"] for item in colliding_files
+    )
+    colliding_source["adapter_source"]["tree_sha256"] = _canonical_sha256(
+        {
+            "algorithm": colliding_source["adapter_source"]["tree_algorithm"],
+            "files": colliding_files,
+        }
+    )
+    colliding_source.pop("manifest_sha256")
+    colliding_source["manifest_sha256"] = _canonical_sha256(
+        colliding_source
+    )
+    colliding_source_path = tmp_path / "colliding-source-manifest.json"
+    colliding_source_path.write_text(
+        json.dumps(colliding_source),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match=(
+            "adapter source evidence is invalid.*"
+            "ASCII case-insensitive materialization"
+        ),
+    ):
+        load_external_run_manifest(
+            colliding_source_path,
             expected_dataset_sha256=document["dataset_sha256"],
         )
 

@@ -1239,11 +1239,13 @@ audited. Any selected superseded item independently fails verification as
   identity, revalidated dependency-lock, adapter-entrypoint, and bounded
   adapter-source-tree bytes. Every normalized POSIX-relative source member is
   rejected rather than rewritten when any component is Windows-unsafe, across
-  capture, manifest replay, and compatibility-audit decoding. This is a
-  component-level accepted-domain rule, not a claim that foreign roots are
-  native-reopenable or that every cross-filesystem case, Unicode, and
-  path-length collision is solved. The schema and tree-digest algorithm are
-  unchanged. The manifest also
+  capture, manifest replay, and compatibility-audit decoding. The complete
+  inventory also rejects stable ASCII-case collisions across implicit directory
+  prefixes and file paths, including file/directory conflicts. Only ASCII
+  `A`--`Z` bytes are folded; non-ASCII bytes remain exact. These are
+  accepted-domain rules, not claims that foreign roots are native-reopenable or
+  that non-ASCII case, Unicode-normalization, and path-length collisions are
+  solved. The schema and tree-digest algorithm are unchanged. The manifest also
   freezes the resolved runtime executable, the bounded name-audited
   process-environment digest, and the portable per-case-validated command
   contract, exact 8192-context Qwen, one slot, zero retries/service cost,
