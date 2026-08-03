@@ -1,27 +1,32 @@
 # Agent progress
 
-Last updated: 2026-08-02 (America/Los_Angeles)
+Last updated: 2026-08-03 (America/Los_Angeles)
 
 ## Resume point
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Clean evidence-generation base for this checkpoint:
-  `481016873220db5d2964795e97118ca04012dd6c`.
-- Current checkpoint: physical and parsed tar/wheel validation in the
-  byte-identical root and OpenHands packaging backends, plus independent ZIP
-  and `RECORD` validation in the OpenHands build-input inspector, now rejects
-  file/ancestor and portable implicit-directory namespace conflicts without
-  rewriting member names.
-- Previous checkpoint: all 32 selected scikit-learn rows at ordinals 349--380
-  prepared and fresh-replayed; the 94-row seven-repository generation and its
-  conservative filename/path-based engineering inventory were committed and
-  pushed as `4810168`.
-- Next exact action: acquire Sphinx through a reviewed channel, inspect exact
-  base-commit license candidates, and apply the raw-Git preparer to ordinals
-  381--424 (44 selected rows and 44 distinct commits). No local Sphinx mirror
-  or exact base-commit license evidence is retained. Do not encode a repository
-  patch as an LRCBench rendered-memory candidate.
+- Evidence-generation revisions for this mixed-provenance checkpoint:
+  predecessor `d512b04156728cb9a4088f250ead395192572b34` for ordinals
+  287--380, and `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d` for the Sphinx
+  extension and fresh through-424 reconciliation.
+- Current checkpoint: all 44 Sphinx rows at ordinals 381--424 prepared and
+  fresh-replayed with no refusal. The complete 500-row ledger now records 138
+  attempted, 132 prepared, the six retained Pylint policy refusals, and 362
+  unattempted rows.
+- Safe-patch hardening is committed and pushed at
+  `a1b262a14e5674477a6444cc503aad557944be28`; the schema remains
+  `ctxc-swebench-patch-composition-0.1`.
+- Predecessor checkpoint: the through-380 generation attempted 94 rows across
+  seven repositories, prepared 88, retained the same six Pylint refusals, and
+  left 406 unattempted. Preserve that evidence as predecessor history rather
+  than relabeling it as the current generation.
+- Next exact action: prepare the 75 distinct SymPy tasks and commits at
+  ordinals 425--499, from
+  `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
+  `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`.
+  That reaches the physical source end; the earlier 287 unattempted rows are
+  Astropy, Django, and Matplotlib.
 
 ## Mission status
 
@@ -32,16 +37,113 @@ Last updated: 2026-08-02 (America/Los_Angeles)
    candidate-input projection, raw-Git preparation, and a full-cohort
    prediction/official-JSONL boundary are pinned. A separately replayable
    synthetic controller-run ledger and a separate text-patch composition
-   preflight now exist. Ninety-four public rows have been attempted across seven
-   repositories: 88 prepared, 6 policy-refused, and 406 unattempted. No public
-   candidate, model, agent, or grader has run and no resolution, external score,
-   or usefulness result exists. Tau2-bench's materially different 278-row
+   preflight now exist. One hundred thirty-eight public rows have been attempted
+   across eight repositories: 132 prepared, 6 policy-refused, and 362
+   unattempted. No public candidate, model, agent, or grader has run and no
+   resolution, external score, or usefulness result exists. Tau2-bench's
+   materially different 278-row
    half-duplex text core is now locally source-bound after a separate internal
    result-blind review, but its candidate adapter, dependency environment,
    simulator/grader evidence, isolation, execution, reward, score, usefulness,
    and claim readiness remain absent or false.
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
+
+## Current verified SWE-bench through-424 checkpoint
+
+- The current reconciliation preserves mixed provenance rather than rewriting
+  predecessor history: ordinals 287--380 retain generation revision
+  `d512b04156728cb9a4088f250ead395192572b34`; Sphinx ordinals 381--424 and
+  the fresh combined ledger/reconciliation bind
+  `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d`.
+- The complete denominator is 500 rows: 138 attempted, 132 prepared, the exact
+  six Pylint `tree-symlink-forbidden` refusals at ordinals 324--329, and 362
+  unattempted. All 44 Sphinx rows prepared with zero refusal. The 132 retained
+  manifests total 35,064,737 bytes and bind 130,199 regular files,
+  1,538,004,549 blob bytes, 25,985 tree objects, and 6,543,145 raw tree bytes.
+- The Sphinx extension contributes 44 manifests totaling 18,731,287 bytes and
+  binding 66,143 files, 736,223,680 blob bytes, 18,382 tree objects, and
+  3,334,382 raw tree bytes. Its 31,722-byte summary has raw SHA-256
+  `fc11dfd91d75ee903359a6f9158956342422f1a4b8f6ef58cb18247af484949b`
+  and self-hash
+  `f62a65f0f54a23a07d4385f168a4696c7437d90a55e9e8ca80b9d24a282b5bb3`.
+  Its 24,447-byte, 46-event journal has SHA-256
+  `6655d51f482a0039c3e1a070287456c6ef8f3936fb77b02b10590fa648f38b93`.
+  The 1,646-byte mirror evidence has raw SHA-256
+  `159f53c82a222e9cad63d114737d6baf11136f0ee162ca13d56387dc842ae12f`
+  and self-hash
+  `c0a2425237dbff9c8d471a82bbb3730bca316b5019c0db05c23358a3bdd67a6d`.
+- The published ignored reconciliation is 45,469 bytes with raw SHA-256
+  `c6882b68d817e374ebd6be00fa32a7ee2a2ac2d265c2f8f1fc8c858138fea23e`
+  and self-hash
+  `7bf6599e2a258b588a92b9bab41c899ba799b0fc81ff1bd41f355b86aa92a789`.
+  The final 95,350-byte reconciliation builder has SHA-256
+  `ec330aacb769cb545f5400505fa138efe49ea6e528579ec17eb6a73cc4982c6e`.
+  Its 493,768-byte ledger has raw SHA-256
+  `3be02f725ec0e0041bde5af9ba02288c9b15823f3c0fcfd1ad84445d78276bb8`
+  and self-hash
+  `5543f9e28a11a12bdf9a0bf9f3473926b80b0357910eed1e2fb2fcdc9cd002cc`.
+  The official JSONL remains byte-identical to the predecessor: 53,734 bytes,
+  500 source-ordered `model_patch: null` rows, and SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
+- The 96,201-byte Sphinx engineering inventory has raw SHA-256
+  `e02f07b4feb49ab7ebf378ef7614b8acd01a7367921acfe449ec0e2a5ef08840`
+  and self-hash
+  `5df1f68df2405b8365074cce05b7ff2391b6ac945f81dd47951956a918ddae25`.
+  It retains 44 records, 129 candidate occurrences, and 32 variants: five
+  `LICENSE`, three `pyproject.toml`, eight `setup.cfg`, and sixteen `setup.py`
+  variants, all mode `100644`. This is filename/path-based engineering
+  discovery only, not legal, applicability, redistribution, or authenticated
+  origin evidence.
+- No public candidate, model, agent, hidden test, grader, GPU, or inference ran.
+  Candidate mount and isolation, network/filesystem isolation, execution,
+  grading, score, usefulness, and claim readiness remain absent or false.
+- A clean CPython 3.14.6 `--verify-only` replay completed in 2,236.794 seconds.
+  It reached source validation at 1.713 seconds, preparation replay at 882.802,
+  inventories at 883.317, predecessor-ledger replay at 1,328.563, retained
+  ledger replay at 2,234.898, stable-input verification at 2,235.768, and exact
+  reconciliation at 2,235.778; retained counts and hashes were unchanged.
+
+## Current SWE-bench safe-patch hardening (`a1b262a`)
+
+- Replaced the prior section-scoped metadata blacklist with a streaming closed
+  grammar for regular-file text modifications and exact-`100644`
+  additions/deletions. Candidate bytes are validated before source
+  verification. Hidden bytes are validated before patch application;
+  repository-verification Git calls may occur first but never receive patch
+  bytes. Quoted and canonical unquoted-space paths, index transitions, hunk
+  ranges/payload counts, duplicate/casefold/ancestor conflicts, and header-only
+  empty-file add/delete are covered.
+- Preambles, headerless/combined/binary patches, standard or legacy copy/rename
+  and similarity metadata, mode changes, unsafe modes, repeated/inconsistent
+  headers, unknown metadata, and malformed hunks fail at
+  `patch-input-validation` before patch application. Parser-only replay of all
+  500 frozen hidden patches accepted 499 and refused only
+  `astropy__astropy-7336`, whose patch is an actual rename. This did not execute
+  a task.
+- Files and directories now have separate count ceilings. Descriptor and
+  directory-iterator cleanup attempts every acquired resource without hiding a
+  primary failure. Temporary-workspace and process cleanup evidence is retained;
+  unexpected public build/decode/verify/load/write failures are normalized.
+  Canonical documents are bounded before whole-value hashing/encoding, and
+  atomic destination-exists errors remain distinct from publication failures.
+- Accepted patches still reach unsandboxed native Git. There is no native memory
+  or filesystem quota, and owned `TemporaryDirectory.cleanup()` is not itself
+  entry-bounded. `PatchCompositionError.stage` plus
+  `preflight-exception-not-a-cohort-result` is only machine-readable metadata;
+  no current caller retains it in a complete-denominator ledger.
+- Focused patch tests passed 86/86 under CPython 3.12 (42.471 seconds, JUnit
+  SHA-256
+  `8359d63590534a76d06b024d365eb3559b1af887f9284c32385db0c48ec1ce20`)
+  and CPython 3.14 (41.302 seconds,
+  `d339be7dd80b931173b0204bb855075f2bc68664dc4ddf786aabe65923ca7e58`).
+  The integrated source/repository/prediction/patch gate collected 187: 186
+  passed and one expected Windows case skipped under CPython 3.12 (223.954 seconds,
+  `5095a3b94c989e32215ef6fc127531c05a5b7cb6f0410594879d755ec7e6d5ea`)
+  and CPython 3.14 (204.751 seconds,
+  `d226aa1b80c460c1d9630540e3ae6fec40efb745e3ba79a4d78bbc93bb782930`).
+  Ruff, compile, and diff checks passed in both environments; three independent
+  final reviews found no P0--P3 issue.
 
 ## Current archive namespace-prefix hardening
 
@@ -364,9 +466,10 @@ Last updated: 2026-08-02 (America/Los_Angeles)
   replay canonically snapshot source and preparation evidence, bind the live
   prepared-tree summary, and require exact semantic replay. The structural
   `retained_disjoint` property fails closed on malformed public construction.
-- Inline and payload-free binary diffs, extended copy/rename headers,
-  file-mode changes, and non-`100644` new/deleted-file modes are rejected
-  before native Git parsing.
+- This historical checkpoint intended to reject binary, copy/rename, mode, and
+  unsafe add/delete metadata before native parsing. Later adversarial review
+  proved the section-scoped blacklist admitted legacy/headerless and other
+  non-allowlisted forms; `a1b262a` supersedes that rejection claim.
 - Accepted text patches still reach an unsandboxed native Git parser without a
   native memory or filesystem quota. `PatchCompositionError` exposes a
   machine-readable stage and fixed
@@ -376,12 +479,11 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 - Candidate-code and hidden-test execution, official grading, official result,
   external score, usefulness, candidate mount/network/filesystem isolation,
   native quotas, Git-parser sandboxing, and claim readiness remain false.
-- The finalized focused suite passed 22 synthetic/adversarial tests in 62.6
-  seconds. An independent read-only re-audit passed the same 22 cases and found
-  no remaining P0--P2 issue. The integrated source/repository/patch matrix
-  passed 39 tests and skipped one expected platform-specific case. Ruff check,
-  Ruff formatting, compile validation, and deterministic Python quality lint
-  were clean.
+- The historical focused suite passed 22 tests in 62.6 seconds, and its
+  integrated source/repository/patch matrix passed 39 with one expected
+  platform skip. Those tests did not cover the later-discovered grammar bypass;
+  the clean-review conclusion at this checkpoint is superseded by the current
+  86-test hardening evidence above.
 
 ## Previous tau2-bench source-binding checkpoint (`43e8489`)
 
@@ -440,11 +542,12 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 - The retained worker source changed from SHA-256
   `3d40d21af1bdfd8ce7af0b4d445fd62748aa20162b4ff674e40c08c916fb0239` to
   `cb9c8680d74022b7db8aea8b376790a49131f5fd1a1c0b93ba74341302c8a44f`,
-  so the current generation reattempted the entire contiguous ordinal range
-  287--380 instead of mixing generations. The older ignored evidence remains
+  so the predecessor through-380 generation reattempted the entire contiguous
+  ordinal range 287--380 instead of mixing generations. The older ignored evidence remains
   forensic history but is not presented as replayable by the current worker.
-- The current generation attempted 94 rows: 88 prepared, the same six exact
-  Pylint `tree-symlink-forbidden` refusals, and 406 explicitly unattempted. All
+- That predecessor generation attempted 94 rows: 88 prepared, the same six
+  exact Pylint `tree-symlink-forbidden` refusals, and 406 explicitly
+  unattempted. All
   32 selected scikit-learn rows at ordinals 349--380 prepared. The 88 manifests
   bind 64,056 files / 801,780,869 blob bytes / 7,603 tree objects / 3,208,763
   tree-object bytes and total 16,333,450 bytes.
@@ -463,12 +566,12 @@ Last updated: 2026-08-02 (America/Los_Angeles)
   `4130d4f1f7dc65ee0d0ef5babe2fa1fe278f834c84994ebf11001774a5623887`
   and self-hash
   `5adcfab541bbd7769812d529e725cd745dbc6ea57c73b5a55538b814984b71fd`.
-- The current ignored 500-row preparation ledger is 490,862 bytes with file
+- The predecessor ignored 500-row preparation ledger is 490,862 bytes with file
   SHA-256
   `dc8d7c10b7ab4ad4cf24123296abf502f614a1740337e356ce281e7bffcdf8af`
   and self-hash
   `3fa05e48739ca1fdc1e8295724b68f45f42728f9229cf908dfeaa6fd29192e5d`.
-  Its unchanged 53,734-byte null-prediction JSONL has SHA-256
+  Its unchanged 53,734-byte JSONL has 500 `model_patch: null` rows and SHA-256
   `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
   A fresh interpreter reloaded and live-replayed the complete retained cohort in
   452.203 seconds with the same row order, counts, hashes, and self-hashes.
@@ -508,7 +611,7 @@ Last updated: 2026-08-02 (America/Los_Angeles)
   `2219e2f1526c51f4c965a7af41364c393075151fecc2e2b4553eb037e359b772`
   and self-hash
   `b5668f76a4949d42310ce644de007696a6d9ee3725d3d0514edabf6887082f34`.
-  The unchanged 53,734-byte null-prediction JSONL has SHA-256
+  The unchanged 53,734-byte JSONL has 500 `model_patch: null` rows and SHA-256
   `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
   A fresh interpreter reloaded and replayed all 500 rows plus the live JSONL in
   229.25 seconds with the same cohort, file hashes, and self-hash.
@@ -768,14 +871,17 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
   inspection: the sdist contains the tau2 module, descriptor, test, and
   evaluation contract, while the wheel excludes the source-only tau2 artifacts
   and retains the unchanged installed schema inventory.
-- Patch-composition focused validation after the security repair passed all 22
-  synthetic/adversarial cases in 62.6 seconds. Independent review repeated the
-  22-case pass and approved module SHA-256
+- A historical patch-composition checkpoint passed 22 synthetic/adversarial
+  cases in 62.6 seconds. Independent review repeated that 22-case pass and
+  approved module SHA-256
   `ea18be63a4c613acc6dc0f43cb8bc80b740f7b0ebb3a7d29684c699561f86bf3`
   and test SHA-256
   `9cc770cfbbe7631f16fd96577cf664edafdc4cd2af9222a42fed7751d17276ea`
-  with no P0--P2 finding. The integrated source/repository/patch matrix passed
-  39 tests and skipped one platform-specific case in 141.5 seconds.
+  with no P0--P2 finding at that time. That review did not cover the later
+  rename/copy and header-smuggling bypasses; commit `a1b262a` and its current
+  86-test closed-grammar gate supersede it. The historical integrated
+  source/repository/patch matrix passed 39 tests and skipped one
+  platform-specific case in 141.5 seconds.
 - Full integrated repository suite: 2,359 passed, 27 skipped, and 112 subtests
   passed in 675.54 seconds on Windows. No model, GPU, or inference runtime was
   started.
@@ -831,7 +937,7 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
   `8397d853d7d15bbacb20e56d784d8a270d7b506e39231015b934207670ae63cb`
   and self-hash is
   `cfedda6985ca5c088bf123db678793fc9031461c92ebc755c8a0af80a14e24ff`.
-  The 53,734-byte, 500-line null-prediction JSONL has SHA-256
+  The 53,734-byte JSONL has 500 `model_patch: null` lines and SHA-256
   `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
 - Public Flask preparation pilot: exact source ordinal 289 and commit
   `7ee9ceb71e868944a46e1ff00b506772a53a4f1d` passed bare-mirror verification,
@@ -942,10 +1048,10 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 - No public long-horizon task has been executed or scored. Do not claim
   external usefulness, task-completion improvement, production readiness, or
   superiority from this source/preparation checkpoint.
-- Repository preparation has now been exercised against 94 selected public
-  rows across seven repositories in addition to synthetic local mirrors. The
-  88 preparations and six policy refusals do not authenticate GitHub,
-  authorship, freshness, or license; 406 rows remain unattempted.
+- Repository preparation has now been exercised against 138 selected public
+  rows across eight repositories in addition to synthetic local mirrors. The
+  132 preparations and six policy refusals do not authenticate GitHub,
+  authorship, freshness, or license; 362 rows remain unattempted.
 - The canonical source snapshot contains public evaluator gold and must never
   enter a candidate mount. It and the raw Parquet, opaque key, derived task
   document, evaluator cache, grader output, and repository snapshots remain
@@ -987,10 +1093,13 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
 ## Next exact actions
 
-1. Acquire Sphinx through a reviewed channel, inspect exact base-commit license
-   candidates, and apply the raw-Git preparer to ordinals 381--424 (44 selected
-   rows and 44 distinct commits). Preserve every success or refusal without
-   silently narrowing the 500-row cohort.
+1. Apply the raw-Git preparer and the same retained engineering-inventory
+   review to the 75 distinct SymPy tasks and commits at ordinals 425--499,
+   from `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e`
+   through `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`.
+   Preserve every success or refusal without silently narrowing the 500-row
+   cohort. This reaches the source end; Astropy, Django, and Matplotlib account
+   for the earlier 287 unattempted rows.
 2. Do not treat the controller-run ledger or the literal lifecycle's Windows
    Job/POSIX process group as filesystem, network, PID, user, mount, or image
    isolation. Provision and retain independently verifiable containment before

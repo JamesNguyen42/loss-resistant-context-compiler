@@ -161,12 +161,12 @@ allowlisted task payload, with exact fields `opaque_task_id` and
 
 The HMAC ID is pseudonymous, not unlinkable: public problem text and fixed
 suite order can still identify a task. A raw-Git preparation boundary now has
-synthetic-mirror coverage plus 94 retained public preparation outcomes across
-seven repositories: 88 verified preparations, six exact
-`tree-symlink-forbidden` policy refusals, and 406 unattempted rows. These are
+synthetic-mirror coverage plus 138 retained public preparation outcomes across
+eight repositories: 132 verified preparations, six exact
+`tree-symlink-forbidden` policy refusals, and 362 unattempted rows. These are
 not candidate mounts or public executions; no public candidate, model, agent,
-or grader has run, no score exists, and the pinned dataset card declares no
-license. See the complete
+hidden test, or grader has run, no score or usefulness result exists, and the
+pinned dataset card declares no license. See the complete
 [source, projection, and execution boundary](../docs/SWEBENCH_EVALUATION.md).
 
 ### SWE-bench repository preparation
@@ -207,28 +207,66 @@ alternate streams. Its self-hashed
 and serializes exact limits while asserting no author authentication. All
 origin, redistribution, mount, network, execution, grader, score, usefulness,
 and claim-readiness fields remain false. Synthetic Git tests exercise the
-mechanism. The ignored public evidence currently retains 88 exact selected
-trees that prepared and replayed locally and six other selected commits that
-were refused by the link-free export policy; it does not prove safe mounting,
-candidate execution, or task success.
+mechanism. The ignored public evidence currently covers physical ordinals
+287--424: 132 exact selected trees prepared and replayed locally and six other
+selected commits were refused by the link-free export policy. It does not prove
+safe mounting, candidate execution, or task success.
 
-At clean evidence-generation base
-`d512b04156728cb9a4088f250ead395192572b34`, the ignored through-ordinal-380
-preparation summary is 72,728 bytes with file SHA-256
+The predecessor remains historical mixed-generation evidence. At clean
+generation base `d512b04156728cb9a4088f250ead395192572b34`, its ignored
+through-ordinal-380 summary is 72,728 bytes with file SHA-256
 `21ded8d8bff3038e1064abaff01d952e06fe60d165617f3e3e213d55ba99b781`
 and self-hash
 `f11f8bd4235c1469fbe8dd8865d92519af82f8c831ae5901a82b182bd221b96d`.
 Its 50,264-byte journal has SHA-256
 `1010659aeb04df9d9463aae21097266f1b51da4ea5b37bfd9b0b818b6c24050c`.
-The 88 prepared manifests total 16,333,450 bytes and bind 64,056 regular files,
-801,780,869 blob bytes, 7,603 tree objects, and 3,208,763 raw tree-object bytes.
-The separate 91,472-byte scikit-learn filename/path inventory retains 33
-license-file and root-packaging candidate hash variants; its file SHA-256 is
+Those 88 prepared manifests total 16,333,450 bytes and bind 64,056 regular
+files, 801,780,869 blob bytes, 7,603 tree objects, and 3,208,763 raw tree-object
+bytes. The separate 91,472-byte scikit-learn filename/path inventory has file
+SHA-256
 `4130d4f1f7dc65ee0d0ef5babe2fa1fe278f834c84994ebf11001774a5623887`
-and its self-hash is
+and self-hash
 `5adcfab541bbd7769812d529e725cd745dbc6ea57c73b5a55538b814984b71fd`.
-That inventory is discovery evidence, not authenticated origin, complete legal
-coverage, or redistribution approval.
+
+At clean generation and verification revision
+`f12aa37d91bc4b2c3fa37e0ab882df6b035a902d`, all 44 Sphinx rows at
+ordinals 381--424 prepared with no refusal. Their 44 manifests total 18,731,287
+bytes and bind 66,143 regular files, 736,223,680 blob bytes, 18,382 tree
+objects, and 3,334,382 raw tree-object bytes. The 31,722-byte Sphinx segment
+summary has file SHA-256
+`fc11dfd91d75ee903359a6f9158956342422f1a4b8f6ef58cb18247af484949b`
+and self-hash
+`f62a65f0f54a23a07d4385f168a4696c7437d90a55e9e8ca80b9d24a282b5bb3`.
+Its 46-event, 24,447-byte journal has SHA-256
+`6655d51f482a0039c3e1a070287456c6ef8f3936fb77b02b10590fa648f38b93`.
+The Sphinx mirror-evidence file is 1,646 bytes with file SHA-256
+`159f53c82a222e9cad63d114737d6baf11136f0ee162ca13d56387dc842ae12f`
+and non-authenticating mirror self-hash
+`c0a2425237dbff9c8d471a82bbb3730bca316b5019c0db05c23358a3bdd67a6d`.
+The 96,201-byte Sphinx engineering inventory has file SHA-256
+`e02f07b4feb49ab7ebf378ef7614b8acd01a7367921acfe449ec0e2a5ef08840`
+and self-hash
+`5df1f68df2405b8365074cce05b7ff2391b6ac945f81dd47951956a918ddae25`.
+
+The fresh through-424 reconciliation preserves those two generation segments,
+revalidates eight mirrors, 132 prepared trees, and the six exact Pylint
+refusals, and records 362 rows as unattempted. The 132 manifests total
+35,064,737 bytes and bind 130,199 regular files, 1,538,004,549 blob bytes,
+25,985 tree objects, and 6,543,145 raw tree-object bytes. The ignored
+45,469-byte reconciliation has file SHA-256
+`c6882b68d817e374ebd6be00fa32a7ee2a2ac2d265c2f8f1fc8c858138fea23e`
+and self-hash
+`7bf6599e2a258b588a92b9bab41c899ba799b0fc81ff1bd41f355b86aa92a789`.
+These inventories and self-hashes are discovery and substitution-detection
+evidence, not authenticated origin, complete legal coverage, or redistribution
+approval.
+
+The next contiguous physical-order slice is SymPy ordinals 425--499: 75
+selected tasks and 75 distinct commits, from
+`sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
+`sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`.
+The other 287 unattempted rows are the earlier Astropy, Django, and Matplotlib
+ranges at ordinals 0--286.
 
 ### SWE-bench prediction ledger
 
@@ -269,15 +307,21 @@ replayable capture evidence. The separate controller-run ledger below can bind
 future raw capture bytes and workspace observations, but it still does not
 authenticate their producer or establish isolated candidate execution.
 
-The current ignored preparation-only ledger reconciles 88 prepared, 6 refused,
-and 406 unattempted outcomes with 500 null predictions. Its 490,862-byte file
-has SHA-256
+The historical through-380 preparation-only ledger is 490,862 bytes with file
+SHA-256
 `dc8d7c10b7ab4ad4cf24123296abf502f614a1740337e356ce281e7bffcdf8af`
 and self-hash
 `3fa05e48739ca1fdc1e8295724b68f45f42728f9229cf908dfeaa6fd29192e5d`.
-The unchanged 53,734-byte canonical JSONL has SHA-256
+The current ignored through-424 preparation-only ledger reconciles 132
+prepared, 6 refused, and 362 unattempted outcomes and records zero predictions.
+Its 493,768-byte file has SHA-256
+`3be02f725ec0e0041bde5af9ba02288c9b15823f3c0fcfd1ad84445d78276bb8`
+and self-hash
+`5543f9e28a11a12bdf9a0bf9f3473926b80b0357910eed1e2fb2fcdc9cd002cc`.
+The 53,734-byte canonical JSONL is byte-identical to its predecessor and has
+exactly 500 rows, 500 `model_patch: null` rows, and SHA-256
 `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
-Neither artifact is committed or evidence of a candidate run.
+The current ledger and JSONL are not committed or evidence of a candidate run.
 
 ### SWE-bench controller-run ledger
 
@@ -345,15 +389,20 @@ preflight for candidate and hidden **text** patches. It is absent from the
 dependency-free wheel and adds no installed schema. Its strict self-hashed
 evidence schema is `ctxc-swebench-patch-composition-0.1`.
 
-`build_patch_composition()` first revalidates the canonical
-`VerifiedSweBenchSource` and its source-bound `PreparedSweBenchRepository`; a
-caller-supplied mapping cannot replace the hidden patch. It rescans the
-prepared base, copies that immutable input into separate candidate and hidden
-temporary trees, and invokes the exact native Git text-patch parser through
-the literal-argv lifecycle. It records bounded tree summaries plus complete
-changed-path pre/post states and deltas. Equal, ancestor, and descendant
-effective paths count as conflicts; overlap work is bounded and near-linear in
-changed paths and path depth.
+`build_patch_composition()` validates candidate bytes before source
+verification, then revalidates the canonical `VerifiedSweBenchSource` and its
+source-bound `PreparedSweBenchRepository`; a caller-supplied mapping cannot
+replace the hidden patch. Before candidate or hidden bytes reach `git apply`, a
+streaming closed grammar accepts only regular-file text modifications and exact
+`100644` additions/deletions. It validates Git/file headers, quoted and
+unquoted-space paths, index transitions, hunk counts, and portable path
+conflicts. Repository-verification Git calls may precede hidden validation but
+never receive patch bytes. The immutable base is rescanned and copied into
+separate candidate and hidden temporary trees. Files and directories have
+separate count ceilings, cleanup preserves primary failures, and canonical
+document size is checked before whole-value hashing or encoding. Equal,
+ancestor, and descendant effective paths count as conflicts with storage
+linear in retained path bytes.
 
 The evidence has exactly two statuses. `overlap-detected-not-composable`
 retains the conflicting paths and no composition evidence.
@@ -367,22 +416,32 @@ live prepared-tree summary, and require exact semantic patch replay. The
 structural `retained_disjoint` property fails closed on malformed evidence; it
 is not a safety, authenticity, isolation, or claim-readiness decision.
 
-Inline and payload-free binary diffs, extended copy/rename headers, file-mode
-changes, and new/deleted file modes other than exact regular-file `100644` are
-rejected before the native parser. Accepted ordinary text content/add/delete
-patches still pass through an unsandboxed native Git process with no native
-memory or filesystem quota; tree and artifact limits are verified, not
-enforced by the operating system. A `PatchCompositionError` exposes a
+Preambles, headerless/combined/binary diffs, standard or legacy copy/rename
+metadata, similarity metadata, mode changes, unsafe modes, inconsistent
+headers, unknown metadata, and malformed hunks are rejected before patch
+application. Accepted ordinary text content/add/delete patches still pass
+through an unsandboxed native Git process with no native memory or filesystem
+quota; tree and artifact limits are verified, not enforced by the operating
+system. Owned temporary cleanup cannot hide a primary error, but recursive
+cleanup is not itself entry-bounded. A `PatchCompositionError` exposes a
 machine-readable `stage` and fixed disposition
 `preflight-exception-not-a-cohort-result`. The outer complete-denominator
 ledger must retain and map that exception; this single-task preflight cannot
 turn it into a cohort result or silently remove a row.
 
+At `a1b262a`, the frozen 500-patch parser audit accepted 499 patches and refused
+only the real rename in `astropy__astropy-7336`; it did not execute a task. The
+focused suite passed 86/86 and the integrated source/repository/prediction/patch
+gate collected 187 under both CPython 3.12 and 3.14: 186 passed and one expected
+Windows case skipped. Three independent final reviews found no P0--P3 issue. No current caller
+yet maps the structured exception into an outer ledger.
+
 Candidate-code execution, hidden-test execution, official grading, official
 results, external scores, usefulness, candidate-mount/network/filesystem
 isolation, native quotas, Git-parser sandboxing, and claim readiness remain
-false. The current preparation-only counts remain 88 prepared, 6
-policy-refused, and 406 unattempted, and no public candidate or grader was run.
+false. The current preparation-only counts are 132 prepared, 6
+policy-refused, and 362 unattempted, and no public candidate, hidden test, or
+grader was run.
 
 ## tau2-bench v1.0.1 text-core source intake
 

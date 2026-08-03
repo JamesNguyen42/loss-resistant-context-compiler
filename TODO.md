@@ -687,12 +687,15 @@ Acceptance:
   It verifies an offline local SHA-1 bare mirror, binds the configured origin
   without authenticating it, recomputes commit/tree/blob identities, rejects
   symlinks, gitlinks, special/non-portable paths and unbounded trees, exports
-  only fresh regular files, and independently rescans the result. The current
-  synthetic tests remain mechanism evidence. Ninety-four selected public rows
-  across seven repositories now have retained preparation outcomes: 88 passed
-  live preparation replay, six Pylint rows were retained as
-  `tree-symlink-forbidden` policy refusals, and 406 rows remain unattempted. No
-  candidate mount was created.
+  only fresh regular files, and independently rescans the result. The verified
+  through-424 checkpoint has 138 retained preparation outcomes across eight
+  repositories: 132 passed live preparation replay, including all 44 Sphinx
+  rows at ordinals 381--424, six Pylint rows were retained as exact
+  `tree-symlink-forbidden` policy refusals, and 362 rows remain unattempted.
+  Preparation revision `d512b04156728cb9a4088f250ead395192572b34`
+  covers ordinals 287--380; revision
+  `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d` covers Sphinx and the
+  reconciliation. No candidate mount was created.
 - [x] Add a full-selected-cohort SWE-bench prediction ledger and deterministic
   official JSONL boundary. Revalidate source/key and successful preparation
   evidence, preserve exact patch text only in JSONL, and retain missing,
@@ -708,21 +711,64 @@ Acceptance:
   evidence is synthetic contract testing only.
 - [x] Add the coordinator-only, source/sdist-only SWE-bench text-patch
   composition preflight, schema `ctxc-swebench-patch-composition-0.1`. It
-  revalidates the canonical source and prepared tree, applies candidate and
-  hidden text patches to independent copies, retains effective-path overlap
-  without composing it, and replays disjoint deltas in a third copy. Binary,
-  extended copy/rename, mode-change, and non-`100644` add/delete headers fail
-  before Git; the native ordinary-text-patch parser remains unsandboxed and has
-  no native memory or filesystem quota. Its two statuses are mechanical evidence,
-  not grading or cohort results, and every execution, result, score,
-  usefulness, isolation, and claim flag remains false.
+  validates candidate bytes before source verification, revalidates the
+  canonical source and prepared tree, applies candidate and hidden text patches
+  to independent copies, retains effective-path overlap without composing it,
+  and replays disjoint deltas in a third copy. Commit `a1b262a` closes the input
+  grammar to regular-file text modification and exact-`100644` add/delete,
+  rejecting preamble/headerless/combined/binary/copy/rename/mode/unknown or
+  malformed forms before patch application. Files and directories are bounded
+  separately; descriptor, iterator, process, and temporary cleanup preserve a
+  primary failure; public boundaries normalize structured fail-closed
+  exceptions. The frozen 500-patch audit accepted 499 and refused only the real
+  Astropy rename. The 86 focused tests passed, and the integrated gate collected
+  187 with 186 passed and one expected Windows skip, on CPython 3.12 and 3.14
+  with three clean independent reviews. The native Git
+  parser remains unsandboxed, has no native memory/filesystem quota, and
+  recursive temporary cleanup is not entry-bounded. The two statuses are
+  mechanical evidence, not grading or cohort results, and every execution,
+  result, score, usefulness, isolation, and claim flag remains false.
+- [x] Prepare and independently fresh-replay all 44 Sphinx tasks and distinct
+  base commits at ordinals 381--424 with 0 refused, then retain the
+  filename/path-based engineering license inventory and mixed-provenance
+  through-424 reconciliation. At clean Sphinx/reconciliation revision
+  `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d`, the 31,722-byte Sphinx
+  summary has file SHA-256
+  `fc11dfd91d75ee903359a6f9158956342422f1a4b8f6ef58cb18247af484949b`
+  and self-hash
+  `f62a65f0f54a23a07d4385f168a4696c7437d90a55e9e8ca80b9d24a282b5bb3`;
+  the 96,201-byte inventory has file SHA-256
+  `e02f07b4feb49ab7ebf378ef7614b8acd01a7367921acfe449ec0e2a5ef08840`
+  and self-hash
+  `5df1f68df2405b8365074cce05b7ff2391b6ac945f81dd47951956a918ddae25`.
+  The 45,469-byte reconciliation has file SHA-256
+  `c6882b68d817e374ebd6be00fa32a7ee2a2ac2d265c2f8f1fc8c858138fea23e`
+  and self-hash
+  `7bf6599e2a258b588a92b9bab41c899ba799b0fc81ff1bd41f355b86aa92a789`;
+  its 493,768-byte ledger has file SHA-256
+  `3be02f725ec0e0041bde5af9ba02288c9b15823f3c0fcfd1ad84445d78276bb8`
+  and self-hash
+  `5543f9e28a11a12bdf9a0bf9f3473926b80b0357910eed1e2fb2fcdc9cd002cc`;
+  the unchanged 53,734-byte official JSONL retains 500
+  `model_patch: null` rows and SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
+  This is engineering inventory only, not a legal determination,
+  redistribution approval, origin authentication, or evidence of any model,
+  candidate, grader, GPU, inference, score, usefulness, or claim-ready result.
 - [ ] Complete SWE-bench dataset/repository license review, prepare and retain
   every selected base-commit outcome, establish externally verified candidate
   mount/filesystem and network isolation, harden hidden-test application and
   grading, and add public task result evidence before running or scoring any
-  public candidate. The next contiguous preparation target is Sphinx ordinals
-  381--424 (44 rows). The remaining 406 rows include both earlier and later
-  positions in the complete 500-row physical order.
+  public candidate. The next contiguous preparation target is the 75 unique
+  SymPy tasks and commits at ordinals 425--499, from
+  `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
+  `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`, followed by
+  source end. The current 362 unattempted rows comprise that 75-row SymPy slice
+  and 287 earlier Astropy, Django, and Matplotlib rows.
+- [ ] Integrate `PatchCompositionError.stage` and
+  `preflight-exception-not-a-cohort-result` into a future complete-denominator
+  coordinator ledger. The patch module exposes only machine-readable exception
+  metadata and cannot itself prevent a caller from dropping the row.
 - [x] Inspect the exact Flask task base commit's root and discovered
   license-file declarations and exercise selected ordinal 289 through public
   mirror verification and raw-tree preparation. Retain the local manifest
@@ -735,7 +781,7 @@ Acceptance:
 - [x] Inspect Xarray's exact selected base-commit declarations and prepare
   ordinals 298--319. Retain all 22 successful manifests. At that checkpoint,
   the 500-row preparation-only ledger contained 56 prepared, 6 refused, and 438
-  unattempted outcomes; its null predictions were not a run.
+  unattempted outcomes; its null-patch JSONL was not a run.
 - [x] Prepare and fresh-replay all 32 scikit-learn rows at ordinals 349--380,
   then retain a filename/path-based engineering inventory of 33 license-file
   and root-packaging candidate hash variants without treating it as a legal or
@@ -751,7 +797,7 @@ Acceptance:
   `dc8d7c10b7ab4ad4cf24123296abf502f614a1740337e356ce281e7bffcdf8af`
   and self-hash
   `3fa05e48739ca1fdc1e8295724b68f45f42728f9229cf908dfeaa6fd29192e5d`;
-  the unchanged 53,734-byte, 500-null-prediction JSONL has SHA-256
+  the unchanged 53,734-byte JSONL has 500 `model_patch: null` rows and SHA-256
   `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
   The 91,472-byte scikit-learn inventory has file SHA-256
   `4130d4f1f7dc65ee0d0ef5babe2fa1fe278f834c84994ebf11001774a5623887`
@@ -1315,10 +1361,12 @@ evidence of sublinear compilation.
 
 The next chat should start here unless new evidence changes the priority:
 
-1. acquire Sphinx through a reviewed channel, inspect the exact base-commit
-   license candidates, and prepare ordinals 381--424 (44 selected rows and 44
-   distinct commits), retaining every success or refusal without silently
-   narrowing the 500-row cohort;
+1. acquire SymPy through a reviewed channel, inspect the exact base-commit
+   license candidates, and prepare ordinals 425--499 (75 selected rows and 75
+   distinct commits), from
+   `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
+   `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`, retaining
+   every success or refusal without silently narrowing the 500-row cohort;
 2. keep live OpenHands execution and the recorded live demonstration blocked
    until a complete reviewed hash-pinned offline dependency closure and a
    stable public final-immutable-request/exact-tokenizer hook both exist;
@@ -1335,8 +1383,9 @@ The next chat should start here unless new evidence changes the priority:
    rerun the retained ACON diagnostic;
 8. add clean reproducible adapters only for systems admitted by the frozen
    result-blind protocol;
-9. complete SWE-bench dataset/repository license review and the remaining 406
-   preparation outcomes, then provision externally verified candidate
+9. after the SymPy slice, complete SWE-bench dataset/repository license review
+   and the 287 earlier Astropy, Django, and Matplotlib preparation outcomes,
+   then provision externally verified candidate
    mount/filesystem and network isolation before using the synthetic-tested run
    ledger with any public candidate; keep hidden-test application, grading,
    resolution, scoring, usefulness, and claim readiness false until separately

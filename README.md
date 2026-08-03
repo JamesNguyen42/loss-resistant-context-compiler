@@ -39,7 +39,7 @@ meaning can be compressed without loss.
 | External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
-| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, raw-Git preparation, exhaustive deterministic prediction-ledger, synthetic controller-run ledger, and text-patch composition preflight; repository preparation attempted for 94 public rows across seven repositories, with 88 prepared, 6 policy-refused, 406 unattempted, and no public candidate, model, agent, grader, resolution, score, or usefulness result |
+| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, raw-Git preparation, exhaustive deterministic prediction-ledger, synthetic controller-run ledger, and text-patch composition preflight; repository preparation attempted for 138 public rows across eight repositories, with 132 prepared, 6 exact Pylint `tree-symlink-forbidden` refusals, 362 unattempted, all 44 Sphinx rows at ordinals 381--424 prepared with 0 refused, and no public candidate, model, agent, grader, GPU, inference, resolution, score, usefulness, or claim-ready result |
 | tau2-bench intake | Exact v1.0.1 annotated-tag source binding and actual-loader-order 278-row half-duplex text-core selection across airline, retail, and telecom; candidate adapter, simulator, grader, execution, isolation, reward, score, and usefulness evidence remain absent |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic structural cases; 20 held out; no model or natural-cohort claim |
 | OpenHands integration | Separately packaged `ctxc-openhands` draft alpha; exact current version is owned by its [package metadata](integrations/openhands/pyproject.toml); reviewed offline fake-runtime foundation only; live execution blocked |
@@ -221,16 +221,31 @@ The repository currently includes:
   materializes only portable regular-file blobs into a fresh tree, and
   independently reconciles every path, mode, size, blob id, and SHA-256; its
   origin, license, candidate-mount, network, execution, grader, and score
-  claims remain false; 88 selected base commits across Flask, Seaborn,
-  Requests, Xarray, Pylint, Pytest, and scikit-learn have passed live
-  preparation replay, six Pylint commits are retained as
-  `tree-symlink-forbidden` policy refusals, and 406 selected tasks have not been
-  attempted;
+  claims remain false; the verified through-424 checkpoint combines preparation
+  revision `d512b04156728cb9a4088f250ead395192572b34` for ordinals 287--380
+  with revision `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d` for Sphinx and the
+  reconciliation; 132 selected base commits across Flask, Seaborn, Requests,
+  Xarray, Pylint, Pytest, scikit-learn, and Sphinx have passed live preparation
+  replay, including all 44 Sphinx commits at ordinals 381--424 with 0 Sphinx
+  refusals, six Pylint commits are retained as exact `tree-symlink-forbidden`
+  policy refusals, and
+  362 selected tasks have not been attempted. The 45,469-byte reconciliation
+  has file SHA-256
+  `c6882b68d817e374ebd6be00fa32a7ee2a2ac2d265c2f8f1fc8c858138fea23e`
+  and self-hash
+  `7bf6599e2a258b588a92b9bab41c899ba799b0fc81ff1bd41f355b86aa92a789`;
 - a source-only full-cohort SWE-bench prediction ledger that revalidates source,
   opaque-key, and successful preparation bindings, turns every missing,
   duplicate, unexpected, invalid, oversized, or unprepared output into retained
   nonprediction/protocol evidence, and emits one deterministic official
-  `instance_id`/`model_name_or_path`/`model_patch` JSONL row per selected task;
+  `instance_id`/`model_name_or_path`/`model_patch` JSONL row per selected task.
+  The retained through-424 ledger is 493,768 bytes with file SHA-256
+  `3be02f725ec0e0041bde5af9ba02288c9b15823f3c0fcfd1ad84445d78276bb8`
+  and self-hash
+  `5543f9e28a11a12bdf9a0bf9f3473926b80b0357910eed1e2fb2fcdc9cd002cc`;
+  its unchanged 53,734-byte official JSONL contains 500
+  `model_patch: null` rows and has SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`;
 - a source/sdist-only SWE-bench controller-run ledger that closes the same
   selected denominator over repository, workspace, launch, process, stream,
   protocol, and capture dispositions; writes only the exact two-field candidate
@@ -239,11 +254,19 @@ The repository currently includes:
   deterministic delta without claiming that the caller-provided workspace is a
   mount or sandbox;
 - a coordinator-only, source/sdist-only SWE-bench text-patch composition
-  preflight that revalidates the canonical source and prepared repository,
-  applies candidate and hidden patches to independent temporary copies, detects
-  bounded effective-path overlap, and replays disjoint patches in a third copy;
-  its strict self-hashed evidence is mechanical preflight evidence, not a
-  grader, result, score, isolation proof, or public-suite denominator change;
+  preflight that validates candidate bytes before source verification and uses
+  a streaming closed grammar for regular-file text modify/add/delete patches;
+  binary, copy, rename, combined, mode-changing, headerless, unknown, and
+  malformed forms fail before patch application. It revalidates the canonical
+  source and prepared repository, applies candidate and hidden patches to
+  independent temporary copies, separately bounds files/directories, preserves
+  primary failures across cleanup, detects bounded effective-path overlap, and
+  replays disjoint patches in a third copy. At `a1b262a`, all 500 frozen hidden
+  patches were parsed without execution: 499 accepted and the one actual
+  Astropy rename refused. Its strict self-hashed evidence and structured
+  preflight exceptions are mechanical only; no current caller maps them into an
+  outer complete-denominator ledger, and they are not a grader, result, score,
+  isolation proof, or public-suite denominator change;
 - a source/sdist-only tau2-bench v1.0.1 verifier that binds the annotated tag,
   exact source blobs, actual loader-order 278-row `base` cohort, half-duplex
   text run profile, candidate-visible field partition, and explicit exclusions
@@ -287,9 +310,13 @@ adding more claims to the README:
   under the implemented consent, license, privacy, adjudication, split, and
   no-label-leakage contracts;
 - complete SWE-bench dataset/repository license review, continue the contiguous
-  preparation expansion with Sphinx ordinals 381--424 (44 rows), retain
-  outcomes for all 406 unattempted rows, provision externally verified candidate
-  mount/filesystem and network isolation, capture real candidate outputs through
+  preparation expansion with the 75 unique SymPy tasks and base commits at
+  ordinals 425--499, from
+  `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
+  `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`, where the
+  source ends, then return to the 287 earlier Astropy, Django, and Matplotlib
+  rows; provision externally verified candidate mount/filesystem and network
+  isolation, capture real candidate outputs through
   the controller-run and prediction ledgers, carry patch-preflight exceptions
   into the complete-denominator ledger, harden the grader, and add public result
   evidence; implement and verify the separately launched candidate

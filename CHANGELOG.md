@@ -123,18 +123,62 @@ versioning and release rules in
 
 ### Added
 
+- A verified mixed-provenance SWE-bench preparation checkpoint through ordinal
+  424. Preparation revision `d512b04156728cb9a4088f250ead395192572b34`
+  covers ordinals 287--380, while
+  `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d` covers the 44 distinct Sphinx
+  tasks and commits at ordinals 381--424 plus reconciliation. All 44 Sphinx
+  rows prepared with 0 refused, bringing the current state to 138 attempted,
+  132 prepared, 6 exact Pylint `tree-symlink-forbidden` refusals, and 362
+  unattempted. The 31,722-byte Sphinx summary has file SHA-256
+  `fc11dfd91d75ee903359a6f9158956342422f1a4b8f6ef58cb18247af484949b`
+  and self-hash
+  `f62a65f0f54a23a07d4385f168a4696c7437d90a55e9e8ca80b9d24a282b5bb3`;
+  the 96,201-byte engineering license inventory has file SHA-256
+  `e02f07b4feb49ab7ebf378ef7614b8acd01a7367921acfe449ec0e2a5ef08840`
+  and self-hash
+  `5df1f68df2405b8365074cce05b7ff2391b6ac945f81dd47951956a918ddae25`.
+  The 45,469-byte reconciliation has file SHA-256
+  `c6882b68d817e374ebd6be00fa32a7ee2a2ac2d265c2f8f1fc8c858138fea23e`
+  and self-hash
+  `7bf6599e2a258b588a92b9bab41c899ba799b0fc81ff1bd41f355b86aa92a789`;
+  the 493,768-byte ledger has file SHA-256
+  `3be02f725ec0e0041bde5af9ba02288c9b15823f3c0fcfd1ad84445d78276bb8`
+  and self-hash
+  `5543f9e28a11a12bdf9a0bf9f3473926b80b0357910eed1e2fb2fcdc9cd002cc`;
+  and the unchanged 53,734-byte official JSONL has 500
+  `model_patch: null` rows and SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
+  The inventory is engineering discovery evidence only: it is not a legal
+  determination, redistribution approval, or origin authentication, and the
+  checkpoint contains no model, candidate, grader, GPU, inference, score,
+  usefulness, or claim-ready result. The next contiguous slice is the 75-task,
+  75-commit SymPy run at ordinals 425--499, from
+  `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
+  `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`, followed by
+  source end; 287 earlier Astropy, Django, and Matplotlib rows remain.
 - A coordinator-only, source/sdist-only SWE-bench text-patch composition
   preflight with strict self-hashed
   `ctxc-swebench-patch-composition-0.1` evidence. It revalidates the canonical
   source and preparation, applies candidate and hidden patches to independent
   temporary copies, detects bounded effective-path overlap, and uses a third
-  copy only for exact disjoint replay. Binary, extended copy/rename,
-  mode-change, and non-`100644` add/delete headers are rejected before the
-  unsandboxed native Git text parser; public verify/load/write require semantic
-  replay, while no native memory or filesystem quota,
+  copy only for exact disjoint replay. Hardening commit `a1b262a` replaced the
+  earlier metadata blacklist with a streaming closed grammar for regular-file
+  text modification plus exact-`100644` addition/deletion. Preambles,
+  headerless/combined/binary forms, standard or legacy copy/rename metadata,
+  mode changes, unsafe modes, inconsistent headers, unknown metadata, and
+  malformed hunks are rejected before patch application. Files and directories
+  have separate count bounds, cleanup cannot hide primary failures, and public
+  boundaries retain machine-readable fail-closed exceptions. The frozen
+  500-patch parser audit accepted 499 and refused only the real Astropy rename;
+  86 focused tests passed and the integrated gate collected 187 with 186 passed
+  and one expected Windows skip on CPython 3.12 and 3.14, with three clean
+  independent P0--P3 reviews. Accepted patches
+  still reach the unsandboxed native Git text parser, with no native memory or
+  filesystem quota or entry-bounded recursive temporary cleanup. No current
+  caller yet maps the structured exception into an outer ledger, while no
   candidate execution, grader, result, score, usefulness, isolation, or claim
-  readiness is asserted, and preflight exceptions still require retention by
-  an outer complete-denominator ledger.
+  readiness is asserted.
 - A source/sdist-only tau2-bench v1.0.1 intake that verifies the annotated tag,
   peeled commit, exact source blobs, actual loader-order 278-row half-duplex
   text `base` cohort across airline, retail, and manual-policy telecom, and a
@@ -144,10 +188,11 @@ versioning and release rules in
   and claim-readiness assertions false.
 - A retained scikit-learn SWE-bench preparation expansion: all 32 selected exact
   base commits at ordinals 349--380 passed source-bound raw-tree export and
-  replay. The current preparation-only cohort now records 94 attempted rows
-  across seven repositories: 88 prepared, 6 exact Pylint symlink-policy
-  refusals, and 406 unattempted. A filename/path-based engineering inventory
-  retains 33 license-file and root-packaging candidate hash variants without
+  replay. At that through-380 checkpoint, the preparation-only cohort recorded
+  94 attempted rows across seven repositories: 88 prepared, 6 exact Pylint
+  symlink-policy refusals, and 406 unattempted. A filename/path-based
+  engineering inventory retains 33 license-file and root-packaging candidate
+  hash variants without
   claiming authenticated origin, complete license coverage, redistribution
   approval, candidate execution, grading, a result, or claim readiness.
 - A retained Xarray SWE-bench preparation expansion: all 22 selected exact base
