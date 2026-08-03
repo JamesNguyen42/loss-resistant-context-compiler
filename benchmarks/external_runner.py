@@ -2796,7 +2796,7 @@ def _windows_path_component_is_safe(component: str) -> bool:
         )
     ):
         return False
-    stem = component.split(".", 1)[0].casefold()
+    stem = component.partition(".")[0].rstrip(" ").casefold()
     return stem not in _WINDOWS_RESERVED_PATH_NAMES
 
 

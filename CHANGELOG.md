@@ -8,6 +8,9 @@ versioning and release rules in
 
 ### Changed
 
+- Rejected Windows reserved device aliases with ASCII spaces before an
+  extension in retained external-runner claim-control evidence paths,
+  consistently across drive-letter and UNC spellings.
 - Hardened each bounded optional LocalAI validation read of an installed file
   or package-local bytecode cache against regular-mode Windows reparse targets
   at the pre-open, opened-descriptor, and post-read checks. Files rejected by

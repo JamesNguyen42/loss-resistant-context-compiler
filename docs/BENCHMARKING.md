@@ -356,9 +356,14 @@ The original corpus is retained as manifest evidence. On import, the loader
 reopens its absolute path, verifies its canonical self-digest and exact file
 digest, checks the recorded case count, and reconstructs every deterministic
 one-case corpus before returning the candidate for full benchmark-side
-decoding. Executed records must be the ordered parent-corpus prefix and match
-the exact self/file digests plus runner-owned temporary path layout. A complete
-run must also retain each validated one-case candidate self-digest. Replay
+decoding. Retained claim-control evidence paths use canonical POSIX or Windows
+spelling. Their Windows components reject invalid characters, trailing
+dots/spaces, alternate data streams, and reserved device aliases, including
+aliases with ASCII spaces immediately before an extension; ambiguous evidence
+paths are rejected, never normalized. Executed records must be the ordered
+parent-corpus prefix and match the exact self/file digests plus runner-owned
+temporary path layout. A complete run must also retain each validated one-case
+candidate self-digest. Replay
 rebuilds that envelope from the registered producer and matching raw merged
 case, rejecting a substituted or reordered case payload. It also rehashes the
 retained dependency lock;

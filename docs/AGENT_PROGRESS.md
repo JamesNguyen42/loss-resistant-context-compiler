@@ -6,17 +6,18 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Current committed HEAD and base for this in-progress checkpoint: `7495ce1`.
-- Current checkpoint: the three bounded optional LocalAI validation readers
-  now reject regular-mode Windows reparse targets at the pre-open,
-  opened-descriptor, and post-read descriptor/path observations. The installed
-  tree digest advances only after the reader's final identity/reparse checks.
-  The constant-sharing regression now locates its intended folded constant
-  across CPython versions. This is fail-closed portability hardening; no public
-  task, candidate, model, grader, or inference runtime is involved.
-- Previous checkpoint: portable core/benchmark file boundaries, SWE-bench
-  spaced device-alias rejection, and portable bounded LocalAI bytecode
-  comparison were independently reviewed, committed, and pushed as `7495ce1`.
+- Current committed HEAD and base for this in-progress checkpoint: `c14fd16`.
+- Current checkpoint: retained external-runner claim-control evidence paths now
+  reject Windows reserved device aliases with ASCII spaces before an extension.
+  The correction applies through their shared absolute-path gate without
+  normalizing an ambiguous path, changing POSIX handling, or widening the
+  reserved-name policy. No candidate, model, grader, GPU, or inference runtime
+  is involved.
+- Previous checkpoint: all three bounded optional LocalAI validation readers
+  reject regular-mode Windows reparse targets at each reader-level observation,
+  and the constant-sharing regression is CPython-version-neutral. It was
+  independently reviewed, full-suite verified, committed, and pushed as
+  `c14fd16`.
 - Next public preparation target: scikit-learn ordinals 349--380 (32 selected
   rows). No local mirror or exact base-commit license evidence has yet been
   retained for that repository. Do not encode a repository patch as an
@@ -42,7 +43,32 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
-## Current LocalAI validation-reader hardening
+## Current retained-path device-alias correction
+
+- `_windows_path_component_is_safe` trims only ASCII U+0020 from the
+  pre-extension stem before its existing case-insensitive Windows reserved-name
+  comparison. Paths such as `CON .txt`, `COM1 .txt`, `NUL .txt`, `COM¹ .txt`,
+  and `LPT² .log` are rejected rather than rewritten. `COM0.txt`, `COM10.txt`,
+  and `CON name.txt` remain valid controls; `CLOCK$` is not added to the policy.
+- The one shared gate covers drive-letter and UNC paths used by all retained
+  dependency-lock, adapter-entrypoint/source-root, runtime, network-policy,
+  inference-service contract, and inference-service accounting evidence.
+  POSIX absolute paths and adapter-source relative member names are unchanged.
+- The 42-case focused canonical/ambiguous retained-path set passes, including
+  drive-backslash, drive-forward-slash, UNC, superscript alias, explicit ADS,
+  trailing-dot/space, and valid-control coverage. Focused Ruff and diff checks
+  pass. The complete external-runner module collected 181 tests and completed
+  with 177 passed, four expected platform skips, zero failures, and zero errors
+  in 25.554 seconds; its ignored JUnit report is
+  `build/external-runner-device-alias.xml`.
+- The model-free benchmark self-test passed with its two-case corpus/candidate
+  interchange checks. Two independent read-only reviews found no remaining
+  P0--P2 portability, policy, test, or documentation issue after the docs were
+  narrowed to the exact claim-control evidence fields; a separate
+  write-disabled selection covering the focused cases plus foreign-path replay
+  passed 44 tests.
+
+## Previous LocalAI validation-reader hardening (`c14fd16`)
 
 - `_hash_expected_regular_file`, `_read_bounded_regular_file`, and
   `_read_exact_regular_file` reject regular-mode reparse semantics on the

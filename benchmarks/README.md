@@ -572,6 +572,11 @@ absolute path, revalidates both the corpus self-digest and exact file digest,
 requires the recorded case count to match, reconstructs each deterministic
 one-case corpus, and verifies the ordered executed prefix, exact self/file
 digests, and runner-owned temporary path layout before any candidate is scored.
+Retained claim-control evidence paths use canonical POSIX or Windows spelling.
+Their Windows components reject invalid characters, trailing dots/spaces,
+alternate data streams, and reserved device aliases, including aliases with
+ASCII spaces immediately before an extension; ambiguous evidence paths are
+rejected, never normalized.
 For a complete run, it also reconstructs every normalized one-case candidate
 envelope from the registered producer and corresponding raw merged case, then
 matches its self-digest to the case audit. It also rehashes the retained
