@@ -160,7 +160,7 @@ def test_release_documents_freeze_name_versioning_and_support_boundaries() -> No
     )
     assert "| CPython 3.11 | Supported |" in support
     assert "| CPython 3.13 | Supported |" in support
-    assert "| CPython 3.14 | Provisional |" in support
+    assert "| CPython 3.14 | Supported |" in support
     assert "No package index release is currently claimed." in " ".join(
         support.split()
     )

@@ -6,15 +6,16 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Current committed HEAD and base for this in-progress checkpoint: `fff99b5`.
-- Current checkpoint: root-project CPython 3.14 support is being closed through
-  the complete Ubuntu test matrix, distribution classifier, support matrix,
-  release checklist, and contract tests. Platform-specific release smoke stays
-  on CPython 3.13. The separately packaged OpenHands integration remains
-  intentionally bounded to CPython 3.12 and 3.13.
-- Previous checkpoint: retained external-runner claim-control evidence paths
-  reject Windows reserved device aliases with ASCII spaces before an extension.
-  It was independently reviewed, tested, committed, and pushed as `fff99b5`.
+- Current committed HEAD and base for this in-progress checkpoint: `aff57da`.
+- Current checkpoint: the newly configured root CPython 3.14 Ubuntu job passed
+  its complete suite, Ruff, and compileall steps, completing the evidence needed
+  to promote root CPython 3.14 support. Platform-specific release smoke stays on
+  CPython 3.13. The separately packaged OpenHands integration remains bounded
+  to CPython 3.12 and 3.13.
+- Previous checkpoint: the root CPython 3.14 matrix/classifier/support closure,
+  role-scoped workflow contract tests, and clean local Windows 3.14 core-suite
+  evidence were independently reviewed, committed, and pushed as `aff57da` with
+  hosted status left provisional.
 - Next public preparation target: scikit-learn ordinals 349--380 (32 selected
   rows). No local mirror or exact base-commit license evidence has yet been
   retained for that repository. Do not encode a repository patch as an
@@ -50,9 +51,10 @@ Last updated: 2026-08-02 (America/Los_Angeles)
   contract tests track the four-version matrix. The OpenHands package bound,
   classifiers, compatibility constant, manifest, six automatic lanes, and
   historical evidence remain unchanged at CPython 3.12/3.13.
-- CPython 3.14 remains provisional until the committed hosted Ubuntu 3.14 job
-  passes. Current status documentation distinguishes the completed local
-  Windows core suite from that still-pending hosted evidence.
+- The committed Ubuntu CPython 3.14 job passed its complete suite, Ruff, and
+  compileall steps in push run `30776191309`, job `91572042993`, from
+  2026-08-03T01:09:19Z through 2026-08-03T01:14:36Z. Root CPython 3.14 support
+  is therefore no longer provisional.
 - A clean ignored non-editable CPython 3.14.6 environment, with no
   `localai-contracts` distribution, collected 2,405 core tests and completed
   with 2,380 passed, 25 expected skips, zero failures, and zero errors in
