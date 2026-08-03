@@ -161,9 +161,9 @@ allowlisted task payload, with exact fields `opaque_task_id` and
 
 The HMAC ID is pseudonymous, not unlinkable: public problem text and fixed
 suite order can still identify a task. A raw-Git preparation boundary now has
-synthetic-mirror coverage plus 138 retained public preparation outcomes across
-eight repositories: 132 verified preparations, six exact
-`tree-symlink-forbidden` policy refusals, and 362 unattempted rows. These are
+synthetic-mirror coverage plus 213 retained public preparation outcomes across
+nine repositories: 207 verified preparations, six exact
+`tree-symlink-forbidden` policy refusals, and 287 unattempted rows. These are
 not candidate mounts or public executions; no public candidate, model, agent,
 hidden test, or grader has run, no score or usefulness result exists, and the
 pinned dataset card declares no license. See the complete
@@ -207,10 +207,12 @@ alternate streams. Its self-hashed
 and serializes exact limits while asserting no author authentication. All
 origin, redistribution, mount, network, execution, grader, score, usefulness,
 and claim-readiness fields remain false. Synthetic Git tests exercise the
-mechanism. The ignored public evidence currently covers physical ordinals
-287--424: 132 exact selected trees prepared and replayed locally and six other
-selected commits were refused by the link-free export policy. It does not prove
-safe mounting, candidate execution, or task success.
+mechanism. The ignored public evidence currently covers attempted physical
+ordinals 287--499: 207 exact selected trees prepared and replayed locally and
+six other selected commits were refused by the link-free export policy. The 287
+rows at ordinals 0--286 remain unattempted, so this does not mean every ordinal
+through 499 was prepared. It does not prove safe mounting, candidate execution,
+or task success.
 
 The predecessor remains historical mixed-generation evidence. At clean
 generation base `d512b04156728cb9a4088f250ead395192572b34`, its ignored
@@ -248,9 +250,9 @@ The 96,201-byte Sphinx engineering inventory has file SHA-256
 and self-hash
 `5df1f68df2405b8365074cce05b7ff2391b6ac945f81dd47951956a918ddae25`.
 
-The fresh through-424 reconciliation preserves those two generation segments,
-revalidates eight mirrors, 132 prepared trees, and the six exact Pylint
-refusals, and records 362 rows as unattempted. The 132 manifests total
+The historical through-424 reconciliation preserves those two generation
+segments, revalidates eight mirrors, 132 prepared trees, and the six exact
+Pylint refusals, and records 362 rows as unattempted. The 132 manifests total
 35,064,737 bytes and bind 130,199 regular files, 1,538,004,549 blob bytes,
 25,985 tree objects, and 6,543,145 raw tree-object bytes. The ignored
 45,469-byte reconciliation has file SHA-256
@@ -261,12 +263,51 @@ These inventories and self-hashes are discovery and substitution-detection
 evidence, not authenticated origin, complete legal coverage, or redistribution
 approval.
 
-The next contiguous physical-order slice is SymPy ordinals 425--499: 75
-selected tasks and 75 distinct commits, from
+At clean generation revision
+`c3375577b1e555a56fa6c64ed754bc9eabd64b8f`, all 75 SymPy rows at ordinals
+425--499 prepared with no refusal. The range runs from
 `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
 `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`.
-The other 287 unattempted rows are the earlier Astropy, Django, and Matplotlib
-ranges at ordinals 0--286.
+Their 75 manifests total 31,999,044 bytes
+and bind 128,638 regular files, 2,253,028,012 blob bytes, 15,474 tree objects,
+and 5,906,718 raw tree-object bytes. The 50,679-byte segment summary has file
+SHA-256
+`17ccdf6c9941e83493dab39c13ba34a34c500a600bb0d4b8c5836fcad485d505`
+and self-hash
+`8c1d52330a69882e7ffe86851a7e684d33060fb2b476e52681ab50688b678ca0`.
+Its 77-event, 40,345-byte journal has SHA-256
+`37fe9b7fc0383e74b8c5cb7194c0d2e6becfab5d656e62ee1aca4d760b799254`.
+The 1,634-byte mirror-evidence file has file SHA-256
+`ca82d8be6381caf83743042d3452f49c15338f36562479212231080e740126d2`
+and non-authenticating mirror self-hash
+`0220123b7d117760950386d21ab58b4a6aa5de5dcc19b4abe62f274674d66859`.
+The 217,198-byte engineering inventory has file SHA-256
+`be81e87227e3d6f9438b71a83ec48460d92545f829e252ae9606271e00b02db0`
+and self-hash
+`ac9cb5190e77294b655b86b63a398a8bd0407475322c0ca4e58a72805ca52066`.
+
+The fresh through-499 reconciliation preserves all three generation segments,
+revalidates nine mirrors, 207 prepared trees, and the six exact Pylint
+refusals, and records 287 rows as unattempted. The 207 manifests total
+67,063,781 bytes and bind 258,837 regular files, 3,791,032,561 blob bytes,
+41,459 tree objects, and 12,449,863 raw tree-object bytes. The 116,825-byte
+reconciliation builder has SHA-256
+`13fd7d2e0a44c50a2a8cfb7003abc838d38714c6b8baacd56f796eb5c9f5ef44`.
+The ignored 67,322-byte reconciliation has file SHA-256
+`46452d7005493080b0f3bc9e09ff38ce7cf3d534a59a29b8e6499dcac48afcbe`
+and self-hash
+`d26d2a29b94363f3442ba576998725394d00d51335c9750ee466cc99032aea4e`.
+Publication resumed and completed in 7,595.734 seconds; a separate
+`--verify-only` replay completed in 4,920.234 seconds. This adds replay and
+substitution-detection evidence only, not authenticated origin, complete legal
+coverage, redistribution approval, candidate execution, or grading.
+
+After completing the late physical block 287--499, the next and smallest
+untouched physical repository block is Astropy ordinals 0--21: 22 selected
+tasks and 22 distinct commits, from
+`astropy__astropy-12907@d16bfe05a744909de4b27f5875fe0d4ed41ce607`
+through
+`astropy__astropy-8872@b750a0e6ee76fb6b8a099a4d16ec51977be46bf6`.
 
 ### SWE-bench prediction ledger
 
@@ -312,14 +353,20 @@ SHA-256
 `dc8d7c10b7ab4ad4cf24123296abf502f614a1740337e356ce281e7bffcdf8af`
 and self-hash
 `3fa05e48739ca1fdc1e8295724b68f45f42728f9229cf908dfeaa6fd29192e5d`.
-The current ignored through-424 preparation-only ledger reconciles 132
+The historical ignored through-424 preparation-only ledger reconciles 132
 prepared, 6 refused, and 362 unattempted outcomes and records zero predictions.
 Its 493,768-byte file has SHA-256
 `3be02f725ec0e0041bde5af9ba02288c9b15823f3c0fcfd1ad84445d78276bb8`
 and self-hash
 `5543f9e28a11a12bdf9a0bf9f3473926b80b0357910eed1e2fb2fcdc9cd002cc`.
-The 53,734-byte canonical JSONL is byte-identical to its predecessor and has
-exactly 500 rows, 500 `model_patch: null` rows, and SHA-256
+The current ignored through-499 preparation-only ledger reconciles 207
+prepared, 6 refused, and 287 unattempted outcomes and records zero predictions.
+Its 498,718-byte file has SHA-256
+`e57df1b4c11ae8c274e636d488151b2e2fd865026d877f7e7a345c9bc6b97b3d`
+and self-hash
+`1f962ed25a7644b03bd36bb0b0b4ea79f29da8129ac0441a0084e7fb83d5b4dc`.
+The 53,734-byte canonical JSONL is byte-identical to its predecessors and has
+exactly 500 LF-terminated rows, 500 `model_patch: null` rows, and SHA-256
 `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
 The current ledger and JSONL are not committed or evidence of a candidate run.
 
@@ -439,8 +486,8 @@ yet maps the structured exception into an outer ledger.
 Candidate-code execution, hidden-test execution, official grading, official
 results, external scores, usefulness, candidate-mount/network/filesystem
 isolation, native quotas, Git-parser sandboxing, and claim readiness remain
-false. The current preparation-only counts are 132 prepared, 6
-policy-refused, and 362 unattempted, and no public candidate, hidden test, or
+false. The current preparation-only counts are 207 prepared, 6
+policy-refused, and 287 unattempted, and no public candidate, hidden test, or
 grader was run.
 
 ## tau2-bench v1.0.1 text-core source intake

@@ -43,7 +43,7 @@ live-readiness status.
 | Package version | `0.1.1a21` |
 | Python | 3.11, 3.12, 3.13, and 3.14 complete in root CI; Windows 3.14 core suite green |
 | Core runtime dependencies | None outside the Python standard library |
-| Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; `0f20b8a`: exact seven-wheel OpenHands build inputs, clean provider/a2 harness, and all automatic hosted gates passed; `7915beb`: exact seven-wheel root release inputs and post-acquisition offline build/smoke passed every automatic hosted gate; `d512b04`: predecessor preparation-through-380 evidence; `f12aa37`: 44-row Sphinx extension and fresh mixed-provenance through-424 reconciliation; `a1b262a`: closed SWE-bench patch grammar, dual-environment 86 focused tests passed and integrated gates collected 187 with 186 passed and one expected Windows skip; no local inference |
+| Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; `0f20b8a`: exact seven-wheel OpenHands build inputs, clean provider/a2 harness, and all automatic hosted gates passed; `7915beb`: exact seven-wheel root release inputs and post-acquisition offline build/smoke passed every automatic hosted gate; `d512b04`: predecessor preparation-through-380 evidence; `f12aa37`: 44-row Sphinx extension and historical mixed-provenance through-424 reconciliation; `a1b262a`: closed SWE-bench patch grammar, dual-environment 86 focused tests passed and integrated gates collected 187 with 186 passed and one expected Windows skip; `c337557`: 75-row SymPy extension and fresh mixed-provenance through-499 reconciliation, separately replayed and followed by the same 187-test dual-environment gate; no local inference |
 | Canonical optional boundary | `localai-contracts==0.2.0a2`, protocol/schema `1.0.0`; `context.compile` only; non-inference |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
@@ -59,7 +59,7 @@ live-readiness status.
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
-| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation, full-cohort prediction, synthetic controller-run, and text-patch composition evidence; 138 public rows attempted across eight repositories (132 prepared, 6 exact Pylint `tree-symlink-forbidden` refusals, 362 unattempted), with no public candidate/model/agent run, verified isolation, grader execution, resolution, score, or usefulness result |
+| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation, full-cohort prediction, synthetic controller-run, and text-patch composition evidence; 213 public rows attempted across nine repositories (207 prepared, 6 exact Pylint `tree-symlink-forbidden` refusals, 287 unattempted), with no public candidate/model/agent run, verified isolation, grader execution, resolution, score, or usefulness result |
 | tau2-bench intake | Pinned v1.0.1 annotated tag and exact 278-row half-duplex text `base` cohort in actual loader order; source-only verification and security contract, with no adapter, simulator, grader, isolation, execution, reward, score, or usefulness result |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
 | OpenHands integration | Separate `ctxc-openhands` draft alpha; exact current version is owned by its package metadata; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
@@ -75,12 +75,14 @@ benchmark, and local-Qwen checkpoint is commit `3ed2f79` on
 may be newer. Always use `git log -1` and `git status -sb` to establish the
 exact state.
 
-The current verified SWE-bench preparation-through-424 evidence preserves two
+The current verified SWE-bench preparation-through-499 evidence preserves three
 generation revisions: predecessor
 `d512b04156728cb9a4088f250ead395192572b34` (`d512b04`) for ordinals
 287--380 and `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d` (`f12aa37`) for
-Sphinx ordinals 381--424 and the fresh reconciliation. Its retained artifacts
-are ignored local evidence, not committed public results.
+Sphinx ordinals 381--424 and the historical through-424 reconciliation, plus
+`c3375577b1e555a56fa6c64ed754bc9eabd64b8f` (`c337557`) for SymPy ordinals
+425--499 and the fresh through-499 reconciliation. Its retained artifacts are
+ignored local evidence, not committed public results.
 
 ## Original objective
 
@@ -1475,17 +1477,17 @@ is a coordinator-host trust boundary. Process exit, trigger, timing, and cleanup
 fields are unauthenticated observations that an internally consistent,
 self-hash-resigned ledger can relabel.
 
-The current mixed-provenance preparation-through-424 checkpoint adds all 44
+The historical mixed-provenance preparation-through-424 checkpoint adds all 44
 Sphinx rows at ordinals 381--424 under `f12aa37`; every Sphinx row prepared and
 none refused. Together with the predecessor segment, the complete denominator
-is 138 attempted, 132 prepared, the same six exact Pylint
+at that point was 138 attempted, 132 prepared, the same six exact Pylint
 `tree-symlink-forbidden` refusals, and 362 unattempted. The 132 manifests total
 35,064,737 bytes and bind 130,199 regular files, 1,538,004,549 blob bytes,
 25,985 tree objects, and 6,543,145 raw tree bytes. The Sphinx segment alone has
 44 manifests / 18,731,287 manifest bytes / 66,143 files / 736,223,680 blob
 bytes / 18,382 tree objects / 3,334,382 tree bytes.
 
-Exact through-424 substitution-detection values are:
+Exact historical through-424 substitution-detection values are:
 
 - final 95,350-byte reconciliation builder SHA-256
   `ec330aacb769cb545f5400505fa138efe49ea6e528579ec17eb6a73cc4982c6e`;
@@ -1520,8 +1522,77 @@ candidate variants: five `LICENSE`, three `pyproject.toml`, eight `setup.cfg`,
 and sixteen `setup.py` variants, all mode `100644`. It is engineering discovery
 only, not a legal, applicability, redistribution, or origin-authentication
 decision. No public candidate, model, agent, hidden test, grader, GPU, or
-inference ran. Candidate mount, filesystem/network isolation, execution,
-grading, score, usefulness, and claim readiness remain absent or false.
+inference ran at that checkpoint. Candidate mount, filesystem/network isolation,
+execution, grading, score, usefulness, and claim readiness remained absent or
+false.
+
+The current mixed-provenance preparation-through-499 checkpoint adds all 75
+SymPy rows at ordinals 425--499 under `c337557`; every SymPy row prepared and
+none refused. The range runs from
+`sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
+`sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`.
+Across all three segments, the complete denominator is 213
+attempted, 207 prepared, the same six exact Pylint
+`tree-symlink-forbidden` refusals, and 287 unattempted. The 207 manifests total
+67,063,781 bytes and bind 258,837 regular files, 3,791,032,561 blob bytes,
+41,459 tree objects, and 12,449,863 raw tree bytes. The SymPy segment alone has
+75 manifests / 31,999,044 manifest bytes / 128,638 files / 2,253,028,012 blob
+bytes / 15,474 tree objects / 5,906,718 raw tree bytes.
+
+Exact current through-499 substitution-detection values are:
+
+- final 116,825-byte reconciliation builder SHA-256
+  `13fd7d2e0a44c50a2a8cfb7003abc838d38714c6b8baacd56f796eb5c9f5ef44`;
+- 67,322-byte reconciliation raw SHA-256
+  `46452d7005493080b0f3bc9e09ff38ce7cf3d534a59a29b8e6499dcac48afcbe`
+  and self-hash
+  `d26d2a29b94363f3442ba576998725394d00d51335c9750ee466cc99032aea4e`;
+- 498,718-byte ledger raw SHA-256
+  `e57df1b4c11ae8c274e636d488151b2e2fd865026d877f7e7a345c9bc6b97b3d`
+  and self-hash
+  `1f962ed25a7644b03bd36bb0b0b4ea79f29da8129ac0441a0084e7fb83d5b4dc`;
+- predecessor-identical official JSONL: 53,734 bytes, exactly 500 LF-terminated
+  source-ordered `model_patch: null` rows, SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`;
+- 50,679-byte SymPy summary raw SHA-256
+  `17ccdf6c9941e83493dab39c13ba34a34c500a600bb0d4b8c5836fcad485d505`
+  and self-hash
+  `8c1d52330a69882e7ffe86851a7e684d33060fb2b476e52681ab50688b678ca0`;
+- 40,345-byte, 77-event SymPy journal SHA-256
+  `37fe9b7fc0383e74b8c5cb7194c0d2e6becfab5d656e62ee1aca4d760b799254`;
+- 1,634-byte SymPy mirror evidence raw SHA-256
+  `ca82d8be6381caf83743042d3452f49c15338f36562479212231080e740126d2`
+  and non-authenticating self-hash
+  `0220123b7d117760950386d21ab58b4a6aa5de5dcc19b4abe62f274674d66859`;
+- 217,198-byte SymPy engineering inventory raw SHA-256
+  `be81e87227e3d6f9438b71a83ec48460d92545f829e252ae9606271e00b02db0`
+  and self-hash
+  `ac9cb5190e77294b655b86b63a398a8bd0407475322c0ca4e58a72805ca52066`.
+
+The SymPy inventory retains 75 records, 320 occurrences, and 59 exact variants.
+Path occurrence/variant counts are root `LICENSE` 75/12,
+`data/TeXmacs/LICENSE` 75/1, `setup.cfg` 37/11, `setup.py` 75/34, and
+`sympy/parsing/latex/LICENSE.txt` 58/1. All `setup.py` occurrences are mode
+`100755`; all other retained paths are `100644`. It is engineering discovery
+only, not a legal, applicability, redistribution, or origin-authentication
+decision.
+
+Publication resumed and completed in 7,595.734 seconds. A separate
+`--verify-only` replay completed in 4,920.234 seconds and reproduced the exact
+retained counts and hashes without rewriting the published evidence. The
+post-publication source/repository/prediction/patch gate collected 187 tests in
+both CPython 3.12.13 and 3.14.6: 186 passed and one expected Windows case
+skipped in each, with zero failures and errors. The 26,267-byte 3.12 JUnit file
+has SHA-256
+`ca1aada59cf8f82aa0fb69ca1918983a578035d7a27383a37fe78bdc2b481c3c`
+and suite time 314.612 seconds; the 26,266-byte 3.14 file has SHA-256
+`127600b9d86687108daafd81016b21be08b351e63d6f686c90b62187d497d0d8`
+and suite time 301.905 seconds. Ruff and in-memory compilation passed in both.
+
+No public candidate, model, agent, hidden test, grader, GPU, or inference ran at
+the current checkpoint. Candidate mount, filesystem/network isolation,
+execution, grading, score, usefulness, legal determination, redistribution
+approval, origin authentication, and claim readiness remain absent or false.
 
 ### tau2-bench v1.0.1 source and secrecy contract
 
@@ -2048,13 +2119,15 @@ and the recorded live scenario blocked; do not substitute the fake scenario or
 private host seams. While that gate remains red, the highest-value broader
 project work is the external and natural-history evidence path:
 
-1. inspect and prepare the 75 unique SymPy tasks and commits at ordinals
-   425--499, from
-   `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e`
-   through `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`;
-   this reaches the physical source end, while Astropy, Django, and Matplotlib
-   account for the earlier 287 unattempted rows; retain every success or refusal
-   and both mirror/preparation evidence; provision a separately verified
+1. inspect and prepare the 22 unique Astropy tasks and commits at ordinals
+   0--21, from
+   `astropy__astropy-12907@d16bfe05a744909de4b27f5875fe0d4ed41ce607`
+   through
+   `astropy__astropy-8872@b750a0e6ee76fb6b8a099a4d16ec51977be46bf6`;
+   this is the smallest untouched physical repository block after the completed
+   late block 287--499, not evidence that all ordinals 0--499 are prepared;
+   retain every success or refusal and both mirror/preparation evidence;
+   provision a separately verified
    container/VM boundary for candidate mount/filesystem and network isolation
    before passing any public candidate through the synthetic-tested
    controller-run ledger; use the complete-cohort prediction ledger for

@@ -614,11 +614,12 @@ user-visible extended attribute, and NTFS stream before returning a self-hashed
 coordinator-only manifest.
 
 That implementation has passed adversarial tests against synthetic local Git
-mirrors and now retains 138 selected public outcomes across eight repositories.
-The verified through-424 reconciliation covers physical ordinals 287--424:
-132 exact base commits passed live preparation replay, the same six Pylint
-commits were refused by the link-free `tree-symlink-forbidden` policy, and 362
-rows remain unattempted. No prepared tree is a candidate mount.
+mirrors and now retains 213 selected public outcomes across nine repositories.
+The verified through-499 reconciliation covers attempted physical ordinals
+287--499: 207 exact base commits passed live preparation replay, the same six
+Pylint commits were refused by the link-free `tree-symlink-forbidden` policy,
+and 287 rows at ordinals 0--286 remain unattempted. This does not mean every
+ordinal through 499 was prepared. No prepared tree is a candidate mount.
 
 This is mixed-generation evidence. The historical predecessor through ordinal
 380 remains bound to clean generation revision
@@ -628,7 +629,8 @@ tree-object bytes. Its historical ignored 72,728-byte summary has file SHA-256
 `21ded8d8bff3038e1064abaff01d952e06fe60d165617f3e3e213d55ba99b781`
 and self-hash
 `f11f8bd4235c1469fbe8dd8865d92519af82f8c831ae5901a82b182bd221b96d`.
-The Sphinx extension and fresh reconciliation are bound to clean revision
+The Sphinx extension and historical through-424 reconciliation are bound to
+clean revision
 `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d`. All 44 Sphinx
 rows at ordinals 381--424 prepared and none was refused. Their 44 manifests
 total 18,731,287 bytes and bind 66,143 regular files, 736,223,680 blob bytes,
@@ -640,7 +642,8 @@ and self-hash
 its 46-event, 24,447-byte journal has SHA-256
 `6655d51f482a0039c3e1a070287456c6ef8f3936fb77b02b10590fa648f38b93`.
 
-Across both segments, the 132 manifests total 35,064,737 bytes and bind
+Across those two historical through-424 segments, the 132 manifests total
+35,064,737 bytes and bind
 130,199 regular files, 1,538,004,549 blob bytes, 25,985 tree objects, and
 6,543,145 raw tree-object bytes. The ignored 45,469-byte reconciliation has
 file SHA-256
@@ -655,6 +658,50 @@ the 96,201-byte Sphinx engineering inventory has file SHA-256
 `e02f07b4feb49ab7ebf378ef7614b8acd01a7367921acfe449ec0e2a5ef08840`
 and self-hash
 `5df1f68df2405b8365074cce05b7ff2391b6ac945f81dd47951956a918ddae25`.
+
+The SymPy extension is bound to clean generation revision
+`c3375577b1e555a56fa6c64ed754bc9eabd64b8f`. All 75 SymPy rows at ordinals
+425--499 prepared and none was refused. The range runs from
+`sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
+`sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`.
+Their 75 manifests total 31,999,044
+bytes and bind 128,638 regular files, 2,253,028,012 blob bytes, 15,474 tree
+objects, and 5,906,718 raw tree-object bytes. The 50,679-byte segment summary
+has file SHA-256
+`17ccdf6c9941e83493dab39c13ba34a34c500a600bb0d4b8c5836fcad485d505`
+and self-hash
+`8c1d52330a69882e7ffe86851a7e684d33060fb2b476e52681ab50688b678ca0`;
+its 77-event, 40,345-byte journal has SHA-256
+`37fe9b7fc0383e74b8c5cb7194c0d2e6becfab5d656e62ee1aca4d760b799254`.
+The 1,634-byte SymPy mirror evidence has file SHA-256
+`ca82d8be6381caf83743042d3452f49c15338f36562479212231080e740126d2`
+and non-authenticating mirror self-hash
+`0220123b7d117760950386d21ab58b4a6aa5de5dcc19b4abe62f274674d66859`;
+the 217,198-byte engineering inventory has file SHA-256
+`be81e87227e3d6f9438b71a83ec48460d92545f829e252ae9606271e00b02db0`
+and self-hash
+`ac9cb5190e77294b655b86b63a398a8bd0407475322c0ca4e58a72805ca52066`.
+
+Across all three generation segments, the 207 manifests total 67,063,781
+bytes and bind 258,837 regular files, 3,791,032,561 blob bytes, 41,459 tree
+objects, and 12,449,863 raw tree-object bytes. The 116,825-byte through-499
+reconciliation builder has SHA-256
+`13fd7d2e0a44c50a2a8cfb7003abc838d38714c6b8baacd56f796eb5c9f5ef44`.
+The ignored 67,322-byte reconciliation has file SHA-256
+`46452d7005493080b0f3bc9e09ff38ce7cf3d534a59a29b8e6499dcac48afcbe`
+and self-hash
+`d26d2a29b94363f3442ba576998725394d00d51335c9750ee466cc99032aea4e`.
+Publication resumed and completed in 7,595.734 seconds; a separate
+`--verify-only` replay completed in 4,920.234 seconds and reproduced the exact
+retained counts and hashes without rewriting the published evidence.
+The post-publication regression gate collected 187 tests in CPython 3.12.13 and
+3.14.6: 186 passed and one expected Windows case skipped in each, with zero
+failures and errors. The 26,267-byte 3.12 JUnit file has SHA-256
+`ca1aada59cf8f82aa0fb69ca1918983a578035d7a27383a37fe78bdc2b481c3c`
+and suite time 314.612 seconds; the 26,266-byte 3.14 file has SHA-256
+`127600b9d86687108daafd81016b21be08b351e63d6f686c90b62187d497d0d8`
+and suite time 301.905 seconds. Ruff and in-memory compilation passed in both.
+
 A configured origin URL is not authenticated provenance; SHA-1 is the source
 corpus's Git identity, while raw object bodies receive separate SHA-256
 evidence. Mirror, worker, preparation, inventory, reconciliation, and cohort
@@ -685,14 +732,20 @@ The historical through-380 ledger is 490,862 bytes with file SHA-256
 `dc8d7c10b7ab4ad4cf24123296abf502f614a1740337e356ce281e7bffcdf8af`
 and self-hash
 `3fa05e48739ca1fdc1e8295724b68f45f42728f9229cf908dfeaa6fd29192e5d`.
-The ignored through-424 ledger reconciles 132 prepared, 6 refused, and 362
-unattempted outcomes with no prediction. Its 493,768-byte file has SHA-256
+The historical ignored through-424 ledger reconciles 132 prepared, 6 refused,
+and 362 unattempted outcomes with no prediction. Its 493,768-byte file has
+SHA-256
 `3be02f725ec0e0041bde5af9ba02288c9b15823f3c0fcfd1ad84445d78276bb8`
 and self-hash
 `5543f9e28a11a12bdf9a0bf9f3473926b80b0357910eed1e2fb2fcdc9cd002cc`.
-Its companion official-format JSONL is byte-for-byte unchanged from the
-through-380 predecessor: 53,734 bytes, 500 rows in physical source order, 500
-`null` patches, and SHA-256
+The current ignored through-499 ledger reconciles 207 prepared, 6 refused, and
+287 unattempted outcomes with no prediction. Its 498,718-byte file has SHA-256
+`e57df1b4c11ae8c274e636d488151b2e2fd865026d877f7e7a345c9bc6b97b3d`
+and self-hash
+`1f962ed25a7644b03bd36bb0b0b4ea79f29da8129ac0441a0084e7fb83d5b4dc`.
+Its companion official-format JSONL is byte-for-byte unchanged from both
+predecessors: 53,734 bytes, exactly 500 LF-terminated rows in physical source
+order, 500 `null` patches, and SHA-256
 `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
 The current ledger/JSONL pair is denominator/interchange evidence only;
 candidate-capture origin, system
@@ -776,17 +829,18 @@ All candidate execution, hidden-test execution, grader, result, score,
 usefulness, mount/network/filesystem isolation, native quota, parser sandbox,
 and claim-readiness flags remain false. Synthetic tests exercise the mechanism;
 the patch preflight added, removed, ran, graded, and scored no public row. The
-separately verified current preparation checkpoint contains 132 prepared, 6
-policy-refused, and 362 unattempted rows.
+separately verified current preparation checkpoint contains 207 prepared, 6
+policy-refused, and 287 unattempted rows.
 
-The next bounded contiguous physical-order slice is SymPy ordinals 425--499:
-75 selected tasks and 75 distinct exact commits, beginning with
-`sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` and ending
-with `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`.
-The other 287 unattempted rows are the earlier Astropy, Django, and Matplotlib
-ranges at ordinals 0--286. No SymPy mirror, preparation outcome, license
-inventory, candidate execution, or grader result is claimed by the through-424
-checkpoint.
+After completing the late physical block 287--499, the next and smallest
+untouched physical repository block is Astropy ordinals 0--21: 22 selected
+tasks and 22 distinct exact commits, beginning with
+`astropy__astropy-12907@d16bfe05a744909de4b27f5875fe0d4ed41ce607`
+and ending with
+`astropy__astropy-8872@b750a0e6ee76fb6b8a099a4d16ec51977be46bf6`.
+No Astropy mirror, preparation outcome, or license inventory is claimed by the
+through-499 checkpoint. SymPy preparation and inventory evidence does not imply
+candidate execution or a grader result.
 
 The external protocol's coding-task slot therefore remains `pending`: the
 pinned dataset card declares no license, and the remaining public-cohort

@@ -124,39 +124,74 @@ versioning and release rules in
 ### Added
 
 - A verified mixed-provenance SWE-bench preparation checkpoint through ordinal
-  424. Preparation revision `d512b04156728cb9a4088f250ead395192572b34`
-  covers ordinals 287--380, while
+  499. Preparation revision `d512b04156728cb9a4088f250ead395192572b34`
+  covers ordinals 287--380,
   `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d` covers the 44 distinct Sphinx
-  tasks and commits at ordinals 381--424 plus reconciliation. All 44 Sphinx
-  rows prepared with 0 refused, bringing the current state to 138 attempted,
-  132 prepared, 6 exact Pylint `tree-symlink-forbidden` refusals, and 362
-  unattempted. The 31,722-byte Sphinx summary has file SHA-256
+  tasks and commits at ordinals 381--424, and
+  `c3375577b1e555a56fa6c64ed754bc9eabd64b8f` covers the 75 distinct SymPy
+  tasks and commits at ordinals 425--499, from
+  `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
+  `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`, plus fresh
+  reconciliation. All 75 SymPy rows prepared with 0 refused, bringing the
+  current state to 213
+  attempted, 207 prepared, 6 exact Pylint `tree-symlink-forbidden` refusals,
+  and 287 unattempted. The historical through-424 state was 138 attempted, 132
+  prepared, the same 6 exact Pylint refusals, and 362 unattempted; all 44 Sphinx
+  rows prepared with 0 refused. The historical 31,722-byte Sphinx summary has
+  file SHA-256
   `fc11dfd91d75ee903359a6f9158956342422f1a4b8f6ef58cb18247af484949b`
   and self-hash
   `f62a65f0f54a23a07d4385f168a4696c7437d90a55e9e8ca80b9d24a282b5bb3`;
-  the 96,201-byte engineering license inventory has file SHA-256
+  its 96,201-byte engineering license inventory has file SHA-256
   `e02f07b4feb49ab7ebf378ef7614b8acd01a7367921acfe449ec0e2a5ef08840`
   and self-hash
   `5df1f68df2405b8365074cce05b7ff2391b6ac945f81dd47951956a918ddae25`.
-  The 45,469-byte reconciliation has file SHA-256
+  The historical 45,469-byte through-424 reconciliation has file SHA-256
   `c6882b68d817e374ebd6be00fa32a7ee2a2ac2d265c2f8f1fc8c858138fea23e`
   and self-hash
   `7bf6599e2a258b588a92b9bab41c899ba799b0fc81ff1bd41f355b86aa92a789`;
-  the 493,768-byte ledger has file SHA-256
+  its 493,768-byte ledger has file SHA-256
   `3be02f725ec0e0041bde5af9ba02288c9b15823f3c0fcfd1ad84445d78276bb8`
   and self-hash
-  `5543f9e28a11a12bdf9a0bf9f3473926b80b0357910eed1e2fb2fcdc9cd002cc`;
-  and the unchanged 53,734-byte official JSONL has 500
-  `model_patch: null` rows and SHA-256
+  `5543f9e28a11a12bdf9a0bf9f3473926b80b0357910eed1e2fb2fcdc9cd002cc`.
+  The 50,679-byte SymPy summary has file SHA-256
+  `17ccdf6c9941e83493dab39c13ba34a34c500a600bb0d4b8c5836fcad485d505`
+  and self-hash
+  `8c1d52330a69882e7ffe86851a7e684d33060fb2b476e52681ab50688b678ca0`;
+  its 217,198-byte engineering inventory has file SHA-256
+  `be81e87227e3d6f9438b71a83ec48460d92545f829e252ae9606271e00b02db0`
+  and self-hash
+  `ac9cb5190e77294b655b86b63a398a8bd0407475322c0ca4e58a72805ca52066`.
+  The current 67,322-byte through-499 reconciliation has file SHA-256
+  `46452d7005493080b0f3bc9e09ff38ce7cf3d534a59a29b8e6499dcac48afcbe`
+  and self-hash
+  `d26d2a29b94363f3442ba576998725394d00d51335c9750ee466cc99032aea4e`;
+  its 498,718-byte ledger has file SHA-256
+  `e57df1b4c11ae8c274e636d488151b2e2fd865026d877f7e7a345c9bc6b97b3d`
+  and self-hash
+  `1f962ed25a7644b03bd36bb0b0b4ea79f29da8129ac0441a0084e7fb83d5b4dc`.
+  The predecessor-identical 53,734-byte official JSONL has exactly 500
+  LF-terminated `model_patch: null` rows and SHA-256
   `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
-  The inventory is engineering discovery evidence only: it is not a legal
-  determination, redistribution approval, or origin authentication, and the
-  checkpoint contains no model, candidate, grader, GPU, inference, score,
-  usefulness, or claim-ready result. The next contiguous slice is the 75-task,
-  75-commit SymPy run at ordinals 425--499, from
-  `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
-  `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`, followed by
-  source end; 287 earlier Astropy, Django, and Matplotlib rows remain.
+  Publication resumed and completed in 7,595.734 seconds; a separate
+  `--verify-only` replay completed in 4,920.234 seconds. The post-publication
+  regression gate collected 187 tests in CPython 3.12.13 and 3.14.6: 186 passed
+  and one expected Windows case skipped in each, with zero failures and errors.
+  The 26,267-byte 3.12 JUnit file has SHA-256
+  `ca1aada59cf8f82aa0fb69ca1918983a578035d7a27383a37fe78bdc2b481c3c`
+  and suite time 314.612 seconds; the 26,266-byte 3.14 file has SHA-256
+  `127600b9d86687108daafd81016b21be08b351e63d6f686c90b62187d497d0d8`
+  and suite time 301.905 seconds. Ruff and in-memory compilation passed in both.
+  The inventories are engineering discovery evidence only: they are not legal
+  determinations, redistribution approvals, or origin authentication, and the
+  checkpoint
+  contains no model, candidate, grader, GPU, inference, score, usefulness, or
+  claim-ready result. After completing the late physical block 287--499, the
+  next smallest untouched repository block is the 22-task, 22-commit Astropy
+  range at ordinals 0--21, from
+  `astropy__astropy-12907@d16bfe05a744909de4b27f5875fe0d4ed41ce607`
+  through
+  `astropy__astropy-8872@b750a0e6ee76fb6b8a099a4d16ec51977be46bf6`.
 - A coordinator-only, source/sdist-only SWE-bench text-patch composition
   preflight with strict self-hashed
   `ctxc-swebench-patch-composition-0.1` evidence. It revalidates the canonical

@@ -688,14 +688,16 @@ Acceptance:
   without authenticating it, recomputes commit/tree/blob identities, rejects
   symlinks, gitlinks, special/non-portable paths and unbounded trees, exports
   only fresh regular files, and independently rescans the result. The verified
-  through-424 checkpoint has 138 retained preparation outcomes across eight
-  repositories: 132 passed live preparation replay, including all 44 Sphinx
-  rows at ordinals 381--424, six Pylint rows were retained as exact
-  `tree-symlink-forbidden` policy refusals, and 362 rows remain unattempted.
-  Preparation revision `d512b04156728cb9a4088f250ead395192572b34`
-  covers ordinals 287--380; revision
-  `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d` covers Sphinx and the
-  reconciliation. No candidate mount was created.
+  through-499 checkpoint has 213 retained preparation outcomes across nine
+  repositories: 207 passed live preparation replay, including all 44 Sphinx
+  rows at ordinals 381--424 and all 75 SymPy rows at 425--499, six Pylint rows
+  were retained as exact `tree-symlink-forbidden` policy refusals, and 287 rows
+  remain unattempted. Preparation revision
+  `d512b04156728cb9a4088f250ead395192572b34` covers ordinals 287--380;
+  revision `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d` covers Sphinx and the
+  historical through-424 reconciliation; revision
+  `c3375577b1e555a56fa6c64ed754bc9eabd64b8f` covers SymPy and the fresh
+  through-499 reconciliation. No candidate mount was created.
 - [x] Add a full-selected-cohort SWE-bench prediction ledger and deterministic
   official JSONL boundary. Revalidate source/key and successful preparation
   evidence, preserve exact patch text only in JSONL, and retain missing,
@@ -755,16 +757,50 @@ Acceptance:
   This is engineering inventory only, not a legal determination,
   redistribution approval, origin authentication, or evidence of any model,
   candidate, grader, GPU, inference, score, usefulness, or claim-ready result.
+- [x] Prepare, independently fresh-replay, and retain all 75 SymPy tasks and
+  distinct base commits at ordinals 425--499 with 0 refused, from
+  `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
+  `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`. At clean
+  generation revision `c3375577b1e555a56fa6c64ed754bc9eabd64b8f`, their 75
+  manifests total 31,999,044 bytes and bind 128,638 files, 2,253,028,012 blob
+  bytes, 15,474 tree objects, and 5,906,718 raw tree bytes. The 50,679-byte
+  summary has raw SHA-256
+  `17ccdf6c9941e83493dab39c13ba34a34c500a600bb0d4b8c5836fcad485d505`
+  and self-hash
+  `8c1d52330a69882e7ffe86851a7e684d33060fb2b476e52681ab50688b678ca0`;
+  the 217,198-byte inventory has raw SHA-256
+  `be81e87227e3d6f9438b71a83ec48460d92545f829e252ae9606271e00b02db0`
+  and self-hash
+  `ac9cb5190e77294b655b86b63a398a8bd0407475322c0ca4e58a72805ca52066`.
+  The fresh three-segment state is 213 attempted, 207 prepared, 6 refused, and
+  287 unattempted. Its 67,322-byte reconciliation has raw SHA-256
+  `46452d7005493080b0f3bc9e09ff38ce7cf3d534a59a29b8e6499dcac48afcbe`
+  and self-hash
+  `d26d2a29b94363f3442ba576998725394d00d51335c9750ee466cc99032aea4e`;
+  its 498,718-byte ledger has raw SHA-256
+  `e57df1b4c11ae8c274e636d488151b2e2fd865026d877f7e7a345c9bc6b97b3d`
+  and self-hash
+  `1f962ed25a7644b03bd36bb0b0b4ea79f29da8129ac0441a0084e7fb83d5b4dc`.
+  The predecessor-identical 53,734-byte JSONL retains exactly 500 LF-terminated
+  `model_patch: null` rows and SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
+  The inventory is engineering discovery only and establishes no legal
+  determination, applicability conclusion, redistribution approval, or
+  repository-origin authentication.
+  No model, candidate, grader, GPU, inference, execution, score, usefulness, or
+  claim-ready result follows from this preparation-only evidence.
 - [ ] Complete SWE-bench dataset/repository license review, prepare and retain
   every selected base-commit outcome, establish externally verified candidate
   mount/filesystem and network isolation, harden hidden-test application and
   grading, and add public task result evidence before running or scoring any
-  public candidate. The next contiguous preparation target is the 75 unique
-  SymPy tasks and commits at ordinals 425--499, from
-  `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
-  `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`, followed by
-  source end. The current 362 unattempted rows comprise that 75-row SymPy slice
-  and 287 earlier Astropy, Django, and Matplotlib rows.
+  public candidate. After completing the late physical block 287--499, the next
+  and smallest untouched repository block is the 22 unique Astropy tasks and
+  commits at ordinals 0--21, from
+  `astropy__astropy-12907@d16bfe05a744909de4b27f5875fe0d4ed41ce607`
+  through
+  `astropy__astropy-8872@b750a0e6ee76fb6b8a099a4d16ec51977be46bf6`.
+  The current 287 unattempted rows are Astropy, Django, and Matplotlib; this does
+  not mean all physical ordinals 0--499 have been prepared.
 - [ ] Integrate `PatchCompositionError.stage` and
   `preflight-exception-not-a-cohort-result` into a future complete-denominator
   coordinator ledger. The patch module exposes only machine-readable exception
@@ -1361,12 +1397,15 @@ evidence of sublinear compilation.
 
 The next chat should start here unless new evidence changes the priority:
 
-1. acquire SymPy through a reviewed channel, inspect the exact base-commit
-   license candidates, and prepare ordinals 425--499 (75 selected rows and 75
+1. acquire Astropy through a reviewed channel, inspect the exact base-commit
+   license candidates, and prepare ordinals 0--21 (22 selected rows and 22
    distinct commits), from
-   `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
-   `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`, retaining
-   every success or refusal without silently narrowing the 500-row cohort;
+   `astropy__astropy-12907@d16bfe05a744909de4b27f5875fe0d4ed41ce607`
+   through
+   `astropy__astropy-8872@b750a0e6ee76fb6b8a099a4d16ec51977be46bf6`,
+   retaining every success or refusal without silently narrowing the 500-row
+   cohort; this is the smallest untouched physical repository block after the
+   late ordinal 287--499 block, not evidence that all ordinals are prepared;
 2. keep live OpenHands execution and the recorded live demonstration blocked
    until a complete reviewed hash-pinned offline dependency closure and a
    stable public final-immutable-request/exact-tokenizer hook both exist;
@@ -1383,9 +1422,9 @@ The next chat should start here unless new evidence changes the priority:
    rerun the retained ACON diagnostic;
 8. add clean reproducible adapters only for systems admitted by the frozen
    result-blind protocol;
-9. after the SymPy slice, complete SWE-bench dataset/repository license review
-   and the 287 earlier Astropy, Django, and Matplotlib preparation outcomes,
-   then provision externally verified candidate
+9. after the Astropy slice, complete SWE-bench dataset/repository license review
+   and the remaining Django and Matplotlib preparation outcomes, then provision
+   externally verified candidate
    mount/filesystem and network isolation before using the synthetic-tested run
    ledger with any public candidate; keep hidden-test application, grading,
    resolution, scoring, usefulness, and claim readiness false until separately

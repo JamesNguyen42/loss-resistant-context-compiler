@@ -39,7 +39,7 @@ meaning can be compressed without loss.
 | External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
-| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, raw-Git preparation, exhaustive deterministic prediction-ledger, synthetic controller-run ledger, and text-patch composition preflight; repository preparation attempted for 138 public rows across eight repositories, with 132 prepared, 6 exact Pylint `tree-symlink-forbidden` refusals, 362 unattempted, all 44 Sphinx rows at ordinals 381--424 prepared with 0 refused, and no public candidate, model, agent, grader, GPU, inference, resolution, score, usefulness, or claim-ready result |
+| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, raw-Git preparation, exhaustive deterministic prediction-ledger, synthetic controller-run ledger, and text-patch composition preflight; repository preparation attempted for 213 public rows across nine repositories, with 207 prepared, 6 exact Pylint `tree-symlink-forbidden` refusals, 287 unattempted, all 75 SymPy rows at ordinals 425--499 prepared with 0 refused, and no public candidate, model, agent, grader, GPU, inference, resolution, score, usefulness, or claim-ready result |
 | tau2-bench intake | Exact v1.0.1 annotated-tag source binding and actual-loader-order 278-row half-duplex text-core selection across airline, retail, and telecom; candidate adapter, simulator, grader, execution, isolation, reward, score, and usefulness evidence remain absent |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic structural cases; 20 held out; no model or natural-cohort claim |
 | OpenHands integration | Separately packaged `ctxc-openhands` draft alpha; exact current version is owned by its [package metadata](integrations/openhands/pyproject.toml); reviewed offline fake-runtime foundation only; live execution blocked |
@@ -221,30 +221,46 @@ The repository currently includes:
   materializes only portable regular-file blobs into a fresh tree, and
   independently reconciles every path, mode, size, blob id, and SHA-256; its
   origin, license, candidate-mount, network, execution, grader, and score
-  claims remain false; the verified through-424 checkpoint combines preparation
-  revision `d512b04156728cb9a4088f250ead395192572b34` for ordinals 287--380
-  with revision `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d` for Sphinx and the
-  reconciliation; 132 selected base commits across Flask, Seaborn, Requests,
-  Xarray, Pylint, Pytest, scikit-learn, and Sphinx have passed live preparation
-  replay, including all 44 Sphinx commits at ordinals 381--424 with 0 Sphinx
-  refusals, six Pylint commits are retained as exact `tree-symlink-forbidden`
-  policy refusals, and
-  362 selected tasks have not been attempted. The 45,469-byte reconciliation
-  has file SHA-256
+  claims remain false; the verified mixed-provenance through-499 checkpoint
+  preserves preparation revision `d512b04156728cb9a4088f250ead395192572b34`
+  for ordinals 287--380, revision
+  `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d` for Sphinx ordinals 381--424,
+  and revision `c3375577b1e555a56fa6c64ed754bc9eabd64b8f` for SymPy ordinals
+  425--499 and the fresh reconciliation. That range runs from
+  `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
+  `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`.
+  The historical through-424
+  reconciliation remains 45,469 bytes with file SHA-256
   `c6882b68d817e374ebd6be00fa32a7ee2a2ac2d265c2f8f1fc8c858138fea23e`
   and self-hash
-  `7bf6599e2a258b588a92b9bab41c899ba799b0fc81ff1bd41f355b86aa92a789`;
+  `7bf6599e2a258b588a92b9bab41c899ba799b0fc81ff1bd41f355b86aa92a789`.
+  At that checkpoint, 132 selected base commits across Flask, Seaborn, Requests,
+  Xarray, Pylint, Pytest, scikit-learn, and Sphinx passed live preparation
+  replay, including all 44 Sphinx commits with no Sphinx refusal; six Pylint
+  commits were policy-refused and 362 rows were unattempted.
+  The current 207 prepared manifests across nine repositories total 67,063,781
+  bytes and bind 258,837 regular files, 3,791,032,561 blob bytes, 41,459 tree
+  objects, and 12,449,863 raw tree-object bytes. Six Pylint commits retain exact
+  `tree-symlink-forbidden` refusals and 287 rows at ordinals 0--286 remain
+  unattempted. The 67,322-byte through-499 reconciliation has file SHA-256
+  `46452d7005493080b0f3bc9e09ff38ce7cf3d534a59a29b8e6499dcac48afcbe`
+  and self-hash
+  `d26d2a29b94363f3442ba576998725394d00d51335c9750ee466cc99032aea4e`;
 - a source-only full-cohort SWE-bench prediction ledger that revalidates source,
   opaque-key, and successful preparation bindings, turns every missing,
   duplicate, unexpected, invalid, oversized, or unprepared output into retained
   nonprediction/protocol evidence, and emits one deterministic official
   `instance_id`/`model_name_or_path`/`model_patch` JSONL row per selected task.
-  The retained through-424 ledger is 493,768 bytes with file SHA-256
+  The historical through-424 ledger remains 493,768 bytes with file SHA-256
   `3be02f725ec0e0041bde5af9ba02288c9b15823f3c0fcfd1ad84445d78276bb8`
   and self-hash
-  `5543f9e28a11a12bdf9a0bf9f3473926b80b0357910eed1e2fb2fcdc9cd002cc`;
-  its unchanged 53,734-byte official JSONL contains 500
-  `model_patch: null` rows and has SHA-256
+  `5543f9e28a11a12bdf9a0bf9f3473926b80b0357910eed1e2fb2fcdc9cd002cc`.
+  The current through-499 ledger is 498,718 bytes with file SHA-256
+  `e57df1b4c11ae8c274e636d488151b2e2fd865026d877f7e7a345c9bc6b97b3d`
+  and self-hash
+  `1f962ed25a7644b03bd36bb0b0b4ea79f29da8129ac0441a0084e7fb83d5b4dc`;
+  its predecessor-identical 53,734-byte official JSONL contains exactly 500
+  LF-terminated `model_patch: null` rows and has SHA-256
   `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`;
 - a source/sdist-only SWE-bench controller-run ledger that closes the same
   selected denominator over repository, workspace, launch, process, stream,
@@ -309,13 +325,14 @@ adding more claims to the README:
 - collect and independently annotate held-out natural coding-agent histories
   under the implemented consent, license, privacy, adjudication, split, and
   no-label-leakage contracts;
-- complete SWE-bench dataset/repository license review, continue the contiguous
-  preparation expansion with the 75 unique SymPy tasks and base commits at
-  ordinals 425--499, from
-  `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
-  `sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`, where the
-  source ends, then return to the 287 earlier Astropy, Django, and Matplotlib
-  rows; provision externally verified candidate mount/filesystem and network
+- complete SWE-bench dataset/repository license review and continue preparation
+  with the smallest untouched physical repository block after completing the
+  late ordinal 287--499 block: the 22 unique Astropy tasks and base commits at
+  ordinals 0--21, from
+  `astropy__astropy-12907@d16bfe05a744909de4b27f5875fe0d4ed41ce607`
+  through
+  `astropy__astropy-8872@b750a0e6ee76fb6b8a099a4d16ec51977be46bf6`;
+  provision externally verified candidate mount/filesystem and network
   isolation, capture real candidate outputs through
   the controller-run and prediction ledgers, carry patch-preflight exceptions
   into the complete-denominator ledger, harden the grader, and add public result

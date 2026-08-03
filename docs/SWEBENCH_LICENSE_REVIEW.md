@@ -21,7 +21,8 @@ repository snapshots.
 | Pytest task repository | `pytest-dev/pytest`, selected ordinals 330--348 | Nineteen prepared commits contain three root-`LICENSE` byte variants, four `doc/en/license.rst` variants, and a theme license in ordinals 333--341 | Discovered variants inventoried; per-path and redistribution review remain incomplete |
 | scikit-learn task repository | `scikit-learn/scikit-learn`, selected ordinals 349--380 | All 32 exact commits contain one of four root `COPYING` byte variants and the same vendored `sklearn/svm/src/liblinear/COPYRIGHT`; 28 distinct root packaging-declaration byte variants were also retained | All 32 trees prepared; the filename-based inventory is discovery evidence only, and applicability and redistribution review remain incomplete |
 | Sphinx task repository | `sphinx-doc/sphinx`, selected ordinals 381--424 | All 44 exact commits contain a root `LICENSE`; the engineering inventory retains five root-license byte variants plus root packaging-declaration variants | All 44 trees prepared; the filename/path-based inventory is discovery evidence only, and applicability and redistribution review remain incomplete |
-| Remaining 4 task repositories | Astropy, Django, Matplotlib, and SymPy exact base commits selected by the pinned source | Not yet inspected across all selected commits | 362 rows remain unattempted; local preparation and redistribution review remain incomplete |
+| SymPy task repository | `sympy/sympy`, selected ordinals 425--499 | All 75 exact commits contain root `LICENSE`, `data/TeXmacs/LICENSE`, and mode-`100755` root `setup.py`; 37 contain `setup.cfg` and 58 contain `sympy/parsing/latex/LICENSE.txt`; the engineering inventory retains 320 occurrences across 59 exact variants | All 75 trees prepared; the filename/path-based inventory is discovery evidence only, and applicability and redistribution review remain incomplete |
+| Remaining 3 task repositories | Astropy, Django, and Matplotlib exact base commits selected by the pinned source | Not yet inspected across all selected commits | 287 rows remain unattempted; local preparation and redistribution review remain incomplete |
 
 The official pinned [dataset tree](https://huggingface.co/datasets/SWE-bench/SWE-bench_Verified/tree/91aa3ed51b709be6457e12d00300a6a596d4c6a3)
 contains the dataset card and data but no standalone license file. The
@@ -146,18 +147,19 @@ byte-for-byte unchanged: the same 53,734 bytes, exact 500-row source order, 500
 `not-run-preparation-only`; neither checkpoint records model or controller
 execution.
 
-The current mixed-provenance through-424 checkpoint preserves that predecessor
-segment at `d512b04156728cb9a4088f250ead395192572b34` and adds Sphinx
+The historical mixed-provenance through-424 checkpoint preserves that
+predecessor segment at `d512b04156728cb9a4088f250ead395192572b34` and adds Sphinx
 ordinals 381--424 at
 `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d`. All 44 Sphinx rows prepared
 with no refusal, producing 44 manifests / 18,731,287 manifest bytes / 66,143
 files / 736,223,680 blob bytes / 18,382 tree objects / 3,334,382 raw tree
-bytes. The combined state is 138 attempted, 132 prepared, the same six Pylint
-refusals, and 362 unattempted. Its 132 manifests total 35,064,737 bytes and bind
+bytes. The combined state at that point was 138 attempted, 132 prepared, the
+same six Pylint refusals, and 362 unattempted. Its 132 manifests total
+35,064,737 bytes and bind
 130,199 files, 1,538,004,549 blob bytes, 25,985 tree objects, and 6,543,145 raw
 tree bytes.
 
-The fresh reconciliation artifacts are:
+The historical through-424 reconciliation artifacts are:
 
 - 45,469-byte reconciliation, raw SHA-256
   `c6882b68d817e374ebd6be00fa32a7ee2a2ac2d265c2f8f1fc8c858138fea23e`,
@@ -186,22 +188,75 @@ The fresh reconciliation artifacts are:
   self-hash
   `5df1f68df2405b8365074cce05b7ff2391b6ac945f81dd47951956a918ddae25`.
 
-A clean CPython 3.14.6 `--verify-only` replay completed in 2,236.794 seconds
-and reproduced the exact through-424 counts, file hashes, and self-hashes. This
-adds replay evidence only; it does not strengthen the inventory's legal,
-applicability, redistribution, or origin claims.
+A historical clean CPython 3.14.6 `--verify-only` replay completed in
+2,236.794 seconds and reproduced the exact through-424 counts, file hashes, and
+self-hashes. This adds replay evidence only; it does not strengthen the
+inventory's legal, applicability, redistribution, or origin claims.
 
 No public candidate, model, agent, hidden test, grader, GPU, or inference ran at
-this checkpoint. Candidate mount, filesystem/network isolation, execution,
-grading, resolution, score, usefulness, and claim readiness remain absent or
+that checkpoint. Candidate mount, filesystem/network isolation, execution,
+grading, resolution, score, usefulness, and claim readiness remained absent or
 false.
 
-The current next bounded range is SymPy ordinals 425--499: 75 unique tasks and
-commits from
+The current through-499 checkpoint adds SymPy ordinals 425--499 at clean
+generation revision `c3375577b1e555a56fa6c64ed754bc9eabd64b8f`. All 75
+unique tasks and commits prepared with no refusal, from
 `sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
-`sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`.
-Ordinal 499 is the physical source end. The earlier 287 unattempted rows belong
-to Astropy, Django, and Matplotlib.
+`sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`, producing
+75 manifests / 31,999,044 manifest bytes / 128,638 files / 2,253,028,012 blob
+bytes / 15,474 tree objects / 5,906,718 raw tree bytes. The current combined
+state is 213 attempted, 207 prepared, the same six Pylint refusals, and 287
+unattempted. Its
+207 manifests total 67,063,781 bytes and bind 258,837 files, 3,791,032,561 blob
+bytes, 41,459 tree objects, and 12,449,863 raw tree bytes.
+
+The SymPy and fresh through-499 artifacts are:
+
+- 50,679-byte SymPy summary, raw SHA-256
+  `17ccdf6c9941e83493dab39c13ba34a34c500a600bb0d4b8c5836fcad485d505`,
+  self-hash
+  `8c1d52330a69882e7ffe86851a7e684d33060fb2b476e52681ab50688b678ca0`;
+- 40,345-byte, 77-event SymPy journal, SHA-256
+  `37fe9b7fc0383e74b8c5cb7194c0d2e6becfab5d656e62ee1aca4d760b799254`;
+- 1,634-byte SymPy mirror evidence, raw SHA-256
+  `ca82d8be6381caf83743042d3452f49c15338f36562479212231080e740126d2`,
+  non-authenticating self-hash
+  `0220123b7d117760950386d21ab58b4a6aa5de5dcc19b4abe62f274674d66859`;
+- 217,198-byte SymPy engineering inventory, raw SHA-256
+  `be81e87227e3d6f9438b71a83ec48460d92545f829e252ae9606271e00b02db0`,
+  self-hash
+  `ac9cb5190e77294b655b86b63a398a8bd0407475322c0ca4e58a72805ca52066`;
+- 67,322-byte through-499 reconciliation, raw SHA-256
+  `46452d7005493080b0f3bc9e09ff38ce7cf3d534a59a29b8e6499dcac48afcbe`,
+  self-hash
+  `d26d2a29b94363f3442ba576998725394d00d51335c9750ee466cc99032aea4e`;
+- 498,718-byte through-499 ledger, raw SHA-256
+  `e57df1b4c11ae8c274e636d488151b2e2fd865026d877f7e7a345c9bc6b97b3d`,
+  self-hash
+  `1f962ed25a7644b03bd36bb0b0b4ea79f29da8129ac0441a0084e7fb83d5b4dc`;
+- predecessor-identical 53,734-byte official JSONL with exactly 500
+  LF-terminated `model_patch: null` rows, SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
+
+Publication resumed and completed in 7,595.734 seconds. A separate
+`--verify-only` replay completed in 4,920.234 seconds and reproduced the exact
+through-499 counts, file hashes, and self-hashes. This adds replay evidence
+only; it does not strengthen the inventory's legal, applicability,
+redistribution, or origin claims.
+
+No public candidate, model, agent, hidden test, grader, GPU, or inference ran at
+the current checkpoint. Candidate mount, filesystem/network isolation,
+execution, grading, resolution, score, usefulness, legal determination,
+redistribution approval, origin authentication, and claim readiness remain
+absent or false.
+
+After completing the late physical block 287--499, the next and smallest
+untouched physical repository block is Astropy ordinals 0--21: 22 unique tasks
+and commits from
+`astropy__astropy-12907@d16bfe05a744909de4b27f5875fe0d4ed41ce607`
+through
+`astropy__astropy-8872@b750a0e6ee76fb6b8a099a4d16ec51977be46bf6`.
+This does not mean every physical ordinal through 499 has been prepared.
 
 Pylint ordinals 324--329 each refused with exact code
 `tree-symlink-forbidden`. Every affected commit contains the same two mode
@@ -277,6 +332,14 @@ governs every file:
   The 96,201-byte inventory and its raw/self hashes are recorded above. This is
   engineering discovery only: it does not establish legal applicability,
   redistribution permission, or repository-origin authentication.
+- the 75 SymPy commits retain 320 candidate occurrences partitioned into 59
+  exact variants. Path occurrence/variant counts are root `LICENSE` 75/12,
+  `data/TeXmacs/LICENSE` 75/1, `setup.cfg` 37/11, `setup.py` 75/34, and
+  `sympy/parsing/latex/LICENSE.txt` 58/1. All 75 `setup.py` occurrences have Git
+  mode `100755`; the other 245 occurrences are `100644`. The inventory and its
+  raw/self hashes are recorded above. This is engineering discovery only: it
+  does not establish legal applicability, redistribution permission, or
+  repository-origin authentication.
 
 The breadth-first filename scan is useful discovery evidence, not proof that
 every applicable license, notice, vendored component, generated file, or
