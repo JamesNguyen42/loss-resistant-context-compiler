@@ -6,16 +6,19 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Base commit for this in-progress checkpoint: `43e8489`
-- Current checkpoint: the coordinator-only, source/sdist-only synthetic
-  SWE-bench text-patch composition preflight is implemented and is being
-  integrated. It mechanically revalidates source/preparation evidence, applies
-  candidate and hidden patches to independent temporary copies, retains
-  bounded effective-path overlap evidence, and replays only disjoint changes in
-  a third copy. It is not a grader or public-suite result.
-- Previous checkpoint: the separately result-blind-reviewed tau2-bench v1.0.1
-  half-duplex text core was source-bound in actual loader order and committed
-  and pushed as `43e8489`.
+- Base commit for this in-progress checkpoint: `ba49a6e`
+- Current checkpoint: portable file boundaries now reject regular-mode Windows
+  reparse targets before and after open in the core and shared benchmark
+  readers. SWE-bench repository and patch paths also reject Windows device
+  aliases with spaces before an extension. The first full-suite run then
+  exposed a pre-existing cross-process marshal-layout defect in optional
+  LocalAI bytecode verification; this checkpoint now also replaces that raw
+  byte comparison with a bounded isolated batch comparison. These are
+  fail-closed portability corrections; no public task, candidate, model,
+  grader, or inference runtime is involved.
+- Previous checkpoint: the coordinator-only, source/sdist-only SWE-bench
+  text-patch composition preflight was independently reviewed, committed, and
+  pushed as `ba49a6e`.
 - Next public preparation target: scikit-learn ordinals 349--380 (32 selected
   rows). No local mirror or exact base-commit license evidence has yet been
   retained for that repository. Do not encode a repository patch as an
@@ -41,7 +44,84 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
-## Current SWE-bench patch-composition checkpoint
+## Current portable-file-boundary checkpoint
+
+- Core source/artifact/archive reads and shared benchmark JSON/binary/hash reads
+  now reject a target whose pre-open or opened-descriptor stat carries Windows
+  reparse semantics even when its mode looks regular. Parent guards, identity
+  checks, bounded retries, post-read snapshots, and error types are unchanged.
+- Files On-Demand placeholders that still carry a reparse tag are deliberately
+  refused until materialized as ordinary files; this preserves the existing
+  fail-closed path policy.
+- SWE-bench repository-worker and patch-tree component checks now trim ASCII
+  spaces from the pre-extension stem before matching Windows device aliases.
+  `CON .txt`, `COM1 .txt`, and superscript-digit aliases are refused, while
+  `COM0.txt`, `COM10.txt`, and `CON name.txt` remain accepted controls.
+- The repository-worker source release anchor was updated to the exact reviewed
+  worker bytes, SHA-256
+  `cb9c8680d74022b7db8aea8b376790a49131f5fd1a1c0b93ba74341302c8a44f`.
+- The integrated path/archive/source/repository/patch set passed 112 tests and
+  skipped four expected platform-specific cases in 169.94 seconds on Windows.
+  Ruff, compile validation, and diff checks are clean.
+- The first full supported-suite run collected 2,408 tests and finished with
+  2,314 passed, 67 failed, and 27 skipped in 819.71 seconds. All 67 failures
+  were in `tests/test_localai_contracts_adapter.py`: a package-local
+  `smoke.pyc` created by another interpreter process represented the same code
+  as fresh verified-source compilation but had different raw marshal bytes.
+  The run is retained as diagnostic evidence, not relabeled green. After the
+  portability correction and added regressions, the definitive rerun collected
+  2,437 tests and completed with 2,409 passed, zero failed, and 28 skipped in
+  832.94 seconds.
+- Independent read-only review found no P0--P2 issue in the shared reparse fix;
+  a separate independent review approved the SWE-bench path correction, worker
+  anchor, tests, and their interaction with the shared reader change with no
+  P0--P2 finding.
+
+## Current LocalAI bytecode-portability correction
+
+- Package-local caches are still bounded regular files and external cache
+  prefixes remain unsupported. One at-most-16 MiB, 64-record batch is passed
+  through an empty-environment `-I -S -B` worker. Windows assigns the suspended
+  process to a 256 MiB Job Object before resume; non-Darwin POSIX clamps the
+  inherited address-space and core limits. macOS uses the fixed `/bin/sh -p`
+  pre-limit pattern with an exact 1 TiB virtual-address-space ceiling so hosted
+  arm64 interpreter mappings fit before startup. One absolute ten-second
+  latest-acceptance deadline covers batch construction through comparison;
+  mandatory process-tree cleanup has separately bounded grace.
+- The worker compiles the verified source associated with every cache before
+  unmarshalling any cache, fully consumes each marshal payload, and compares
+  const-stripped format-2 serialized metadata, private raw adaptive
+  instruction/cache images, and a depth/node/byte-bounded tagged constant graph
+  with per-code identity topology. This supports CPython 3.14 slice constants
+  without relying on format 5's process-dependent reference layout.
+  Cross-process sharing between
+  separate nested code objects is normalized because valid compiler processes
+  differ there; identity reachable within each code object remains bound.
+- The worker propagates the current interpreter's no-debug-range compile mode.
+  Cacheful validation requires CPython's private `_co_code_adaptive` bytes and
+  therefore fails closed on an implementation that does not expose them.
+  Memory/deadline/process-tree containment is not a filesystem or network
+  sandbox against a native marshal vulnerability.
+- Focused regressions now accept the real independently produced cache, a
+  deliberately byte-different independent compiler-process cache, current
+  no-debug-range mode, runtime-normalized cross-mode caches, CPython 3.14 slice
+  constants, and all 39 supported optimization-cache names in one batch. They
+  reject forged code, changed metadata or slice values, malformed or trailing
+  marshal data, a raw specialized instruction, changed within-code constant
+  sharing, over-limit batches/files, and a hung, setup-delayed, or
+  batch-construction-delayed worker. Direct independent-process probes accepted
+  all four previously failing reviewed sources on CPython 3.13.14 and all 39
+  optimization/source combinations in one batch on CPython 3.14.6. The two
+  LocalAI modules passed in reverse order with 166 passed and four skipped
+  before two additional invalid-graph regressions passed separately; the final
+  full suite includes all of them and is green.
+- Three independent read-only re-reviews found no P0--P2 issue in the final
+  bytecode semantics, Darwin/deadline containment, tests, or documentation.
+  Ruff, diff/compile checks, connector conformance, benchmark self-test, and an
+  offline wheel/source-distribution build also passed. No model, candidate,
+  grader, GPU, or inference runtime was executed.
+
+## Previous SWE-bench patch-composition checkpoint (`ba49a6e`)
 
 - Added coordinator-only, source/sdist-only `benchmarks.swebench_patch` and
   strict self-hashed schema `ctxc-swebench-patch-composition-0.1`. It adds no

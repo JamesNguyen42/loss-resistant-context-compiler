@@ -66,9 +66,14 @@ console stub without consulting an ambient pip installation at runtime. An
 installer that emits another native stub is unsupported and fails closed. The
 adapter then verifies exact sizes plus a canonically framed SHA-256 over the
 reviewed installed source/resource files. Any package-local executable
-bytecode must equal fresh compilation of verified source; external cache
-prefixes fail closed. It repeats those checks after import and validates the
-returned module and loaded module paths. This proves only observed
+bytecode is parsed only by one empty-environment, memory/deadline/process-tree
+bounded no-site batch worker. It compiles the verified source associated with
+every cache before unmarshalling any cache, fully consumes each marshal record,
+and binds const-stripped format-2 serialized metadata, raw adaptive
+instruction/cache images, and a bounded tagged constant graph with per-code
+identity topology;
+external cache prefixes fail closed. It repeats those checks after import and
+validates the returned module and loaded module paths. This proves only observed
 installed-tree and provenance-claim agreement. PEP 610 metadata does not
 independently authenticate the archive, make the check/import sequence atomic
 against a writable install, or undo `.pth`, `sitecustomize`, `meta_path`, or
@@ -78,6 +83,15 @@ must independently re-hash the wheel before a direct offline
 keep the environment non-writable by untrusted actors. The current local result
 is not a signature, independent source audit, vulnerability scan, or
 publication authorization.
+The comparison normalizes only sharing between separate nested code objects,
+which differs across valid compiler processes. It requires CPython's private
+raw adaptive-code image and rejects cacheful installs on implementations that
+do not expose it. Worker resource containment is not a filesystem or network
+sandbox against a native marshal vulnerability.
+Windows and non-Darwin POSIX use a 256 MiB process/address-space ceiling.
+macOS uses an exact 1 TiB virtual-address-space ceiling because hosted arm64
+interpreters begin with much larger virtual mappings; bounded input, deadline,
+and owned process-tree rules remain the tighter operational limits.
 
 At adapter checkpoint `da664387`, the canonical LF `git archive` provider
 wheel was 222,661 bytes with SHA-256

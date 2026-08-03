@@ -84,7 +84,11 @@ commit:
    module/spec/source-loader origin and state, an unset external bytecode-cache
    prefix, exact bounded link-free installed source/resource tree, absence of
    unexpected importable entries, and package-local executable bytecode against
-   verified source. The archive hash remains an independent gate.
+   verified source through the bounded isolated batch comparison of complete
+   marshal records, const-stripped format-2 serialized metadata, raw adaptive
+   instruction/cache images, and bounded tagged constant graphs with per-code
+   identity topology. The archive hash remains an
+   independent gate.
    All clean lanes use `--no-index --no-compile`. Provider-only and direct
    provider-plus-contracts lanes also use `--no-deps`; the provenance-negative
    transitive lane resolves only from its local `--find-links` directory and

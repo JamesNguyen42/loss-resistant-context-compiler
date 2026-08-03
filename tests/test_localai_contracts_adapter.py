@@ -12,6 +12,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 import zipfile
 from dataclasses import replace
 from pathlib import Path
@@ -128,6 +129,43 @@ def _run_isolated(script: str, *arguments: Path) -> subprocess.CompletedProcess[
         capture_output=True,
         text=True,
         encoding="utf-8",
+        timeout=30,
+        check=False,
+    )
+
+
+def _run_hash_seeded(
+    script: str,
+    *arguments: Path,
+    no_debug_ranges: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.upper().startswith("PYTHON")
+    }
+    environment.update(
+        {
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONHASHSEED": "0",
+        }
+    )
+    if no_debug_ranges:
+        environment["PYTHONNODEBUGRANGES"] = "1"
+    return subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            "-B",
+            "-c",
+            script,
+            *(str(argument) for argument in arguments),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=environment,
         timeout=30,
         check=False,
     )
@@ -1334,6 +1372,241 @@ def test_forged_bytecode_cache_is_rejected_before_execution(
     _assert_install_rejected_before_marker(tampered_root, marker)
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "filename",
+        "stacksize",
+        "firstlineno",
+        "name",
+        "qualname",
+        "flags",
+        "linetable",
+        "exceptiontable",
+    ],
+)
+def test_bytecode_cache_requires_exact_code_metadata(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    tampered_root = tmp_path / f"forged-bytecode-{mutation}"
+    _copy_contracts_install(tampered_root)
+    marker = tmp_path / f"forged-bytecode-{mutation}-executed"
+    source = tampered_root / "localai_contracts" / "canonical.py"
+    source_stat = source.stat()
+    cache = Path(importlib.util.cache_from_source(str(source), optimization=""))
+    cache.parent.mkdir()
+    code = compile(
+        source.read_bytes(),
+        str(source),
+        "exec",
+        dont_inherit=True,
+        optimize=0,
+    )
+    replacements: dict[str, Any] = {
+        "filename": f"{source}.forged",
+        "stacksize": code.co_stacksize + 1,
+        "firstlineno": code.co_firstlineno + 1,
+        "name": f"{code.co_name}.forged",
+        "qualname": f"{code.co_qualname}.forged",
+        "flags": code.co_flags ^ 0x2000_0000,
+        "linetable": code.co_linetable + b"\x00",
+        "exceptiontable": code.co_exceptiontable + b"\x00",
+    }
+    code = code.replace(**{f"co_{mutation}": replacements[mutation]})
+    cache.write_bytes(
+        importlib.util.MAGIC_NUMBER
+        + (0).to_bytes(4, "little")
+        + (int(source_stat.st_mtime) & 0xFFFF_FFFF).to_bytes(4, "little")
+        + (source_stat.st_size & 0xFFFF_FFFF).to_bytes(4, "little")
+        + marshal.dumps(code)
+    )
+
+    _assert_install_rejected_before_marker(tampered_root, marker)
+
+
+def test_malformed_bytecode_is_rejected_outside_the_host_process(
+    tmp_path: Path,
+) -> None:
+    tampered_root = tmp_path / "malformed-bytecode"
+    _copy_contracts_install(tampered_root)
+    marker = tmp_path / "malformed-bytecode-executed"
+    source = tampered_root / "localai_contracts" / "canonical.py"
+    source_stat = source.stat()
+    cache = Path(importlib.util.cache_from_source(str(source), optimization=""))
+    cache.parent.mkdir()
+    cache.write_bytes(
+        importlib.util.MAGIC_NUMBER
+        + (0).to_bytes(4, "little")
+        + (int(source_stat.st_mtime) & 0xFFFF_FFFF).to_bytes(4, "little")
+        + (source_stat.st_size & 0xFFFF_FFFF).to_bytes(4, "little")
+        + b"not-a-marshalled-code-object"
+    )
+
+    _assert_install_rejected_before_marker(tampered_root, marker)
+
+
+def test_bytecode_cache_rejects_trailing_payload(
+    tmp_path: Path,
+) -> None:
+    tampered_root = tmp_path / "trailing-bytecode"
+    _copy_contracts_install(tampered_root)
+    marker = tmp_path / "trailing-bytecode-executed"
+    source = tampered_root / "localai_contracts" / "canonical.py"
+    source_stat = source.stat()
+    cache = Path(importlib.util.cache_from_source(str(source), optimization=""))
+    cache.parent.mkdir()
+    code = compile(
+        source.read_bytes(),
+        str(source),
+        "exec",
+        dont_inherit=True,
+        optimize=0,
+    )
+    cache.write_bytes(
+        importlib.util.MAGIC_NUMBER
+        + (0).to_bytes(4, "little")
+        + (int(source_stat.st_mtime) & 0xFFFF_FFFF).to_bytes(4, "little")
+        + (source_stat.st_size & 0xFFFF_FFFF).to_bytes(4, "little")
+        + marshal.dumps(code)
+        + b"trailing-payload"
+    )
+
+    _assert_install_rejected_before_marker(tampered_root, marker)
+
+
+def test_bytecode_worker_deadline_is_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        adapter_module,
+        "_CONTRACTS_BYTECODE_WORKER",
+        "while True:\n    pass\n",
+    )
+
+    with pytest.raises(
+        adapter_module._ContractsBytecodeWorkerError,
+        match="exceeded its deadline",
+    ):
+        adapter_module._run_bytecode_validation_worker(
+            b"",
+            timeout_seconds=0.1,
+        )
+
+
+def test_bytecode_worker_setup_consumes_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_command = adapter_module._bytecode_worker_command
+
+    def delayed_command() -> tuple[str, ...]:
+        time.sleep(0.1)
+        return real_command()
+
+    def forbidden_popen(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("expired bytecode validation launched a worker")
+
+    monkeypatch.setattr(adapter_module, "_bytecode_worker_command", delayed_command)
+    monkeypatch.setattr(adapter_module.subprocess, "Popen", forbidden_popen)
+
+    with pytest.raises(
+        adapter_module._ContractsBytecodeWorkerError,
+        match="exceeded its deadline",
+    ):
+        adapter_module._run_bytecode_validation_worker(
+            b"",
+            timeout_seconds=0.05,
+        )
+
+
+def test_bytecode_batch_enforces_count_and_aggregate_byte_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed_payloads: list[bytes] = []
+
+    def capture_worker(
+        payload: bytes,
+        *,
+        timeout_seconds: float,
+        absolute_deadline: float | None = None,
+    ) -> None:
+        assert timeout_seconds == 1.0
+        assert absolute_deadline is None
+        observed_payloads.append(payload)
+
+    monkeypatch.setattr(
+        adapter_module,
+        "_run_bytecode_validation_worker",
+        capture_worker,
+    )
+
+    with pytest.raises(ValueError, match="inventory is invalid"):
+        adapter_module._run_bytecode_validation_records((), timeout_seconds=1.0)
+    with pytest.raises(ValueError, match="inventory is invalid"):
+        adapter_module._run_bytecode_validation_records(
+            (b"",) * (adapter_module._MAX_CONTRACTS_BYTECODE_BATCH_RECORDS + 1),
+            timeout_seconds=1.0,
+        )
+
+    adapter_module._run_bytecode_validation_records(
+        (b"",) * adapter_module._MAX_CONTRACTS_BYTECODE_BATCH_RECORDS,
+        timeout_seconds=1.0,
+    )
+    assert observed_payloads.pop()[:4] == (
+        adapter_module._MAX_CONTRACTS_BYTECODE_BATCH_RECORDS.to_bytes(4, "big")
+    )
+
+    exact_record = b"x" * (adapter_module._MAX_CONTRACTS_BYTECODE_BATCH_BYTES - 4)
+    adapter_module._run_bytecode_validation_records(
+        (exact_record,),
+        timeout_seconds=1.0,
+    )
+    assert len(observed_payloads.pop()) == adapter_module._MAX_CONTRACTS_BYTECODE_BATCH_BYTES
+    with pytest.raises(ValueError, match="batch exceeds limit"):
+        adapter_module._run_bytecode_validation_records(
+            (exact_record + b"x",),
+            timeout_seconds=1.0,
+        )
+
+
+def test_bytecode_cache_enforces_per_file_byte_limit(tmp_path: Path) -> None:
+    source = tmp_path / "bounded.py"
+    source.write_bytes(b"value = 1\n")
+    cache = tmp_path / "bounded.pyc"
+    cache.write_bytes(b"x" * (adapter_module._MAX_CONTRACTS_BYTECODE_BYTES + 1))
+
+    with pytest.raises(ValueError):
+        adapter_module._bytecode_validation_record(
+            cache,
+            source=source.read_bytes(),
+            source_path=source,
+            optimize=0,
+        )
+
+
+def test_bytecode_batch_construction_consumes_total_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def delayed_record(*_args: Any, **_kwargs: Any) -> bytes:
+        time.sleep(0.1)
+        return b""
+
+    def forbidden_popen(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("expired bytecode batch launched a worker")
+
+    monkeypatch.setattr(adapter_module, "_CONTRACTS_BYTECODE_TOTAL_SECONDS", 0.05)
+    monkeypatch.setattr(adapter_module, "_bytecode_validation_record", delayed_record)
+    monkeypatch.setattr(adapter_module.subprocess, "Popen", forbidden_popen)
+
+    with pytest.raises(ValueError, match="does not match verified source"):
+        adapter_module._validate_bytecode_caches(
+            ((tmp_path / "cache.pyc", "source.py", 0),),
+            verified_sources={"source.py": b"value = 1\n"},
+            package_directory=tmp_path,
+        )
+
+
 def test_external_pycache_prefix_is_rejected_before_bytecode_executes(
     tmp_path: Path,
 ) -> None:
@@ -1439,6 +1712,226 @@ assert manifest.supported_operations == ["context.compile"]
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout == ""
     assert completed.stderr == ""
+
+
+def test_bytecode_cache_from_independent_compiler_process_is_accepted(
+    tmp_path: Path,
+) -> None:
+    install_root = tmp_path / "independent-bytecode"
+    _copy_contracts_install(install_root)
+    source = install_root / "localai_contracts" / "smoke.py"
+    cache = Path(importlib.util.cache_from_source(str(source), optimization=""))
+    cache.parent.mkdir()
+    generated = _run_hash_seeded(
+        """
+import py_compile
+import sys
+py_compile.compile(sys.argv[1], cfile=sys.argv[2], doraise=True)
+""",
+        source,
+        cache,
+    )
+    assert generated.returncode == 0, generated.stderr
+
+    adapter_process_payload = tmp_path / "adapter-process-marshal.bin"
+    probed = _run_hash_seeded(
+        """
+import marshal
+from pathlib import Path
+import sys
+sys.path.insert(0, sys.argv[1])
+import context_compiler.localai_contracts_adapter  # noqa: F401
+source = Path(sys.argv[2])
+Path(sys.argv[3]).write_bytes(
+    marshal.dumps(
+        compile(
+            source.read_bytes(),
+            str(source),
+            "exec",
+            dont_inherit=True,
+            optimize=0,
+        )
+    )
+)
+""",
+        ROOT / "src",
+        source,
+        adapter_process_payload,
+    )
+    assert probed.returncode == 0, probed.stderr
+    assert cache.read_bytes()[16:] != adapter_process_payload.read_bytes()
+
+    validated = _run_hash_seeded(
+        """
+import sys
+sys.path[:0] = [sys.argv[1], sys.argv[2]]
+from context_compiler.localai_contracts_adapter import LocalAIContractsAdapter
+manifest = LocalAIContractsAdapter().get_manifest()
+assert manifest.supported_operations == ["context.compile"]
+""",
+        ROOT / "src",
+        install_root,
+    )
+    assert validated.returncode == 0, validated.stderr
+    assert validated.stdout == ""
+    assert validated.stderr == ""
+
+
+def test_bytecode_cache_respects_no_debug_ranges_mode(
+    tmp_path: Path,
+) -> None:
+    install_root = tmp_path / "no-debug-ranges-bytecode"
+    _copy_contracts_install(install_root)
+    source = install_root / "localai_contracts" / "canonical.py"
+    cache = Path(importlib.util.cache_from_source(str(source), optimization=""))
+    cache.parent.mkdir()
+    generated = _run_hash_seeded(
+        """
+import py_compile
+import sys
+py_compile.compile(sys.argv[1], cfile=sys.argv[2], doraise=True)
+""",
+        source,
+        cache,
+        no_debug_ranges=True,
+    )
+    assert generated.returncode == 0, generated.stderr
+    cached_code = marshal.loads(cache.read_bytes()[16:])
+    assert all(
+        column is None and end_column is None
+        for _line, _end_line, column, end_column in cached_code.co_positions()
+    )
+
+    validated = _run_hash_seeded(
+        """
+import sys
+sys.path[:0] = [sys.argv[1], sys.argv[2]]
+from context_compiler.localai_contracts_adapter import LocalAIContractsAdapter
+manifest = LocalAIContractsAdapter().get_manifest()
+assert manifest.supported_operations == ["context.compile"]
+""",
+        ROOT / "src",
+        install_root,
+        no_debug_ranges=True,
+    )
+    assert validated.returncode == 0, validated.stderr
+    assert validated.stdout == ""
+    assert validated.stderr == ""
+
+
+def test_bytecode_cache_cross_debug_range_modes_follow_runtime_normalization(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "debug-ranges.py"
+    source.write_bytes(b"value = subject.attribute\n")
+    cache = tmp_path / "debug-ranges.pyc"
+    generate = """
+import py_compile
+import sys
+py_compile.compile(sys.argv[1], cfile=sys.argv[2], doraise=True)
+"""
+    validate_rejection = """
+from pathlib import Path
+import sys
+sys.path.insert(0, sys.argv[1])
+from context_compiler.localai_contracts_adapter import _validate_bytecode_cache
+source = Path(sys.argv[2])
+try:
+    _validate_bytecode_cache(
+        Path(sys.argv[3]),
+        source=source.read_bytes(),
+        source_path=source,
+        optimize=0,
+    )
+except ValueError:
+    pass
+else:
+    raise AssertionError("cross-mode bytecode cache was accepted")
+"""
+    validate_normalized_acceptance = """
+import marshal
+from pathlib import Path
+import sys
+sys.path.insert(0, sys.argv[1])
+from context_compiler.localai_contracts_adapter import _validate_bytecode_cache
+source = Path(sys.argv[2])
+cache = Path(sys.argv[3])
+candidate = marshal.loads(cache.read_bytes()[16:])
+assert all(
+    column is None and end_column is None
+    for _line, _end_line, column, end_column in candidate.co_positions()
+)
+_validate_bytecode_cache(
+    cache,
+    source=source.read_bytes(),
+    source_path=source,
+    optimize=0,
+)
+"""
+
+    generated = _run_hash_seeded(generate, source, cache)
+    assert generated.returncode == 0, generated.stderr
+    accepted_no_debug = _run_hash_seeded(
+        validate_normalized_acceptance,
+        ROOT / "src",
+        source,
+        cache,
+        no_debug_ranges=True,
+    )
+    assert accepted_no_debug.returncode == 0, accepted_no_debug.stderr
+
+    generated_no_debug = _run_hash_seeded(
+        generate,
+        source,
+        cache,
+        no_debug_ranges=True,
+    )
+    assert generated_no_debug.returncode == 0, generated_no_debug.stderr
+    rejected_normal = _run_hash_seeded(
+        validate_rejection,
+        ROOT / "src",
+        source,
+        cache,
+    )
+    assert rejected_normal.returncode == 0, rejected_normal.stderr
+
+
+def test_all_supported_bytecode_cache_variants_fit_one_batch(
+    tmp_path: Path,
+) -> None:
+    install_root = tmp_path / "complete-bytecode-inventory"
+    _copy_contracts_install(install_root)
+    package = install_root / "localai_contracts"
+    cached_count = 0
+    for source in sorted(package.glob("*.py")):
+        source_bytes = source.read_bytes()
+        source_stat = source.stat()
+        for optimize, tag in ((0, ""), (1, "1"), (2, "2")):
+            cache = Path(
+                importlib.util.cache_from_source(
+                    str(source),
+                    optimization=tag,
+                )
+            )
+            cache.parent.mkdir(exist_ok=True)
+            code = compile(
+                source_bytes,
+                str(source),
+                "exec",
+                dont_inherit=True,
+                optimize=optimize,
+            )
+            cache.write_bytes(
+                importlib.util.MAGIC_NUMBER
+                + (0).to_bytes(4, "little")
+                + (int(source_stat.st_mtime) & 0xFFFF_FFFF).to_bytes(4, "little")
+                + (source_stat.st_size & 0xFFFF_FFFF).to_bytes(4, "little")
+                + marshal.dumps(code)
+            )
+            cached_count += 1
+    assert cached_count == 39
+
+    _assert_install_accepted(install_root)
 
 
 @pytest.mark.parametrize(

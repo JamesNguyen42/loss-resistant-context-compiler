@@ -621,6 +621,37 @@ def test_repeated_source_rename_headers_are_rejected_before_git(
 
 
 @pytest.mark.parametrize(
+    "reserved_path",
+    [
+        "CON .txt",
+        "AUX .foo",
+        "COM1 .txt",
+        "COM\N{SUPERSCRIPT ONE} .txt",
+        "LPT\N{SUPERSCRIPT TWO} .log",
+    ],
+)
+def test_patch_paths_reject_spaced_windows_device_aliases(
+    reserved_path: str,
+) -> None:
+    with pytest.raises(PatchCompositionError, match="reserved device name"):
+        patch_module._portable_relative_path(
+            reserved_path,
+            PatchCompositionLimits(),
+        )
+
+
+@pytest.mark.parametrize("portable_path", ["COM0.txt", "COM10.txt", "CON name.txt"])
+def test_patch_paths_retain_non_device_name_controls(portable_path: str) -> None:
+    assert (
+        patch_module._portable_relative_path(
+            portable_path,
+            PatchCompositionLimits(),
+        )
+        == portable_path
+    )
+
+
+@pytest.mark.parametrize(
     "hostile_patch,pattern",
     [
         (

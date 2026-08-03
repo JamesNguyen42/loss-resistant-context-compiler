@@ -109,10 +109,19 @@ raw evidence when completing benchmark work.
   prefixes, loader
   overrides, non-string registry/namespace keys, and linked/reparse entries;
   bind package-local executable bytecode to fresh compilation of verified
-  source. Revalidate the complete gate after import. Isolated regressions cover
+  source through one memory/deadline/process-tree bounded no-site batch worker.
+  Compile every cache-associated verified source before cache parsing; require
+  full marshal consumption, const-stripped serialized metadata, raw adaptive
+  instruction/cache images, and a bounded tagged constant graph with per-code
+  identity topology. Revalidate the complete gate after
+  import. Isolated regressions cover
   immutable/generated `RECORD` mutation, duplication and path drift, a
   marker-writing path shadow, exact-size source/resource mutation, ambiguous
-  distributions, unexpected subpackages, external and forged bytecode,
+  distributions, unexpected subpackages, cross-process and full optimization
+  cache inventories, current and cross no-debug-range modes, malformed,
+  trailing, forged, specialized, and slice-constant bytecode, changed
+  within-code constant sharing, worker and batch-construction timeouts, byte
+  and record ceilings, external cache prefixes,
   loader/module hooks, wrong-origin preloads, post-import mutation, and
   substituted import return objects. The gate does not independently
   authenticate the wheel archive, close writable-filesystem TOCTOU, or repair
@@ -1036,11 +1045,13 @@ evidence of sublinear compilation.
   not replace a protected monotonic/signature anchor.
 - [ ] Define safe retention, deletion, and backup workflows.
 - [x] Complete the hostile serialized-file and structural-metadata matrix:
-  source, artifact, and archive paths reject symlink/special-file inputs,
-  detect substitution/in-place mutation, bound replacement retries, and refuse
-  compressed bytes without decompression; archive hard-link aliases, writer
-  races, oversized/ambiguous JSON, canonical immutable metadata, and fixed
-  source-id/role/timestamp amplification ceilings have fail-closed coverage.
+  source, artifact, archive, and benchmark-evidence paths reject
+  symlink/special-file inputs and regular-mode Windows reparse targets before
+  and after open, detect substitution/in-place mutation, bound replacement
+  retries, and refuse compressed bytes without decompression; archive hard-link
+  aliases, writer races, oversized/ambiguous JSON, canonical immutable metadata,
+  and fixed source-id/role/timestamp amplification ceilings have fail-closed
+  coverage.
 - [x] Define and test the parent-directory traversal boundary. Shared guards
   reject linked/reparse ancestors, freeze the full lexical ancestor chain,
   use pinned descriptor-relative parents on POSIX, and revalidate before and

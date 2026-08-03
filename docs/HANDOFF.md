@@ -514,14 +514,27 @@ exact-wheel PEP 610 archive metadata, and one platform-canonical launcher. An
 exact empty `REQUESTED` marker is optional; every other generated row fails
 closed. Loader instance overrides and
 non-string registry/namespace keys fail closed without invoking their hooks.
-Package-local executable bytecode must match compilation of verified source;
-external cache prefixes are refused. The complete `RECORD`, file, and origin
-gate repeats after import and binds the returned module object and every loaded
+Package-local executable bytecode is parsed only by one empty-environment
+no-site batch worker. Windows and non-Darwin POSIX apply a 256 MiB
+process/address-space ceiling; macOS applies an exact 1 TiB virtual-address-
+space ceiling. A ten-second latest-acceptance deadline covers cache-batch
+construction through comparison, and owned process-tree cleanup has separately
+bounded grace. The worker compiles the cache-associated verified source for
+every record before unmarshalling any cache, then requires complete records and
+agreement for const-stripped format-2 serialized metadata, raw adaptive
+instruction/cache images, and a bounded tagged constant graph with per-code
+identity topology. External cache prefixes are refused. The
+complete `RECORD`, file, and origin gate repeats after import and binds the returned module object and every loaded
 contract-module path. Its fixed path-free failure does not imply independent
 wheel-archive authentication, an atomic import transaction, or containment of
 writable site-packages, code already run by startup/custom-finder/preload
 hooks, or arbitrary same-origin module forgery in a compromised process. The
 root API and ordinary `ctxc` behavior remain standalone.
+Sharing between separate nested code objects is normalized because it differs
+across valid compiler processes; within-code identity topology is bound.
+Cacheful validation requires CPython's private raw adaptive-code image, and
+worker containment does not provide a filesystem/network sandbox against a
+native marshal vulnerability.
 
 The submodule-only `compile_with_conversion_audit` API returns the actual
 shared ContextBundle and a separate provider-local
@@ -1089,12 +1102,14 @@ audited. Any selected superseded item independently fails verification as
   Resource violations abort rather than truncate protected state and are
   covered by direct, artifact-shape, verifier, and CLI regressions.
 - Serialized source/artifact path loaders additionally require a stable
-  regular file, reject symlinks/directories/FIFOs, compare pre-open/open and
-  post-read identity/content metadata, request nonblocking/no-follow opens,
-  retry bounded atomic replacement races, and reject gzip bytes without
-  invoking a decompressor. The shared parent guard rejects linked/reparse
-  ancestors, snapshots the complete lexical chain, and pins the exact parent
-  descriptor on POSIX; adversarial swaps fail before a result is accepted.
+  regular file, reject symlinks/directories/FIFOs and regular-mode Windows
+  reparse targets before and after open, compare pre-open/open and post-read
+  identity/content metadata, request nonblocking/no-follow opens, retry bounded
+  atomic replacement races, and reject gzip bytes without invoking a
+  decompressor. The benchmark evidence reader applies the same target-reparse
+  rule. The shared parent guard rejects linked/reparse ancestors, snapshots the
+  complete lexical chain, and pins the exact parent descriptor on POSIX;
+  adversarial swaps fail before a result is accepted.
 - Artifact loaders, direct replay, `ctxc verify`, and `ctxc inspect` share
   strict raw/canonical byte, line, depth, item/selection, provenance, and issue
   limits. Tests cover BOM/multibyte boundaries, duplicate keys, non-finite

@@ -147,8 +147,8 @@ The repository currently includes:
   rejection, canonical-byte, and auxiliary output; combined candidates,
   resolved items, provenance spans, and shared comparison/render work;
 - shared strict regular-file loading for benchmark reports, corpora, external
-  candidates, and run manifests, with byte/line/depth limits plus duplicate-key
-  and non-finite-number rejection;
+  candidates, and run manifests, with pre/open rejection of Windows reparse
+  targets, byte/line/depth limits, and duplicate-key/non-finite-number rejection;
 - versioned corpus and candidate producer records that are bound by envelope
   self-digests while remaining outside the frozen benchmark dataset identity;
 - reusable same-directory atomic file replacement for CLI outputs, archive
@@ -957,10 +957,21 @@ On Windows, that launcher must use the architecture-matched reviewed distlib
 runtime dependency. The empty `REQUESTED` marker is optional but exact when
 present. Exact sizes plus a canonically framed SHA-256 also bind the reviewed
 installed source/resource tree. Any package-local executable bytecode cache
-must match fresh compilation of those verified source bytes; external
-bytecode-cache prefixes fail closed. The complete `RECORD`, file, and origin
-gate is repeated after import, and the returned module must be the validated
-`sys.modules` root.
+is read under the same file/size checks and parsed only by one isolated
+`-I -S -B` batch worker. Windows and non-Darwin POSIX use a 256 MiB process or
+address-space ceiling; macOS uses an exact 1 TiB virtual-address-space ceiling
+that accommodates its large baseline mappings. A ten-second latest-acceptance
+deadline covers cache-batch construction through comparison; mandatory owned
+process-tree cleanup has separately bounded grace. The worker compiles the
+verified source associated with every cache before parsing any cache, requires
+one fully consumed marshal object per record, and compares const-stripped
+format-2 serialized metadata, raw adaptive instruction/cache images, and a
+bounded tagged constant graph with per-code identity topology. This accepts
+process-dependent marshal reference layouts without accepting changed code,
+specialized instructions, cache words, changed within-code constant sharing,
+or trailing bytes. External bytecode-cache
+prefixes fail closed. The complete `RECORD`, file, and origin gate is repeated
+after import, and the returned module must be the validated `sys.modules` root.
 
 These checks establish agreement for the installed tree and its direct-archive
 claim at the observed checks. The PEP 610 claim does not independently
@@ -972,6 +983,14 @@ resolves the preflight spec. A same-origin module object forged inside a
 compromised process remains outside this boundary. Independently hash the
 reviewed wheel before installation, unset `PYTHONPYCACHEPREFIX`, and use a clean
 environment that is not writable by untrusted actors while the connector runs.
+The normalized comparison deliberately does not bind sharing between separate
+nested code objects because that implementation detail differs across valid
+compiler processes; sharing reachable within each code object remains bound.
+The worker contains parser memory, deadline, and process-tree failure, but it
+is not a filesystem or network sandbox against a native Python marshal defect.
+Cacheful installs therefore require CPython's private raw adaptive-code image;
+an implementation without it fails closed, while cache-free `--no-compile`
+installs remain portable.
 
 The reviewed compatibility identity is:
 

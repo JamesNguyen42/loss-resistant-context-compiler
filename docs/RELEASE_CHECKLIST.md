@@ -71,8 +71,11 @@ a production PyPI upload, or a broader product/evidence claim.
   `sys.pycache_prefix`, exact built-in module/spec/source-loader state bound to
   the recorded package/initializer, the exact bounded link-free installed
   source/resource tree digest and sizes, no unexpected importable entries, and
-  package-local bytecode matching fresh compilation of verified source. Repeat
-  the gate after import. Run the shadow, ambiguous-distribution, exact-size
+  package-local bytecode matching fresh compilation of verified source through
+  the bounded isolated batch comparison of complete marshal records,
+  const-stripped format-2 serialized metadata, raw adaptive instruction/cache
+  images, and bounded tagged constant graphs with per-code identity topology.
+  Repeat the gate after import. Run the shadow, ambiguous-distribution, exact-size
   source/resource mutation, extra-subpackage, external/forged-bytecode,
   loader/module hook, wrong-origin preload, and post-import mutation
   regressions on every supported CPython/platform lane. Independently hash the

@@ -16,6 +16,7 @@ from typing import Any
 from context_compiler.path_safety import (
     ParentDirectoryGuard,
     PathBoundaryError,
+    _is_link_or_reparse,
 )
 
 
@@ -212,7 +213,9 @@ def _open_regular_file(
                 raise StrictJsonError(
                     f"could not inspect {label}: {input_path}"
                 ) from exc
-            if not stat.S_ISREG(candidate_stat.st_mode):
+            if not stat.S_ISREG(candidate_stat.st_mode) or _is_link_or_reparse(
+                candidate_stat
+            ):
                 raise StrictJsonError(
                     f"{label} path must be a regular file: {input_path}"
                 )
@@ -238,7 +241,9 @@ def _open_regular_file(
                     raise StrictJsonError(
                         f"could not inspect open {label}: {input_path}"
                     ) from exc
-                if not stat.S_ISREG(file_stat.st_mode):
+                if not stat.S_ISREG(file_stat.st_mode) or _is_link_or_reparse(
+                    file_stat
+                ):
                     raise StrictJsonError(
                         f"{label} path must be a regular file: {input_path}"
                     )

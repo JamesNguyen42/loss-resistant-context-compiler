@@ -418,7 +418,8 @@ def _portable_relative_path(path: str, limits: PatchCompositionLimits) -> str:
         folded = part.casefold()
         if folded in {".git", "git~1"}:
             raise PatchCompositionError("workspace path contains Git metadata")
-        if folded.split(".", 1)[0] in _RESERVED_WINDOWS_NAMES:
+        folded_stem = folded.partition(".")[0].rstrip(" ")
+        if folded_stem in _RESERVED_WINDOWS_NAMES:
             raise PatchCompositionError("workspace path uses a reserved device name")
     return pure.as_posix()
 

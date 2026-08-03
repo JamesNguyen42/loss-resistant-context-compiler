@@ -127,9 +127,17 @@ exact-wheel PEP 610 direct-archive document, and one platform-canonical
 launcher. An exact empty `REQUESTED` marker is optional; every other generated
 row fails closed. The adapter then checks exact sizes and a canonically framed
 SHA-256 over every reviewed source/resource file. Package-local executable
-bytecode is accepted only when its payload equals fresh compilation of verified
-source; external cache prefixes fail closed. After import the adapter repeats
-the complete `RECORD`, file, bytecode, and origin gate, validates all loaded
+bytecode is parsed only by one empty-environment no-site batch worker. Windows
+and non-Darwin POSIX apply a 256 MiB process/address-space ceiling; macOS uses
+an exact 1 TiB virtual-address-space ceiling. A ten-second latest-acceptance
+deadline covers cache-batch construction through comparison, with separately
+bounded mandatory cleanup. The worker compiles the verified source associated
+with every cache before unmarshalling any cache, requires full payload
+consumption, and compares const-stripped format-2 serialized metadata, raw
+adaptive instruction/cache images, and a bounded tagged constant graph with
+per-code identity topology. External
+cache prefixes fail closed. After import the adapter repeats the complete
+`RECORD`, file, bytecode, and origin gate, validates all loaded
 contract-module paths and loaders, and requires the returned object to be the
 validated `sys.modules` root. This is installed-environment checking, not an
 import sandbox or FD-pinned transaction. The supported lane independently
@@ -139,6 +147,12 @@ PEP 610 is still a bound claim rather than independent archive
 authentication. Writable-site-packages races, code already run by
 startup/custom-finder/preload hooks, and arbitrary same-origin object forgery
 in a compromised process remain host boundaries.
+Cross-process sharing between separate nested code objects is normalized
+because valid compiler processes differ there; identity topology reachable
+within each code object is exact. CPython's private raw adaptive-code image is
+required for cache validation, so other implementations reject cacheful
+installs fail closed. The worker bounds memory, time, and process-tree effects,
+not filesystem/network access under a native marshal vulnerability.
 
 The typed `handle_request` and NDJSON surfaces use the wheel's stateful
 `ConnectorServer`, which exclusively handles `connector.handshake` and requires

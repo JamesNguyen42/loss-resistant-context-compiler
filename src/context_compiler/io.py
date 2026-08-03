@@ -46,7 +46,7 @@ from .models import (
     render_memory_for_metadata,
     source_digest,
 )
-from .path_safety import ParentDirectoryGuard
+from .path_safety import ParentDirectoryGuard, _is_link_or_reparse
 from .verifier import verify_memory
 
 _ARTIFACT_FIELDS = frozenset(
@@ -1099,7 +1099,9 @@ def _open_stable_text_path(
                 if attempt + 1 < _PATH_OPEN_ATTEMPTS:
                     continue
                 raise
-            if not stat.S_ISREG(candidate_stat.st_mode):
+            if not stat.S_ISREG(candidate_stat.st_mode) or _is_link_or_reparse(
+                candidate_stat
+            ):
                 raise ValueError(
                     f"{label} path must be a regular file: {input_path}"
                 )
@@ -1129,7 +1131,9 @@ def _open_stable_text_path(
                 raise
             try:
                 opened_stat = os.fstat(descriptor)
-                if not stat.S_ISREG(opened_stat.st_mode):
+                if not stat.S_ISREG(opened_stat.st_mode) or _is_link_or_reparse(
+                    opened_stat
+                ):
                     raise ValueError(
                         f"{label} path must be a regular file: {input_path}"
                     )

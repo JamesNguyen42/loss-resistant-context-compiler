@@ -69,7 +69,7 @@ _MAX_TIMEOUT_SECONDS = 7 * 24 * 60 * 60
 _MAX_LITERAL_STREAM_BYTES = 64 * 1024 * 1024
 _WORKER_SOURCE = Path(__file__).with_name("swebench_repository_worker.py")
 _EXPECTED_WORKER_SOURCE_SHA256 = (
-    "3d40d21af1bdfd8ce7af0b4d445fd62748aa20162b4ff674e40c08c916fb0239"
+    "cb9c8680d74022b7db8aea8b376790a49131f5fd1a1c0b93ba74341302c8a44f"
 )
 
 

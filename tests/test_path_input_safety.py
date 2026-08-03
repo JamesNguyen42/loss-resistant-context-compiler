@@ -52,6 +52,37 @@ def test_source_and_artifact_loaders_reject_directories(tmp_path: Path) -> None:
         load_artifact_path(artifact_path)
 
 
+@pytest.mark.parametrize("reparse_check", [1, 2])
+def test_source_and_artifact_loaders_reject_regular_mode_reparse_targets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reparse_check: int,
+) -> None:
+    source_path, artifact_path = write_inputs(tmp_path)
+    loaders: tuple[tuple[Callable[[Path], Any], Path], ...] = (
+        (load_sources_path, source_path),
+        (load_artifact_path, artifact_path),
+    )
+
+    for loader, path in loaders:
+        checks = 0
+
+        def simulated_reparse(_value: os.stat_result) -> bool:
+            nonlocal checks
+            checks += 1
+            return checks == reparse_check
+
+        monkeypatch.setattr(
+            io_module,
+            "_is_link_or_reparse",
+            simulated_reparse,
+            raising=False,
+        )
+        with pytest.raises(ValueError, match="path must be a regular file"):
+            loader(path)
+        assert checks == reparse_check
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX symlink and FIFO semantics")
 def test_source_and_artifact_loaders_refuse_symlinks_and_fifos(
     tmp_path: Path,

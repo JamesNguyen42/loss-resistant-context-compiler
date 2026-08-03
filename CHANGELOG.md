@@ -8,6 +8,15 @@ versioning and release rules in
 
 ### Changed
 
+- Made serialized core and benchmark readers reject regular-mode Windows
+  reparse targets both before and after open, and aligned SWE-bench repository
+  and patch path checks with Windows device aliases that contain spaces before
+  an extension.
+- Made optional LocalAI bytecode verification portable across independent
+  compiler-process marshal layouts and CPython 3.14 slice constants. One
+  bounded isolated batch worker compares const-stripped format-2 metadata, raw
+  adaptive instruction/cache images, and depth/node/byte-bounded tagged
+  constant graphs with per-code identity topology.
 - Made external-adapter deadlines fail closed: launch and containment setup
   consume the same monotonic timeout, and a process first observed complete at
   or after the deadline is retained as a timeout rather than accepted.

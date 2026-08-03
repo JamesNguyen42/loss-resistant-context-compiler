@@ -690,7 +690,7 @@ def _portable_component(raw: bytes) -> str:
         for character in value
     ):
         raise WorkerError("tree-path-not-portable")
-    folded_stem = value.casefold().split(".", 1)[0]
+    folded_stem = value.casefold().partition(".")[0].rstrip(" ")
     if folded_stem in _RESERVED_WINDOWS_NAMES:
         raise WorkerError("tree-path-reserved-device")
     if value.casefold() in {".git", "git~1"}:

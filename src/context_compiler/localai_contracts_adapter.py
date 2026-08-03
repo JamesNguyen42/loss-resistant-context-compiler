@@ -16,15 +16,19 @@ import importlib.metadata
 import importlib.util
 import io
 import json
-import marshal
+import math
 import os
 import stat
+import subprocess
 import sys
+import tempfile
 import threading
+import time
 import types
 import urllib.parse
 import zipfile
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -33,6 +37,13 @@ from typing import Any
 from .connector import LocalAIConnector
 from .connector import SourceEvent as PrivateSourceEvent
 from .path_safety import _is_link_or_reparse
+from .process_tree import (
+    WINDOWS_CREATE_SUSPENDED,
+    WindowsJob,
+    posix_process_exited_without_reaping,
+    resume_windows_process,
+    terminate_anchored_posix_process_group,
+)
 
 LOCALAI_CONTRACTS_DISTRIBUTION = "localai-contracts"
 LOCALAI_CONTRACTS_VERSION = "0.2.0a2"
@@ -99,10 +110,330 @@ _CONTRACTS_INSTALLED_TREE_SHA256 = (
 )
 _MAX_CONTRACTS_TREE_ENTRIES = 256
 _MAX_CONTRACTS_BYTECODE_BYTES = 4 * 1024 * 1024
+_MAX_CONTRACTS_BYTECODE_SOURCE_BYTES = 1024 * 1024
+_MAX_CONTRACTS_BYTECODE_FILENAME_BYTES = 128 * 1024
+_MAX_CONTRACTS_BYTECODE_BATCH_BYTES = 16 * 1024 * 1024
+_MAX_CONTRACTS_BYTECODE_BATCH_RECORDS = 64
+_CONTRACTS_BYTECODE_WORKER_MEMORY_MB = 256
+_CONTRACTS_BYTECODE_DARWIN_ADDRESS_SPACE_MB = 1024 * 1024
+_CONTRACTS_BYTECODE_WORKER_SECONDS = 3.0
+_CONTRACTS_BYTECODE_TOTAL_SECONDS = 10.0
+_CONTRACTS_BYTECODE_DARWIN_PRELIMIT_PROTOCOL = "ctxc-bytecode-darwin-prelimit-v1"
+_CONTRACTS_BYTECODE_DARWIN_PRELIMIT = """\
+if [ "$#" -lt 3 ] || [ "$0" != "ctxc-bytecode-darwin-prelimit-v1" ] || [ "$2" != "--" ]; then
+    exit 125
+fi
+case "$1" in
+    ''|*[!0-9]*) exit 125 ;;
+esac
+if ! ulimit -S -H -v "$1"; then
+    exit 125
+fi
+shift 2
+exec "$@"
+"""
 _MAX_CONTRACTS_RECORD_BYTES = 64 * 1024
 _MAX_CONTRACTS_RECORD_ROWS = 128
 _MAX_CONTRACTS_INSTALLER_METADATA_BYTES = 1024 * 1024
 _MAX_CONTRACTS_LAUNCHER_BYTES = 4 * 1024 * 1024
+_CONTRACTS_BYTECODE_WORKER = r"""
+import io
+import marshal
+import struct
+import sys
+import types
+
+MAX_CACHE_BYTES = 4 * 1024 * 1024
+MAX_SOURCE_BYTES = 1024 * 1024
+MAX_FILENAME_BYTES = 128 * 1024
+MAX_INPUT_BYTES = 16 * 1024 * 1024
+MAX_RECORDS = 64
+MEMORY_BYTES = 256 * 1024 * 1024
+DARWIN_ADDRESS_SPACE_BYTES = 1024 * 1024 * 1024 * 1024
+
+if sys.platform != "win32":
+    import resource
+
+    address_space = getattr(resource, "RLIMIT_AS", None)
+    if address_space is None:
+        raise SystemExit(1)
+    soft, hard = resource.getrlimit(address_space)
+    if sys.platform == "darwin":
+        if (soft, hard) != (
+            DARWIN_ADDRESS_SPACE_BYTES,
+            DARWIN_ADDRESS_SPACE_BYTES,
+        ):
+            raise SystemExit(1)
+        bounded = DARWIN_ADDRESS_SPACE_BYTES
+    else:
+        finite_limits = [MEMORY_BYTES]
+        if soft != resource.RLIM_INFINITY:
+            finite_limits.append(soft)
+        if hard != resource.RLIM_INFINITY:
+            finite_limits.append(hard)
+        bounded = min(finite_limits)
+        if bounded <= 0:
+            raise SystemExit(1)
+    resource.setrlimit(address_space, (bounded, bounded))
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+MAX_IMAGE_DEPTH = 128
+MAX_IMAGE_NODES = 131072
+MAX_IMAGE_BYTES = 16 * 1024 * 1024
+
+def new_image_state():
+    return {"nodes": 0, "scalar_bytes": 0, "active": set()}
+
+def count_node(state, depth):
+    if depth > MAX_IMAGE_DEPTH:
+        raise SystemExit(1)
+    state["nodes"] += 1
+    if state["nodes"] > MAX_IMAGE_NODES:
+        raise SystemExit(1)
+
+def account_scalar(state, image):
+    state["scalar_bytes"] += len(image)
+    if state["scalar_bytes"] > MAX_IMAGE_BYTES:
+        raise SystemExit(1)
+    return image
+
+def frame(state, tag, parts=()):
+    image_size = len(tag) + sum(8 + len(part) for part in parts)
+    if image_size > MAX_IMAGE_BYTES:
+        raise SystemExit(1)
+    image = bytearray(tag)
+    for part in parts:
+        image.extend(len(part).to_bytes(8, "big"))
+        image.extend(part)
+    return bytes(image)
+
+def integer_image(value, state):
+    magnitude = abs(value)
+    size = max(1, (magnitude.bit_length() + 7) // 8)
+    payload = account_scalar(state, magnitude.to_bytes(size, "big"))
+    sign = b"-" if value < 0 else b"+"
+    return frame(state, b"I", (sign, payload))
+
+def scalar_image(value, state):
+    if value is None:
+        return b"N"
+    if value is Ellipsis:
+        return b"E"
+    if value is StopIteration:
+        return b"P"
+    if type(value) is bool:
+        return b"B1" if value else b"B0"
+    if type(value) is int:
+        return integer_image(value, state)
+    if type(value) is float:
+        return account_scalar(state, b"F" + struct.pack(">d", value))
+    if type(value) is complex:
+        return account_scalar(state, b"X" + struct.pack(">dd", value.real, value.imag))
+    if type(value) is bytes:
+        return frame(state, b"Y", (account_scalar(state, value),))
+    if type(value) is str:
+        encoded = account_scalar(state, value.encode("utf-8", "surrogatepass"))
+        return frame(state, b"U", (encoded,))
+    raise SystemExit(1)
+
+def is_scalar(value):
+    return (
+        value is None
+        or value is Ellipsis
+        or value is StopIteration
+        or type(value) in {bool, int, float, complex, bytes, str}
+    )
+
+def detached_value_image(value, state, depth):
+    count_node(state, depth)
+    if is_scalar(value):
+        return scalar_image(value, state)
+    if type(value) is types.CodeType:
+        return canonical_code_image(value, state, depth + 1)
+    identity = id(value)
+    if identity in state["active"]:
+        raise SystemExit(1)
+    state["active"].add(identity)
+    try:
+        if type(value) is tuple:
+            return frame(
+                state,
+                b"T",
+                tuple(
+                    detached_value_image(item, state, depth + 1) for item in value
+                ),
+            )
+        if type(value) is frozenset:
+            parts = sorted(
+                detached_value_image(item, state, depth + 1) for item in value
+            )
+            if any(left == right for left, right in zip(parts, parts[1:])):
+                raise SystemExit(1)
+            return frame(state, b"R", tuple(parts))
+        if type(value) is slice:
+            return frame(
+                state,
+                b"L",
+                (
+                    detached_value_image(value.start, state, depth + 1),
+                    detached_value_image(value.stop, state, depth + 1),
+                    detached_value_image(value.step, state, depth + 1),
+                ),
+            )
+        raise SystemExit(1)
+    finally:
+        state["active"].discard(identity)
+
+def constant_graph_image(root, state, depth):
+    aliases = {}
+
+    def visit(value, current_depth):
+        count_node(state, current_depth)
+        identity = id(value)
+        if identity in state["active"]:
+            raise SystemExit(1)
+        if identity in aliases:
+            return frame(
+                state,
+                b"Q",
+                (integer_image(aliases[identity], state),),
+            )
+        ordinal = len(aliases)
+        aliases[identity] = ordinal
+        ordinal_image = integer_image(ordinal, state)
+        if is_scalar(value):
+            return frame(
+                state,
+                b"V",
+                (ordinal_image, scalar_image(value, state)),
+            )
+        if type(value) is types.CodeType:
+            return frame(
+                state,
+                b"C",
+                (ordinal_image, canonical_code_image(value, state, current_depth + 1)),
+            )
+        state["active"].add(identity)
+        try:
+            if type(value) is tuple:
+                return frame(
+                    state,
+                    b"T",
+                    (
+                        ordinal_image,
+                        *(visit(item, current_depth + 1) for item in value),
+                    ),
+                )
+            if type(value) is frozenset:
+                keyed = [
+                    (
+                        detached_value_image(item, state, current_depth + 1),
+                        item,
+                    )
+                    for item in value
+                ]
+                keyed.sort(key=lambda pair: pair[0])
+                if any(left[0] == right[0] for left, right in zip(keyed, keyed[1:])):
+                    raise SystemExit(1)
+                return frame(
+                    state,
+                    b"R",
+                    (
+                        ordinal_image,
+                        *(visit(item, current_depth + 1) for _key, item in keyed),
+                    ),
+                )
+            if type(value) is slice:
+                return frame(
+                    state,
+                    b"L",
+                    (
+                        ordinal_image,
+                        visit(value.start, current_depth + 1),
+                        visit(value.stop, current_depth + 1),
+                        visit(value.step, current_depth + 1),
+                    ),
+                )
+            raise SystemExit(1)
+        finally:
+            state["active"].discard(identity)
+
+    return visit(root, depth)
+
+def canonical_code_image(code, state, depth):
+    count_node(state, depth)
+    if type(code) is not types.CodeType:
+        raise SystemExit(1)
+    identity = id(code)
+    if identity in state["active"]:
+        raise SystemExit(1)
+    adaptive = getattr(code, "_co_code_adaptive", None)
+    if type(adaptive) is not bytes:
+        raise SystemExit(1)
+    state["active"].add(identity)
+    try:
+        metadata = marshal.dumps(code.replace(co_consts=()), 2)
+        metadata = account_scalar(state, metadata)
+        adaptive = account_scalar(state, adaptive)
+        constants = constant_graph_image(code.co_consts, state, depth + 1)
+        return frame(state, b"C", (metadata, adaptive, constants))
+    finally:
+        state["active"].discard(identity)
+
+payload = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
+if len(payload) < 4 or len(payload) > MAX_INPUT_BYTES:
+    raise SystemExit(1)
+record_count = int.from_bytes(payload[:4], "big")
+if record_count <= 0 or record_count > MAX_RECORDS:
+    raise SystemExit(1)
+cursor = 4
+records = []
+for _record in range(record_count):
+    if len(payload) - cursor < 13:
+        raise SystemExit(1)
+    optimize = payload[cursor]
+    filename_size = int.from_bytes(payload[cursor + 1 : cursor + 5], "big")
+    source_size = int.from_bytes(payload[cursor + 5 : cursor + 9], "big")
+    cache_size = int.from_bytes(payload[cursor + 9 : cursor + 13], "big")
+    cursor += 13
+    record_size = filename_size + source_size + cache_size
+    if (
+        optimize not in {0, 1, 2}
+        or filename_size > MAX_FILENAME_BYTES
+        or source_size > MAX_SOURCE_BYTES
+        or cache_size > MAX_CACHE_BYTES
+        or record_size > len(payload) - cursor
+    ):
+        raise SystemExit(1)
+    filename_end = cursor + filename_size
+    source_end = filename_end + source_size
+    cache_end = source_end + cache_size
+    filename = payload[cursor:filename_end].decode("utf-8", "surrogatepass")
+    source = payload[filename_end:source_end]
+    cached = payload[source_end:cache_end]
+    cursor = cache_end
+    expected = compile(
+        source,
+        filename,
+        "exec",
+        dont_inherit=True,
+        optimize=optimize,
+    )
+    records.append((cached, expected))
+if cursor != len(payload):
+    raise SystemExit(1)
+for cached, expected in records:
+    stream = io.BytesIO(cached[16:])
+    candidate = marshal.load(stream)
+    if stream.read(1) != b"":
+        raise SystemExit(1)
+    if (
+        type(candidate) is not types.CodeType
+        or canonical_code_image(candidate, new_image_state(), 0)
+        != canonical_code_image(expected, new_image_state(), 0)
+    ):
+        raise SystemExit(1)
+"""
 _CONTRACTS_DIST_INFO_DIRECTORY = "localai_contracts-0.2.0a2.dist-info"
 _CONTRACTS_RECORD_PATH = f"{_CONTRACTS_DIST_INFO_DIRECTORY}/RECORD"
 _CONTRACTS_WHEEL_RECORD_SHA256 = (
@@ -1111,31 +1442,324 @@ def _validate_installer_extras(
     _validate_launcher_contents(launcher_contents)
 
 
+class _ContractsBytecodeWorkerError(RuntimeError):
+    """An isolated contracts bytecode comparison could not be proven."""
+
+
+def _reap_bytecode_worker(process: subprocess.Popen[bytes]) -> int:
+    try:
+        return process.wait(timeout=1.0)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        try:
+            process.kill()
+            process.wait(timeout=1.0)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        raise _ContractsBytecodeWorkerError(
+            "contracts bytecode worker could not be reaped"
+        ) from exc
+
+
+def _bytecode_worker_command() -> tuple[str, ...]:
+    probe = compile(
+        "pass\n",
+        "<ctxc-bytecode-mode-probe>",
+        "exec",
+        dont_inherit=True,
+        optimize=0,
+    )
+    no_debug_ranges = all(
+        column is None and end_column is None
+        for _line, _end_line, column, end_column in probe.co_positions()
+    )
+    command = [sys.executable]
+    if no_debug_ranges:
+        command.extend(("-X", "no_debug_ranges"))
+    command.extend(("-I", "-S", "-B", "-c", _CONTRACTS_BYTECODE_WORKER))
+    if sys.platform != "darwin":
+        return tuple(command)
+    return (
+        "/bin/sh",
+        "-p",
+        "-c",
+        _CONTRACTS_BYTECODE_DARWIN_PRELIMIT,
+        _CONTRACTS_BYTECODE_DARWIN_PRELIMIT_PROTOCOL,
+        str(_CONTRACTS_BYTECODE_DARWIN_ADDRESS_SPACE_MB * 1024),
+        "--",
+        *command,
+    )
+
+
+def _bytecode_deadline(started: float, timeout_seconds: float) -> float:
+    if (
+        isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, (int, float))
+        or not math.isfinite(float(timeout_seconds))
+        or timeout_seconds <= 0
+    ):
+        raise _ContractsBytecodeWorkerError(
+            "contracts bytecode validation deadline expired"
+        )
+    return started + float(timeout_seconds)
+
+
+def _run_bytecode_validation_worker(
+    payload: bytes,
+    *,
+    timeout_seconds: float,
+    absolute_deadline: float | None = None,
+) -> None:
+    started = time.monotonic()
+    deadline = _bytecode_deadline(started, timeout_seconds)
+    if absolute_deadline is not None:
+        if (
+            isinstance(absolute_deadline, bool)
+            or not isinstance(absolute_deadline, (int, float))
+            or not math.isfinite(float(absolute_deadline))
+        ):
+            raise _ContractsBytecodeWorkerError(
+                "contracts bytecode validation deadline is invalid"
+            )
+        deadline = min(deadline, float(absolute_deadline))
+    if time.monotonic() >= deadline:
+        raise _ContractsBytecodeWorkerError(
+            "contracts bytecode validation deadline expired"
+        )
+    with tempfile.TemporaryFile(mode="w+b") as worker_input:
+        worker_input.write(payload)
+        worker_input.seek(0)
+        command = _bytecode_worker_command()
+        if time.monotonic() >= deadline:
+            raise _ContractsBytecodeWorkerError(
+                "contracts bytecode worker exceeded its deadline"
+            )
+        creation_flags = 0
+        windows_job: WindowsJob | None = None
+        process: subprocess.Popen[bytes] | None = None
+        try:
+            if os.name == "nt":
+                creation_flags = (
+                    subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+                    | subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+                    | WINDOWS_CREATE_SUSPENDED
+                )
+                windows_job = WindowsJob.create(
+                    max_memory_mb=_CONTRACTS_BYTECODE_WORKER_MEMORY_MB,
+                    error_type=_ContractsBytecodeWorkerError,
+                )
+            if time.monotonic() >= deadline:
+                raise _ContractsBytecodeWorkerError(
+                    "contracts bytecode worker exceeded its deadline"
+                )
+            process = subprocess.Popen(
+                command,
+                stdin=worker_input,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                shell=False,
+                close_fds=True,
+                env={},
+                start_new_session=os.name != "nt",
+                creationflags=creation_flags,
+            )
+            if windows_job is not None:
+                windows_job.assign(process)
+                if not windows_job.contains(process):
+                    raise _ContractsBytecodeWorkerError(
+                        "contracts bytecode worker escaped its Windows Job Object"
+                    )
+                if time.monotonic() >= deadline:
+                    raise _ContractsBytecodeWorkerError(
+                        "contracts bytecode worker exceeded its deadline"
+                    )
+                resume_windows_process(
+                    process,
+                    error_type=_ContractsBytecodeWorkerError,
+                )
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise _ContractsBytecodeWorkerError(
+                        "contracts bytecode worker exceeded its deadline"
+                    )
+                try:
+                    return_code = process.wait(timeout=remaining)
+                except subprocess.TimeoutExpired as exc:
+                    raise _ContractsBytecodeWorkerError(
+                        "contracts bytecode worker exceeded its deadline"
+                    ) from exc
+                windows_job.terminate()
+                if time.monotonic() >= deadline:
+                    raise _ContractsBytecodeWorkerError(
+                        "contracts bytecode worker exceeded its deadline"
+                    )
+            else:
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise _ContractsBytecodeWorkerError(
+                            "contracts bytecode worker exceeded its deadline"
+                        )
+                    exited = posix_process_exited_without_reaping(
+                        process,
+                        error_type=_ContractsBytecodeWorkerError,
+                    )
+                    if time.monotonic() >= deadline:
+                        raise _ContractsBytecodeWorkerError(
+                            "contracts bytecode worker exceeded its deadline"
+                        )
+                    if exited:
+                        break
+                    time.sleep(min(0.01, remaining))
+                terminate_anchored_posix_process_group(
+                    process,
+                    error_type=_ContractsBytecodeWorkerError,
+                )
+                return_code = _reap_bytecode_worker(process)
+                if time.monotonic() >= deadline:
+                    raise _ContractsBytecodeWorkerError(
+                        "contracts bytecode worker exceeded its deadline"
+                    )
+            if return_code != 0:
+                raise _ContractsBytecodeWorkerError(
+                    "contracts bytecode does not match verified source"
+                )
+        except BaseException:
+            if process is not None:
+                if windows_job is not None:
+                    with suppress(RuntimeError):
+                        windows_job.terminate()
+                elif process.returncode is None:
+                    try:
+                        terminate_anchored_posix_process_group(
+                            process,
+                            error_type=_ContractsBytecodeWorkerError,
+                        )
+                    except (OSError, RuntimeError, subprocess.SubprocessError):
+                        with suppress(OSError):
+                            process.kill()
+                if process.returncode is None:
+                    with suppress(_ContractsBytecodeWorkerError):
+                        _reap_bytecode_worker(process)
+            raise
+        finally:
+            if windows_job is not None:
+                windows_job.close()
+
+
+def _bytecode_validation_record(
+    path: Path,
+    *,
+    source: bytes,
+    source_path: Path,
+    optimize: int,
+) -> bytes:
+    cached = _read_bounded_regular_file(
+        path,
+        maximum_size=_MAX_CONTRACTS_BYTECODE_BYTES,
+    )
+    flags = int.from_bytes(cached[4:8], "little")
+    if (
+        len(cached) < 16
+        or cached[:4] != importlib.util.MAGIC_NUMBER
+        or flags not in {0, 1, 3}
+    ):
+        raise ValueError("contracts bytecode does not match verified source")
+    filename = str(source_path).encode("utf-8", "surrogatepass")
+    if (
+        isinstance(optimize, bool)
+        or not isinstance(optimize, int)
+        or optimize not in {0, 1, 2}
+        or len(filename) > _MAX_CONTRACTS_BYTECODE_FILENAME_BYTES
+        or len(source) > _MAX_CONTRACTS_BYTECODE_SOURCE_BYTES
+    ):
+        raise ValueError("contracts bytecode validation input is invalid")
+    return b"".join(
+        (
+            bytes((optimize,)),
+            len(filename).to_bytes(4, "big"),
+            len(source).to_bytes(4, "big"),
+            len(cached).to_bytes(4, "big"),
+            filename,
+            source,
+            cached,
+        )
+    )
+
+
+def _run_bytecode_validation_records(
+    records: Sequence[bytes],
+    *,
+    timeout_seconds: float,
+    absolute_deadline: float | None = None,
+) -> None:
+    if not records or len(records) > _MAX_CONTRACTS_BYTECODE_BATCH_RECORDS:
+        raise ValueError("contracts bytecode cache inventory is invalid")
+    payload = len(records).to_bytes(4, "big") + b"".join(records)
+    if len(payload) > _MAX_CONTRACTS_BYTECODE_BATCH_BYTES:
+        raise ValueError("contracts bytecode cache batch exceeds limit")
+    try:
+        _run_bytecode_validation_worker(
+            payload,
+            timeout_seconds=timeout_seconds,
+            absolute_deadline=absolute_deadline,
+        )
+    except _ContractsBytecodeWorkerError as exc:
+        raise ValueError("contracts bytecode does not match verified source") from exc
+
+
 def _validate_bytecode_cache(
     path: Path,
     *,
     source: bytes,
     source_path: Path,
     optimize: int,
+    timeout_seconds: float = _CONTRACTS_BYTECODE_WORKER_SECONDS,
 ) -> None:
-    cached = _read_bounded_regular_file(
+    started = time.monotonic()
+    deadline = _bytecode_deadline(started, timeout_seconds)
+    record = _bytecode_validation_record(
         path,
-        maximum_size=_MAX_CONTRACTS_BYTECODE_BYTES,
-    )
-    flags = int.from_bytes(cached[4:8], "little")
-    expected_code = compile(
-        source,
-        str(source_path),
-        "exec",
-        dont_inherit=True,
+        source=source,
+        source_path=source_path,
         optimize=optimize,
     )
-    if (
-        cached[:4] != importlib.util.MAGIC_NUMBER
-        or flags not in {0, 1, 3}
-        or cached[16:] != marshal.dumps(expected_code)
-    ):
-        raise ValueError("contracts bytecode does not match verified source")
+    _run_bytecode_validation_records(
+        (record,),
+        timeout_seconds=timeout_seconds,
+        absolute_deadline=deadline,
+    )
+
+
+def _validate_bytecode_caches(
+    cached_files: Sequence[tuple[Path, str, int]],
+    *,
+    verified_sources: Mapping[str, bytes],
+    package_directory: Path,
+) -> None:
+    if not cached_files:
+        return
+    if len(cached_files) > _MAX_CONTRACTS_BYTECODE_BATCH_RECORDS:
+        raise ValueError("contracts bytecode cache inventory exceeds limit")
+    started = time.monotonic()
+    deadline = started + _CONTRACTS_BYTECODE_TOTAL_SECONDS
+    records: list[bytes] = []
+    retained_bytes = 4
+    for cached_path, source_relative, optimize in cached_files:
+        record = _bytecode_validation_record(
+            cached_path,
+            source=verified_sources[source_relative],
+            source_path=package_directory.joinpath(*source_relative.split("/")),
+            optimize=optimize,
+        )
+        retained_bytes += len(record)
+        if retained_bytes > _MAX_CONTRACTS_BYTECODE_BATCH_BYTES:
+            raise ValueError("contracts bytecode cache batch exceeds limit")
+        records.append(record)
+    _run_bytecode_validation_records(
+        records,
+        timeout_seconds=_CONTRACTS_BYTECODE_TOTAL_SECONDS,
+        absolute_deadline=deadline,
+    )
 
 
 def _validate_installed_tree_shape(
@@ -1395,15 +2019,11 @@ def _preflight_contracts_origin() -> _ContractsOrigin:
                 verified_sources[relative] = contents
         if tree_digest.hexdigest() != _CONTRACTS_INSTALLED_TREE_SHA256:
             raise ValueError("contracts installed tree digest mismatch")
-        for cached_path, source_relative, optimize in cached_files:
-            _validate_bytecode_cache(
-                cached_path,
-                source=verified_sources[source_relative],
-                source_path=origin.package_directory.joinpath(
-                    *source_relative.split("/")
-                ),
-                optimize=optimize,
-            )
+        _validate_bytecode_caches(
+            cached_files,
+            verified_sources=verified_sources,
+            package_directory=origin.package_directory,
+        )
         _validate_installer_extras(site_root, record_rows)
         _validate_loaded_modules(origin)
         return origin

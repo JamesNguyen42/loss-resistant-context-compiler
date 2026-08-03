@@ -514,7 +514,16 @@ def test_preparation_rejects_symlinks_and_gitlinks(
         )
 
 
-@pytest.mark.parametrize("unsafe_path", ["src/.GiT/config", "CON.txt"])
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "src/.GiT/config",
+        "CON.txt",
+        "CON .txt",
+        "COM\N{SUPERSCRIPT ONE} .txt",
+        "LPT\N{SUPERSCRIPT TWO} .log",
+    ],
+)
 def test_preparation_rejects_dot_git_aliases_and_nonportable_paths(
     repository_fixture: _RepositoryFixture,
     tmp_path: Path,
@@ -554,6 +563,15 @@ def test_preparation_rejects_dot_git_aliases_and_nonportable_paths(
             _SOURCE_RECORD_SHA256,
             output_parent,
         )
+
+
+@pytest.mark.parametrize("portable_path", ["COM0.txt", "COM10.txt", "CON name.txt"])
+def test_repository_worker_retains_non_device_name_controls(
+    portable_path: str,
+) -> None:
+    assert repository_worker._portable_component(portable_path.encode("utf-8")) == (
+        portable_path
+    )
 
 
 @pytest.mark.parametrize(
