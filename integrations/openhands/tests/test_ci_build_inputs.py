@@ -59,9 +59,12 @@ def _wheel_bytes(
     metadata_version: str | None = None,
     tags: tuple[str, ...] | None = None,
     corrupt_record: bool = False,
+    duplicate_member_name: str | None = None,
     member_mode: int = stat.S_IFREG | 0o644,
     extra_member_name: str | None = None,
+    extra_member_names: tuple[str, ...] = (),
     record_path_override: str | None = None,
+    reverse_record_rows: bool = False,
 ) -> bytes:
     package_name = approved.name.replace("-", "_")
     package_member = f"{package_name}/__init__.py"
@@ -89,6 +92,8 @@ def _wheel_bytes(
     }
     if extra_member_name is not None:
         members[extra_member_name] = b"extra\n"
+    for name in extra_member_names:
+        members[name] = b"extra\n"
     rows = [
         [name, _record_digest(payload), str(len(payload))]
         for name, payload in members.items()
@@ -98,6 +103,8 @@ def _wheel_bytes(
     if corrupt_record:
         rows[0][1] = "sha256=" + ("A" * 43)
     rows.append([record_member, "", ""])
+    if reverse_record_rows:
+        rows.reverse()
     output = io.StringIO(newline="")
     writer = csv.writer(output, lineterminator="\n")
     writer.writerows(rows)
@@ -106,6 +113,11 @@ def _wheel_bytes(
     with zipfile.ZipFile(archive, "w") as wheel:
         for name, payload in members.items():
             wheel.writestr(_zip_info(name, member_mode=member_mode), payload)
+        if duplicate_member_name is not None:
+            wheel.writestr(
+                _zip_info(duplicate_member_name, member_mode=member_mode),
+                b"duplicate\n",
+            )
     return archive.getvalue()
 
 
@@ -405,6 +417,133 @@ def test_wheel_retains_non_device_name_controls(
     wheel = wheelhouse / approved.filename
     wheel.write_bytes(
         _wheel_bytes(approved, extra_member_name=f"build/{component}")
+    )
+    _write_lock(lock, wheelhouse)
+
+    HELPER.verify_build_inputs(lock, wheelhouse)
+
+
+def test_wheel_rejects_file_ancestor_namespace_conflict_with_interloper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock, wheelhouse = _valid_inputs(tmp_path)
+    approved = HELPER.APPROVED_BUILD_WHEELS[0]
+    wheel = wheelhouse / approved.filename
+    wheel.write_bytes(
+        _wheel_bytes(
+            approved,
+            extra_member_name="build",
+            extra_member_names=("build-foo",),
+        )
+    )
+    _write_lock(lock, wheelhouse)
+
+    def unexpected_read(*_args: object, **_kwargs: object) -> bytes:
+        raise AssertionError("namespace validation must precede decompression")
+
+    monkeypatch.setattr(HELPER, "_read_zip_member", unexpected_read)
+    with pytest.raises(HELPER.BuildInputError, match="namespace conflict"):
+        HELPER.verify_build_inputs(lock, wheelhouse)
+
+
+def test_wheel_retains_exact_duplicate_member_diagnostic(tmp_path: Path) -> None:
+    lock, wheelhouse = _valid_inputs(tmp_path)
+    approved = HELPER.APPROVED_BUILD_WHEELS[0]
+    wheel = wheelhouse / approved.filename
+    with pytest.warns(UserWarning, match="Duplicate name"):
+        wheel.write_bytes(_wheel_bytes(approved, duplicate_member_name="build/__init__.py"))
+    _write_lock(lock, wheelhouse)
+
+    with pytest.raises(
+        HELPER.BuildInputError,
+        match="duplicate or colliding members",
+    ):
+        HELPER.verify_build_inputs(lock, wheelhouse)
+
+
+@pytest.mark.parametrize(
+    "extra_member_names",
+    [
+        ("Build/other.py",),
+        ("caf\u00e9/one.py", "cafe\u0301/two.py"),
+    ],
+    ids=["ascii-case", "nfc"],
+)
+def test_wheel_rejects_implicit_directory_portability_collisions(
+    tmp_path: Path,
+    extra_member_names: tuple[str, ...],
+) -> None:
+    lock, wheelhouse = _valid_inputs(tmp_path)
+    approved = HELPER.APPROVED_BUILD_WHEELS[0]
+    wheel = wheelhouse / approved.filename
+    wheel.write_bytes(_wheel_bytes(approved, extra_member_names=extra_member_names))
+    _write_lock(lock, wheelhouse)
+
+    with pytest.raises(HELPER.BuildInputError, match="namespace conflict"):
+        HELPER.verify_build_inputs(lock, wheelhouse)
+
+
+def test_wheel_record_independently_rejects_namespace_conflicts(
+    tmp_path: Path,
+) -> None:
+    lock, wheelhouse = _valid_inputs(tmp_path)
+    approved = HELPER.APPROVED_BUILD_WHEELS[0]
+    wheel = wheelhouse / approved.filename
+    wheel.write_bytes(_wheel_bytes(approved, record_path_override=approved.dist_info))
+    _write_lock(lock, wheelhouse)
+
+    with pytest.raises(
+        HELPER.BuildInputError,
+        match="RECORD contains a namespace conflict",
+    ):
+        HELPER.verify_build_inputs(lock, wheelhouse)
+
+
+def test_wheel_record_retains_exact_duplicate_path_diagnostic(tmp_path: Path) -> None:
+    lock, wheelhouse = _valid_inputs(tmp_path)
+    approved = HELPER.APPROVED_BUILD_WHEELS[0]
+    wheel = wheelhouse / approved.filename
+    wheel.write_bytes(
+        _wheel_bytes(
+            approved,
+            record_path_override=f"{approved.dist_info}/METADATA",
+        )
+    )
+    _write_lock(lock, wheelhouse)
+
+    with pytest.raises(HELPER.BuildInputError, match="RECORD contains a duplicate path"):
+        HELPER.verify_build_inputs(lock, wheelhouse)
+
+
+def test_wheel_record_accepts_shuffled_rows(tmp_path: Path) -> None:
+    lock, wheelhouse = _valid_inputs(tmp_path)
+    approved = HELPER.APPROVED_BUILD_WHEELS[0]
+    wheel = wheelhouse / approved.filename
+    wheel.write_bytes(_wheel_bytes(approved, reverse_record_rows=True))
+    _write_lock(lock, wheelhouse)
+
+    HELPER.verify_build_inputs(lock, wheelhouse)
+
+
+def test_wheel_namespace_allows_shared_directories_and_distinct_unicode(
+    tmp_path: Path,
+) -> None:
+    lock, wheelhouse = _valid_inputs(tmp_path)
+    approved = HELPER.APPROVED_BUILD_WHEELS[0]
+    wheel = wheelhouse / approved.filename
+    wheel.write_bytes(
+        _wheel_bytes(
+            approved,
+            extra_member_names=(
+                "build/data/one.txt",
+                "build/data/two.txt",
+                "caf\u00e9/one.py",
+                "caf\u00e8/two.py",
+                "plain",
+                "plain-foo",
+            ),
+        )
     )
     _write_lock(lock, wheelhouse)
 

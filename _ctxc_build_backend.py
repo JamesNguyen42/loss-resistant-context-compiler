@@ -230,6 +230,54 @@ def _portable_member_key(name: str) -> str:
     return unicodedata.normalize("NFC", name).casefold()
 
 
+def _validate_archive_member_namespace(
+    members: Sequence[tuple[str, str]],
+    *,
+    archive_label: str,
+) -> None:
+    """Reject bounded portable namespace collisions without rewriting names."""
+
+    ordered = sorted(
+        (
+            _portable_member_key(name).replace("/", "\x00"),
+            name,
+            member_type,
+        )
+        for name, member_type in members
+    )
+    for index in range(1, len(ordered)):
+        previous_key, previous_name, previous_type = ordered[index - 1]
+        key, name, member_type = ordered[index]
+        if previous_key == key:
+            raise DeterministicSdistError(
+                f"{archive_label} member names collide portably: {previous_name!r}, {name!r}"
+            )
+
+        previous_parts = previous_name.split("/")
+        parts = name.split("/")
+        previous_portable = previous_key.split("\x00")
+        portable = key.split("\x00")
+        shared = 0
+        for previous_part, part in zip(previous_portable, portable, strict=False):
+            if previous_part != part:
+                break
+            shared += 1
+        if shared == 0:
+            continue
+        if previous_parts[:shared] != parts[:shared]:
+            raise DeterministicSdistError(
+                f"{archive_label} member namespace conflicts portably: {previous_name!r}, {name!r}"
+            )
+        if shared == len(previous_parts) < len(parts) and previous_type != "directory":
+            raise DeterministicSdistError(
+                f"{archive_label} member namespace has a file ancestor: {previous_name!r}, {name!r}"
+            )
+        if shared == len(parts) < len(previous_parts) and member_type != "directory":
+            raise DeterministicSdistError(
+                f"{archive_label} member namespace has a file ancestor: {name!r}, {previous_name!r}"
+            )
+
+
 def _validate_pax_headers(
     member: tarfile.TarInfo,
     *,
@@ -404,7 +452,7 @@ def _preflight_tar_stream(
     tar_metadata_bytes = 0
     content_bytes = 0
     seen: set[str] = set()
-    portable_names: dict[str, str] = {}
+    namespace_members: list[tuple[str, str]] = []
     member_types: dict[str, str] = {}
 
     while stream.tell() < expanded_bytes:
@@ -492,13 +540,6 @@ def _preflight_tar_stream(
         if name in seen:
             raise DeterministicSdistError(f"sdist contains a duplicate member: {name!r}")
         seen.add(name)
-        portable_key = _portable_member_key(name)
-        prior_name = portable_names.get(portable_key)
-        if prior_name is not None and prior_name != name:
-            raise DeterministicSdistError(
-                f"sdist member names collide portably: {prior_name!r}, {name!r}"
-            )
-        portable_names[portable_key] = name
         logical_members += 1
         if logical_members > _MAX_MEMBERS:
             raise DeterministicSdistError("sdist member count is outside the supported range")
@@ -508,6 +549,7 @@ def _preflight_tar_stream(
             if physical.size != 0:
                 raise DeterministicSdistError("sdist directory has nonzero content")
             member_types[name] = "directory"
+            namespace_members.append((name, "directory"))
         elif physical.type in {tarfile.REGTYPE, tarfile.AREGTYPE}:
             if physical.size < 0 or physical.size > _MAX_MEMBER_BYTES:
                 raise DeterministicSdistError("sdist member exceeds the per-member byte limit")
@@ -515,6 +557,7 @@ def _preflight_tar_stream(
             if content_bytes > _MAX_EXPANDED_BYTES:
                 raise DeterministicSdistError("sdist exceeds the expanded byte limit")
             member_types[name] = "file"
+            namespace_members.append((name, "file"))
         else:
             raise DeterministicSdistError("sdist contains a link or special member")
         _skip_member_payload(
@@ -526,6 +569,7 @@ def _preflight_tar_stream(
     else:
         raise DeterministicSdistError("sdist tar is missing its end marker")
 
+    _validate_archive_member_namespace(namespace_members, archive_label="sdist")
     required = {
         expected_root: "directory",
         f"{expected_root}/PKG-INFO": "file",
@@ -579,7 +623,7 @@ def _validated_members(
     if not members or len(members) > _MAX_MEMBERS:
         raise DeterministicSdistError("sdist member count is outside the supported range")
     seen: set[str] = set()
-    portable_names: dict[str, str] = {}
+    namespace_members: list[tuple[str, str]] = []
     member_types: dict[str, str] = {}
     expanded_bytes = 0
     for member in members:
@@ -587,18 +631,12 @@ def _validated_members(
         if name in seen:
             raise DeterministicSdistError(f"sdist contains a duplicate member: {name!r}")
         seen.add(name)
-        portable_key = _portable_member_key(name)
-        prior_name = portable_names.get(portable_key)
-        if prior_name is not None and prior_name != name:
-            raise DeterministicSdistError(
-                f"sdist member names collide portably: {prior_name!r}, {name!r}"
-            )
-        portable_names[portable_key] = name
         _validate_pax_headers(member, allow_mtime=allow_mtime_pax)
         if member.type == tarfile.DIRTYPE:
             if member.size != 0:
                 raise DeterministicSdistError("sdist directory has nonzero content")
             member_types[name] = "directory"
+            namespace_members.append((name, "directory"))
         elif member.type in {tarfile.REGTYPE, tarfile.AREGTYPE}:
             if member.size < 0 or member.size > _MAX_MEMBER_BYTES:
                 raise DeterministicSdistError("sdist member exceeds the per-member byte limit")
@@ -606,10 +644,12 @@ def _validated_members(
             if expanded_bytes > _MAX_EXPANDED_BYTES:
                 raise DeterministicSdistError("sdist exceeds the expanded byte limit")
             member_types[name] = "file"
+            namespace_members.append((name, "file"))
         else:
             raise DeterministicSdistError("sdist contains a link or special member")
         if not isinstance(member.mode, int) or member.mode < 0 or member.mode > 0o7777:
             raise DeterministicSdistError("sdist member mode is invalid")
+    _validate_archive_member_namespace(namespace_members, archive_label="sdist")
     required = {
         expected_root: "directory",
         f"{expected_root}/PKG-INFO": "file",
@@ -1115,7 +1155,7 @@ def _preflight_wheel_stream(
 
         names: list[str] = []
         seen: set[str] = set()
-        portable_names: dict[str, str] = {}
+        namespace_members: list[tuple[str, str]] = []
         expanded_bytes = 0
         directory_end = directory_offset + directory_size
         raw_stream.seek(directory_offset)
@@ -1182,13 +1222,7 @@ def _preflight_wheel_stream(
                     f"wheel contains a duplicate member: {name!r}"
                 )
             seen.add(name)
-            portable_key = _portable_member_key(name)
-            prior_name = portable_names.get(portable_key)
-            if prior_name is not None and prior_name != name:
-                raise DeterministicSdistError(
-                    f"wheel member names collide portably: {prior_name!r}, {name!r}"
-                )
-            portable_names[portable_key] = name
+            namespace_members.append((name, "file"))
             expanded_bytes += file_size
             if expanded_bytes > _MAX_EXPANDED_BYTES:
                 raise DeterministicSdistError("wheel exceeds the expanded byte limit")
@@ -1197,6 +1231,7 @@ def _preflight_wheel_stream(
             raise DeterministicSdistError(
                 "wheel central directory byte extent is inconsistent"
             )
+        _validate_archive_member_namespace(namespace_members, archive_label="wheel")
         return tuple(names)
     finally:
         raw_stream.seek(position)
@@ -1211,20 +1246,14 @@ def _validated_wheel_members(
     if not members or len(members) > _MAX_MEMBERS:
         raise DeterministicSdistError("wheel member count is outside the supported range")
     seen: set[str] = set()
-    portable_names: dict[str, str] = {}
+    namespace_members: list[tuple[str, str]] = []
     expanded_bytes = 0
     for member in members:
         name = _safe_wheel_member_name(member.filename)
         if name in seen:
             raise DeterministicSdistError(f"wheel contains a duplicate member: {name!r}")
         seen.add(name)
-        portable_key = _portable_member_key(name)
-        prior_name = portable_names.get(portable_key)
-        if prior_name is not None and prior_name != name:
-            raise DeterministicSdistError(
-                f"wheel member names collide portably: {prior_name!r}, {name!r}"
-            )
-        portable_names[portable_key] = name
+        namespace_members.append((name, "file"))
         if (
             member.orig_filename != member.filename
             or member.is_dir()
@@ -1253,6 +1282,7 @@ def _validated_wheel_members(
         expanded_bytes += member.file_size
         if expanded_bytes > _MAX_EXPANDED_BYTES:
             raise DeterministicSdistError("wheel exceeds the expanded byte limit")
+    _validate_archive_member_namespace(namespace_members, archive_label="wheel")
     record_names = [
         name
         for name in seen

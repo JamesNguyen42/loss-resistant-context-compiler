@@ -326,6 +326,31 @@ This closes exact package-build input byte identity for those temporary lanes,
 not signed origin, durable retention, the complete live OpenHands dependency
 closure, SBOMs, signatures, provenance attestations, or release authorization.
 
+## Archive namespace validation
+
+The byte-identical root and OpenHands packaging backends validate component
+namespaces in both their physical pre-parser and parsed tar/wheel views. A
+regular file cannot also be an ancestor, and implicit directories cannot differ
+only after NFC normalization and case folding. NFC+casefold is used only for
+comparison: accepted member-name spellings are never normalized, merged, or
+rewritten. Existing deterministic container and generated-metadata
+normalization is unchanged. Existing exact-duplicate diagnostics retain their
+early precedence. Bounded member-count, name, member-byte, and expanded-byte
+failures remain distinct and precede the namespace check.
+
+The build-input inspector applies the same bounded component ordering to ZIP
+entry names after metadata/resource checks and before decompression. It
+independently validates the `RECORD` namespace before archive-membership, size,
+and digest checks. Exact duplicates keep their existing ZIP and `RECORD`
+diagnostics; shuffled valid `RECORD` rows, exact shared directories, lexical
+prefix nonconflicts, and distinct Unicode components remain accepted.
+
+The CPU-only combined root/OpenHands archive and build-input validation set
+passed 176 tests with one expected Windows symlink-privilege skip on both local
+CPython 3.12.13 and 3.14.6. Focused Ruff passed. This is source-validation
+evidence, not a build, live OpenHands execution, or expanded supported-runtime
+claim; no model, GPU, or inference runtime was involved.
+
 ## Installation policy
 
 Production or release installation must use locally reviewed artifacts and a

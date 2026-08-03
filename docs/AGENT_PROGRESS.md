@@ -6,21 +6,22 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Clean evidence-generation base for this checkpoint: `d512b04156728cb9a4088f250ead395192572b34`.
-- Current checkpoint: a current-worker generation now retains and fresh-replays
-  public repository preparation through ordinal 380: 94 attempts across seven
-  repositories, 88 prepared trees, six exact Pylint policy refusals, and 406
-  explicitly unattempted rows. All 32 selected scikit-learn rows prepared.
-- Previous checkpoint: adapter-source inventories reject stable ASCII-case
-  collisions across every represented directory prefix and file path, including
-  file/directory prefix conflicts; it was independently reviewed, committed,
-  and pushed as `d512b04`.
-- Next correctness target: reject archive member namespace-prefix conflicts in
-  both standalone packaging backends and the OpenHands wheelhouse inspector.
-- Next public preparation target: Sphinx ordinals 381--424 (44 distinct base
-  commits). No local Sphinx mirror or exact base-commit license evidence is
-  retained. Do not encode a repository patch as an LRCBench rendered-memory
-  candidate.
+- Clean evidence-generation base for this checkpoint:
+  `481016873220db5d2964795e97118ca04012dd6c`.
+- Current checkpoint: physical and parsed tar/wheel validation in the
+  byte-identical root and OpenHands packaging backends, plus independent ZIP
+  and `RECORD` validation in the OpenHands build-input inspector, now rejects
+  file/ancestor and portable implicit-directory namespace conflicts without
+  rewriting member names.
+- Previous checkpoint: all 32 selected scikit-learn rows at ordinals 349--380
+  prepared and fresh-replayed; the 94-row seven-repository generation and its
+  conservative filename/path-based engineering inventory were committed and
+  pushed as `4810168`.
+- Next exact action: acquire Sphinx through a reviewed channel, inspect exact
+  base-commit license candidates, and apply the raw-Git preparer to ordinals
+  381--424 (44 selected rows and 44 distinct commits). No local Sphinx mirror
+  or exact base-commit license evidence is retained. Do not encode a repository
+  patch as an LRCBench rendered-memory candidate.
 
 ## Mission status
 
@@ -41,6 +42,41 @@ Last updated: 2026-08-02 (America/Los_Angeles)
    and claim readiness remain absent or false.
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
+
+## Current archive namespace-prefix hardening
+
+- The root and OpenHands PEP 517 backends reject namespace conflicts twice:
+  physical tar/PAX and wheel-central-directory preflights run before the
+  standard parsers, and parsed `TarInfo`/`ZipInfo` inventories repeat the same
+  check. A regular file cannot also be an ancestor, and explicit or implicit
+  directory components cannot have different raw spellings that collide under
+  NFC plus Unicode casefolding. Existing early exact-duplicate diagnostics and
+  member, byte, path-length, and required-member bounds remain separate.
+- The OpenHands build-input inspector applies the all-file form after bounded
+  ZIP metadata, member-count, and member-name-length checks but before any
+  decompression. It independently checks parsed `RECORD` names before
+  ZIP-membership, digest, or
+  size validation, preserving the distinct ZIP and `RECORD` duplicate errors.
+- Accepted member names are never normalized, merged, or rewritten. Each layer
+  uses a bounded sentinel sort: backend layers retain `(key, raw name, type)`,
+  while the all-file inspector needs only the equivalent key/name form.
+  Replacing `/` with the already-forbidden NUL in the NFC-plus-casefold key
+  preserves component order, so the lexical interloper sequence `a`, `a-foo`,
+  `a/x` still places the file beside its descendant for adjacent comparison.
+- The two backend source files are byte-identical with SHA-256
+  `e7b0271647fc4ec1206b591d6bf82ea17fba9a9d8f40c6f185f072166e41f1e8`.
+  The combined CPython 3.12 and CPython 3.14 JUnit reports each contain 177
+  tests: 176 passed and one expected Windows symlink skip. The 28,236-byte 3.12
+  report has SHA-256
+  `b12074a93e4ff2200ccad12c342a2e08c3b65a0208a293418d0f26bad8a93d22`
+  and records 1.775 seconds; the 28,236-byte 3.14 report has SHA-256
+  `a8304fb33611a2d6630141d97de058414a87ffc9b778ccea3d86aff816e75d00`
+  and records 1.993 seconds. Focused Ruff is clean.
+- Independent CPU-only review, seed `0xC7C`, compared 25,000 random bounded
+  backend inventories and 25,000 all-file CI inventories against an O(n²)
+  component oracle with exact agreement. This 50,000-inventory comparison is
+  non-retained review evidence. No model, candidate, grader, GPU, or inference
+  runtime was involved.
 
 ## Previous adapter-source ASCII-case collision hardening (`d512b04`)
 
@@ -392,7 +428,7 @@ Last updated: 2026-08-02 (America/Los_Angeles)
   grader execution, reward, score, usefulness, legal/redistribution, and
   claim-readiness fields remain false.
 
-## Current scikit-learn preparation expansion
+## Previous scikit-learn preparation expansion (`4810168`)
 
 - Acquired a full bare, no-hardlinks mirror from the configured
   `https://github.com/scikit-learn/scikit-learn.git` URL and verified it through
@@ -951,31 +987,27 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
 ## Next exact actions
 
-1. Reject component-boundary namespace conflicts in the physical and parsed
-   sdist/wheel validators in both byte-identical packaging backends and in the
-   OpenHands wheelhouse/`RECORD` inspector. Preserve existing exact-duplicate
-   diagnostics, member and path-byte bounds, and pre-parser rejection.
-2. Acquire Sphinx through a reviewed channel, inspect exact base-commit license
+1. Acquire Sphinx through a reviewed channel, inspect exact base-commit license
    candidates, and apply the raw-Git preparer to ordinals 381--424 (44 selected
    rows and 44 distinct commits). Preserve every success or refusal without
    silently narrowing the 500-row cohort.
-3. Do not treat the controller-run ledger or the literal lifecycle's Windows
+2. Do not treat the controller-run ledger or the literal lifecycle's Windows
    Job/POSIX process group as filesystem, network, PID, user, mount, or image
    isolation. Provision and retain independently verifiable containment before
    launching any public candidate, while preserving the ledger's fixed-false
    authentication and grading fields.
-4. Use the implemented complete-cohort prediction ledger for the official
+3. Use the implemented complete-cohort prediction ledger for the official
    `instance_id`, `model_name_or_path`, and `model_patch` interchange. Add
    separately authenticated model/token/trajectory evidence and raw grader
    output without weakening either ledger's fixed-false claims.
-5. Use the source/sdist-only synthetic patch-composition preflight before any
+4. Use the source/sdist-only synthetic patch-composition preflight before any
    grader, retain each `preflight-exception-not-a-cohort-result` disposition in
    an outer complete-denominator ledger, and separately prove exact hidden-patch
    application inside a hardened evaluator. Independent copies and exact
    disjoint replay do not turn the unsandboxed native Git parser into isolation
    or grading evidence; the pinned v4.1 harness remains vulnerable on 18 rows
    with hidden additions or renames.
-6. Build a separately launched candidate adapter for the now source-bound,
+5. Build a separately launched candidate adapter for the now source-bound,
    separately result-blind-reviewed tau2-bench v1.0.1 half-duplex text core.
    Keep the complete upstream task, simulator, golden-action, assertion, grader,
    result, and checkout material outside the candidate boundary.

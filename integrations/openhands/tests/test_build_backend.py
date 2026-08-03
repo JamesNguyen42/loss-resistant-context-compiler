@@ -16,6 +16,42 @@ ARCHIVE_ROOT = "ctxc_openhands-0.1.0a22"
 ARCHIVE_NAME = f"{ARCHIVE_ROOT}.tar.gz"
 EPOCH = 1_700_000_000
 
+_NAMESPACE_CONFLICT_CASES = (
+    pytest.param(
+        (
+            (f"{ARCHIVE_ROOT}/a", "file"),
+            (f"{ARCHIVE_ROOT}/a-foo", "file"),
+            (f"{ARCHIVE_ROOT}/a/x.py", "file"),
+        ),
+        "file ancestor",
+        id="file-ancestor-with-interloper",
+    ),
+    pytest.param(
+        (
+            (f"{ARCHIVE_ROOT}/Case/one.py", "file"),
+            (f"{ARCHIVE_ROOT}/case/two.py", "file"),
+        ),
+        "namespace conflicts portably",
+        id="casefolded-implicit-directory",
+    ),
+    pytest.param(
+        (
+            (f"{ARCHIVE_ROOT}/caf\u00e9/one.py", "file"),
+            (f"{ARCHIVE_ROOT}/cafe\u0301/two.py", "file"),
+        ),
+        "namespace conflicts portably",
+        id="nfc-implicit-directory",
+    ),
+    pytest.param(
+        (
+            (f"{ARCHIVE_ROOT}/Stra\u00dfe/one.py", "file"),
+            (f"{ARCHIVE_ROOT}/STRASSE/two.py", "file"),
+        ),
+        "namespace conflicts portably",
+        id="casefold-expansion-implicit-directory",
+    ),
+)
+
 
 def _load_backend() -> ModuleType:
     module_name = "_ctxc_openhands_build_backend_under_test"
@@ -66,6 +102,7 @@ def _write_raw_sdist(
     gzip_mtime: int,
     member_mtime: float,
     package_content: bytes = b'VALUE = "fixture"\n',
+    extra_members: tuple[tuple[str, str], ...] = (),
 ) -> None:
     with (
         path.open("xb") as raw_output,
@@ -96,6 +133,12 @@ def _write_raw_sdist(
             package_content,
             mtime=member_mtime,
         )
+        for name, member_type in extra_members:
+            if member_type == "directory":
+                _add_directory(archive, name, mtime=member_mtime)
+            else:
+                assert member_type == "file"
+                _add_file(archive, name, b"namespace fixture\n", mtime=member_mtime)
 
 
 def _raw_archive(
@@ -105,6 +148,7 @@ def _raw_archive(
     gzip_mtime: int,
     member_mtime: float,
     package_content: bytes = b'VALUE = "fixture"\n',
+    extra_members: tuple[tuple[str, str], ...] = (),
 ) -> Path:
     directory = tmp_path / directory_name
     directory.mkdir()
@@ -114,6 +158,7 @@ def _raw_archive(
         gzip_mtime=gzip_mtime,
         member_mtime=member_mtime,
         package_content=package_content,
+        extra_members=extra_members,
     )
     return path
 
@@ -170,6 +215,89 @@ def test_integration_backend_preserves_payload_distinctions(tmp_path: Path) -> N
     BACKEND._normalize_sdist_archive(second, EPOCH)
 
     assert first.read_bytes() != second.read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("extra_members", "message"),
+    _NAMESPACE_CONFLICT_CASES,
+)
+def test_integration_physical_preflight_rejects_namespace_before_tarfile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    extra_members: tuple[tuple[str, str], ...],
+    message: str,
+) -> None:
+    path = _raw_archive(
+        tmp_path,
+        "namespace-preflight",
+        gzip_mtime=EPOCH + 1,
+        member_mtime=EPOCH + 1.25,
+        extra_members=extra_members,
+    )
+    original = path.read_bytes()
+
+    def unexpected_tarfile(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("tarfile.open must not run before namespace preflight")
+
+    monkeypatch.setattr(BACKEND.tarfile, "open", unexpected_tarfile)
+
+    with pytest.raises(BACKEND.DeterministicSdistError, match=message):
+        BACKEND._normalize_sdist_archive(path, EPOCH)
+
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("extra_members", "message"),
+    _NAMESPACE_CONFLICT_CASES,
+)
+def test_integration_parser_layer_rejects_namespace_conflicts(
+    tmp_path: Path,
+    extra_members: tuple[tuple[str, str], ...],
+    message: str,
+) -> None:
+    path = _raw_archive(
+        tmp_path,
+        "namespace-parser",
+        gzip_mtime=EPOCH + 1,
+        member_mtime=EPOCH + 1.25,
+        extra_members=extra_members,
+    )
+
+    with (
+        tarfile.open(path, mode="r:gz") as archive,
+        pytest.raises(BACKEND.DeterministicSdistError, match=message),
+    ):
+        BACKEND._validated_members(
+            archive,
+            expected_root=ARCHIVE_ROOT,
+            allow_mtime_pax=True,
+        )
+
+
+def test_integration_namespace_allows_explicit_directory_ancestors(
+    tmp_path: Path,
+) -> None:
+    directory = f"{ARCHIVE_ROOT}/pkg"
+    path = _raw_archive(
+        tmp_path,
+        "explicit-directory",
+        gzip_mtime=EPOCH + 1,
+        member_mtime=EPOCH + 1.25,
+        extra_members=(
+            (f"{directory}/module.py", "file"),
+            (directory, "directory"),
+            (f"{directory}/other.py", "file"),
+        ),
+    )
+
+    BACKEND._normalize_sdist_archive(path, EPOCH)
+
+    with tarfile.open(path, mode="r:gz") as archive:
+        members = {member.name: member for member in archive.getmembers()}
+    assert members[directory].isdir()
+    assert members[f"{directory}/module.py"].isfile()
+    assert members[f"{directory}/other.py"].isfile()
 
 
 @pytest.mark.parametrize(

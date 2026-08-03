@@ -29,6 +29,72 @@ EPOCH = 1_700_000_000
 WHEEL = "fixture-0.1.0-py3-none-any.whl"
 DIST_INFO = "fixture-0.1.0.dist-info"
 
+_SDIST_NAMESPACE_CONFLICT_CASES = (
+    pytest.param(
+        (
+            (f"{ROOT}/a", "file"),
+            (f"{ROOT}/a-foo", "file"),
+            (f"{ROOT}/a/x.py", "file"),
+        ),
+        "file ancestor",
+        id="file-ancestor-with-interloper",
+    ),
+    pytest.param(
+        (
+            (f"{ROOT}/Case/one.py", "file"),
+            (f"{ROOT}/case/two.py", "file"),
+        ),
+        "namespace conflicts portably",
+        id="casefolded-implicit-directory",
+    ),
+    pytest.param(
+        (
+            (f"{ROOT}/caf\u00e9/one.py", "file"),
+            (f"{ROOT}/cafe\u0301/two.py", "file"),
+        ),
+        "namespace conflicts portably",
+        id="nfc-implicit-directory",
+    ),
+    pytest.param(
+        (
+            (f"{ROOT}/Stra\u00dfe/one.py", "file"),
+            (f"{ROOT}/STRASSE/two.py", "file"),
+        ),
+        "namespace conflicts portably",
+        id="casefold-expansion-implicit-directory",
+    ),
+)
+
+_WHEEL_NAMESPACE_CONFLICT_CASES = (
+    pytest.param(
+        "fixture/a",
+        (
+            ("fixture/a-foo", b"interloper\n"),
+            ("fixture/a/x.py", b"descendant\n"),
+        ),
+        "file ancestor",
+        id="file-ancestor-with-interloper",
+    ),
+    pytest.param(
+        "fixture/Case/one.py",
+        (("fixture/case/two.py", b"casefolded\n"),),
+        "namespace conflicts portably",
+        id="casefolded-implicit-directory",
+    ),
+    pytest.param(
+        "fixture/caf\u00e9/one.py",
+        (("fixture/cafe\u0301/two.py", b"normalized\n"),),
+        "namespace conflicts portably",
+        id="nfc-implicit-directory",
+    ),
+    pytest.param(
+        "fixture/Stra\u00dfe/one.py",
+        (("fixture/STRASSE/two.py", b"casefolded\n"),),
+        "namespace conflicts portably",
+        id="casefold-expansion-implicit-directory",
+    ),
+)
+
 
 def _add_directory(
     archive: tarfile.TarFile,
@@ -80,6 +146,7 @@ def _write_raw_sdist(
     file_mode: int = 0o644,
     metadata_newline: bytes = b"\n",
     include_generated_metadata: bool = False,
+    extra_members: tuple[tuple[str, str], ...] = (),
 ) -> None:
     with (
         path.open("xb") as raw_output,
@@ -195,6 +262,12 @@ def _write_raw_sdist(
                 b"lower\n",
                 mtime=member_mtime,
             )
+        for name, member_type in extra_members:
+            if member_type == "directory":
+                _add_directory(archive, name, mtime=member_mtime)
+            else:
+                assert member_type == "file"
+                _add_file(archive, name, b"namespace fixture\n", mtime=member_mtime)
 
 
 def _raw_archive(
@@ -251,6 +324,7 @@ def _write_raw_wheel(
     package_name: str = "fixture/__init__.py",
     package_mode: int | None = None,
     compression: int = zipfile.ZIP_DEFLATED,
+    extra_entries: tuple[tuple[str, bytes], ...] = (),
 ) -> None:
     metadata = metadata_newline.join(
         (
@@ -262,6 +336,7 @@ def _write_raw_wheel(
     )
     entries = [
         (package_name, package_content),
+        *extra_entries,
         (f"{DIST_INFO}/METADATA", metadata),
         (
             f"{DIST_INFO}/WHEEL",
@@ -702,6 +777,100 @@ def test_archive_member_validators_retain_non_device_controls(
     assert backend._safe_wheel_member_name(wheel_name) == wheel_name
 
 
+@pytest.mark.parametrize(
+    ("package_name", "extra_entries", "message"),
+    _WHEEL_NAMESPACE_CONFLICT_CASES,
+)
+def test_wheel_physical_preflight_rejects_namespace_conflicts_before_zipfile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    package_name: str,
+    extra_entries: tuple[tuple[str, bytes], ...],
+    message: str,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+        package_name=package_name,
+        extra_entries=extra_entries,
+    )
+    original = path.read_bytes()
+
+    def unexpected_zipfile(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("ZipFile must not run before namespace preflight")
+
+    monkeypatch.setattr(backend.zipfile, "ZipFile", unexpected_zipfile)
+
+    with pytest.raises(DeterministicSdistError, match=message):
+        backend._normalize_wheel_archive(path, EPOCH)
+
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("package_name", "extra_entries", "message"),
+    _WHEEL_NAMESPACE_CONFLICT_CASES,
+)
+def test_wheel_parser_layer_rejects_namespace_conflicts(
+    tmp_path: Path,
+    package_name: str,
+    extra_entries: tuple[tuple[str, bytes], ...],
+    message: str,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+        package_name=package_name,
+        extra_entries=extra_entries,
+    )
+
+    with (
+        zipfile.ZipFile(path) as archive,
+        pytest.raises(DeterministicSdistError, match=message),
+    ):
+        backend._validated_wheel_members(archive)
+
+
+def test_wheel_namespace_allows_shared_implicit_directories_and_boundaries(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / WHEEL
+    accepted = {
+        "fixture/__init__.py": b"package\n",
+        "fixture/helper.py": b"helper\n",
+        "plain": b"plain\n",
+        "plain-foo": b"plain-foo\n",
+        "a/b": b"b\n",
+        "a/bc/x.py": b"x\n",
+    }
+    package_name = "fixture/__init__.py"
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+        package_name=package_name,
+        package_content=accepted[package_name],
+        extra_entries=tuple(
+            (name, payload) for name, payload in accepted.items() if name != package_name
+        ),
+    )
+
+    backend._normalize_wheel_archive(path, EPOCH)
+
+    with zipfile.ZipFile(path) as archive:
+        assert all(archive.read(name) == payload for name, payload in accepted.items())
+
+
 def test_wheel_normalization_rejects_prepended_and_trailing_bytes(
     tmp_path: Path,
 ) -> None:
@@ -1009,6 +1178,73 @@ def test_normalization_rejects_unsafe_or_incomplete_archives(
         _normalize_sdist_archive(path, EPOCH)
 
     assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("extra_members", "message"),
+    _SDIST_NAMESPACE_CONFLICT_CASES,
+)
+def test_sdist_physical_preflight_rejects_namespace_conflicts_before_tarfile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    extra_members: tuple[tuple[str, str], ...],
+    message: str,
+) -> None:
+    path = _raw_archive(tmp_path, "namespace-preflight", extra_members=extra_members)
+    original = path.read_bytes()
+
+    def unexpected_tarfile(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("tarfile.open must not run before namespace preflight")
+
+    monkeypatch.setattr(backend.tarfile, "open", unexpected_tarfile)
+
+    with pytest.raises(DeterministicSdistError, match=message):
+        _normalize_sdist_archive(path, EPOCH)
+
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("extra_members", "message"),
+    _SDIST_NAMESPACE_CONFLICT_CASES,
+)
+def test_sdist_parser_layer_rejects_namespace_conflicts(
+    tmp_path: Path,
+    extra_members: tuple[tuple[str, str], ...],
+    message: str,
+) -> None:
+    path = _raw_archive(tmp_path, "namespace-parser", extra_members=extra_members)
+
+    with (
+        tarfile.open(path, mode="r:gz") as archive,
+        pytest.raises(DeterministicSdistError, match=message),
+    ):
+        backend._validated_members(
+            archive,
+            expected_root=ROOT,
+            allow_mtime_pax=True,
+        )
+
+
+def test_sdist_namespace_allows_explicit_directory_ancestors(tmp_path: Path) -> None:
+    directory = f"{ROOT}/pkg"
+    path = _raw_archive(
+        tmp_path,
+        "explicit-directory",
+        extra_members=(
+            (f"{directory}/module.py", "file"),
+            (directory, "directory"),
+            (f"{directory}/other.py", "file"),
+        ),
+    )
+
+    _normalize_sdist_archive(path, EPOCH)
+
+    with tarfile.open(path, mode="r:gz") as archive:
+        members = {member.name: member for member in archive.getmembers()}
+    assert members[directory].isdir()
+    assert members[f"{directory}/module.py"].isfile()
+    assert members[f"{directory}/other.py"].isfile()
 
 
 def test_normalization_rejects_corrupt_and_hard_linked_inputs(tmp_path: Path) -> None:

@@ -8,6 +8,14 @@ versioning and release rules in
 
 ### Changed
 
+- Made the physical and parsed tar/wheel validators in the byte-identical root
+  and OpenHands PEP 517 backends reject file-as-ancestor and explicit or
+  implicit directory namespace conflicts under NFC plus Unicode casefolding.
+  A bounded slash-to-forbidden-NUL sort key keeps components adjacent even for
+  the lexical interloper sequence `a`, `a-foo`, `a/x`; accepted member names
+  are never normalized, merged, or rewritten. The pinned OpenHands build-wheel
+  inspector now applies the same rule to ZIP names before decompression and to
+  `RECORD` names independently of ZIP membership and digest checks.
 - Rejected stable ASCII-case collisions across every represented directory
   prefix and file path in retained adapter-source inventories, including
   file/directory prefix conflicts. Paths remain unmodified and non-ASCII bytes

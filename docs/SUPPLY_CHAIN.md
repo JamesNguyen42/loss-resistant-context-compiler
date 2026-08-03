@@ -140,6 +140,13 @@ clean-install modes. This does not create a general core/dev lock, authenticate
 the configured index or publishers, or make temporary Actions retention
 durable.
 
+The current OpenHands build-input inspector also treats the archive namespace
+as a separate bounded integrity boundary. It validates every ZIP name after
+central-directory metadata, member-count, and member-name-length bounds but
+before decompressing any member. It independently validates the complete parsed
+`RECORD` namespace before testing ZIP membership, hashes, or sizes. Exact ZIP
+and `RECORD` duplicate diagnostics remain separate and fail early.
+
 Exact root release-input implementation head
 `7915beb15f6a3429c24871779c7cdab280d1ee04`, tree
 `5fb61a9f0e9e00016acfd00d04e85e8ef04638f8`, adds an independent root
@@ -225,14 +232,27 @@ user/group names, gzip time, and member mtimes deterministically. Nonportable
 names include the complete supported Windows device-alias set: `CON`, `PRN`,
 `AUX`, `NUL`, `CONIN$`, and `CONOUT$`; COM/LPT 1--9 and superscript 1/2/3
 forms; and aliases with ASCII spaces before an extension. These members are
-rejected, never normalized.
-Physical
-tar/PAX and gzip expansion limits are enforced before the standard tar parser
-receives the validated anonymous stream. It re-inventories the candidate and
-aborts the deterministic sdist build if member order, type, mode, size,
-content, or installed bytes changed. A failed candidate pathname is retained
-rather than risking deletion of a concurrently substituted file. Without the
-epoch the hook preserves normal Setuptools behavior.
+rejected, never normalized. The root and OpenHands backends now additionally
+validate namespace prefixes in both physical and parsed layers for tar and
+wheel inputs. Physical tar/PAX and gzip expansion limits are enforced before
+the standard tar parser receives the validated anonymous stream; the wheel
+central-directory namespace is likewise checked before `ZipFile` parsing.
+Parsed `TarInfo` and `ZipInfo` inventories repeat the namespace check. A file
+cannot also be an ancestor, and raw spellings of an explicit or implicit
+directory cannot collide under NFC plus Unicode casefolding. Accepted names
+are not normalized, merged, or rewritten.
+
+The namespace algorithm runs only after existing member, path-length, and
+aggregate bounds. It sorts one bounded key per exact-deduplicated member,
+replacing `/` with the already-forbidden NUL sentinel, then compares adjacent
+component sequences. This preserves component order and catches `a` versus
+`a/x` even when raw lexical order contains `a-foo` between them. Existing exact
+duplicate diagnostics, type and size bounds, and required-member checks remain
+separate. The backend then re-inventories the candidate and aborts the
+deterministic build if member order, type, mode, size, content, or installed
+bytes changed. A failed candidate pathname is retained rather than risking
+deletion of a concurrently substituted file. Without the epoch the hook
+preserves normal Setuptools behavior.
 
 That first normalization boundary applied only to the core distribution. In
 the 2026-07-27 local integration diagnostic, direct-Setuptools wheels were
@@ -248,6 +268,21 @@ without an epoch, and for non-sdist hooks, it delegates normal Setuptools
 behavior. The integration manifest reserves generated `setup.cfg` from the
 source file list so an extracted sdist rebuild reaches the same
 `SOURCES.txt` fixed point instead of changing one member payload.
+
+At the namespace-prefix checkpoint, the root and OpenHands backend files remain
+byte-identical with SHA-256
+`e7b0271647fc4ec1206b591d6bf82ea17fba9a9d8f40c6f185f072166e41f1e8`.
+The combined CPython 3.12 and CPython 3.14 JUnit reports each contain 177
+tests: 176 passed and one expected Windows symlink skip. The 28,236-byte 3.12
+report has SHA-256
+`b12074a93e4ff2200ccad12c342a2e08c3b65a0208a293418d0f26bad8a93d22`
+and records 1.775 seconds; the 28,236-byte 3.14 report has SHA-256
+`a8304fb33611a2d6630141d97de058414a87ffc9b778ccea3d86aff816e75d00`
+and records 1.993 seconds. Focused Ruff is clean. An independent CPU-only
+comparison, seed `0xC7C`, matched 25,000 random bounded backend inventories and
+25,000 all-file CI inventories exactly against an O(n²) component oracle. That
+50,000-inventory comparison is non-retained review evidence, not a published
+artifact.
 
 The first wrapper checkpoint, `cf8b8d3911ef776ca015856f8df19ac47dae0628`,
 proved two fresh source copies but did not rebuild its own generated sdist.

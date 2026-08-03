@@ -982,12 +982,19 @@ evidence of sublinear compilation.
   Reject `CONIN$`/`CONOUT$`, COM/LPT superscript 1/2/3 forms, and aliases with
   ASCII spaces before an extension; retain `COM0`, `COM10`, and `CON name`
   controls without normalizing any archive member.
-- [ ] Reject archive namespace conflicts at component boundaries across both
-  build backends and the OpenHands ZIP/`RECORD` inspector. Fail closed when a
-  file is also an ancestor of another member, or when explicit or implicit
-  directory components collide under stable ASCII case or Unicode NFC. Preserve
-  the original member bytes for diagnostics; do not normalize, merge, or
-  rewrite either conflicting namespace.
+- [x] Reject archive namespace conflicts at component boundaries across both
+  byte-identical build backends and the OpenHands ZIP/`RECORD` inspector. The
+  physical and parsed tar/wheel layers fail closed when a file is also an
+  ancestor of another member or when explicit or implicit directory components
+  collide under NFC plus Unicode casefolding. A bounded adjacent sort replaces
+  `/` with the already-forbidden NUL sentinel, so a lexical interloper such as
+  `a-foo` cannot separate `a` from `a/x`. Namespace comparison preserves
+  accepted member-name spelling and does not normalize, merge, or rewrite the
+  names; existing deterministic container normalization is unchanged. The CI
+  inspector rejects ZIP namespace conflicts before decompression and checks
+  `RECORD` names independently before archive-membership and digest checks.
+  Both backend files have SHA-256
+  `e7b0271647fc4ec1206b591d6bf82ea17fba9a9d8f40c6f185f072166e41f1e8`.
 - [x] Require a separate automatic comparison of the root wheel, integration
   wheel, and integration sdist from all six Linux, Windows, and macOS Python
   3.12/3.13 package lanes. Exact package-gate implementation head
@@ -1308,10 +1315,10 @@ evidence of sublinear compilation.
 
 The next chat should start here unless new evidence changes the priority:
 
-1. reject component-boundary file/ancestor and implicit-directory ASCII-case or
-   NFC archive namespace conflicts across both build backends and the OpenHands
-   ZIP/`RECORD` inspector, with exact cross-backend regression coverage and no
-   member normalization or rewriting;
+1. acquire Sphinx through a reviewed channel, inspect the exact base-commit
+   license candidates, and prepare ordinals 381--424 (44 selected rows and 44
+   distinct commits), retaining every success or refusal without silently
+   narrowing the 500-row cohort;
 2. keep live OpenHands execution and the recorded live demonstration blocked
    until a complete reviewed hash-pinned offline dependency closure and a
    stable public final-immutable-request/exact-tokenizer hook both exist;
@@ -1328,9 +1335,8 @@ The next chat should start here unless new evidence changes the priority:
    rerun the retained ACON diagnostic;
 8. add clean reproducible adapters only for systems admitted by the frozen
    result-blind protocol;
-9. continue with Sphinx ordinals 381--424, complete SWE-bench
-   dataset/repository license review and the remaining 406 preparation outcomes,
-   then provision externally verified candidate
+9. complete SWE-bench dataset/repository license review and the remaining 406
+   preparation outcomes, then provision externally verified candidate
    mount/filesystem and network isolation before using the synthetic-tested run
    ledger with any public candidate; keep hidden-test application, grading,
    resolution, scoring, usefulness, and claim readiness false until separately

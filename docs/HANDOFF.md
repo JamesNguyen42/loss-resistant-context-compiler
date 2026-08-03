@@ -974,6 +974,23 @@ audited. Any selected superseded item independently fails verification as
   `CONIN$`/`CONOUT$`, COM/LPT superscript forms, and ASCII spaces before an
   extension. Ambiguous members are rejected rather than rewritten; `COM0`,
   `COM10`, and `CON name` remain valid controls.
+- Archive namespace-prefix hardening is complete in the byte-identical root and
+  OpenHands packaging backends and in the OpenHands build-input inspector. Both
+  physical pre-parser and parsed tar/wheel inventories reject a file reused as
+  an ancestor and implicit-directory NFC/casefold collisions. NFC normalization
+  and case folding are comparison-only; accepted member-name spellings are not
+  normalized, merged, or rewritten. Existing deterministic container and
+  generated-metadata normalization is unchanged. Exact-duplicate diagnostics
+  retain their early precedence;
+  bounded count, name, member, and expanded-byte diagnostics remain distinct,
+  and namespace checking runs only after those applicable bounds. The CI
+  inspector validates the bounded ZIP namespace before
+  decompression and validates `RECORD` paths independently before archive
+  membership, size, and digest checks.
+- The CPU-only combined root/OpenHands archive and build-input validation set
+  passed 176 tests with one expected Windows symlink-privilege skip on both
+  CPython 3.12.13 and 3.14.6. Focused Ruff passed. No build, model, GPU, or
+  inference runtime was involved.
 - CI runs connector golden/negative conformance, natural-history contract
   validation, external-candidate interchange, and external protocol checks.
 - At root implementation head `7915beb`, Core CI acquires the seven exact
@@ -1967,12 +1984,7 @@ and the recorded live scenario blocked; do not substitute the fake scenario or
 private host seams. While that gate remains red, the highest-value broader
 project work is the external and natural-history evidence path:
 
-1. reject component-boundary file/ancestor and implicit-directory ASCII-case/NFC
-   namespace conflicts in both byte-identical sdist/wheel backends and the
-   OpenHands ZIP/`RECORD` inspector; preserve existing member/path bounds and
-   physical pre-parser rejection, and never normalize, merge, or rewrite a
-   member;
-2. acquire a reviewed Sphinx mirror and exact base-commit license evidence,
+1. acquire a reviewed Sphinx mirror and exact base-commit license evidence,
    inspect that evidence, and prepare ordinals 381--424 before continuing the
    currently 406 unattempted SWE-bench rows; retain every success or refusal
    and both mirror/preparation evidence; provision a separately verified
@@ -1985,20 +1997,20 @@ project work is the external and natural-history evidence path:
    grader, resolution, and result/score evidence; do not reuse the LRCBench
    rendered-memory runner for patches or treat the lifecycle, raw exporter, run
    ledger, patch preflight, or prediction ledger as a sandbox;
-3. preserve every frozen report and the paired report's four verification
+2. preserve every frozen report and the paired report's four verification
    failures without post-result tuning or rescoring;
-4. resolve the nine explicit blockers in the machine-readable external
+3. resolve the nine explicit blockers in the machine-readable external
    protocol without looking at comparative results;
-5. complete result-blind inclusion decisions and freeze the initial comparison
+4. complete result-blind inclusion decisions and freeze the initial comparison
    set, dependency locks, adapter revisions, source/runtime/command evidence,
    and externally enforced network controls;
-6. provide an exact Python 3.11 ACON checkout and lock plus single-slot local
+5. provide an exact Python 3.11 ACON checkout and lock plus single-slot local
    Qwen/inference-service evidence, then rerun the retained diagnostic without
    hiding a failure;
-7. add clean adapters only for included systems and retain every failed run;
-8. build the separately launched candidate adapter, simulator/grader evidence,
+6. add clean adapters only for included systems and retain every failed run;
+7. build the separately launched candidate adapter, simulator/grader evidence,
    and isolation boundary for the source-bound tau2-bench text core;
-9. collect licensed/consented natural histories under the implemented privacy,
+8. collect licensed/consented natural histories under the implemented privacy,
    independent-annotation, adjudication, grouped-split, and no-leakage contracts.
 
 The detailed ordered backlog is in [TODO.md](../TODO.md).

@@ -17,6 +17,7 @@ import re
 import stat
 import struct
 import subprocess
+import unicodedata
 import zipfile
 import zlib
 from collections.abc import Sequence
@@ -373,6 +374,34 @@ def _safe_wheel_member_name(value: object) -> str:
     return value
 
 
+def _portable_member_key(name: str) -> str:
+    return unicodedata.normalize("NFC", name).casefold()
+
+
+def _validate_member_namespace(names: Sequence[str], *, label: str) -> None:
+    """Check an already safe, count-bounded member inventory."""
+
+    # Safe-name validation excludes NUL, so it preserves component ordering here.
+    separator = "\x00"
+    ordered = sorted((_portable_member_key(name).replace("/", separator), name) for name in names)
+    for index in range(1, len(ordered)):
+        prior_key, prior_name = ordered[index - 1]
+        key, name = ordered[index]
+        if key == prior_key or key.startswith(prior_key + separator):
+            raise BuildInputError(f"{label} contains a namespace conflict")
+
+        prior_key_parts = prior_key.split(separator)
+        key_parts = key.split(separator)
+        prior_parts = prior_name.split("/")
+        parts = name.split("/")
+        shared_directory_parts = min(len(prior_parts), len(parts)) - 1
+        for part_index in range(shared_directory_parts):
+            if prior_key_parts[part_index] != key_parts[part_index]:
+                break
+            if prior_parts[part_index] != parts[part_index]:
+                raise BuildInputError(f"{label} contains a namespace conflict")
+
+
 def _validate_zip_framing(payload: bytes) -> int:
     if len(payload) < 22 or not payload.startswith(b"PK\x03\x04"):
         raise BuildInputError("build wheel has invalid ZIP framing")
@@ -477,6 +506,7 @@ def _validate_record(
     if len(rows) != len(member_payloads):
         raise BuildInputError("build wheel RECORD inventory does not match the archive")
     observed: set[str] = set()
+    validated_rows: list[tuple[str, str, str]] = []
     for row in rows:
         if len(row) != 3:
             raise BuildInputError("build wheel RECORD row must contain exactly three fields")
@@ -484,17 +514,21 @@ def _validate_record(
         if name in observed:
             raise BuildInputError("build wheel RECORD contains a duplicate path")
         observed.add(name)
+        validated_rows.append((name, row[1], row[2]))
+    _validate_member_namespace(tuple(observed), label="build wheel RECORD")
+
+    for name, digest_value, size_value in validated_rows:
         if name not in member_payloads:
             raise BuildInputError("build wheel RECORD names an absent archive member")
         if name == record_name:
-            if row[1:] != ["", ""]:
+            if (digest_value, size_value) != ("", ""):
                 raise BuildInputError("build wheel RECORD self-row must be unhashed and unsized")
             continue
-        digest = _decode_record_digest(row[1])
-        if _RECORD_SIZE_RE.fullmatch(row[2]) is None:
+        digest = _decode_record_digest(digest_value)
+        if _RECORD_SIZE_RE.fullmatch(size_value) is None:
             raise BuildInputError("build wheel RECORD size is not canonical")
         member_payload = member_payloads[name]
-        if int(row[2]) != len(member_payload):
+        if int(size_value) != len(member_payload):
             raise BuildInputError("build wheel RECORD size does not match archive bytes")
         if hashlib.sha256(member_payload).digest() != digest:
             raise BuildInputError("build wheel RECORD digest does not match archive bytes")
@@ -518,10 +552,10 @@ def _validate_wheel_bytes(payload: bytes, approved: ApprovedWheel) -> None:
             seen: set[str] = set()
             portable: set[str] = set()
             expanded = 0
-            member_payloads: dict[str, bytes] = {}
+            validated_members: list[tuple[zipfile.ZipInfo, str]] = []
             for member in members:
                 name = _safe_wheel_member_name(member.filename)
-                portable_name = name.casefold()
+                portable_name = _portable_member_key(name)
                 if name in seen or portable_name in portable:
                     raise BuildInputError("build wheel contains duplicate or colliding members")
                 seen.add(name)
@@ -539,9 +573,20 @@ def _validate_wheel_bytes(payload: bytes, approved: ApprovedWheel) -> None:
                     file_type = stat.S_IFMT(raw_mode)
                     if file_type not in {0, stat.S_IFREG}:
                         raise BuildInputError("build wheel contains a link or special member")
+                if member.file_size < 0 or member.file_size > _MAX_WHEEL_MEMBER_BYTES:
+                    raise BuildInputError("build wheel member exceeds its byte bound")
                 expanded += member.file_size
                 if expanded > _MAX_WHEEL_EXPANDED_BYTES:
                     raise BuildInputError("build wheel exceeds its expanded byte bound")
+                validated_members.append((member, name))
+            portable.clear()
+            _validate_member_namespace(
+                tuple(name for _member, name in validated_members),
+                label="build wheel",
+            )
+
+            member_payloads: dict[str, bytes] = {}
+            for member, name in validated_members:
                 member_payloads[name] = _read_zip_member(
                     archive,
                     member,

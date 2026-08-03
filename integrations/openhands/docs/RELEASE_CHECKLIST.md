@@ -195,6 +195,16 @@ ordinary push or pull-request package lane.
       aliases, including `CONIN$`/`CONOUT$`, superscript COM/LPT forms, and
       aliases with ASCII spaces before an extension; ambiguous names are never
       normalized.
+- [ ] Physical pre-parser and parsed tar/wheel inventories in both byte-identical
+      packaging backends reject file/ancestor and implicit-directory
+      NFC/casefold namespace conflicts without rewriting a member. Exact
+      duplicate diagnostics retain their early precedence, while bounded
+      resource diagnostics remain distinct and precede the namespace check.
+- [ ] The build-input inspector validates bounded ZIP namespaces before
+      decompression and validates the `RECORD` namespace independently before
+      archive membership, size, and digest checks. Valid shared directories,
+      lexical prefix boundaries, distinct Unicode components, and shuffled
+      `RECORD` rows remain accepted.
 - [ ] Two fresh source builds and one extracted-sdist rebuild use the same
       retained epoch/toolchain and produce one exact final sdist name, size,
       and SHA-256 without overwriting any candidate.
@@ -217,6 +227,13 @@ ordinary push or pull-request package lane.
 - [ ] Both clean environments pass import isolation, ordinary doctor, retained
       live-blocker, console-entry-point, and packaged-resource checks.
 - [ ] Artifact and clean-install report SHA-256 digests are retained.
+
+Current CPU-only source-validation evidence: the combined root/OpenHands
+archive and build-input set passed 176 tests with one expected Windows
+symlink-privilege skip on both local CPython 3.12.13 and 3.14.6; focused Ruff
+passed. No build, model, GPU, inference runtime, or live OpenHands path was
+used. This local cross-version result does not widen the supported integration
+runtime or close the hosted release gates below.
 
 ## 10. Offline evidence gates
 
