@@ -19,7 +19,8 @@ repository snapshots.
 | Xarray task repository | `pydata/xarray`, selected ordinals 298--319 | All 22 exact commits contain the same 10,273-byte Apache License 2.0 root `LICENSE`; packaging metadata declares `Apache` through ordinal 315 and `Apache-2.0` at 316--319 | All 22 trees prepared; broader per-path, notice, third-party, and redistribution review remains incomplete |
 | Pylint task repository | `pylint-dev/pylint`, selected ordinals 320--329 | All ten exact commits contain the same 17,984-byte root `LICENSE`; ordinals 324--329 also contain two symlink entries rejected by preparation policy | Four trees prepared and six policy refusals retained; this is not a legal determination or task result |
 | Pytest task repository | `pytest-dev/pytest`, selected ordinals 330--348 | Nineteen prepared commits contain three root-`LICENSE` byte variants, four `doc/en/license.rst` variants, and a theme license in ordinals 333--341 | Discovered variants inventoried; per-path and redistribution review remain incomplete |
-| Remaining 6 task repositories | Astropy, Django, Matplotlib, scikit-learn, Sphinx, and Sympy exact base commits selected by the pinned source | Not yet inspected across all selected commits | 438 rows remain unattempted; local preparation and redistribution review remain incomplete |
+| scikit-learn task repository | `scikit-learn/scikit-learn`, selected ordinals 349--380 | All 32 exact commits contain one of four root `COPYING` byte variants and the same vendored `sklearn/svm/src/liblinear/COPYRIGHT`; 28 distinct root packaging-declaration byte variants were also retained | All 32 trees prepared; the filename-based inventory is discovery evidence only, and applicability and redistribution review remain incomplete |
+| Remaining 5 task repositories | Astropy, Django, Matplotlib, Sphinx, and SymPy exact base commits selected by the pinned source | Not yet inspected across all selected commits | 406 rows remain unattempted; local preparation and redistribution review remain incomplete |
 
 The official pinned [dataset tree](https://huggingface.co/datasets/SWE-bench/SWE-bench_Verified/tree/91aa3ed51b709be6457e12d00300a6a596d4c6a3)
 contains the dataset card and data but no standalone license file. The
@@ -68,11 +69,11 @@ usefulness, and claim-readiness fields all remain false. This is one real
 public base-commit preparation, not a candidate run or a SWE-bench result.
 
 Subsequent local work retained every outcome for the contiguous selected range
-287--348. The latest expansion verified the configured
+287--348. That historical through-348 checkpoint verified the configured
 `https://github.com/pydata/xarray.git` mirror and prepared ordinals 298--319.
 Those 22 ignored manifests total 1,558,923 bytes and bind 6,160 regular files,
 138,899,190 blob bytes, 681 tree objects, and 285,569 raw tree bytes. No Xarray
-row was refused. The current full-cohort state is:
+row was refused. The mirror self-hashes recorded at that checkpoint were:
 
 | Repository | Selected rows attempted | Prepared | Policy-refused | Mirror self-hash |
 | --- | ---: | ---: | ---: | --- |
@@ -84,21 +85,71 @@ row was refused. The current full-cohort state is:
 | `pytest-dev/pytest` | 19 | 19 | 0 | `cb339b9072d403a97f1192ee53e682ce9b013e8f8c87a20744a3b8b11e2a7fd9` |
 | **Cohort total** | **62** | **56** | **6** | n/a |
 
-All 56 successful handles passed a fresh source-bound mirror and output-tree
-replay. Their ignored manifests total 6,019,332 bytes and bind 23,467 portable
-regular files, 253,569,052 blob bytes, 2,744 tree objects, and 1,152,917 raw tree
-bytes. The other 438 selected source rows were not attempted.
+All 56 successful handles at that checkpoint passed a fresh source-bound mirror
+and output-tree replay. Their ignored manifests total 6,019,332 bytes and bind
+23,467 portable regular files, 253,569,052 blob bytes, 2,744 tree objects, and
+1,152,917 raw tree bytes. The other 438 selected source rows were not attempted.
 
-An ignored preparation-only prediction ledger reconciles those outcomes over
-all 500 source rows. Its 488,750-byte JSON file has SHA-256
+The current verified checkpoint extends that contiguous range through ordinal
+380. A fresh `--verify-only` replay at clean code revision
+`d512b04156728cb9a4088f250ead395192572b34` revalidated all seven live mirrors,
+all 88 manifests, and every prepared output tree against the current worker and
+Git executable. The current mirror self-hashes are:
+
+| Repository | Selected rows attempted | Prepared | Policy-refused | Mirror self-hash |
+| --- | ---: | ---: | ---: | --- |
+| `mwaskom/seaborn` | 2 | 2 | 0 | `24a3012396869f467762c60b0899cda49b10bd86120473f763c5fb368a18a196` |
+| `pallets/flask` | 1 | 1 | 0 | `e57b2ca55771492c111acbf492de7815b5a7c986cae79b2981a5faff2aa72857` |
+| `psf/requests` | 8 | 8 | 0 | `986075417331430465c071886459e0036bb49483610507678e86b7a8dff4624d` |
+| `pydata/xarray` | 22 | 22 | 0 | `3e35b0ae7c29272c1c3fed67ffe9235748f306f4e79b69988d0954c97fe29230` |
+| `pylint-dev/pylint` | 10 | 4 | 6 | `9870e1c5f0b4d9298335fc491fa0bee7e49608e5a556c8f822419d079dd9eede` |
+| `pytest-dev/pytest` | 19 | 19 | 0 | `2650e52441093e8fe99a68291321d0ec069de5e68f298d13083e1b33500a25e0` |
+| `scikit-learn/scikit-learn` | 32 | 32 | 0 | `11fd8e824611cfb7ad2e3209ea7d7c14af3b6bbcf0f03c5a6d6de7d0e1150888` |
+| **Cohort total** | **94** | **88** | **6** | n/a |
+
+The 88 ignored manifests total 16,333,450 bytes and bind 64,056 portable
+regular files, 801,780,869 blob bytes, 7,603 tree objects, and 3,208,763 raw
+tree bytes. The 72,728-byte summary has file SHA-256
+`21ded8d8bff3038e1064abaff01d952e06fe60d165617f3e3e213d55ba99b781`
+and self-hash
+`f11f8bd4235c1469fbe8dd8865d92519af82f8c831ae5901a82b182bd221b96d`.
+The current 42,849-byte worker has SHA-256
+`cb9c8680d74022b7db8aea8b376790a49131f5fd1a1c0b93ba74341302c8a44f`;
+the 46,920-byte Git executable remains SHA-256
+`7b7971dd13f0c3a284e538601f2f9770b3a87dfaccb5fb52d68141c67ed22364`.
+These release- and environment-bound values do not replace the historical
+checkpoint above and do not authenticate repository origin or authorship.
+Repository-origin authentication, repository and dataset redistribution review,
+legal determination, candidate mount, filesystem/network isolation, execution,
+grading, external score, usefulness, claim readiness, and self-hash author or
+producer authentication all remain false. The scikit-learn inventory's only
+positive characterization is `engineering_inventory_only`.
+
+The through-348 checkpoint also retained an ignored preparation-only prediction
+ledger over all 500 source rows. Its 488,750-byte JSON file has SHA-256
 `2219e2f1526c51f4c965a7af41364c393075151fecc2e2b4553eb037e359b772`
 and self-hash
 `b5668f76a4949d42310ce644de007696a6d9ee3725d3d0514edabf6887082f34`.
-The companion 53,734-byte official-format JSONL has 500 null patches and
+Its companion 53,734-byte official-format JSONL has 500 null patches and
 SHA-256
 `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
-The system label is `not-run-preparation-only`; this artifact records no model
-or controller execution.
+The current through-380 ledger is 490,862 bytes with file SHA-256
+`dc8d7c10b7ab4ad4cf24123296abf502f614a1740337e356ce281e7bffcdf8af`
+and self-hash
+`3fa05e48739ca1fdc1e8295724b68f45f42728f9229cf908dfeaa6fd29192e5d`.
+It reconciles 88 prepared, 6 refused, and 406 unattempted rows. Its JSONL is
+byte-for-byte unchanged: the same 53,734 bytes, exact 500-row source order, 500
+null patches, and SHA-256 above. The system label remains
+`not-run-preparation-only`; neither checkpoint records model or controller
+execution.
+
+The next bounded preparation run is Sphinx ordinals 381--424, comprising 44
+distinct exact commits from
+`sphinx-doc__sphinx-10323@31eba1a76dd485dc633cae48227b46879eda5df4` through
+`sphinx-doc__sphinx-9711@81a4fd973d4cfcb25d01a7b0be62cdb28f82406d`.
+Ordinal 425, `sympy__sympy-11618`, changes repository to SymPy. No Sphinx
+mirror, preparation outcome, or license inventory is part of the verified
+through-380 checkpoint.
 
 Pylint ordinals 324--329 each refused with exact code
 `tree-symlink-forbidden`. Every affected commit contains the same two mode
@@ -147,7 +198,26 @@ governs every file:
   at 333--339 and
   `7898b9b164d4f93fd9a562fd0f592935518b48c4745303964110eb7f7fe64faf`
   at 340--348. Four distinct `doc/en/license.rst` byte sets and the separate
-  theme license at 333--341 remain separately inventoried.
+  theme license at 333--341 remain separately inventoried;
+- the 32 scikit-learn commits contain four root `COPYING` byte variants:
+  SHA-256
+  `3f046f2b5eea2c3b852dae4feea90f92a64ced2a6ac23ea137db2a5ac347ce22`
+  at ordinals 349--354,
+  `0a5f5c0e4d0b33493b8e62cbbeb63b84067a3bc3865723a4628768d789ed9fce`
+  at 355--372 and 380,
+  `e39bf18719108f9e94b578020077dae2c8f0cede14cd7caa11e9a13c44b5e5ab`
+  at 373--376, and
+  `d81e7339cfef557debf6d8214e4a31acd01b3144d2b39e42513c3c7e5c29e5c2`
+  at 377--379. All 32 also contain the same 1,486-byte
+  `sklearn/svm/src/liblinear/COPYRIGHT`, SHA-256
+  `36f048db5651dd450f03e513016b77036cc99a44a66b2fdcecf4f6418657e0e1`.
+  The inventory separately retains 10 `setup.cfg`, 13 `setup.py`, and 5
+  `pyproject.toml` byte variants; `pyproject.toml` appears in seven commits.
+  Altogether those are 33 distinct candidate-byte variants across five paths.
+  The 91,472-byte inventory has file SHA-256
+  `4130d4f1f7dc65ee0d0ef5babe2fa1fe278f834c84994ebf11001774a5623887`
+  and self-hash
+  `5adcfab541bbd7769812d529e725cd745dbc6ea57c73b5a55538b814984b71fd`.
 
 The breadth-first filename scan is useful discovery evidence, not proof that
 every applicable license, notice, vendored component, generated file, or

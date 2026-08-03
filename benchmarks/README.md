@@ -161,9 +161,9 @@ allowlisted task payload, with exact fields `opaque_task_id` and
 
 The HMAC ID is pseudonymous, not unlinkable: public problem text and fixed
 suite order can still identify a task. A raw-Git preparation boundary now has
-synthetic-mirror coverage plus 62 retained public outcomes across six
-repositories: 56 verified preparations, six exact
-`tree-symlink-forbidden` policy refusals, and 438 unattempted rows. These are
+synthetic-mirror coverage plus 94 retained public preparation outcomes across
+seven repositories: 88 verified preparations, six exact
+`tree-symlink-forbidden` policy refusals, and 406 unattempted rows. These are
 not candidate mounts or public executions; no public candidate, model, agent,
 or grader has run, no score exists, and the pinned dataset card declares no
 license. See the complete
@@ -206,11 +206,29 @@ alternate streams. Its self-hashed
 `ctxc-swebench-repository-preparation-0.1` manifest remains coordinator-only
 and serializes exact limits while asserting no author authentication. All
 origin, redistribution, mount, network, execution, grader, score, usefulness,
-and claim-readiness fields remain false. Synthetic Git tests prove the
-mechanism. The ignored public evidence currently proves that 56 exact selected
-trees prepared and replayed locally and that six other selected commits were
-refused by the link-free export policy; it does not prove safe mounting,
+and claim-readiness fields remain false. Synthetic Git tests exercise the
+mechanism. The ignored public evidence currently retains 88 exact selected
+trees that prepared and replayed locally and six other selected commits that
+were refused by the link-free export policy; it does not prove safe mounting,
 candidate execution, or task success.
+
+At clean evidence-generation base
+`d512b04156728cb9a4088f250ead395192572b34`, the ignored through-ordinal-380
+preparation summary is 72,728 bytes with file SHA-256
+`21ded8d8bff3038e1064abaff01d952e06fe60d165617f3e3e213d55ba99b781`
+and self-hash
+`f11f8bd4235c1469fbe8dd8865d92519af82f8c831ae5901a82b182bd221b96d`.
+Its 50,264-byte journal has SHA-256
+`1010659aeb04df9d9463aae21097266f1b51da4ea5b37bfd9b0b818b6c24050c`.
+The 88 prepared manifests total 16,333,450 bytes and bind 64,056 regular files,
+801,780,869 blob bytes, 7,603 tree objects, and 3,208,763 raw tree-object bytes.
+The separate 91,472-byte scikit-learn filename/path inventory retains 33
+license-file and root-packaging candidate hash variants; its file SHA-256 is
+`4130d4f1f7dc65ee0d0ef5babe2fa1fe278f834c84994ebf11001774a5623887`
+and its self-hash is
+`5adcfab541bbd7769812d529e725cd745dbc6ea57c73b5a55538b814984b71fd`.
+That inventory is discovery evidence, not authenticated origin, complete legal
+coverage, or redistribution approval.
 
 ### SWE-bench prediction ledger
 
@@ -250,6 +268,16 @@ protocol rows remain coordinator assertions rather than independently
 replayable capture evidence. The separate controller-run ledger below can bind
 future raw capture bytes and workspace observations, but it still does not
 authenticate their producer or establish isolated candidate execution.
+
+The current ignored preparation-only ledger reconciles 88 prepared, 6 refused,
+and 406 unattempted outcomes with 500 null predictions. Its 490,862-byte file
+has SHA-256
+`dc8d7c10b7ab4ad4cf24123296abf502f614a1740337e356ce281e7bffcdf8af`
+and self-hash
+`3fa05e48739ca1fdc1e8295724b68f45f42728f9229cf908dfeaa6fd29192e5d`.
+The unchanged 53,734-byte canonical JSONL has SHA-256
+`546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
+Neither artifact is committed or evidence of a candidate run.
 
 ### SWE-bench controller-run ledger
 
@@ -353,8 +381,8 @@ turn it into a cohort result or silently remove a row.
 Candidate-code execution, hidden-test execution, official grading, official
 results, external scores, usefulness, candidate-mount/network/filesystem
 isolation, native quotas, Git-parser sandboxing, and claim readiness remain
-false. The 56 prepared, 6 policy-refused, and 438 unattempted public-row counts
-are unchanged, and no public candidate or grader was run.
+false. The current preparation-only counts remain 88 prepared, 6
+policy-refused, and 406 unattempted, and no public candidate or grader was run.
 
 ## tau2-bench v1.0.1 text-core source intake
 

@@ -43,7 +43,7 @@ live-readiness status.
 | Package version | `0.1.1a21` |
 | Python | 3.11, 3.12, 3.13, and 3.14 complete in root CI; Windows 3.14 core suite green |
 | Core runtime dependencies | None outside the Python standard library |
-| Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; `0f20b8a`: exact seven-wheel OpenHands build inputs, clean provider/a2 harness, and all automatic hosted gates passed; `7915beb`: exact seven-wheel root release inputs and post-acquisition offline build/smoke passed every automatic hosted gate; no local inference |
+| Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; `0f20b8a`: exact seven-wheel OpenHands build inputs, clean provider/a2 harness, and all automatic hosted gates passed; `7915beb`: exact seven-wheel root release inputs and post-acquisition offline build/smoke passed every automatic hosted gate; `d512b04`: independently replayed preparation-through-380 evidence with the complete 500-row denominator; no local inference |
 | Canonical optional boundary | `localai-contracts==0.2.0a2`, protocol/schema `1.0.0`; `context.compile` only; non-inference |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
@@ -59,7 +59,7 @@ live-readiness status.
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
-| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation, full-cohort prediction, synthetic controller-run, and text-patch composition evidence; 62 public rows attempted across six repositories (56 prepared, 6 policy-refused, 438 unattempted), with no public candidate/model/agent run, verified isolation, grader execution, resolution, score, or usefulness result |
+| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation, full-cohort prediction, synthetic controller-run, and text-patch composition evidence; 94 public rows attempted across seven repositories (88 prepared, 6 exact Pylint `tree-symlink-forbidden` refusals, 406 unattempted), with no public candidate/model/agent run, verified isolation, grader execution, resolution, score, or usefulness result |
 | tau2-bench intake | Pinned v1.0.1 annotated tag and exact 278-row half-duplex text `base` cohort in actual loader order; source-only verification and security contract, with no adapter, simulator, grader, isolation, execution, reward, score, or usefulness result |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
 | OpenHands integration | Separate `ctxc-openhands` draft alpha; exact current version is owned by its package metadata; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
@@ -74,6 +74,10 @@ benchmark, and local-Qwen checkpoint is commit `3ed2f79` on
 `codex/harden-verified-memory-evaluation`; later runner and documentation work
 may be newer. Always use `git log -1` and `git status -sb` to establish the
 exact state.
+
+The current verified SWE-bench preparation-through-380 evidence is bound to
+base commit `d512b04156728cb9a4088f250ead395192572b34` (`d512b04`). Its
+retained artifacts are ignored local evidence, not committed public results.
 
 ## Original objective
 
@@ -1287,7 +1291,7 @@ enforced by the preparation contract. The exporter is not a candidate sandbox.
 The latest focused local Windows run passed 25 in 88.3 seconds; the POSIX-only
 directory-mode regression skipped. Its fixtures use temporary local SHA-1
 mirrors and remain contract/mechanism evidence. Separate ignored public
-artifacts now cover 62 selected rows, but they are preparation evidence rather
+artifacts now cover 94 selected rows, but they are preparation evidence rather
 than candidate execution or public SWE-bench result evidence.
 
 The source/sdist-only prediction coordinator closes the complete selected
@@ -1385,12 +1389,46 @@ wheel, and retained the 26-schema installed inventory.
 
 This checkpoint remains source-only. The dataset card declares no license; raw
 source rows remain local, and dataset/repository license and redistribution
-reviews remain incomplete. The retained public-preparation cohort contains 56
-live-replayed trees and six exact Pylint symlink-policy refusals; 438 rows have
-not been attempted. The latest Xarray expansion prepared all 22 selected exact
-base commits and added 6,160 regular files / 138,899,190 blob bytes without a
-candidate run. The run ledger accepts caller-provided workspaces and does
-not create a candidate mount. Mount/filesystem/network/user/PID/image isolation,
+reviews remain incomplete. As historical evidence, the earlier Xarray
+expansion prepared all 22 selected exact base commits and added 6,160 regular
+files / 138,899,190 blob bytes, bringing the then-current public-preparation
+cohort to 56 prepared rows, six Pylint refusals, and 438 unattempted rows,
+without a candidate run.
+
+At the verified preparation-through-380 checkpoint against `d512b04`, the
+retained ignored evidence covers ordinals 287--380: 94 attempted, 88 prepared,
+the same six exact Pylint refusals at ordinals 324--329 with failure code
+`tree-symlink-forbidden` (`pylint-dev__pylint-6386`,
+`pylint-dev__pylint-6528`, `pylint-dev__pylint-6903`,
+`pylint-dev__pylint-7080`, `pylint-dev__pylint-7277`, and
+`pylint-dev__pylint-8898`), and 406 unattempted. All 32 scikit-learn rows at
+ordinals 349--380 prepared and received a separate base-commit license
+inventory; this remains preparation and license-inventory evidence only. The
+complete-denominator rebuild and an independent replay agreed on zero
+predictions and zero protocol violations. Exact substitution-detection values
+are:
+
+- complete-denominator ledger raw-file SHA-256
+  `dc8d7c10b7ab4ad4cf24123296abf502f614a1740337e356ce281e7bffcdf8af`
+  and embedded ledger self-hash
+  `3fa05e48739ca1fdc1e8295724b68f45f42728f9229cf908dfeaa6fd29192e5d`;
+- preparation summary raw-file SHA-256
+  `21ded8d8bff3038e1064abaff01d952e06fe60d165617f3e3e213d55ba99b781`
+  and embedded `summary_sha256`
+  `f11f8bd4235c1469fbe8dd8865d92519af82f8c831ae5901a82b182bd221b96d`;
+- preparation journal raw-file SHA-256
+  `1010659aeb04df9d9463aae21097266f1b51da4ea5b37bfd9b0b818b6c24050c`;
+- null-prediction official JSONL raw-file SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`;
+- scikit-learn license inventory raw-file SHA-256
+  `4130d4f1f7dc65ee0d0ef5babe2fa1fe278f834c84994ebf11001774a5623887`
+  and embedded inventory self-hash
+  `5adcfab541bbd7769812d529e725cd745dbc6ea57c73b5a55538b814984b71fd`.
+
+These raw digests and self-hashes detect substitution but do not authenticate
+an author or turn ignored local artifacts into public result evidence. The run
+ledger accepts caller-provided workspaces and does not create a candidate
+mount. Mount/filesystem/network/user/PID/image isolation,
 candidate execution authentication, controller/system/model producer
 authentication, token and trajectory authentication, official-grader review,
 hardening and execution, exact hidden-test-patch application, resolution,
@@ -1929,34 +1967,38 @@ and the recorded live scenario blocked; do not substitute the fake scenario or
 private host seams. While that gate remains red, the highest-value broader
 project work is the external and natural-history evidence path:
 
-1. preserve every frozen report and the paired report's four verification
+1. reject component-boundary file/ancestor and implicit-directory ASCII-case/NFC
+   namespace conflicts in both byte-identical sdist/wheel backends and the
+   OpenHands ZIP/`RECORD` inspector; preserve existing member/path bounds and
+   physical pre-parser rejection, and never normalize, merge, or rewrite a
+   member;
+2. acquire a reviewed Sphinx mirror and exact base-commit license evidence,
+   inspect that evidence, and prepare ordinals 381--424 before continuing the
+   currently 406 unattempted SWE-bench rows; retain every success or refusal
+   and both mirror/preparation evidence; provision a separately verified
+   container/VM boundary for candidate mount/filesystem and network isolation
+   before passing any public candidate through the synthetic-tested
+   controller-run ledger; use the complete-cohort prediction ledger for
+   official JSONL and the text-patch preflight for mechanical overlap/disjoint
+   evidence; retain every preflight exception in the outer denominator plus
+   separate authenticated model/token/trajectory, hidden-test application,
+   grader, resolution, and result/score evidence; do not reuse the LRCBench
+   rendered-memory runner for patches or treat the lifecycle, raw exporter, run
+   ledger, patch preflight, or prediction ledger as a sandbox;
+3. preserve every frozen report and the paired report's four verification
    failures without post-result tuning or rescoring;
-2. resolve the nine explicit blockers in the machine-readable external
+4. resolve the nine explicit blockers in the machine-readable external
    protocol without looking at comparative results;
-3. complete result-blind inclusion decisions and freeze the initial comparison
+5. complete result-blind inclusion decisions and freeze the initial comparison
    set, dependency locks, adapter revisions, source/runtime/command evidence,
    and externally enforced network controls;
-4. provide an exact Python 3.11 ACON checkout and lock plus single-slot local
+6. provide an exact Python 3.11 ACON checkout and lock plus single-slot local
    Qwen/inference-service evidence, then rerun the retained diagnostic without
    hiding a failure;
-5. add clean adapters only for included systems and retain every failed run;
-6. acquire a reviewed scikit-learn mirror, for which no local mirror or exact
-   base-commit license evidence is currently retained, inspect that evidence,
-   and prepare ordinals 349--380 before continuing the other 406 unattempted
-   SWE-bench rows; retain every success or refusal and both
-   mirror/preparation evidence; provision a separately verified container/VM
-   boundary for candidate mount/filesystem and network isolation before passing
-   any public candidate through the synthetic-tested controller-run ledger; use
-   the complete-cohort prediction ledger for official JSONL and the text-patch
-   preflight for mechanical overlap/disjoint evidence; retain every preflight
-   exception in the outer denominator plus separate authenticated
-   model/token/trajectory, hidden-test application, grader, resolution, and
-   result/score evidence; do not reuse the LRCBench rendered-memory runner for
-   patches or treat the lifecycle, raw exporter, run ledger, patch preflight,
-   or prediction ledger as a sandbox;
-7. build the separately launched candidate adapter, simulator/grader evidence,
+7. add clean adapters only for included systems and retain every failed run;
+8. build the separately launched candidate adapter, simulator/grader evidence,
    and isolation boundary for the source-bound tau2-bench text core;
-8. collect licensed/consented natural histories under the implemented privacy,
+9. collect licensed/consented natural histories under the implemented privacy,
    independent-annotation, adjudication, grouped-split, and no-leakage contracts.
 
 The detailed ordered backlog is in [TODO.md](../TODO.md).

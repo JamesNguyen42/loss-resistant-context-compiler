@@ -39,7 +39,7 @@ meaning can be compressed without loss.
 | External protocol | Strict self-hashed draft with 4 screened candidates and 9 explicit blockers; not claim-ready |
 | Named external comparisons | No comparative candidate scored; result-blind ACON/AMA-Agent screening and one failed ACON diagnostic only |
 | Natural-history evidence | Strict contract fixtures exist; no collected natural cohort |
-| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, raw-Git preparation, exhaustive deterministic prediction-ledger, synthetic controller-run ledger, and text-patch composition preflight; 62 public rows attempted across six repositories, with 56 prepared, 6 policy-refused, and no public candidate, model, agent, grader, resolution, score, or usefulness result |
+| SWE-bench Verified intake | Exact 500-row source/selection descriptor, gold-free task projection, raw-Git preparation, exhaustive deterministic prediction-ledger, synthetic controller-run ledger, and text-patch composition preflight; repository preparation attempted for 94 public rows across seven repositories, with 88 prepared, 6 policy-refused, 406 unattempted, and no public candidate, model, agent, grader, resolution, score, or usefulness result |
 | tau2-bench intake | Exact v1.0.1 annotated-tag source binding and actual-loader-order 278-row half-duplex text-core selection across airline, retail, and telecom; candidate adapter, simulator, grader, execution, isolation, reward, score, and usefulness evidence remain absent |
 | Materialization retention diagnostic | 30 project-authored synthetic-naturalistic structural cases; 20 held out; no model or natural-cohort claim |
 | OpenHands integration | Separately packaged `ctxc-openhands` draft alpha; exact current version is owned by its [package metadata](integrations/openhands/pyproject.toml); reviewed offline fake-runtime foundation only; live execution blocked |
@@ -221,10 +221,11 @@ The repository currently includes:
   materializes only portable regular-file blobs into a fresh tree, and
   independently reconciles every path, mode, size, blob id, and SHA-256; its
   origin, license, candidate-mount, network, execution, grader, and score
-  claims remain false; 56 selected base commits across Flask, Seaborn,
-  Requests, Xarray, Pylint, and Pytest have passed live preparation replay, six
-  later Pylint commits are retained as `tree-symlink-forbidden` policy
-  refusals, and 438 selected tasks have not been attempted;
+  claims remain false; 88 selected base commits across Flask, Seaborn,
+  Requests, Xarray, Pylint, Pytest, and scikit-learn have passed live
+  preparation replay, six Pylint commits are retained as
+  `tree-symlink-forbidden` policy refusals, and 406 selected tasks have not been
+  attempted;
 - a source-only full-cohort SWE-bench prediction ledger that revalidates source,
   opaque-key, and successful preparation bindings, turns every missing,
   duplicate, unexpected, invalid, oversized, or unprepared output into retained
@@ -285,8 +286,9 @@ adding more claims to the README:
 - collect and independently annotate held-out natural coding-agent histories
   under the implemented consent, license, privacy, adjudication, split, and
   no-label-leakage contracts;
-- complete SWE-bench dataset/repository license review, retain outcomes for the
-  remaining 438 unattempted rows, provision externally verified candidate
+- complete SWE-bench dataset/repository license review, continue the contiguous
+  preparation expansion with Sphinx ordinals 381--424 (44 rows), retain
+  outcomes for all 406 unattempted rows, provision externally verified candidate
   mount/filesystem and network isolation, capture real candidate outputs through
   the controller-run and prediction ledgers, carry patch-preflight exceptions
   into the complete-denominator ledger, harden the grader, and add public result

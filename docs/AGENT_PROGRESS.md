@@ -6,18 +6,21 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Current committed HEAD and base for this in-progress checkpoint: `c06b07a`.
-- Current checkpoint: adapter-source inventories now reject stable ASCII-case
+- Clean evidence-generation base for this checkpoint: `d512b04156728cb9a4088f250ead395192572b34`.
+- Current checkpoint: a current-worker generation now retains and fresh-replays
+  public repository preparation through ordinal 380: 94 attempts across seven
+  repositories, 88 prepared trees, six exact Pylint policy refusals, and 406
+  explicitly unattempted rows. All 32 selected scikit-learn rows prepared.
+- Previous checkpoint: adapter-source inventories reject stable ASCII-case
   collisions across every represented directory prefix and file path, including
-  file/directory prefix conflicts. Paths are rejected rather than rewritten;
-  non-ASCII bytes remain exact and no embedded version changes.
-- Previous checkpoint: relative adapter-source member component safety was
-  tested on CPython 3.12/3.14, independently reviewed, committed, and pushed as
-  `c06b07a`.
-- Next public preparation target: scikit-learn ordinals 349--380 (32 selected
-  rows). No local mirror or exact base-commit license evidence has yet been
-  retained for that repository. Do not encode a repository patch as an
-  LRCBench rendered-memory candidate.
+  file/directory prefix conflicts; it was independently reviewed, committed,
+  and pushed as `d512b04`.
+- Next correctness target: reject archive member namespace-prefix conflicts in
+  both standalone packaging backends and the OpenHands wheelhouse inspector.
+- Next public preparation target: Sphinx ordinals 381--424 (44 distinct base
+  commits). No local Sphinx mirror or exact base-commit license evidence is
+  retained. Do not encode a repository patch as an LRCBench rendered-memory
+  candidate.
 
 ## Mission status
 
@@ -28,8 +31,8 @@ Last updated: 2026-08-02 (America/Los_Angeles)
    candidate-input projection, raw-Git preparation, and a full-cohort
    prediction/official-JSONL boundary are pinned. A separately replayable
    synthetic controller-run ledger and a separate text-patch composition
-   preflight now exist. Sixty-two public rows have been
-   attempted: 56 prepared, 6 policy-refused, and 438 unattempted. No public
+   preflight now exist. Ninety-four public rows have been attempted across seven
+   repositories: 88 prepared, 6 policy-refused, and 406 unattempted. No public
    candidate, model, agent, or grader has run and no resolution, external score,
    or usefulness result exists. Tau2-bench's materially different 278-row
    half-duplex text core is now locally source-bound after a separate internal
@@ -39,7 +42,7 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
-## Current adapter-source ASCII-case collision hardening
+## Previous adapter-source ASCII-case collision hardening (`d512b04`)
 
 - After the existing file-count and aggregate path-byte bounds pass,
   `AdapterSourceEvidence` builds at most 10,000 stable keys from each path's
@@ -389,7 +392,66 @@ Last updated: 2026-08-02 (America/Los_Angeles)
   grader execution, reward, score, usefulness, legal/redistribution, and
   claim-readiness fields remain false.
 
-## Current Xarray preparation expansion
+## Current scikit-learn preparation expansion
+
+- Acquired a full bare, no-hardlinks mirror from the configured
+  `https://github.com/scikit-learn/scikit-learn.git` URL and verified it through
+  the existing raw-Git boundary. Its non-authenticating mirror self-hash is
+  `11fd8e824611cfb7ad2e3209ea7d7c14af3b6bbcf0f03c5a6d6de7d0e1150888`.
+  `git fsck --full` exited zero; strict mode additionally reports an upstream
+  historical zero-padded file-mode warning. The mirror is consistency evidence,
+  not authenticated origin evidence.
+- The retained worker source changed from SHA-256
+  `3d40d21af1bdfd8ce7af0b4d445fd62748aa20162b4ff674e40c08c916fb0239` to
+  `cb9c8680d74022b7db8aea8b376790a49131f5fd1a1c0b93ba74341302c8a44f`,
+  so the current generation reattempted the entire contiguous ordinal range
+  287--380 instead of mixing generations. The older ignored evidence remains
+  forensic history but is not presented as replayable by the current worker.
+- The current generation attempted 94 rows: 88 prepared, the same six exact
+  Pylint `tree-symlink-forbidden` refusals, and 406 explicitly unattempted. All
+  32 selected scikit-learn rows at ordinals 349--380 prepared. The 88 manifests
+  bind 64,056 files / 801,780,869 blob bytes / 7,603 tree objects / 3,208,763
+  tree-object bytes and total 16,333,450 bytes.
+- The 72,728-byte preparation summary has file SHA-256
+  `21ded8d8bff3038e1064abaff01d952e06fe60d165617f3e3e213d55ba99b781`
+  and self-hash
+  `f11f8bd4235c1469fbe8dd8865d92519af82f8c831ae5901a82b182bd221b96d`.
+  Its 96-event, 50,264-byte journal has SHA-256
+  `1010659aeb04df9d9463aae21097266f1b51da4ea5b37bfd9b0b818b6c24050c`.
+- The scikit-learn filename/path-based engineering inventory covers all 32
+  selected commits and retains 33 exact license-file and root-packaging
+  candidate variants. Root `COPYING` has four byte variants across the selected
+  history; `sklearn/svm/src/liblinear/COPYRIGHT` is invariant. This discovery
+  does not establish applicability, legal approval, or redistribution rights.
+  The 91,472-byte inventory has file SHA-256
+  `4130d4f1f7dc65ee0d0ef5babe2fa1fe278f834c84994ebf11001774a5623887`
+  and self-hash
+  `5adcfab541bbd7769812d529e725cd745dbc6ea57c73b5a55538b814984b71fd`.
+- The current ignored 500-row preparation ledger is 490,862 bytes with file
+  SHA-256
+  `dc8d7c10b7ab4ad4cf24123296abf502f614a1740337e356ce281e7bffcdf8af`
+  and self-hash
+  `3fa05e48739ca1fdc1e8295724b68f45f42728f9229cf908dfeaa6fd29192e5d`.
+  Its unchanged 53,734-byte null-prediction JSONL has SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
+  A fresh interpreter reloaded and live-replayed the complete retained cohort in
+  452.203 seconds with the same row order, counts, hashes, and self-hashes.
+- Independent byte-level reconciliation confirmed the exact 500-row order,
+  output-path bindings, manifests and aggregates, worker and Git-executable
+  digests, mirror records, inventory, and conservative claim flags. No public
+  candidate, model, agent, grader, GPU, or inference runtime ran. Origin
+  authentication, redistribution approval, candidate mount, execution,
+  isolation, hidden-test application, grading, resolution, score, usefulness,
+  and claim readiness remain absent or false.
+- The focused SWE-bench source, repository, and prediction suite collected 101
+  tests: 100 passed and the POSIX directory-mode case skipped on Windows in
+  144.880 seconds. Its ignored JUnit file has SHA-256
+  `9fe82f824ebdaec29567e36f2129bd3c151f95e86d6c25f37b5dcc86bd6384d2`.
+  The immutable 500-task suite verifier passed with `claim_ready: false`; exact
+  task-input replay also passed with self-hash
+  `1900c54c5a88f5197f49f40dc1a8c372ec3799ab750908cb7ed399fd21919345`.
+
+## Previous Xarray preparation expansion (`c119ebd`)
 
 - Verified the configured `https://github.com/pydata/xarray.git` local bare
   mirror with Git `2.55.0.windows.3`. Its non-authenticating mirror self-hash is
@@ -414,7 +476,7 @@ Last updated: 2026-08-02 (America/Los_Angeles)
   `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
   A fresh interpreter reloaded and replayed all 500 rows plus the live JSONL in
   229.25 seconds with the same cohort, file hashes, and self-hash.
-- The current full public-preparation evidence therefore binds 56 trees / 23,467
+- At that checkpoint, the full public-preparation evidence bound 56 trees / 23,467
   files / 253,569,052 blob bytes, plus the six exact Pylint symlink-policy
   refusals. Origin authentication, redistribution approval, candidate mount,
   execution, isolation, hidden-test application, grading, score, usefulness,
@@ -844,10 +906,10 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 - No public long-horizon task has been executed or scored. Do not claim
   external usefulness, task-completion improvement, production readiness, or
   superiority from this source/preparation checkpoint.
-- Repository preparation has now been exercised against 62 selected public
-  rows across six repositories in addition to synthetic local mirrors. The
-  56 preparations and six policy refusals do not authenticate GitHub,
-  authorship, freshness, or license; 438 rows remain unattempted.
+- Repository preparation has now been exercised against 94 selected public
+  rows across seven repositories in addition to synthetic local mirrors. The
+  88 preparations and six policy refusals do not authenticate GitHub,
+  authorship, freshness, or license; 406 rows remain unattempted.
 - The canonical source snapshot contains public evaluator gold and must never
   enter a candidate mount. It and the raw Parquet, opaque key, derived task
   document, evaluator cache, grader output, and repository snapshots remain
@@ -889,29 +951,31 @@ Optional-contract test invocations used `PYTHONDONTWRITEBYTECODE=1`.
 
 ## Next exact actions
 
-1. Acquire the scikit-learn repository through a reviewed channel, inspect the
-   exact base-commit license evidence, and apply the raw-Git preparer to
-   ordinals 349--380 (32 selected rows). No local mirror or license evidence is
-   currently retained. Continue through the other unattempted repositories and
-   preserve every success or refusal without silently narrowing the 500-row
-   cohort.
-2. Do not treat the controller-run ledger or the literal lifecycle's Windows
+1. Reject component-boundary namespace conflicts in the physical and parsed
+   sdist/wheel validators in both byte-identical packaging backends and in the
+   OpenHands wheelhouse/`RECORD` inspector. Preserve existing exact-duplicate
+   diagnostics, member and path-byte bounds, and pre-parser rejection.
+2. Acquire Sphinx through a reviewed channel, inspect exact base-commit license
+   candidates, and apply the raw-Git preparer to ordinals 381--424 (44 selected
+   rows and 44 distinct commits). Preserve every success or refusal without
+   silently narrowing the 500-row cohort.
+3. Do not treat the controller-run ledger or the literal lifecycle's Windows
    Job/POSIX process group as filesystem, network, PID, user, mount, or image
    isolation. Provision and retain independently verifiable containment before
    launching any public candidate, while preserving the ledger's fixed-false
    authentication and grading fields.
-3. Use the implemented complete-cohort prediction ledger for the official
+4. Use the implemented complete-cohort prediction ledger for the official
    `instance_id`, `model_name_or_path`, and `model_patch` interchange. Add
    separately authenticated model/token/trajectory evidence and raw grader
    output without weakening either ledger's fixed-false claims.
-4. Use the source/sdist-only synthetic patch-composition preflight before any
+5. Use the source/sdist-only synthetic patch-composition preflight before any
    grader, retain each `preflight-exception-not-a-cohort-result` disposition in
    an outer complete-denominator ledger, and separately prove exact hidden-patch
    application inside a hardened evaluator. Independent copies and exact
    disjoint replay do not turn the unsandboxed native Git parser into isolation
    or grading evidence; the pinned v4.1 harness remains vulnerable on 18 rows
    with hidden additions or renames.
-5. Build a separately launched candidate adapter for the now source-bound,
+6. Build a separately launched candidate adapter for the now source-bound,
    separately result-blind-reviewed tau2-bench v1.0.1 half-duplex text core.
    Keep the complete upstream task, simulator, golden-action, assertion, grader,
    result, and checkout material outside the candidate boundary.

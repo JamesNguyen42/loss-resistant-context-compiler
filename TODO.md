@@ -688,10 +688,11 @@ Acceptance:
   without authenticating it, recomputes commit/tree/blob identities, rejects
   symlinks, gitlinks, special/non-portable paths and unbounded trees, exports
   only fresh regular files, and independently rescans the result. The current
-  synthetic tests remain mechanism evidence. Sixty-two selected public rows
-  across six repositories have now been attempted: 56 passed live preparation
-  replay, six Pylint rows were retained as `tree-symlink-forbidden` policy
-  refusals, and 438 rows remain unattempted. No candidate mount was created.
+  synthetic tests remain mechanism evidence. Ninety-four selected public rows
+  across seven repositories now have retained preparation outcomes: 88 passed
+  live preparation replay, six Pylint rows were retained as
+  `tree-symlink-forbidden` policy refusals, and 406 rows remain unattempted. No
+  candidate mount was created.
 - [x] Add a full-selected-cohort SWE-bench prediction ledger and deterministic
   official JSONL boundary. Revalidate source/key and successful preparation
   evidence, preserve exact patch text only in JSONL, and retain missing,
@@ -719,9 +720,9 @@ Acceptance:
   every selected base-commit outcome, establish externally verified candidate
   mount/filesystem and network isolation, harden hidden-test application and
   grading, and add public task result evidence before running or scoring any
-  public candidate. The next preparation target is scikit-learn ordinals
-  349--380 (32 rows); no local mirror or exact base-commit license evidence has
-  yet been retained for it.
+  public candidate. The next contiguous preparation target is Sphinx ordinals
+  381--424 (44 rows). The remaining 406 rows include both earlier and later
+  positions in the complete 500-row physical order.
 - [x] Inspect the exact Flask task base commit's root and discovered
   license-file declarations and exercise selected ordinal 289 through public
   mirror verification and raw-tree preparation. Retain the local manifest
@@ -732,9 +733,33 @@ Acceptance:
   manifests and all six exact symlink-policy refusals without treating either
   outcome as candidate execution or a benchmark result.
 - [x] Inspect Xarray's exact selected base-commit declarations and prepare
-  ordinals 298--319. Retain all 22 successful manifests, then replay a 500-row
-  preparation-only ledger with 56 prepared, 6 refused, and 438 unattempted
-  outcomes without treating null predictions as a run.
+  ordinals 298--319. Retain all 22 successful manifests. At that checkpoint,
+  the 500-row preparation-only ledger contained 56 prepared, 6 refused, and 438
+  unattempted outcomes; its null predictions were not a run.
+- [x] Prepare and fresh-replay all 32 scikit-learn rows at ordinals 349--380,
+  then retain a filename/path-based engineering inventory of 33 license-file
+  and root-packaging candidate hash variants without treating it as a legal or
+  redistribution determination. At clean evidence-generation base
+  `d512b04156728cb9a4088f250ead395192572b34`, the ignored preparation summary
+  is 72,728 bytes with file SHA-256
+  `21ded8d8bff3038e1064abaff01d952e06fe60d165617f3e3e213d55ba99b781`
+  and self-hash
+  `f11f8bd4235c1469fbe8dd8865d92519af82f8c831ae5901a82b182bd221b96d`;
+  its 50,264-byte journal has SHA-256
+  `1010659aeb04df9d9463aae21097266f1b51da4ea5b37bfd9b0b818b6c24050c`.
+  The 490,862-byte preparation-only ledger has file SHA-256
+  `dc8d7c10b7ab4ad4cf24123296abf502f614a1740337e356ce281e7bffcdf8af`
+  and self-hash
+  `3fa05e48739ca1fdc1e8295724b68f45f42728f9229cf908dfeaa6fd29192e5d`;
+  the unchanged 53,734-byte, 500-null-prediction JSONL has SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
+  The 91,472-byte scikit-learn inventory has file SHA-256
+  `4130d4f1f7dc65ee0d0ef5babe2fa1fe278f834c84994ebf11001774a5623887`
+  and self-hash
+  `5adcfab541bbd7769812d529e725cd745dbc6ea57c73b5a55538b814984b71fd`.
+  None of these self-hashes authenticates an author or producer, and no public
+  candidate, model, agent, grader, hidden test, resolution, score, or usefulness
+  result exists.
 - [ ] Preregister at least two public long-horizon agent suites.
 - [ ] Include a coding benchmark where repository state and exact failures
   matter.
@@ -957,6 +982,12 @@ evidence of sublinear compilation.
   Reject `CONIN$`/`CONOUT$`, COM/LPT superscript 1/2/3 forms, and aliases with
   ASCII spaces before an extension; retain `COM0`, `COM10`, and `CON name`
   controls without normalizing any archive member.
+- [ ] Reject archive namespace conflicts at component boundaries across both
+  build backends and the OpenHands ZIP/`RECORD` inspector. Fail closed when a
+  file is also an ancestor of another member, or when explicit or implicit
+  directory components collide under stable ASCII case or Unicode NFC. Preserve
+  the original member bytes for diagnostics; do not normalize, merge, or
+  rewrite either conflicting namespace.
 - [x] Require a separate automatic comparison of the root wheel, integration
   wheel, and integration sdist from all six Linux, Windows, and macOS Python
   3.12/3.13 package lanes. Exact package-gate implementation head
@@ -1277,31 +1308,36 @@ evidence of sublinear compilation.
 
 The next chat should start here unless new evidence changes the priority:
 
-1. keep live OpenHands execution and the recorded live demonstration blocked
+1. reject component-boundary file/ancestor and implicit-directory ASCII-case or
+   NFC archive namespace conflicts across both build backends and the OpenHands
+   ZIP/`RECORD` inspector, with exact cross-backend regression coverage and no
+   member normalization or rewriting;
+2. keep live OpenHands execution and the recorded live demonstration blocked
    until a complete reviewed hash-pinned offline dependency closure and a
    stable public final-immutable-request/exact-tokenizer hook both exist;
-2. if those inputs become available, perform a result-blind live compatibility
+3. if those inputs become available, perform a result-blind live compatibility
    run under the retained pin and resource/network controls, preserving any
    failed attempt as a failure;
-3. preserve and replay the completed held-out paired result without tuning its
+4. preserve and replay the completed held-out paired result without tuning its
    corpus, validators, recovery, scoring, or recorded metrics;
-4. resolve the nine explicit blockers in the external-comparison manifest;
-5. complete result-blind inclusion decisions and freeze the initial
+5. resolve the nine explicit blockers in the external-comparison manifest;
+6. complete result-blind inclusion decisions and freeze the initial
    related-system set;
-6. supply the exact clean Python 3.11 checkout, dependency lock, network-policy
+7. supply the exact clean Python 3.11 checkout, dependency lock, network-policy
    evidence, inference-service accounting, and LM Studio executable needed to
    rerun the retained ACON diagnostic;
-7. add clean reproducible adapters only for systems admitted by the frozen
+8. add clean reproducible adapters only for systems admitted by the frozen
    result-blind protocol;
-8. complete SWE-bench dataset/repository license review and the remaining 438
-   preparation outcomes, then provision externally verified candidate
+9. continue with Sphinx ordinals 381--424, complete SWE-bench
+   dataset/repository license review and the remaining 406 preparation outcomes,
+   then provision externally verified candidate
    mount/filesystem and network isolation before using the synthetic-tested run
    ledger with any public candidate; keep hidden-test application, grading,
    resolution, scoring, usefulness, and claim readiness false until separately
    evidenced;
-9. collect licensed/consented histories under the implemented natural-history
+10. collect licensed/consented histories under the implemented natural-history
    contracts, perform independent annotation/adjudication and privacy review;
-10. freeze a full natural corpus only after those reviews and split checks pass;
-11. record every failure and result without changing the claim boundary.
+11. freeze a full natural corpus only after those reviews and split checks pass;
+12. record every failure and result without changing the claim boundary.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) before changing code or benchmark rules.

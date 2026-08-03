@@ -7,10 +7,11 @@ Verified. The preparation
 boundary has passed local synthetic-mirror tests and retained public
 preparation replay; the prediction and controller-run boundaries have passed
 synthetic contract tests, and the patch boundary has passed synthetic
-mechanical tests. The retained public cohort has attempted 62 selected
-rows across Flask, Seaborn, Requests, Xarray, Pylint, and Pytest: 56 exact base
-commits passed live preparation replay, six Pylint commits were refused because
-their trees contain forbidden symlinks, and 438 rows remain unattempted. No
+mechanical tests. The retained public cohort has attempted 94 selected rows
+across Flask, Seaborn, Requests, Xarray, Pylint, Pytest, and scikit-learn: 88
+exact base commits passed live preparation replay, six Pylint commits were
+refused because their trees contain forbidden symlinks, and 406 rows remain
+unattempted. No
 public candidate, model, or agent ran; no candidate mount or verified isolation
 exists; and no grader, resolution, external score, or usefulness result exists.
 The external comparison protocol therefore keeps its coding-task slot `pending`
@@ -183,9 +184,32 @@ usefulness, and claim readiness false.
 The synthetic tests use small locally created SHA-1 mirrors and prove contract
 behavior, not repository redistribution permission, hostile-pack parser
 safety, or candidate isolation. Separately retained public evidence currently
-covers 62 rows. Its six symlink-policy refusals stay in the 500-task denominator
-alongside 56 verified preparations and 438 explicitly unattempted rows; none is
-a candidate result.
+covers ordinals 287--380: 94 rows. Its six symlink-policy refusals stay in the
+500-task denominator alongside 88 verified preparations and 406 explicitly
+unattempted rows; none is a candidate result.
+
+A fresh `--verify-only` replay at clean code revision
+`d512b04156728cb9a4088f250ead395192572b34` revalidated every retained mirror,
+manifest, and prepared output tree against the current 42,849-byte worker,
+SHA-256
+`cb9c8680d74022b7db8aea8b376790a49131f5fd1a1c0b93ba74341302c8a44f`.
+The ignored 72,728-byte preparation summary has file SHA-256
+`21ded8d8bff3038e1064abaff01d952e06fe60d165617f3e3e213d55ba99b781`
+and self-hash
+`f11f8bd4235c1469fbe8dd8865d92519af82f8c831ae5901a82b182bd221b96d`.
+Its 88 manifests total 16,333,450 bytes and bind 64,056 regular files,
+801,780,869 blob bytes, 7,603 tree objects, and 3,208,763 raw tree bytes.
+Repository-origin authentication, redistribution review, candidate mount,
+mount/network isolation, Git security review, execution, grading, external
+score, usefulness, and claim readiness all remain false.
+
+The next bounded repository slice is Sphinx ordinals 381--424, 44 distinct
+exact commits from
+`sphinx-doc__sphinx-10323@31eba1a76dd485dc633cae48227b46879eda5df4` through
+`sphinx-doc__sphinx-9711@81a4fd973d4cfcb25d01a7b0be62cdb28f82406d`.
+Ordinal 425, `sympy__sympy-11618`, is the first following SymPy row. The
+through-380 checkpoint makes no Sphinx mirror, preparation, license-inventory,
+execution, or grading claim.
 
 ## Full-cohort prediction boundary
 
@@ -235,12 +259,19 @@ duplicate ids or filter empty patches, so replay verifies the exact canonical
 line sequence instead of treating a successful load as completeness proof.
 Self-hashes do not authenticate a model or coordinator. Fixed-false state
 records that no candidate mount, execution, hidden-test application, grading,
-score, usefulness, or claim readiness follows from this checkpoint. One
-ignored, preparation-only 500-row ledger and JSONL reconcile the 56 prepared,
-6 refused, and 438 unattempted outcomes with 500 null predictions; neither is
-committed or a candidate run. Their file SHA-256 values are respectively
-`2219e2f1526c51f4c965a7af41364c393075151fecc2e2b4553eb037e359b772`
-and `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
+score, usefulness, or claim readiness follows from this checkpoint. The
+ignored, preparation-only 490,862-byte through-380 ledger reconciles 88
+prepared, 6 refused, and 406 unattempted outcomes over all 500 source rows. Its
+file SHA-256 is
+`dc8d7c10b7ab4ad4cf24123296abf502f614a1740337e356ce281e7bffcdf8af`
+and its self-hash is
+`3fa05e48739ca1fdc1e8295724b68f45f42728f9229cf908dfeaa6fd29192e5d`.
+The companion official-format JSONL remains byte-for-byte unchanged from the
+earlier preparation-only checkpoint: 53,734 bytes, exactly 500 rows in physical
+source order, 500 `null` patches, and SHA-256
+`546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
+Neither artifact is committed or a candidate run. Candidate-capture origin,
+system identity, and producer authentication also remain false.
 Because rejected candidate bytes are discarded rather than duplicated beside
 the official JSONL, invalid,
 duplicate, and unexpected-capture dispositions are coordinator assertions and
@@ -357,16 +388,16 @@ Candidate-code execution, hidden-test execution, official-grader execution,
 official results, external scores, usefulness, candidate-mount/network/
 filesystem isolation, native quotas, Git-parser sandboxing, and claim readiness
 remain false. Self-hashing does not authenticate an author. The synthetic
-preflight changes no public denominator: 56 rows remain prepared, 6 remain
-policy-refused, and 438 remain unattempted, with no public candidate or grader
-run.
+preflight changes no public denominator. At the independently verified current
+preparation checkpoint, 88 rows are prepared, 6 are policy-refused, and 406 are
+unattempted, with no public candidate or grader run.
 
 ## Requirements before public execution or scoring
 
 A claim-bearing public executor/grader checkpoint must fail closed unless it can
 retain and verify all of the following:
 
-1. Run the remaining 438 selected source rows through the raw-Git preparer and
+1. Run the remaining 406 selected source rows through the raw-Git preparer and
    retain every success or refusal. Independently create a candidate mount from
    a verified tree with no upstream `.git` history, later refs, remotes,
    evaluator cache, raw dataset, hidden tests, or grader evidence.

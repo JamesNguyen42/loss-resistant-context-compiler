@@ -134,12 +134,21 @@ versioning and release rules in
   contract prohibits the upstream in-process agent factory and keeps adapter,
   simulator, grader, isolation, execution, reward, score, usefulness, legal,
   and claim-readiness assertions false.
+- A retained scikit-learn SWE-bench preparation expansion: all 32 selected exact
+  base commits at ordinals 349--380 passed source-bound raw-tree export and
+  replay. The current preparation-only cohort now records 94 attempted rows
+  across seven repositories: 88 prepared, 6 exact Pylint symlink-policy
+  refusals, and 406 unattempted. A filename/path-based engineering inventory
+  retains 33 license-file and root-packaging candidate hash variants without
+  claiming authenticated origin, complete license coverage, redistribution
+  approval, candidate execution, grading, a result, or claim readiness.
 - A retained Xarray SWE-bench preparation expansion: all 22 selected exact base
-  commits passed source-bound raw-tree export and replay. The full preparation
-  state is now 56 prepared, 6 Pylint symlink-policy refusals, and 438
-  unattempted rows. Xarray's common Apache-2.0 license bytes and commit-specific
-  packaging declarations are inventoried without claiming authenticated origin,
-  redistribution approval, candidate execution, grading, or a result.
+  commits passed source-bound raw-tree export and replay. At that checkpoint,
+  the preparation state was 56 prepared, 6 Pylint symlink-policy refusals, and
+  438 unattempted rows. Xarray's common Apache-2.0 license bytes and
+  commit-specific packaging declarations were inventoried without claiming
+  authenticated origin, redistribution approval, candidate execution, grading,
+  or a result.
 - A source/sdist-only SWE-bench controller-run ledger that reconciles the full
   selected denominator, verifies caller-provided workspaces against prepared
   trees, appends exact request/workspace paths to a fixed literal command,

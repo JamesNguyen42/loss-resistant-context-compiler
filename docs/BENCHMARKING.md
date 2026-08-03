@@ -614,16 +614,22 @@ user-visible extended attribute, and NTFS stream before returning a self-hashed
 coordinator-only manifest.
 
 That implementation has passed adversarial tests against synthetic local Git
-mirrors and retained 62 selected public outcomes across six repositories.
-Fifty-six exact base commits passed fresh live replay, six Pylint commits were
-refused by the link-free `tree-symlink-forbidden` policy, and 438 rows remain
-unattempted. The verified trees contain 23,467 regular files and 253,569,052
-blob bytes but no candidate mount. A configured origin
-URL is not authenticated provenance; SHA-1 is the source
+mirrors and retained 94 selected public outcomes across seven repositories.
+At clean code revision `d512b04156728cb9a4088f250ead395192572b34`, 88
+exact base commits passed a fresh live replay, six Pylint commits were refused
+by the link-free `tree-symlink-forbidden` policy, and 406 rows remain
+unattempted. The verified trees contain 64,056 regular files and 801,780,869
+blob bytes but no candidate mount. The ignored 72,728-byte through-380 summary
+has file SHA-256
+`21ded8d8bff3038e1064abaff01d952e06fe60d165617f3e3e213d55ba99b781`
+and self-hash
+`f11f8bd4235c1469fbe8dd8865d92519af82f8c831ae5901a82b182bd221b96d`.
+A configured origin URL is not authenticated provenance; SHA-1 is the source
 corpus's Git identity, while raw object bodies receive separate SHA-256
-evidence. Mirror, worker, and preparation self-hashes do not authenticate an
-author. The manifest keeps redistribution, mount/network isolation, execution,
-grader review, score, usefulness, and claim readiness false.
+evidence. Mirror, worker, preparation, and cohort self-hashes do not
+authenticate an author. Redistribution, candidate mount, mount/network
+isolation, execution, grader review, score, usefulness, and claim readiness
+remain false.
 
 The source/sdist prediction ledger makes the full selected cohort, rather than
 an upstream predictions loader, authoritative for the denominator. It
@@ -643,6 +649,16 @@ but those caller-supplied digests are not authenticated producer evidence.
 Rejected raw capture content is not duplicated, so duplicate/invalid/unexpected
 protocol rows remain producer-asserted unless their bytes came through the
 controller-run evidence boundary below.
+
+The ignored through-380 ledger reconciles 88 prepared, 6 refused, and 406
+unattempted outcomes with no prediction. Its companion official-format JSONL
+is byte-for-byte unchanged from the earlier preparation-only checkpoint:
+53,734 bytes, 500 rows in physical source order, 500 `null` patches, and
+SHA-256
+`546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
+It is denominator/interchange evidence only; candidate-capture origin, system
+identity, producer authentication, execution, hidden-test application, grading,
+score, usefulness, and claim readiness remain false.
 
 The source/sdist-only controller-run ledger now supplies that bounded raw-byte
 and workspace-observation contract for runs launched through it. It requires one
@@ -702,8 +718,18 @@ ledger.
 All candidate execution, hidden-test execution, grader, result, score,
 usefulness, mount/network/filesystem isolation, native quota, parser sandbox,
 and claim-readiness flags remain false. Synthetic tests exercise the mechanism;
-no public row was added, removed, run, graded, or scored, so the public counts
-remain 56 prepared, 6 policy-refused, and 438 unattempted.
+the patch preflight added, removed, ran, graded, and scored no public row. The
+separately verified current preparation checkpoint contains 88 prepared, 6
+policy-refused, and 406 unattempted rows.
+
+The next bounded preparation slice is the contiguous Sphinx run at ordinals
+381--424: 44 distinct exact commits, beginning with
+`sphinx-doc__sphinx-10323@31eba1a76dd485dc633cae48227b46879eda5df4` and
+ending with
+`sphinx-doc__sphinx-9711@81a4fd973d4cfcb25d01a7b0be62cdb28f82406d`.
+Ordinal 425, `sympy__sympy-11618`, changes repository to SymPy. No Sphinx
+mirror, preparation outcome, license inventory, candidate execution, or grader
+result is claimed by the through-380 checkpoint.
 
 The external protocol's coding-task slot therefore remains `pending`: the
 pinned dataset card declares no license, and the remaining public-cohort
