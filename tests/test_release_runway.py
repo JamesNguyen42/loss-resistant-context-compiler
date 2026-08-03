@@ -34,6 +34,14 @@ def _workflow_action_lines(path: Path) -> list[str]:
     ]
 
 
+def _workflow_job(workflow: str, name: str) -> str:
+    marker = f"  {name}:\n"
+    assert workflow.count(marker) == 1
+    remainder = workflow.split(marker, maxsplit=1)[1]
+    next_job = re.search(r"(?m)^  [a-z][a-z0-9-]+:\n", remainder)
+    return remainder if next_job is None else remainder[: next_job.start()]
+
+
 def test_workflows_pin_every_action_to_an_immutable_full_sha() -> None:
     workflows = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
     assert workflows
@@ -51,7 +59,7 @@ def test_ci_covers_supported_python_and_platform_release_smokes() -> None:
         encoding="utf-8"
     )
 
-    assert 'python-version: ["3.11", "3.12", "3.13"]' in workflow
+    assert 'python-version: ["3.11", "3.12", "3.13", "3.14"]' in workflow
     assert "os: [windows-latest, macos-latest]" in workflow
     assert "python -m compileall -q" in workflow
     assert "conformance _ctxc_build_backend.py" in workflow
@@ -131,6 +139,40 @@ def test_ci_covers_supported_python_and_platform_release_smokes() -> None:
     assert "release-build-toolchain.txt" in workflow
     assert "if-no-files-found: error" in workflow
     assert "permissions:\n  contents: read" in workflow
+
+
+def test_python_support_lanes_remain_scoped_by_role() -> None:
+    core_workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    unit_tests = _workflow_job(core_workflow, "unit-tests")
+    platform_smoke = _workflow_job(core_workflow, "platform-smoke")
+    reproducibility = _workflow_job(core_workflow, "reproducibility")
+    benchmark = _workflow_job(core_workflow, "benchmark")
+
+    assert 'python-version: ["3.11", "3.12", "3.13", "3.14"]' in unit_tests
+    assert "python-version: ${{ matrix.python-version }}" in unit_tests
+    assert platform_smoke.count('python-version: "3.13"') == 1
+    assert reproducibility.count('python-version: "3.13"') == 1
+    assert benchmark.count('python-version: "3.11"') == 1
+
+    openhands_workflow = (
+        ROOT / ".github" / "workflows" / "openhands-integration.yml"
+    ).read_text(encoding="utf-8")
+    offline_package = _workflow_job(openhands_workflow, "offline-package")
+    package_reproducibility = _workflow_job(
+        openhands_workflow,
+        "package-byte-reproducibility",
+    )
+    retained_evidence = _workflow_job(
+        openhands_workflow,
+        "retained-offline-evidence",
+    )
+
+    assert 'python-version: ["3.12", "3.13"]' in offline_package
+    assert "python-version: ${{ matrix.python-version }}" in offline_package
+    assert package_reproducibility.count('python-version: "3.13"') == 1
+    assert retained_evidence.count('python-version: "3.12"') == 1
 
 
 def test_root_build_lock_is_the_reviewed_exact_universal_wheel_set() -> None:

@@ -6,18 +6,15 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Current committed HEAD and base for this in-progress checkpoint: `c14fd16`.
-- Current checkpoint: retained external-runner claim-control evidence paths now
+- Current committed HEAD and base for this in-progress checkpoint: `fff99b5`.
+- Current checkpoint: root-project CPython 3.14 support is being closed through
+  the complete Ubuntu test matrix, distribution classifier, support matrix,
+  release checklist, and contract tests. Platform-specific release smoke stays
+  on CPython 3.13. The separately packaged OpenHands integration remains
+  intentionally bounded to CPython 3.12 and 3.13.
+- Previous checkpoint: retained external-runner claim-control evidence paths
   reject Windows reserved device aliases with ASCII spaces before an extension.
-  The correction applies through their shared absolute-path gate without
-  normalizing an ambiguous path, changing POSIX handling, or widening the
-  reserved-name policy. No candidate, model, grader, GPU, or inference runtime
-  is involved.
-- Previous checkpoint: all three bounded optional LocalAI validation readers
-  reject regular-mode Windows reparse targets at each reader-level observation,
-  and the constant-sharing regression is CPython-version-neutral. It was
-  independently reviewed, full-suite verified, committed, and pushed as
-  `c14fd16`.
+  It was independently reviewed, tested, committed, and pushed as `fff99b5`.
 - Next public preparation target: scikit-learn ordinals 349--380 (32 selected
   rows). No local mirror or exact base-commit license evidence has yet been
   retained for that repository. Do not encode a repository patch as an
@@ -43,7 +40,37 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
-## Current retained-path device-alias correction
+## Current root CPython 3.14 support closure
+
+- Root `pyproject.toml` now advertises CPython 3.14 and the complete Ubuntu
+  `unit-tests` matrix covers 3.11, 3.12, 3.13, and 3.14. The Windows/macOS
+  filesystem/release-smoke jobs remain on 3.13, and LRCBench remains on 3.11;
+  those are intentionally role-specific evidence lanes.
+- Root support, status, handoff, release-checklist, and workflow/packaging
+  contract tests track the four-version matrix. The OpenHands package bound,
+  classifiers, compatibility constant, manifest, six automatic lanes, and
+  historical evidence remain unchanged at CPython 3.12/3.13.
+- CPython 3.14 remains provisional until the committed hosted Ubuntu 3.14 job
+  passes. Current status documentation distinguishes the completed local
+  Windows core suite from that still-pending hosted evidence.
+- A clean ignored non-editable CPython 3.14.6 environment, with no
+  `localai-contracts` distribution, collected 2,405 core tests and completed
+  with 2,380 passed, 25 expected skips, zero failures, and zero errors in
+  823.078 seconds (824.4 seconds wall time). This is not exact-wheel LocalAI or
+  OpenHands evidence. Its ignored JUnit report is
+  `build/py314-core-full-suite.xml`.
+- The strengthened workflow/packaging contract set passed 14 tests on both the
+  repository CPython 3.12 environment and the clean CPython 3.14 environment.
+  It freezes the root full-suite matrix at 3.11--3.14, platform/reproducibility
+  jobs at 3.13, benchmark at 3.11, and all OpenHands roles at their existing
+  3.12/3.13 assignments. Focused Ruff and diff checks pass.
+- The non-editable wheel built and installed under CPython 3.14 reports only
+  `loss-resistant-context-compiler==0.1.1a21` and includes the exact Python 3,
+  3.11, 3.12, 3.13, and 3.14 classifiers. The ignored legacy source-tree
+  egg-info was not deleted or used as installed evidence.
+- No candidate, model, grader, GPU, or inference runtime is involved.
+
+## Previous retained-path device-alias correction (`fff99b5`)
 
 - `_windows_path_component_is_safe` trims only ASCII U+0020 from the
   pre-extension stem before its existing case-insensitive Windows reserved-name

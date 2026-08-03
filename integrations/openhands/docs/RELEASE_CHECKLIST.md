@@ -174,7 +174,7 @@ must continue to install and run without OpenHands.
       selection and absent from the ordinary selection in every matrix lane.
 - [ ] Ruff passes for integration source, tests, and CI scripts.
 - [ ] `compileall` passes for integration source, tests, and CI scripts.
-- [ ] The root core CI remains green on Python 3.11–3.13.
+- [ ] The root core CI remains green on Python 3.11–3.14.
 - [ ] CodeQL and dependency review remain green.
 
 The required isolated workflow is

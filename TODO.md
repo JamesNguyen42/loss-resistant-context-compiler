@@ -245,8 +245,9 @@ raw evidence when completing benchmark work.
   optional claim-bearing host capability.
 - [x] Record a passing 32-history `local-bundled-only` certificate.
 - [x] Maintain unit and connector-contract coverage, including standalone
-  operation without sibling dependencies; CI covers Python 3.11, 3.12, and
-  3.13.
+  operation without sibling dependencies; the root full-suite CI matrix covers
+  Python 3.11, 3.12, 3.13, and 3.14. The separate OpenHands package remains on
+  3.12 and 3.13.
 
 ## P0: close confirmed fail-closed gaps
 

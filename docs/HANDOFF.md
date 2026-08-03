@@ -41,7 +41,7 @@ live-readiness status.
 | Repository | [`JamesNguyen42/loss-resistant-context-compiler`](https://github.com/JamesNguyen42/loss-resistant-context-compiler) |
 | Default branch | `main` |
 | Package version | `0.1.1a21` |
-| Python | 3.11, 3.12, and 3.13 in CI |
+| Python | 3.11, 3.12, and 3.13 complete in root CI; 3.14 lane configured and Windows core suite green |
 | Core runtime dependencies | None outside the Python standard library |
 | Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; `0f20b8a`: exact seven-wheel OpenHands build inputs, clean provider/a2 harness, and all automatic hosted gates passed; `7915beb`: exact seven-wheel root release inputs and post-acquisition offline build/smoke passed every automatic hosted gate; no local inference |
 | Canonical optional boundary | `localai-contracts==0.2.0a2`, protocol/schema `1.0.0`; `context.compile` only; non-inference |
@@ -956,9 +956,12 @@ audited. Any selected superseded item independently fails verification as
   campaign was explicitly deselected, not reported as a pass.
 - Ruff and `compileall` pass across `src`, `tests`, `benchmarks`, `scripts`,
   `conformance`, and `_ctxc_build_backend.py`.
-- Complete Ubuntu CI covers Python 3.11, 3.12, and 3.13; Windows and macOS run
-  Python 3.13 filesystem, external-runner/process-deadline/exact-Qwen transport
-  regressions, and clean wheel/sdist release smoke.
+- Complete Ubuntu CI evidence covers Python 3.11, 3.12, and 3.13; a Python 3.14
+  full-suite lane is configured but has not yet produced hosted evidence.
+  A clean local Windows CPython 3.14.6 core-suite run is green. Windows and
+  macOS run Python 3.13 filesystem,
+  external-runner/process-deadline/exact-Qwen transport regressions, and clean
+  wheel/sdist release smoke.
 - Distribution metadata, `ctxc`, package version, and the installed schema path
   are regression-tested. CI verifies all 26 wheel schemas, source-distribution
   conformance/natural/compatibility assets, and separate clean installs with

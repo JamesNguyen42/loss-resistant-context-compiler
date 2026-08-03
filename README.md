@@ -28,7 +28,7 @@ meaning can be compressed without loss.
 | Distribution | `loss-resistant-context-compiler`; import `context_compiler`; CLI `ctxc` |
 | Runtime | Python 3.11+, standard-library-only core |
 | Interfaces | Python API, `ctxc` CLI, JSON/JSONL input, JSON artifacts, optional LocalAI connector |
-| Regression suite | Complete Ubuntu suite on Python 3.11–3.13; Windows/macOS Python 3.13 release/filesystem smoke |
+| Regression suite | Complete Ubuntu suite on Python 3.11–3.13; Python 3.14 lane configured and local Windows core suite green; Windows/macOS Python 3.13 release/filesystem smoke |
 | Content secret preprocessing | Opt-in, fixed-detector, length-preserving, and auditable |
 | Local synthetic benchmark | 32.60x compression and 100% critical recall on the recorded run |
 | Local bundled certificate | `ISSUED` against head, tail, and extractive controls |

@@ -25,6 +25,14 @@ def test_distribution_identity_matches_the_public_release_contract() -> None:
     assert project["name"] == STABLE_DISTRIBUTION
     assert project["version"] == __version__
     assert project["requires-python"] == ">=3.11"
+    assert project["classifiers"] == [
+        "Development Status :: 3 - Alpha",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
+    ]
     assert project["dependencies"] == []
     assert project["license"] == "MIT"
     assert project["license-files"] == ["LICENSE"]
@@ -152,6 +160,7 @@ def test_release_documents_freeze_name_versioning_and_support_boundaries() -> No
     )
     assert "| CPython 3.11 | Supported |" in support
     assert "| CPython 3.13 | Supported |" in support
+    assert "| CPython 3.14 | Provisional |" in support
     assert "No package index release is currently claimed." in " ".join(
         support.split()
     )

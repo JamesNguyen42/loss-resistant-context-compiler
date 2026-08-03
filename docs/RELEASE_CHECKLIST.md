@@ -17,7 +17,7 @@ a production PyPI upload, or a broader product/evidence claim.
 
 ## Code and platform gates
 
-- [ ] Run the complete test suite on CPython 3.11, 3.12, and 3.13.
+- [ ] Run the complete test suite on CPython 3.11, 3.12, 3.13, and 3.14.
 - [ ] Run Ruff and `compileall` across `src`, `tests`, `benchmarks`, `scripts`,
   `conformance`, and `_ctxc_build_backend.py`.
 - [ ] Run the cross-platform lock/path/package smoke coverage on Ubuntu,

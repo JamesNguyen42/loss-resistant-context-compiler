@@ -24,8 +24,9 @@ alias. Imports and the `ctxc` command are unchanged by the metadata rename.
 | CPython 3.11 | Supported | Complete Ubuntu CI suite, frozen replay, LRCBench, and performance gate |
 | CPython 3.12 | Supported | Complete Ubuntu CI suite and current Windows local validation |
 | CPython 3.13 | Supported | Complete Ubuntu CI suite; Windows and macOS release/filesystem smoke |
+| CPython 3.14 | Provisional | Ubuntu full-suite lane configured; complete local Windows core-suite validation |
 | Ubuntu local filesystem | Supported | Complete CI tests, release builds and clean installs, benchmark replay, LRCBench, and performance gate |
-| Windows 11 local NTFS/OneDrive workspace | Provisional | Hosted Python 3.13 filesystem and clean wheel/sdist smoke plus complete local Python 3.12 validation |
+| Windows 11 local NTFS/OneDrive workspace | Provisional | Hosted Python 3.13 filesystem and clean wheel/sdist smoke plus complete local Python 3.12 and core Python 3.14 validation |
 | macOS local filesystem | Provisional | Hosted Python 3.13 filesystem and clean wheel/sdist smoke; not a complete test-suite target |
 | Network/distributed filesystems | Unverified | Advisory locks, hard links, directory identity, rename, and durability semantics vary |
 | PyPy or other Python implementations | Unverified | No current test matrix |
