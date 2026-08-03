@@ -191,6 +191,10 @@ ordinary push or pull-request package lane.
       evidence.
 - [ ] The core wheel builds with no dependencies.
 - [ ] The integration wheel and sdist build without the live extra.
+- [ ] Sdist/wheel members and pinned build-wheel inputs reject Windows device
+      aliases, including `CONIN$`/`CONOUT$`, superscript COM/LPT forms, and
+      aliases with ASCII spaces before an extension; ambiguous names are never
+      normalized.
 - [ ] Two fresh source builds and one extracted-sdist rebuild use the same
       retained epoch/toolchain and produce one exact final sdist name, size,
       and SHA-256 without overwriting any candidate.

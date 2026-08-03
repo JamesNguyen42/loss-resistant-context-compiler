@@ -61,6 +61,7 @@ def _wheel_bytes(
     corrupt_record: bool = False,
     member_mode: int = stat.S_IFREG | 0o644,
     extra_member_name: str | None = None,
+    record_path_override: str | None = None,
 ) -> bytes:
     package_name = approved.name.replace("-", "_")
     package_member = f"{package_name}/__init__.py"
@@ -92,6 +93,8 @@ def _wheel_bytes(
         [name, _record_digest(payload), str(len(payload))]
         for name, payload in members.items()
     ]
+    if record_path_override is not None:
+        rows[0][0] = record_path_override
     if corrupt_record:
         rows[0][1] = "sha256=" + ("A" * 43)
     rows.append([record_member, "", ""])
@@ -336,6 +339,76 @@ def test_wheel_accepts_unspecified_file_type_but_rejects_link_members(
     _write_lock(lock, wheelhouse)
     with pytest.raises(HELPER.BuildInputError, match="link or special"):
         HELPER.verify_build_inputs(lock, wheelhouse)
+
+
+@pytest.mark.parametrize(
+    "component",
+    [
+        "CON .txt",
+        "CONIN$.txt",
+        "CONOUT$.txt",
+        "COM1 .txt",
+        "COM\u00b9.txt",
+        "LPT\u00b2 .log",
+    ],
+)
+def test_wheel_rejects_windows_device_alias_members(
+    tmp_path: Path,
+    component: str,
+) -> None:
+    lock, wheelhouse = _valid_inputs(tmp_path)
+    approved = HELPER.APPROVED_BUILD_WHEELS[0]
+    wheel = wheelhouse / approved.filename
+    wheel.write_bytes(
+        _wheel_bytes(approved, extra_member_name=f"build/{component}")
+    )
+    _write_lock(lock, wheelhouse)
+
+    with pytest.raises(HELPER.BuildInputError, match="nonportable member name"):
+        HELPER.verify_build_inputs(lock, wheelhouse)
+
+
+@pytest.mark.parametrize(
+    "component",
+    [
+        "CON .txt",
+        "CONIN$.txt",
+        "CONOUT$.txt",
+        "COM1 .txt",
+        "COM\u00b9.txt",
+        "LPT\u00b2 .log",
+    ],
+)
+def test_wheel_record_rejects_windows_device_alias_members(
+    tmp_path: Path,
+    component: str,
+) -> None:
+    lock, wheelhouse = _valid_inputs(tmp_path)
+    approved = HELPER.APPROVED_BUILD_WHEELS[0]
+    wheel = wheelhouse / approved.filename
+    wheel.write_bytes(
+        _wheel_bytes(approved, record_path_override=f"build/{component}")
+    )
+    _write_lock(lock, wheelhouse)
+
+    with pytest.raises(HELPER.BuildInputError, match="nonportable member name"):
+        HELPER.verify_build_inputs(lock, wheelhouse)
+
+
+@pytest.mark.parametrize("component", ["COM0.txt", "COM10.txt", "CON name.txt"])
+def test_wheel_retains_non_device_name_controls(
+    tmp_path: Path,
+    component: str,
+) -> None:
+    lock, wheelhouse = _valid_inputs(tmp_path)
+    approved = HELPER.APPROVED_BUILD_WHEELS[0]
+    wheel = wheelhouse / approved.filename
+    wheel.write_bytes(
+        _wheel_bytes(approved, extra_member_name=f"build/{component}")
+    )
+    _write_lock(lock, wheelhouse)
+
+    HELPER.verify_build_inputs(lock, wheelhouse)
 
 
 def test_wheel_allows_bound_vendored_metadata_but_rejects_foreign_top_level_dist_info(

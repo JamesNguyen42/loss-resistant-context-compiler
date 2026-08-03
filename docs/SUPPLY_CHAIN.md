@@ -221,7 +221,12 @@ only when a valid `SOURCE_DATE_EPOCH` is supplied, it validates the backend
 archive under explicit member and byte limits, rejects links, special files,
 duplicate, nonportable, or unsafe names, unexpected PAX fields, multiple gzip
 members, trailing data, and input replacement, then rewrites uid/gid,
-user/group names, gzip time, and member mtimes deterministically. Physical
+user/group names, gzip time, and member mtimes deterministically. Nonportable
+names include the complete supported Windows device-alias set: `CON`, `PRN`,
+`AUX`, `NUL`, `CONIN$`, and `CONOUT$`; COM/LPT 1--9 and superscript 1/2/3
+forms; and aliases with ASCII spaces before an extension. These members are
+rejected, never normalized.
+Physical
 tar/PAX and gzip expansion limits are enforced before the standard tar parser
 receives the validated anonymous stream. It re-inventories the candidate and
 aborts the deterministic sdist build if member order, type, mode, size,

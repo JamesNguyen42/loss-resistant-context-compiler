@@ -943,6 +943,11 @@ evidence of sublinear compilation.
   `30341552866`; retained evidence remained skipped/default-off. Root push CI
   `30341549065` and pull-request CI `30341552713` each passed 7/7 jobs;
   CodeQL `30341552714` and dependency review `30341553236` passed.
+- [x] Align root and OpenHands sdist/wheel member validation and the pinned
+  build-wheel inspector with the complete supported Windows device-alias set.
+  Reject `CONIN$`/`CONOUT$`, COM/LPT superscript 1/2/3 forms, and aliases with
+  ASCII spaces before an extension; retain `COM0`, `COM10`, and `CON name`
+  controls without normalizing any archive member.
 - [x] Require a separate automatic comparison of the root wheel, integration
   wheel, and integration sdist from all six Linux, Windows, and macOS Python
   3.12/3.13 package lanes. Exact package-gate implementation head

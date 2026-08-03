@@ -965,6 +965,11 @@ audited. Any selected superseded item independently fails verification as
   are regression-tested. CI verifies all 26 wheel schemas, source-distribution
   conformance/natural/compatibility assets, and separate clean installs with
   `ctxc --help`, compile, trust-create, and trust-verify round trips.
+- Root and OpenHands sdist/wheel validators and the pinned build-wheel inspector
+  reject the complete supported Windows device-alias set, including
+  `CONIN$`/`CONOUT$`, COM/LPT superscript forms, and ASCII spaces before an
+  extension. Ambiguous members are rejected rather than rewritten; `COM0`,
+  `COM10`, and `CON name` remain valid controls.
 - CI runs connector golden/negative conformance, natural-history contract
   validation, external-candidate interchange, and external protocol checks.
 - At root implementation head `7915beb`, Core CI acquires the seven exact

@@ -50,9 +50,12 @@ _WHEEL_RECORD_SIZE = re.compile(r"(?:0|[1-9][0-9]*)\Z")
 _PAX_MTIME = re.compile(r"-?[0-9]+(?:\.[0-9]+)?\Z")
 _ALLOWED_INPUT_PAX_FIELDS = frozenset({"mtime", "path"})
 _ZERO_BLOCK = bytes(tarfile.BLOCKSIZE)
-_WINDOWS_RESERVED_COMPONENT = re.compile(
-    r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?\Z",
-    re.IGNORECASE,
+_WINDOWS_RESERVED_COMPONENTS = frozenset(
+    {"con", "prn", "aux", "nul", "conin$", "conout$"}
+    | {f"com{number}" for number in range(1, 10)}
+    | {f"lpt{number}" for number in range(1, 10)}
+    | {f"com{number}" for number in ("\u00b9", "\u00b2", "\u00b3")}
+    | {f"lpt{number}" for number in ("\u00b9", "\u00b2", "\u00b3")}
 )
 _WINDOWS_INVALID_COMPONENT_CHARS = frozenset('<>:"|?*')
 _ZIP_MIN_EPOCH = 315_532_800
@@ -188,6 +191,11 @@ def _source_date_epoch() -> int | None:
     return None if raw is None else _parse_source_date_epoch(raw)
 
 
+def _windows_component_is_reserved(component: str) -> bool:
+    stem = component.partition(".")[0].rstrip(" ").casefold()
+    return stem in _WINDOWS_RESERVED_COMPONENTS
+
+
 def _safe_member_name(name: object, *, expected_root: str) -> str:
     if (
         not isinstance(name, str)
@@ -212,7 +220,7 @@ def _safe_member_name(name: object, *, expected_root: str) -> str:
         if (
             part.endswith((" ", "."))
             or any(character in _WINDOWS_INVALID_COMPONENT_CHARS for character in part)
-            or _WINDOWS_RESERVED_COMPONENT.fullmatch(part) is not None
+            or _windows_component_is_reserved(part)
         ):
             raise DeterministicSdistError(f"sdist contains a nonportable member name: {name!r}")
     return name
@@ -1064,7 +1072,7 @@ def _safe_wheel_member_name(name: object) -> str:
         if (
             part.endswith((" ", "."))
             or any(character in _WINDOWS_INVALID_COMPONENT_CHARS for character in part)
-            or _WINDOWS_RESERVED_COMPONENT.fullmatch(part) is not None
+            or _windows_component_is_reserved(part)
         ):
             raise DeterministicSdistError(f"wheel contains a nonportable member name: {name!r}")
     return name

@@ -659,6 +659,11 @@ def test_wheel_normalization_rejects_noncanonical_record_sizes(
     ("package_name", "package_mode", "message"),
     [
         ("../escape.py", None, "unsafe member name"),
+        ("fixture/CON .txt", None, "nonportable member name"),
+        ("fixture/CONIN$.txt", None, "nonportable member name"),
+        ("fixture/COM1 .txt", None, "nonportable member name"),
+        ("fixture/COM\u00b9.txt", None, "nonportable member name"),
+        ("fixture/LPT\u00b2 .log", None, "nonportable member name"),
         ("fixture/link.py", stat.S_IFLNK | 0o777, "link or special member"),
     ],
 )
@@ -684,6 +689,17 @@ def test_wheel_normalization_rejects_unsafe_or_linked_members(
         backend._normalize_wheel_archive(path, EPOCH)
 
     assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("component", ["COM0.txt", "COM10.txt", "CON name.txt"])
+def test_archive_member_validators_retain_non_device_controls(
+    component: str,
+) -> None:
+    sdist_name = f"{ROOT}/{component}"
+    wheel_name = f"fixture/{component}"
+
+    assert backend._safe_member_name(sdist_name, expected_root=ROOT) == sdist_name
+    assert backend._safe_wheel_member_name(wheel_name) == wheel_name
 
 
 def test_wheel_normalization_rejects_prepended_and_trailing_bytes(
@@ -972,6 +988,11 @@ def test_normalization_never_collapses_different_member_content(tmp_path: Path) 
         ({"include_pyproject": False}, "pyproject.toml"),
         ({"unsafe_name": f"{ROOT}/stream:ads"}, "nonportable member name"),
         ({"unsafe_name": f"{ROOT}/CON"}, "nonportable member name"),
+        ({"unsafe_name": f"{ROOT}/CON .txt"}, "nonportable member name"),
+        ({"unsafe_name": f"{ROOT}/CONOUT$.txt"}, "nonportable member name"),
+        ({"unsafe_name": f"{ROOT}/COM1 .txt"}, "nonportable member name"),
+        ({"unsafe_name": f"{ROOT}/COM\u00b9.txt"}, "nonportable member name"),
+        ({"unsafe_name": f"{ROOT}/LPT\u00b2 .log"}, "nonportable member name"),
         ({"unsafe_name": f"{ROOT}/trailing."}, "nonportable member name"),
         ({"portable_collision": True}, "collide portably"),
     ],

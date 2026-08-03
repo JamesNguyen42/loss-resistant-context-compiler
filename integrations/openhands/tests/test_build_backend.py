@@ -172,6 +172,43 @@ def test_integration_backend_preserves_payload_distinctions(tmp_path: Path) -> N
     assert first.read_bytes() != second.read_bytes()
 
 
+@pytest.mark.parametrize(
+    "component",
+    [
+        "CON .txt",
+        "CONIN$.txt",
+        "CONOUT$.txt",
+        "COM1 .txt",
+        "COM\u00b9.txt",
+        "LPT\u00b2 .log",
+    ],
+)
+def test_integration_archive_member_validators_reject_device_aliases(
+    component: str,
+) -> None:
+    with pytest.raises(BACKEND.DeterministicSdistError, match="nonportable"):
+        BACKEND._safe_member_name(
+            f"{ARCHIVE_ROOT}/{component}",
+            expected_root=ARCHIVE_ROOT,
+        )
+    with pytest.raises(BACKEND.DeterministicSdistError, match="nonportable"):
+        BACKEND._safe_wheel_member_name(f"ctxc_openhands/{component}")
+
+
+@pytest.mark.parametrize("component", ["COM0.txt", "COM10.txt", "CON name.txt"])
+def test_integration_archive_member_validators_retain_non_device_controls(
+    component: str,
+) -> None:
+    sdist_name = f"{ARCHIVE_ROOT}/{component}"
+    wheel_name = f"ctxc_openhands/{component}"
+
+    assert BACKEND._safe_member_name(
+        sdist_name,
+        expected_root=ARCHIVE_ROOT,
+    ) == sdist_name
+    assert BACKEND._safe_wheel_member_name(wheel_name) == wheel_name
+
+
 def test_build_sdist_without_epoch_delegates_unchanged(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

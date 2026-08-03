@@ -8,6 +8,10 @@ versioning and release rules in
 
 ### Changed
 
+- Made root and OpenHands sdist/wheel validators, plus the pinned build-wheel
+  inspector, reject the complete supported Windows device-alias set, including
+  `CONIN$`/`CONOUT$`, superscript COM/LPT forms, and ASCII spaces before an
+  extension.
 - Added CPython 3.14 to the root Ubuntu full-suite matrix and support metadata;
   the separately packaged OpenHands integration remains intentionally bounded
   to CPython 3.12 and 3.13.

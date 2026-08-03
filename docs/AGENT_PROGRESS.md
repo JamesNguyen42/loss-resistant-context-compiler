@@ -6,16 +6,14 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Current committed HEAD and base for this in-progress checkpoint: `aff57da`.
-- Current checkpoint: the newly configured root CPython 3.14 Ubuntu job passed
-  its complete suite, Ruff, and compileall steps, completing the evidence needed
-  to promote root CPython 3.14 support. Platform-specific release smoke stays on
-  CPython 3.13. The separately packaged OpenHands integration remains bounded
-  to CPython 3.12 and 3.13.
-- Previous checkpoint: the root CPython 3.14 matrix/classifier/support closure,
-  role-scoped workflow contract tests, and clean local Windows 3.14 core-suite
-  evidence were independently reviewed, committed, and pushed as `aff57da` with
-  hosted status left provisional.
+- Current committed HEAD and base for this in-progress checkpoint: `fb30956`.
+- Current checkpoint: root and OpenHands archive member validators and the
+  pinned OpenHands build-wheel inspector now reject the complete supported
+  Windows device-alias set. This is an accepted-domain portability tightening;
+  no archive member is rewritten and no artifact/schema version changes.
+- Previous checkpoint: root CPython 3.14 support was locally and hosted
+  validated, independently reviewed, promoted, committed, and pushed as
+  `fb30956`. OpenHands remains bounded to CPython 3.12 and 3.13.
 - Next public preparation target: scikit-learn ordinals 349--380 (32 selected
   rows). No local mirror or exact base-commit license evidence has yet been
   retained for that repository. Do not encode a repository patch as an
@@ -41,7 +39,39 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
-## Current root CPython 3.14 support closure
+## Current archive-member device-alias hardening
+
+- The byte-identical root and OpenHands PEP 517 backends now compare each sdist
+  and wheel component's pre-extension stem, after trimming only ASCII U+0020,
+  against `CON`, `PRN`, `AUX`, `NUL`, `CONIN$`, `CONOUT$`, COM/LPT 1--9, and
+  COM/LPT superscript 1/2/3 aliases. The pinned OpenHands build-wheel inspector
+  applies the same rule to both ZIP entries and `RECORD` paths.
+- Ambiguous members such as `CON .txt`, `COM1 .txt`, `CONIN$.txt`, `COM¹.txt`,
+  and `LPT² .log` fail before archive normalization or approval. `COM0.txt`,
+  `COM10.txt`, and `CON name.txt` remain accepted controls; `CLOCK$` is not added
+  to this policy.
+- Root regressions exercise real bounded sdist and wheel inputs. OpenHands
+  regressions cover both parity backend helpers and approved build-wheel
+  inspection, including independent ZIP-entry and `RECORD`-path failures. The
+  complete root deterministic-archive module passed 81 tests; the two complete
+  OpenHands backend/build-input modules passed 60 tests with one expected
+  platform skip. Focused Ruff and diff checks pass. The backend source files
+  remain byte-identical at Git blob
+  `41c565e720c5f581496db054713078c9c67057ff`. Ignored JUnit reports are
+  `build/archive-device-root.xml` and `build/archive-device-openhands-v2.xml`.
+  The complete OpenHands packaging/parity module also passed all 22 tests in
+  21.225 seconds; its ignored report is
+  `build/archive-device-openhands-packaging.xml`.
+- The combined root/OpenHands archive-validator set also passed on clean
+  CPython 3.14.6 with 141 passed and one expected platform skip in 2.023
+  seconds; its ignored report is `build/archive-device-py314-v2.xml`.
+- An offline, no-build-isolation root packaging smoke under
+  `SOURCE_DATE_EPOCH=1700000000` built both the wheel and deterministic sdist
+  from the dirty checkpoint. The ignored outputs are retained under
+  `build/archive-device-smoke-fb30956-v2`.
+- No model, candidate, grader, GPU, or inference runtime is involved.
+
+## Previous root CPython 3.14 support closure (`fb30956`)
 
 - Root `pyproject.toml` now advertises CPython 3.14 and the complete Ubuntu
   `unit-tests` matrix covers 3.11, 3.12, 3.13, and 3.14. The Windows/macOS

@@ -50,9 +50,12 @@ _RECORD_DIGEST_RE = re.compile(r"sha256=([A-Za-z0-9_-]{43})\Z")
 _RECORD_SIZE_RE = re.compile(r"(?:0|[1-9][0-9]*)\Z")
 _SAFE_WHEELHOUSE_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,254}\.whl\Z")
 _SAFE_MEMBER_COMPONENT_RE = re.compile(r"[^/\x00-\x1f\x7f-\x9f]+")
-_WINDOWS_RESERVED_COMPONENT_RE = re.compile(
-    r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?\Z",
-    re.IGNORECASE,
+_WINDOWS_RESERVED_COMPONENTS = frozenset(
+    {"con", "prn", "aux", "nul", "conin$", "conout$"}
+    | {f"com{number}" for number in range(1, 10)}
+    | {f"lpt{number}" for number in range(1, 10)}
+    | {f"com{number}" for number in ("\u00b9", "\u00b2", "\u00b3")}
+    | {f"lpt{number}" for number in ("\u00b9", "\u00b2", "\u00b3")}
 )
 _WINDOWS_INVALID_COMPONENT_CHARS = frozenset('<>:"|?*')
 _NORMALIZED_NAME_RE = re.compile(r"[-_.]+")
@@ -337,6 +340,11 @@ def parse_requirements_lock(path: str | Path) -> tuple[dict[str, str], ...]:
     )
 
 
+def _windows_component_is_reserved(component: str) -> bool:
+    stem = component.partition(".")[0].rstrip(" ").casefold()
+    return stem in _WINDOWS_RESERVED_COMPONENTS
+
+
 def _safe_wheel_member_name(value: object) -> str:
     if (
         not isinstance(value, str)
@@ -359,7 +367,7 @@ def _safe_wheel_member_name(value: object) -> str:
             _SAFE_MEMBER_COMPONENT_RE.fullmatch(component) is None
             or component.endswith((" ", "."))
             or any(character in _WINDOWS_INVALID_COMPONENT_CHARS for character in component)
-            or _WINDOWS_RESERVED_COMPONENT_RE.fullmatch(component) is not None
+            or _windows_component_is_reserved(component)
         ):
             raise BuildInputError("build wheel has a nonportable member name")
     return value
