@@ -56,17 +56,21 @@ def _write_json(path: Path, payload: dict) -> None:
     )
 
 
-def _resign_failed_manifest(payload: dict) -> None:
-    unsigned = dict(payload)
-    unsigned.pop("manifest_sha256")
+def _canonical_sha256(payload: object) -> str:
     canonical = json.dumps(
-        unsigned,
+        payload,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,
     )
-    payload["manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _resign_failed_manifest(payload: dict) -> None:
+    unsigned = dict(payload)
+    unsigned.pop("manifest_sha256")
+    payload["manifest_sha256"] = _canonical_sha256(unsigned)
 
 
 def test_external_compatibility_audit_is_result_blind_and_non_scoreable() -> None:
@@ -268,6 +272,32 @@ def test_external_compatibility_audit_rejects_boolean_numeric_aliases(
     _write_json(manifest_path, manifest)
 
     with pytest.raises(CompatibilityAuditError, match="limits timeout_seconds"):
+        audit_repository(tmp_path)
+
+
+def test_external_compatibility_audit_rejects_nonportable_adapter_source_member(
+    tmp_path: Path,
+) -> None:
+    _copy_evidence(tmp_path)
+    manifest_path = tmp_path / "benchmarks/compatibility/acon-diagnostic-failed-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["adapter_source"]["files"][0]["relative_path"] = (
+        "support/CON .py"
+    )
+    source = manifest["adapter_source"]
+    source["tree_sha256"] = _canonical_sha256(
+        {
+            "algorithm": source["tree_algorithm"],
+            "files": source["files"],
+        }
+    )
+    _resign_failed_manifest(manifest)
+    _write_json(manifest_path, manifest)
+
+    with pytest.raises(
+        CompatibilityAuditError,
+        match="adapter source file is invalid.*Windows-unsafe component",
+    ):
         audit_repository(tmp_path)
 
 

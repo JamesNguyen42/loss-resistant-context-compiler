@@ -6,14 +6,14 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 
 - Branch: `codex/openhands-live-agent-beta`
 - Upstream: `origin/codex/openhands-live-agent-beta`
-- Current committed HEAD and base for this in-progress checkpoint: `fb30956`.
-- Current checkpoint: root and OpenHands archive member validators and the
-  pinned OpenHands build-wheel inspector now reject the complete supported
-  Windows device-alias set. This is an accepted-domain portability tightening;
-  no archive member is rewritten and no artifact/schema version changes.
-- Previous checkpoint: root CPython 3.14 support was locally and hosted
-  validated, independently reviewed, promoted, committed, and pushed as
-  `fb30956`. OpenHands remains bounded to CPython 3.12 and 3.13.
+- Current committed HEAD and base for this in-progress checkpoint: `06e06c9`.
+- Current checkpoint: every normalized POSIX-relative adapter-source inventory
+  record now applies the shared Windows component-safety policy to every path
+  part. This is an accepted-domain tightening; members are rejected rather than
+  rewritten and no manifest, protocol, or tree-algorithm version changes.
+- Previous checkpoint: complete Windows device-alias rejection in the root and
+  OpenHands archive validators and pinned build-wheel inspector was tested,
+  independently reviewed, committed, and pushed as `06e06c9`.
 - Next public preparation target: scikit-learn ordinals 349--380 (32 selected
   rows). No local mirror or exact base-commit license evidence has yet been
   retained for that repository. Do not encode a repository patch as an
@@ -39,7 +39,39 @@ Last updated: 2026-08-02 (America/Los_Angeles)
 4. Natural-history benchmark, maintainability, and performance work remain
    after the P0 external-evidence gap.
 
-## Current archive-member device-alias hardening
+## Current adapter-source relative-member portability
+
+- `AdapterSourceFileEvidence` now rejects a record when any `PurePosixPath`
+  component fails the existing Windows lexical safety rule. This covers invalid
+  characters and control ranges, trailing dots/spaces, `CON`, `PRN`, `AUX`,
+  `NUL`, `CONIN$`, `CONOUT$`, COM/LPT 1--9, and COM/LPT superscript 1/2/3,
+  including aliases with ASCII spaces before an extension.
+- The immutable record is the common construction boundary for direct records,
+  bounded source-tree capture, external-manifest replay, and compatibility-audit
+  decoding. Adversarial loader and audit tests recompute both the nested source
+  tree digest and the outer manifest digest before presenting an unsafe member,
+  so rejection is not attributable to a stale ledger. `COM0`, `COM10`,
+  `CON name`, and `CLOCK$` remain accepted controls.
+- The focused 21-case selection completed on CPython 3.12 and clean CPython
+  3.14.6 with 20 passed and one expected Windows capture skip on each runtime.
+  The complete external-runner, external-compatibility, and compatibility-audit
+  modules collected 221 tests on CPython 3.12 and completed with 216 passed,
+  five expected skips, zero failures, and zero errors in 15.882 seconds.
+  Ignored JUnit reports are `build/adapter-source-focused-py312-v2.xml`,
+  `build/adapter-source-focused-py314-v2.xml`, and
+  `build/adapter-source-full-py312-v2.xml`. The deterministic two-case benchmark
+  corpus/candidate interchange self-test, focused Ruff, and diff checks pass.
+- Runner manifest `0.13`, external protocol `0.10`, and adapter source-tree
+  algorithm `0.1` remain unchanged. Accepted records retain their prior bytes
+  and digests. This component-level rule does not claim case-folding,
+  Unicode-normalization, or path-length collision freedom, make foreign source
+  roots native-reopenable, bind imports outside the retained root, or prove
+  which source files an adapter loaded.
+- No live or external benchmark candidate, model, grader, GPU, or inference
+  runtime is involved; the self-test uses only its two deterministic in-process
+  fixture records.
+
+## Previous archive-member device-alias hardening (`06e06c9`)
 
 - The byte-identical root and OpenHands PEP 517 backends now compare each sdist
   and wheel component's pre-extension stem, after trimming only ASCII U+0020,

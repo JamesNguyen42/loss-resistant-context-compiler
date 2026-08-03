@@ -1215,6 +1215,76 @@ def _adapter_source_evidence(
 
 
 @pytest.mark.parametrize(
+    "relative_path",
+    [
+        "CON",
+        "nested/NUL.tar.gz",
+        "AUX/adapter.py",
+        "COM1 .py",
+        "COM\u00b9.py",
+        "nested/COM\u00b9 .py",
+        "LPT\u00b2 .log",
+        "CONIN$/adapter.py",
+        "CONOUT$/adapter.py",
+        "nested/name:stream",
+        "nested/trailing.",
+        "nested/trailing ",
+        "nested/control\x1f.py",
+        "nested/control\x80.py",
+    ],
+)
+def test_adapter_source_file_rejects_windows_unsafe_components(
+    relative_path: str,
+) -> None:
+    with pytest.raises(ValueError, match="Windows-unsafe component"):
+        external_runner_module.AdapterSourceFileEvidence(
+            relative_path=relative_path,
+            file_sha256="0" * 64,
+            file_bytes=0,
+        )
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "COM0.py",
+        "nested/COM10.txt",
+        "CON name/adapter.py",
+        "CLOCK$/adapter.py",
+    ],
+)
+def test_adapter_source_file_retains_non_device_controls(
+    relative_path: str,
+) -> None:
+    evidence = external_runner_module.AdapterSourceFileEvidence(
+        relative_path=relative_path,
+        file_sha256="0" * 64,
+        file_bytes=0,
+    )
+
+    assert evidence.relative_path == relative_path
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="Windows cannot create a device-alias source component",
+)
+def test_adapter_source_capture_rejects_windows_unsafe_components(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source"
+    unsafe_directory = source_root / "AUX"
+    unsafe_directory.mkdir(parents=True)
+    (unsafe_directory / "adapter.py").write_text(
+        "print('fixture')\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Windows-unsafe component"):
+        capture_adapter_source_evidence(source_root)
+
+
+@pytest.mark.parametrize(
     ("path", "flavor"),
     [
         ("/var/lib/ctxc/evidence.bin", "posix"),
@@ -1910,6 +1980,34 @@ def test_adapter_source_tree_is_bounded_complete_and_immutable(
         retained_manifest.to_json(),
         encoding="utf-8",
     )
+    tampered_source = retained_manifest.to_dict()
+    tampered_source["adapter_source"]["files"][0][
+        "relative_path"
+    ] = "support/CON .py"
+    tampered_source["adapter_source"]["tree_sha256"] = _canonical_sha256(
+        {
+            "algorithm": tampered_source["adapter_source"]["tree_algorithm"],
+            "files": tampered_source["adapter_source"]["files"],
+        }
+    )
+    tampered_source.pop("manifest_sha256")
+    tampered_source["manifest_sha256"] = _canonical_sha256(
+        tampered_source
+    )
+    tampered_source_path = tmp_path / "nonportable-source-manifest.json"
+    tampered_source_path.write_text(
+        json.dumps(tampered_source),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="adapter source evidence is invalid.*Windows-unsafe component",
+    ):
+        load_external_run_manifest(
+            tampered_source_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
     helper_path.write_text("VALUE = 3\n", encoding="utf-8")
     with pytest.raises(
         ExternalRunnerError,

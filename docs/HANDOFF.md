@@ -1237,10 +1237,17 @@ audited. Any selected superseded item independently fails verification as
   or runner-limit mismatch before scoring. Current runner schema
   `lrcbench-external-run-manifest-0.13` freezes immutable adapter/environment
   identity, revalidated dependency-lock, adapter-entrypoint, and bounded
-  adapter-source-tree bytes, the resolved runtime executable, the bounded
-  name-audited process-environment digest, and the portable per-case-validated
-  command contract, exact 8192-context Qwen, one slot, zero retries/service
-  cost, retained network-isolation evidence, sampled service
+  adapter-source-tree bytes. Every normalized POSIX-relative source member is
+  rejected rather than rewritten when any component is Windows-unsafe, across
+  capture, manifest replay, and compatibility-audit decoding. This is a
+  component-level accepted-domain rule, not a claim that foreign roots are
+  native-reopenable or that every cross-filesystem case, Unicode, and
+  path-length collision is solved. The schema and tree-digest algorithm are
+  unchanged. The manifest also
+  freezes the resolved runtime executable, the bounded name-audited
+  process-environment digest, and the portable per-case-validated command
+  contract, exact 8192-context Qwen, one slot, zero retries/service cost,
+  retained network-isolation evidence, sampled service
   process/executable/peak-memory accounting, and bounded runner controls
   including enforcement polling cadence. It also reconstructs every one-case
   corpus on reload and verifies ordered-prefix, exact-digest, and

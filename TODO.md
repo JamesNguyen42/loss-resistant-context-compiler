@@ -564,6 +564,11 @@ Acceptance:
   source-tree, resolved runtime-executable, and portable command-contract
   digests to the preregistration rather than trusting the supplied adapter
   revision alone. Every per-case invocation is checked against that contract.
+- [x] Reject any normalized relative adapter-source inventory record whose
+  POSIX path contains a Windows-unsafe component, including invalid characters,
+  trailing dots/spaces, and the complete supported device-alias set. Apply the
+  invariant to capture, manifest replay, and compatibility-audit decoding
+  without rewriting a member or changing the tree-digest algorithm.
 - [x] Reconstruct every one-case corpus during manifest replay and require the
   case audit to be the ordered parent-corpus prefix with exact self/file
   digests and runner-owned temporary path structure.

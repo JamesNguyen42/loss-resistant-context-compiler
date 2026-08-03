@@ -371,9 +371,13 @@ claim controls require `environment_id` to equal
 `sha256:<dependency-lock-sha256>`. The retained adapter entrypoint must appear
 in the recorded command and in the bounded recursive inventory of
 `--adapter-source-root`. Loader replay rehashes every regular file in that
-link-free source tree and recomputes the portable command-contract digest;
-external
-scoring matches the entrypoint, source-tree, resolved-runtime, and portable
+link-free source tree and recomputes the portable command-contract digest. Each
+normalized POSIX-relative source member must also pass the same Windows
+component rule before capture or replay accepts it. The rule rejects members
+rather than rewriting them and does not claim to solve cross-filesystem case,
+Unicode-normalization, or path-length collisions. It does not make a foreign
+absolute source root native-reopenable. External scoring matches the
+entrypoint, source-tree, resolved-runtime, and portable
 command-contract digests to the frozen per-system protocol fields. The
 contract uses typed tokens for runner substitutions and bound paths, so
 different clean-host absolute paths produce the same digest. Every per-case

@@ -8,6 +8,11 @@ versioning and release rules in
 
 ### Changed
 
+- Made normalized relative adapter-source inventory records apply the existing
+  Windows component-safety policy to every path part. Invalid characters,
+  trailing dots/spaces, and reserved device aliases are rejected rather than
+  normalized; the manifest schema and source-tree digest algorithm are
+  unchanged.
 - Made root and OpenHands sdist/wheel validators, plus the pinned build-wheel
   inspector, reject the complete supported Windows device-alias set, including
   `CONIN$`/`CONOUT$`, superscript COM/LPT forms, and ASCII spaces before an

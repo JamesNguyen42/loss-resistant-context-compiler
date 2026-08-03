@@ -646,6 +646,12 @@ class AdapterSourceFileEvidence:
             raise ValueError(
                 "adapter source relative paths must be normalized and confined"
             )
+        if not all(
+            _windows_path_component_is_safe(part) for part in path.parts
+        ):
+            raise ValueError(
+                "adapter source relative path contains a Windows-unsafe component"
+            )
         if not _is_sha256(self.file_sha256):
             raise ValueError(
                 "adapter source files require a SHA-256 digest"
