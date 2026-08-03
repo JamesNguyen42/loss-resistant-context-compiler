@@ -10,6 +10,7 @@ import tempfile
 from collections.abc import ItemsView, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -65,6 +66,42 @@ _HIDDEN_OVERLAP_PATCH = """diff --git a/app.txt b/app.txt
 -base
 +hidden
 """
+_CANDIDATE_DELETE_PATCH = """diff --git a/app.txt b/app.txt
+deleted file mode 100644
+--- a/app.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-base
+"""
+_INDEXED_CANDIDATE_PATCH = """diff --git a/app.txt b/app.txt
+index 1111111..2222222 100644
+--- a/app.txt
++++ b/app.txt
+@@ -1 +1 @@
+-base
++candidate
+"""
+_QUOTED_UTF8_PATCH = r'''diff --git "a/docs/caf\303\251 name.txt" "b/docs/caf\303\251 name.txt"
+--- "a/docs/caf\303\251 name.txt"
++++ "b/docs/caf\303\251 name.txt"
+@@ -1 +1 @@
+-old
++new
+'''
+_UNQUOTED_SPACE_PATCH = """diff --git a/docs/user guide.txt b/docs/user guide.txt
+--- a/docs/user guide.txt
++++ b/docs/user guide.txt
+@@ -1 +1 @@
+-old
++new
+"""
+_HEADER_LOOKING_PAYLOAD_PATCH = """diff --git a/app.txt b/app.txt
+--- a/app.txt
++++ b/app.txt
+@@ -1 +1 @@
+--- /dev/null
++++ /dev/null
+"""
 _CANDIDATE_RENAME_PATCH = """diff --git a/app.txt b/renamed-one.txt
 similarity index 100%
 rename from app.txt
@@ -98,6 +135,24 @@ _GIT_BINARY_DELETION_PATCH = """diff --git a/blob.bin b/blob.bin
 deleted file mode 100644
 index 0123456789012345678901234567890123456789..0000000000000000000000000000000000000000
 Binary files a/blob.bin and /dev/null differ
+"""
+_EMPTY_FILE_ADD_PATCH = """diff --git a/empty.txt b/empty.txt
+new file mode 100644
+index 0000000..e69de29
+"""
+_EMPTY_FILE_DELETE_PATCH = """diff --git a/empty.txt b/empty.txt
+deleted file mode 100644
+index e69de29..0000000
+"""
+_TWO_HUNK_PATCH = """diff --git a/app.txt b/app.txt
+--- a/app.txt
++++ b/app.txt
+@@ -1 +1 @@
+-one
++first
+@@ -3 +3 @@
+-three
++third
 """
 
 
@@ -591,7 +646,7 @@ def test_extended_copy_and_mode_change_headers_are_rejected(
     patch_fixture: _PatchFixture,
 ) -> None:
     for candidate, pattern in (
-        (_CANDIDATE_COPY_PATCH, "extended copy header"),
+        (_CANDIDATE_COPY_PATCH, "different logical paths"),
         (_CANDIDATE_MODE_PATCH, "mode-change header"),
         (
             _HIDDEN_NEW_FILE_PATCH.replace(
@@ -609,15 +664,309 @@ def test_extended_copy_and_mode_change_headers_are_rejected(
             )
 
 
-def test_repeated_source_rename_headers_are_rejected_before_git(
+def test_repeated_source_rename_headers_are_rejected_before_source_verification_or_apply(
     patch_fixture: _PatchFixture,
 ) -> None:
-    with pytest.raises(PatchCompositionError, match="extended rename header"):
+    with pytest.raises(PatchCompositionError, match="different logical paths"):
         build_patch_composition(
             patch_fixture.disjoint,
             patch_fixture.source,
             _CANDIDATE_RENAME_PATCH,
         )
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        pytest.param(_CANDIDATE_PATCH, id="modify"),
+        pytest.param(_HIDDEN_NEW_FILE_PATCH, id="add"),
+        pytest.param(_CANDIDATE_DELETE_PATCH, id="delete"),
+        pytest.param(_INDEXED_CANDIDATE_PATCH, id="indexed-modify"),
+        pytest.param(_QUOTED_UTF8_PATCH, id="quoted-octal-utf8-path"),
+        pytest.param(_UNQUOTED_SPACE_PATCH, id="unquoted-space-path"),
+        pytest.param(_HEADER_LOOKING_PAYLOAD_PATCH, id="header-looking-payload"),
+        pytest.param(_CANDIDATE_PATCH[:-1], id="no-terminal-lf"),
+        pytest.param(_EMPTY_FILE_ADD_PATCH, id="header-only-empty-add"),
+        pytest.param(_EMPTY_FILE_DELETE_PATCH, id="header-only-empty-delete"),
+    ],
+)
+def test_closed_text_patch_parser_accepts_exact_bytes(patch: str) -> None:
+    assert patch_module._patch_bytes(
+        patch,
+        label="candidate model_patch",
+        limits=PatchCompositionLimits(),
+    ) == patch.encode("utf-8")
+
+
+def test_hunk_count_is_not_coupled_to_file_count_limit() -> None:
+    assert patch_module._patch_bytes(
+        _TWO_HUNK_PATCH,
+        label="candidate model_patch",
+        limits=PatchCompositionLimits(max_files=1),
+    ) == _TWO_HUNK_PATCH.encode("utf-8")
+
+
+@pytest.mark.parametrize(
+    "first_section",
+    [
+        pytest.param(_CANDIDATE_PATCH, id="contentful-predecessor"),
+        pytest.param(_EMPTY_FILE_ADD_PATCH, id="header-only-predecessor"),
+    ],
+)
+def test_unquoted_space_header_is_recognized_after_another_section(
+    first_section: str,
+) -> None:
+    patch = first_section + _UNQUOTED_SPACE_PATCH
+    assert patch_module._patch_bytes(
+        patch,
+        label="candidate model_patch",
+        limits=PatchCompositionLimits(),
+    ) == patch.encode("utf-8")
+
+
+def test_section_path_conflicts_are_component_ordered_and_casefolded() -> None:
+    separated_ancestor = """diff --git a/A b/A
+new file mode 100644
+index 0000000..e69de29
+diff --git a/a! b/a!
+new file mode 100644
+index 0000000..e69de29
+diff --git a/a/b b/a/b
+new file mode 100644
+index 0000000..e69de29
+"""
+    with pytest.raises(PatchCompositionError, match="ancestor-conflicting") as captured:
+        patch_module._patch_bytes(
+            separated_ancestor,
+            label="candidate model_patch",
+            limits=PatchCompositionLimits(),
+        )
+
+    assert captured.value.stage == "patch-input-validation"
+
+
+@pytest.mark.parametrize(
+    "hostile_patch",
+    [
+        pytest.param(
+            "diff --git a/empty.txt b/empty.txt\nindex e69de29..e69de29 100644\n",
+            id="header-only-modify",
+        ),
+        pytest.param(
+            _EMPTY_FILE_ADD_PATCH.replace("0000000..e69de29", "1111111..e69de29"),
+            id="inconsistent-empty-add-index",
+        ),
+        pytest.param(
+            _EMPTY_FILE_DELETE_PATCH.replace("e69de29..0000000", "e69de29..2222222"),
+            id="inconsistent-empty-delete-index",
+        ),
+    ],
+)
+def test_header_only_sections_require_consistent_add_or_delete(
+    hostile_patch: str,
+) -> None:
+    with pytest.raises(PatchCompositionError) as captured:
+        patch_module._patch_bytes(
+            hostile_patch,
+            label="candidate model_patch",
+            limits=PatchCompositionLimits(),
+        )
+    assert captured.value.stage == "patch-input-validation"
+
+
+def test_candidate_deletion_composes_without_mutating_input(
+    patch_fixture: _PatchFixture,
+) -> None:
+    before = _snapshot(patch_fixture.disjoint.path)
+    document = build_patch_composition(
+        patch_fixture.disjoint,
+        patch_fixture.source,
+        _CANDIDATE_DELETE_PATCH,
+    ).to_dict()
+
+    assert _snapshot(patch_fixture.disjoint.path) == before
+    candidate_entry = document["candidate"]["delta"]["entries"][0]
+    assert candidate_entry["path"] == "app.txt"
+    assert candidate_entry["pre"] is not None
+    assert candidate_entry["post"] is None
+    assert document["hidden"]["delta"]["changed_paths"] == ["tests/test_hidden.py"]
+    assert document["overlap"]["disjoint"] is True
+
+
+def test_invalid_candidate_is_rejected_before_source_verification_or_apply(
+    patch_fixture: _PatchFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_source_verification(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        pytest.fail("invalid candidate reached source verification")
+
+    monkeypatch.setattr(patch_module, "_source_inputs", unexpected_source_verification)
+    with pytest.raises(PatchCompositionError) as captured:
+        build_patch_composition(
+            patch_fixture.disjoint,
+            patch_fixture.source,
+            "not a unified diff",
+        )
+    assert captured.value.stage == "patch-input-validation"
+    assert captured.value.disposition == "preflight-exception-not-a-cohort-result"
+
+
+@pytest.mark.parametrize(
+    "hostile_patch",
+    [
+        pytest.param("Subject: wrapped patch\n" + _CANDIDATE_PATCH, id="preamble"),
+        pytest.param(_CANDIDATE_PATCH + "\n", id="double-final-lf"),
+        pytest.param(
+            _CANDIDATE_PATCH.removeprefix("diff --git a/app.txt b/app.txt\n"),
+            id="headerless",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace(
+                "diff --git a/app.txt b/app.txt",
+                "diff --cc app.txt",
+                1,
+            ),
+            id="combined-cc",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace(
+                "diff --git a/app.txt b/app.txt",
+                "diff --combined app.txt",
+                1,
+            ),
+            id="combined-long",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace(
+                "--- a/app.txt",
+                "similarity index 100%\n--- a/app.txt",
+                1,
+            ),
+            id="similarity",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace(
+                "--- a/app.txt",
+                "dissimilarity index 50%\n--- a/app.txt",
+                1,
+            ),
+            id="dissimilarity",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace(
+                "--- a/app.txt",
+                "rename from app.txt\nrename to app.txt\n--- a/app.txt",
+                1,
+            ),
+            id="standard-rename",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace(
+                "--- a/app.txt",
+                "rename old app.txt\nrename new app.txt\n--- a/app.txt",
+                1,
+            ),
+            id="legacy-rename",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace(
+                "--- a/app.txt",
+                "copy from app.txt\ncopy to app.txt\n--- a/app.txt",
+                1,
+            ),
+            id="standard-copy",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace(
+                "--- a/app.txt",
+                "copy old app.txt\ncopy new app.txt\n--- a/app.txt",
+                1,
+            ),
+            id="legacy-copy",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace(
+                "--- a/app.txt",
+                "Files a/app.txt and b/app.txt differ\n--- a/app.txt",
+                1,
+            ),
+            id="files-binary",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace(
+                "--- a/app.txt",
+                "index 1111111..2222222 120000\n--- a/app.txt",
+                1,
+            ),
+            id="unsafe-index",
+        ),
+        pytest.param(
+            _CANDIDATE_DELETE_PATCH.replace(
+                "deleted file mode 100644",
+                "deleted file mode 100755",
+                1,
+            ),
+            id="non-100644-delete",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace(
+                "--- a/app.txt\n+++ b/app.txt",
+                "--- a/app.txt\n--- a/app.txt\n+++ b/app.txt",
+                1,
+            ),
+            id="duplicate-old-header",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace(
+                "--- a/app.txt\n+++ b/app.txt",
+                "+++ b/app.txt\n--- a/app.txt",
+                1,
+            ),
+            id="misordered-headers",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace("+++ b/app.txt", "+++ b/other.txt", 1),
+            id="file-header-path-mismatch",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace(
+                "diff --git a/app.txt b/app.txt",
+                "diff --git a/app.txt b/other.txt",
+                1,
+            ),
+            id="diff-path-mismatch",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace("@@ -1 +1 @@", "@@ -1,2 +1 @@", 1),
+            id="hunk-count",
+        ),
+        pytest.param(
+            _CANDIDATE_PATCH.replace("-base", "?base", 1),
+            id="hunk-prefix",
+        ),
+        pytest.param(
+            """diff --git a/app.txt b/app.txt
+--- a/app.txt
++++ b/app.txt
+@@ -1 +1 @@
+ base
+""",
+            id="context-only-hunk",
+        ),
+    ],
+)
+def test_closed_text_patch_parser_rejects_non_allowlisted_structure(
+    hostile_patch: str,
+) -> None:
+    with pytest.raises(PatchCompositionError) as captured:
+        patch_module._patch_bytes(
+            hostile_patch,
+            label="candidate model_patch",
+            limits=PatchCompositionLimits(),
+        )
+    assert captured.value.stage == "patch-input-validation"
+    assert captured.value.disposition == "preflight-exception-not-a-cohort-result"
 
 
 @pytest.mark.parametrize(
@@ -651,6 +1000,80 @@ def test_patch_paths_retain_non_device_name_controls(portable_path: str) -> None
     )
 
 
+def test_tree_scan_separately_bounds_directories(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "one").mkdir()
+    (root / "two").mkdir()
+    limits = PatchCompositionLimits(max_files=2)
+
+    assert patch_module._scan_tree(root, limits).summary()["file_count"] == 0
+    (root / "three").mkdir()
+    with pytest.raises(PatchCompositionError, match="directory count exceeds"):
+        patch_module._scan_tree(root, limits)
+
+
+def test_tree_scan_cleanup_failure_does_not_replace_primary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingEntry:
+        def stat(self, *, follow_symlinks: bool) -> os.stat_result:
+            assert follow_symlinks is False
+            raise OSError("entry-stat-primary")
+
+    class FailingIterator:
+        def __init__(self) -> None:
+            self._remaining = [FailingEntry()]
+
+        def __iter__(self) -> FailingIterator:
+            return self
+
+        def __next__(self) -> FailingEntry:
+            if not self._remaining:
+                raise StopIteration
+            return self._remaining.pop()
+
+        def close(self) -> None:
+            raise OSError("iterator-close-secondary")
+
+    monkeypatch.setattr(patch_module.os, "scandir", lambda _path: FailingIterator())
+    with pytest.raises(PatchCompositionError, match="entry could not be inspected") as captured:
+        patch_module._scan_tree(tmp_path, PatchCompositionLimits())
+
+    assert "iterator-close-secondary" in captured.value.__notes__[0]
+    assert isinstance(captured.value.__cause__, OSError)
+    assert "entry-stat-primary" in str(captured.value.__cause__)
+
+
+def test_tree_scan_normalizes_cleanup_only_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class EmptyFailingIterator:
+        def __iter__(self) -> EmptyFailingIterator:
+            return self
+
+        def __next__(self) -> object:
+            raise StopIteration
+
+        def close(self) -> None:
+            raise OSError("iterator-close")
+
+    monkeypatch.setattr(
+        patch_module.os,
+        "scandir",
+        lambda _path: EmptyFailingIterator(),
+    )
+    with pytest.raises(PatchCompositionError, match="iterator could not be closed") as captured:
+        patch_module._scan_tree(tmp_path, PatchCompositionLimits())
+
+    assert captured.value.stage == "resource-cleanup"
+    assert captured.value.disposition == "preflight-exception-not-a-cohort-result"
+
+
 @pytest.mark.parametrize(
     "hostile_patch,pattern",
     [
@@ -662,7 +1085,7 @@ new file mode 100644
 @@ -0,0 +1 @@
 +escaped
 """,
-            "failed closed",
+            "non-portable Git path",
         ),
         (
             """diff --git a/link b/link
@@ -740,6 +1163,218 @@ def test_literal_process_overflow_fails_closed(
             _CANDIDATE_PATCH,
             limits=PatchCompositionLimits(max_stdout_bytes=8),
         )
+
+
+def test_close_descriptors_preserves_primary_error_and_attempts_every_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int] = []
+
+    def failing_close(descriptor: int) -> None:
+        calls.append(descriptor)
+        raise OSError(f"close-{descriptor}")
+
+    monkeypatch.setattr(patch_module, "os", SimpleNamespace(close=failing_close))
+    primary = RuntimeError("primary")
+    patch_module._close_descriptors(
+        ((10, "first"), (11, "second")),
+        prior_error=primary,
+    )
+
+    assert calls == [10, 11]
+    assert "first descriptor close also failed" in primary.__notes__[0]
+    assert "second descriptor close also failed" in primary.__notes__[1]
+
+
+def test_close_descriptors_normalizes_cleanup_failure_without_primary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int] = []
+
+    def failing_close(descriptor: int) -> None:
+        calls.append(descriptor)
+        raise OSError(f"close-{descriptor}")
+
+    monkeypatch.setattr(patch_module, "os", SimpleNamespace(close=failing_close))
+    with pytest.raises(PatchCompositionError, match="first descriptor") as captured:
+        patch_module._close_descriptors(((10, "first"), (11, "second")))
+
+    assert calls == [10, 11]
+    assert captured.value.stage == "resource-cleanup"
+    assert captured.value.disposition == "preflight-exception-not-a-cohort-result"
+    assert "second descriptor close also failed" in captured.value.__notes__[0]
+
+
+def test_copy_tree_closes_source_when_destination_open_fails_unexpectedly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "file.txt").write_text("content", encoding="utf-8")
+    expected = patch_module._scan_tree(source, PatchCompositionLimits())
+    destination = tmp_path / "destination"
+    real_open = patch_module.os.open
+    source_descriptors: list[int] = []
+
+    def injected_open(path: object, flags: int, *args: object) -> int:
+        if Path(path) == destination / "file.txt":
+            raise RuntimeError("destination-open-unexpected")
+        descriptor = real_open(path, flags, *args)
+        if Path(path) == source / "file.txt":
+            source_descriptors.append(descriptor)
+        return descriptor
+
+    monkeypatch.setattr(patch_module.os, "open", injected_open)
+    with pytest.raises(RuntimeError, match="destination-open-unexpected"):
+        patch_module._copy_verified_tree(
+            source,
+            destination,
+            expected,
+            PatchCompositionLimits(),
+        )
+
+    assert len(source_descriptors) == 1
+    with pytest.raises(OSError):
+        os.fstat(source_descriptors[0])
+
+
+def test_copy_tree_closes_both_descriptors_when_digest_setup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "file.txt").write_text("content", encoding="utf-8")
+    expected = patch_module._scan_tree(source, PatchCompositionLimits())
+    destination = tmp_path / "destination"
+    real_open = patch_module.os.open
+    descriptors: list[int] = []
+
+    def observed_open(path: object, flags: int, *args: object) -> int:
+        descriptor = real_open(path, flags, *args)
+        descriptors.append(descriptor)
+        return descriptor
+
+    def failing_digest() -> object:
+        raise MemoryError("digest-setup")
+
+    monkeypatch.setattr(patch_module.os, "open", observed_open)
+    monkeypatch.setattr(patch_module.hashlib, "sha256", failing_digest)
+    with pytest.raises(MemoryError, match="digest-setup"):
+        patch_module._copy_verified_tree(
+            source,
+            destination,
+            expected,
+            PatchCompositionLimits(),
+        )
+
+    assert len(descriptors) == 2
+    for descriptor in descriptors:
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+
+
+def test_owned_temporary_directory_preserves_primary_cleanup_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingTemporaryDirectory:
+        def __init__(self, *, prefix: str, dir: Path) -> None:
+            self.name = str(Path(dir) / f"{prefix}owned")
+            Path(self.name).mkdir()
+
+        def cleanup(self) -> None:
+            raise OSError("cleanup")
+
+    monkeypatch.setattr(
+        patch_module,
+        "tempfile",
+        SimpleNamespace(TemporaryDirectory=FailingTemporaryDirectory),
+    )
+    primary = RuntimeError("primary")
+    with (
+        pytest.raises(RuntimeError) as captured,
+        patch_module._owned_temporary_directory(tmp_path),
+    ):
+        raise primary
+
+    assert captured.value is primary
+    assert "temporary workspace cleanup also failed" in primary.__notes__[0]
+
+
+def test_owned_temporary_directory_normalizes_cleanup_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingTemporaryDirectory:
+        def __init__(self, *, prefix: str, dir: Path) -> None:
+            self.name = str(Path(dir) / f"{prefix}owned")
+            Path(self.name).mkdir()
+
+        def cleanup(self) -> None:
+            raise OSError("cleanup")
+
+    monkeypatch.setattr(
+        patch_module,
+        "tempfile",
+        SimpleNamespace(TemporaryDirectory=FailingTemporaryDirectory),
+    )
+    with (
+        pytest.raises(PatchCompositionError, match="cleanup failed") as captured,
+        patch_module._owned_temporary_directory(tmp_path),
+    ):
+        pass
+
+    assert captured.value.stage == "temporary-workspace-cleanup"
+    assert captured.value.disposition == "preflight-exception-not-a-cohort-result"
+
+
+def test_build_wrapper_normalizes_unexpected_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failure = RuntimeError("unexpected")
+
+    def fail_build(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise failure
+
+    monkeypatch.setattr(patch_module, "_build_patch_composition_impl", fail_build)
+    with pytest.raises(PatchCompositionError, match="build failed closed") as captured:
+        build_patch_composition(object(), object(), _CANDIDATE_PATCH)  # type: ignore[arg-type]
+
+    assert captured.value.stage == "preflight-build"
+    assert captured.value.disposition == "preflight-exception-not-a-cohort-result"
+    assert captured.value.__cause__ is failure
+
+
+def test_decode_rejects_oversized_document_before_canonical_hash(
+    successful_composition: VerifiedPatchComposition,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = successful_composition.to_dict()
+    document["limits"]["max_document_bytes"] = 1
+
+    def unexpected_hash(_value: object) -> str:
+        pytest.fail("oversized document reached canonical hashing")
+
+    monkeypatch.setattr(patch_module, "_canonical_sha256", unexpected_hash)
+    with pytest.raises(PatchCompositionError, match="byte or depth limit") as captured:
+        decode_patch_composition(document)
+
+    assert captured.value.stage == "patch-composition-decode"
+    assert captured.value.disposition == "preflight-exception-not-a-cohort-result"
+
+
+def test_decode_rejects_hostile_dict_subclass_without_iterating() -> None:
+    class HostileDict(dict[str, object]):
+        def __iter__(self) -> Iterator[str]:
+            raise RuntimeError("hostile iteration")
+
+    with pytest.raises(PatchCompositionError, match="fields are invalid") as captured:
+        decode_patch_composition(HostileDict())
+
+    assert captured.value.disposition == "preflight-exception-not-a-cohort-result"
 
 
 def test_resigned_false_claim_is_rejected(
@@ -947,3 +1582,140 @@ def test_strict_write_load_and_replay(
             patch_fixture.source,
             _CANDIDATE_PATCH,
         )
+
+
+def test_write_normalizes_unexpected_atomic_publication_failure(
+    tmp_path: Path,
+    patch_fixture: _PatchFixture,
+    successful_composition: VerifiedPatchComposition,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failure = OSError("publication")
+
+    def retain_verified_inputs(*args: object, **kwargs: object) -> tuple[object, object, object]:
+        del args, kwargs
+        return successful_composition, patch_fixture.disjoint, patch_fixture.source
+
+    def fail_publication(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise failure
+
+    monkeypatch.setattr(
+        patch_module,
+        "_verify_patch_composition_semantic",
+        retain_verified_inputs,
+    )
+    monkeypatch.setattr(patch_module, "atomic_write_text", fail_publication)
+    output = tmp_path / "unpublished.json"
+    with pytest.raises(PatchCompositionError, match="publication failed") as captured:
+        write_patch_composition(
+            output,
+            successful_composition,
+            patch_fixture.disjoint,
+            patch_fixture.source,
+            _CANDIDATE_PATCH,
+        )
+
+    assert not output.exists()
+    assert captured.value.stage == "patch-composition-output-publication"
+    assert captured.value.disposition == "preflight-exception-not-a-cohort-result"
+    assert captured.value.__cause__ is failure
+
+
+def test_write_output_path_inspection_failure_has_output_stage(
+    patch_fixture: _PatchFixture,
+    successful_composition: VerifiedPatchComposition,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def retain_verified_inputs(*args: object, **kwargs: object) -> tuple[object, object, object]:
+        del args, kwargs
+        return successful_composition, patch_fixture.disjoint, patch_fixture.source
+
+    monkeypatch.setattr(
+        patch_module,
+        "_verify_patch_composition_semantic",
+        retain_verified_inputs,
+    )
+    failing_output = SimpleNamespace(
+        resolve=lambda *, strict: (_ for _ in ()).throw(OSError("inspection"))
+    )
+    monkeypatch.setattr(patch_module, "Path", lambda _path: failing_output)
+    with pytest.raises(PatchCompositionError, match="could not be inspected") as captured:
+        write_patch_composition(
+            "ignored",
+            successful_composition,
+            patch_fixture.disjoint,
+            patch_fixture.source,
+            _CANDIDATE_PATCH,
+        )
+
+    assert captured.value.stage == "patch-composition-output"
+    assert captured.value.disposition == "preflight-exception-not-a-cohort-result"
+
+
+def test_write_size_failure_has_output_stage(
+    tmp_path: Path,
+    patch_fixture: _PatchFixture,
+    successful_composition: VerifiedPatchComposition,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tiny = VerifiedPatchComposition(
+        PatchCompositionLimits(max_document_bytes=1),
+        successful_composition.document,
+    )
+
+    def retain_verified_inputs(*args: object, **kwargs: object) -> tuple[object, object, object]:
+        del args, kwargs
+        return tiny, patch_fixture.disjoint, patch_fixture.source
+
+    monkeypatch.setattr(
+        patch_module,
+        "_verify_patch_composition_semantic",
+        retain_verified_inputs,
+    )
+    output = tmp_path / "too-large.json"
+    with pytest.raises(PatchCompositionError, match="exceeds its byte limit") as captured:
+        write_patch_composition(
+            output,
+            tiny,
+            patch_fixture.disjoint,
+            patch_fixture.source,
+            _CANDIDATE_PATCH,
+        )
+
+    assert not output.exists()
+    assert captured.value.stage == "patch-composition-output"
+    assert captured.value.disposition == "preflight-exception-not-a-cohort-result"
+
+
+def test_write_accepts_exact_canonical_document_byte_limit(
+    tmp_path: Path,
+    patch_fixture: _PatchFixture,
+    successful_composition: VerifiedPatchComposition,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    encoded = patch_module._canonical_json_bytes(successful_composition.to_dict())
+    boundary = VerifiedPatchComposition(
+        PatchCompositionLimits(max_document_bytes=len(encoded)),
+        successful_composition.document,
+    )
+
+    def retain_verified_inputs(*args: object, **kwargs: object) -> tuple[object, object, object]:
+        del args, kwargs
+        return boundary, patch_fixture.disjoint, patch_fixture.source
+
+    monkeypatch.setattr(
+        patch_module,
+        "_verify_patch_composition_semantic",
+        retain_verified_inputs,
+    )
+    output = tmp_path / "boundary.json"
+    write_patch_composition(
+        output,
+        boundary,
+        patch_fixture.disjoint,
+        patch_fixture.source,
+        _CANDIDATE_PATCH,
+    )
+
+    assert output.read_bytes() == encoded

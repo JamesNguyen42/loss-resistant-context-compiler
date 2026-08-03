@@ -17,13 +17,15 @@ import re
 import stat
 import tempfile
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any
 
-from context_compiler.atomic import atomic_write_text
+from context_compiler.atomic import AtomicDestinationExistsError, atomic_write_text
+from context_compiler.limits import bounded_json_utf8_size
 
 from .json_io import StrictJsonError, StrictJsonLimits, load_strict_json_file
 from .literal_process import (
@@ -70,7 +72,33 @@ _GIT_APPLY_TAIL = (
 _GIT_BINARY_PATCH_MARKER = b"GIT binary patch"
 _PORTABLE_NEW_FILE_MODE = b"new file mode 100644"
 _PORTABLE_DELETED_FILE_MODE = b"deleted file mode 100644"
+_NO_NEWLINE_MARKER = b"\\ No newline at end of file"
+_PATCH_PATH_ATOM_PATTERN = (
+    rb'(?:[^ \t"\\\r\n]+|"(?:[^"\\\r\n]|\\(?:["\\]|[0-7]{3}))*")'
+)
+_PATCH_PATH_ATOM_RE = re.compile(_PATCH_PATH_ATOM_PATTERN + rb"\Z")
+_UNQUOTED_SPACED_PATH_ATOM_RE = re.compile(rb'[^"\\\t\r\n]+\Z')
+_DIFF_HEADER_RE = re.compile(
+    rb"diff --git (" + _PATCH_PATH_ATOM_PATTERN + rb") (" + _PATCH_PATH_ATOM_PATTERN + rb")\Z"
+)
+_INDEX_HEADER_RE = re.compile(
+    rb"index (?P<old>[0-9a-f]{4,64})\.\.(?P<new>[0-9a-f]{4,64})"
+    rb"(?: (?P<mode>[0-7]{6}))?\Z"
+)
+_PATCH_DECIMAL_PATTERN = rb"(?:0|[1-9][0-9]{0,11})"
+_HUNK_HEADER_RE = re.compile(
+    rb"@@ -(?P<old_start>"
+    + _PATCH_DECIMAL_PATTERN
+    + rb")(?:,(?P<old_count>"
+    + _PATCH_DECIMAL_PATTERN
+    + rb"))? \+(?P<new_start>"
+    + _PATCH_DECIMAL_PATTERN
+    + rb")(?:,(?P<new_count>"
+    + _PATCH_DECIMAL_PATTERN
+    + rb"))? @@(?: [^\r\n]*)?\Z"
+)
 _FAILURE_DISPOSITION = "preflight-exception-not-a-cohort-result"
+_PATCH_DOCUMENT_MAX_DEPTH = 32
 _CONTAINMENT_SCOPES = {
     "posix-session-process-group-escapable",
     "windows-job-process-and-descendants",
@@ -283,9 +311,32 @@ def _thaw_json(value: Any) -> Any:
 
 
 def _object(value: Any, *, fields: set[str], label: str) -> dict[str, Any]:
-    if not isinstance(value, dict) or set(value) != fields:
+    if type(value) is not dict or set(value) != fields:
         raise PatchCompositionError(f"{label} fields are invalid")
     return value
+
+
+def _bounded_document_size(
+    value: Any,
+    *,
+    limits: PatchCompositionLimits,
+    stage: str,
+) -> int:
+    """Refuse oversized or deeply nested JSON before whole-document encoding."""
+
+    try:
+        return bounded_json_utf8_size(
+            value,
+            max_bytes=limits.max_document_bytes,
+            max_depth=_PATCH_DOCUMENT_MAX_DEPTH,
+            label="patch-composition document",
+            limit_error=ValueError,
+        )
+    except (TypeError, ValueError) as exc:
+        raise PatchCompositionError(
+            "patch-composition document exceeds its byte or depth limit",
+            stage=stage,
+        ) from exc
 
 
 def _sha256(value: Any, *, label: str) -> str:
@@ -294,101 +345,470 @@ def _sha256(value: Any, *, label: str) -> str:
     return value
 
 
-def _validate_patch_headers(lines: list[bytes], *, label: str) -> None:
-    sections: list[list[bytes]] = []
-    current: list[bytes] | None = None
-    for line in lines:
-        if line.startswith(b"diff --git "):
-            if current is not None:
-                sections.append(current)
-            current = [line]
-        elif current is not None:
-            current.append(line)
-    if current is not None:
-        sections.append(current)
+@dataclass(slots=True)
+class _PatchLineCursor:
+    value: bytes
+    offset: int = 0
+    line_number: int = 0
 
-    for section in sections:
-        for line in section:
-            if line == _GIT_BINARY_PATCH_MARKER or (
-                line.startswith(b"Binary files ") and line.endswith(b" differ")
+    def take(self) -> bytes | None:
+        """Return one LF-delimited record without retaining a line list."""
+
+        if self.offset >= len(self.value):
+            return None
+        newline = self.value.find(b"\n", self.offset)
+        if newline < 0:
+            line = self.value[self.offset :]
+            self.offset = len(self.value)
+        else:
+            line = self.value[self.offset : newline]
+            self.offset = newline + 1
+        self.line_number += 1
+        return line
+
+
+def _patch_input_error(label: str, reason: str) -> PatchCompositionError:
+    return PatchCompositionError(
+        f"{label} {reason}",
+        stage="patch-input-validation",
+    )
+
+
+def _reject_patch_metadata(line: bytes, *, label: str) -> None:
+    if line == _GIT_BINARY_PATCH_MARKER or (
+        line.startswith((b"Binary files ", b"Files ")) and line.endswith(b" differ")
+    ):
+        raise _patch_input_error(label, "contains a Git binary patch indicator")
+    if line.startswith((b"copy from ", b"copy to ")):
+        raise _patch_input_error(label, "contains an extended copy header")
+    if line.startswith(
+        (b"rename from ", b"rename to ", b"rename old ", b"rename new ")
+    ):
+        raise _patch_input_error(label, "contains an extended rename header")
+    if line.startswith((b"similarity index ", b"dissimilarity index ")):
+        raise _patch_input_error(label, "contains unsupported similarity metadata")
+    if line.startswith((b"diff --cc ", b"diff --combined ")):
+        raise _patch_input_error(label, "contains a combined diff")
+    if line.startswith((b"old mode ", b"new mode ")):
+        raise _patch_input_error(label, "contains a non-portable mode-change header")
+    if line.startswith(b"new file mode "):
+        if line in {b"new file mode 120000", b"new file mode 160000"}:
+            raise _patch_input_error(label, "requests a link or submodule mode")
+        raise _patch_input_error(label, "contains a non-portable new-file mode")
+    if line.startswith(b"deleted file mode "):
+        if line in {b"deleted file mode 120000", b"deleted file mode 160000"}:
+            raise _patch_input_error(label, "requests a link or submodule mode")
+        raise _patch_input_error(label, "contains a non-portable deleted-file mode")
+    raise _patch_input_error(label, "contains non-allowlisted patch structure")
+
+
+def _decode_git_path_atom(
+    atom: bytes,
+    *,
+    expected_prefix: bytes,
+    label: str,
+    limits: PatchCompositionLimits,
+    allow_unquoted_spaces: bool = False,
+) -> str:
+    valid_atom = _PATCH_PATH_ATOM_RE.fullmatch(atom) is not None
+    if allow_unquoted_spaces and not atom.startswith(b'"'):
+        valid_atom = _UNQUOTED_SPACED_PATH_ATOM_RE.fullmatch(atom) is not None
+    if not valid_atom:
+        raise _patch_input_error(label, "contains a malformed Git path atom")
+    if atom.startswith(b'"'):
+        payload = atom[1:-1]
+        decoded_bytes = bytearray()
+        offset = 0
+        while offset < len(payload):
+            value = payload[offset]
+            if value != 0x5C:
+                decoded_bytes.append(value)
+                offset += 1
+                continue
+            offset += 1
+            if offset >= len(payload):
+                raise _patch_input_error(label, "contains an incomplete Git path escape")
+            escaped = payload[offset]
+            if escaped in {0x22, 0x5C}:
+                decoded_bytes.append(escaped)
+                offset += 1
+                continue
+            digits = payload[offset : offset + 3]
+            if len(digits) != 3 or any(digit not in b"01234567" for digit in digits):
+                raise _patch_input_error(label, "contains an unsupported Git path escape")
+            decoded = int(digits, 8)
+            if decoded > 0xFF:
+                raise _patch_input_error(label, "contains an out-of-range Git path escape")
+            decoded_bytes.append(decoded)
+            offset += 3
+        raw_path = bytes(decoded_bytes)
+    else:
+        raw_path = atom
+    prefix = expected_prefix + b"/"
+    if not raw_path.startswith(prefix):
+        raise _patch_input_error(label, "contains a Git path with the wrong side prefix")
+    try:
+        relative = raw_path[len(prefix) :].decode("utf-8", errors="strict")
+    except UnicodeError as exc:
+        raise _patch_input_error(label, "contains a non-UTF-8 Git path") from exc
+    try:
+        portable = _portable_relative_path(relative, limits)
+    except PatchCompositionError as exc:
+        raise _patch_input_error(label, "contains a non-portable Git path") from exc
+    if portable != relative:
+        raise _patch_input_error(label, "contains a non-canonical Git path")
+    return portable
+
+
+def _decode_file_header_path(
+    line: bytes,
+    *,
+    marker: bytes,
+    expected_prefix: bytes,
+    label: str,
+    limits: PatchCompositionLimits,
+) -> str | None:
+    prefix = marker + b" "
+    if not line.startswith(prefix):
+        raise _patch_input_error(label, "has a missing or misordered file header")
+    atom = line[len(prefix) :]
+    if atom == b"/dev/null":
+        return None
+    return _decode_git_path_atom(
+        atom,
+        expected_prefix=expected_prefix,
+        label=label,
+        limits=limits,
+        allow_unquoted_spaces=True,
+    )
+
+
+def _parse_diff_header(
+    line: bytes,
+    *,
+    label: str,
+    limits: PatchCompositionLimits,
+) -> str:
+    matched = _DIFF_HEADER_RE.fullmatch(line)
+    if matched is not None:
+        old_atom = matched.group(1)
+        new_atom = matched.group(2)
+        allow_unquoted_spaces = False
+    elif line.startswith(b"diff --git "):
+        payload = line[len(b"diff --git ") :]
+        repeated_length = len(payload) - len(b"a/ b/")
+        if repeated_length < 0 or repeated_length % 2:
+            raise _patch_input_error(label, "contains a malformed or ambiguous diff header")
+        relative_length = repeated_length // 2
+        separator = len(b"a/") + relative_length
+        if (
+            not payload.startswith(b"a/")
+            or payload[separator : separator + len(b" b/")] != b" b/"
+            or payload[len(b"a/") : separator]
+            != payload[separator + len(b" b/") :]
+        ):
+            raise _patch_input_error(label, "contains a malformed or ambiguous diff header")
+        old_atom = payload[:separator]
+        new_atom = payload[separator + 1 :]
+        allow_unquoted_spaces = True
+    else:
+        _reject_patch_metadata(line, label=label)
+        raise AssertionError("unreachable")
+    old_path = _decode_git_path_atom(
+        old_atom,
+        expected_prefix=b"a",
+        label=label,
+        limits=limits,
+        allow_unquoted_spaces=allow_unquoted_spaces,
+    )
+    new_path = _decode_git_path_atom(
+        new_atom,
+        expected_prefix=b"b",
+        label=label,
+        limits=limits,
+        allow_unquoted_spaces=allow_unquoted_spaces,
+    )
+    if old_path != new_path:
+        raise _patch_input_error(label, "uses different logical paths in a diff header")
+    return old_path
+
+
+def _is_diff_header(line: bytes | None) -> bool:
+    return line is not None and line.startswith(b"diff --git ")
+
+
+def _parse_index_header(
+    line: bytes,
+    *,
+    label: str,
+) -> tuple[bytes, bytes, bytes | None]:
+    matched = _INDEX_HEADER_RE.fullmatch(line)
+    if matched is None:
+        raise _patch_input_error(label, "contains a malformed index header")
+    old_object = matched.group("old")
+    new_object = matched.group("new")
+    if len(old_object) != len(new_object):
+        raise _patch_input_error(label, "contains unequal index object-id widths")
+    mode = matched.group("mode")
+    if mode not in {None, b"100644", b"100755"}:
+        raise _patch_input_error(label, "contains a non-portable index mode")
+    return old_object, new_object, mode
+
+
+def _validate_index_operation(
+    index_header: tuple[bytes, bytes, bytes | None] | None,
+    *,
+    operation: str,
+    label: str,
+) -> None:
+    if index_header is None:
+        return
+    old_object, new_object, mode = index_header
+    old_is_zero = not old_object.strip(b"0")
+    new_is_zero = not new_object.strip(b"0")
+    if old_is_zero and new_is_zero:
+        raise _patch_input_error(label, "contains an all-zero index transition")
+    if operation == "add":
+        valid = old_is_zero and not new_is_zero and mode in {None, b"100644"}
+    elif operation == "delete":
+        valid = new_is_zero and not old_is_zero and mode in {None, b"100644"}
+    else:
+        valid = not old_is_zero and not new_is_zero
+    if not valid:
+        raise _patch_input_error(label, "contains an index header inconsistent with its operation")
+
+
+def _hunk_integer(value: bytes, *, label: str, limits: PatchCompositionLimits) -> int:
+    parsed = int(value)
+    if parsed > limits.max_file_bytes + 1:
+        raise _patch_input_error(label, "contains a hunk range outside its byte bound")
+    return parsed
+
+
+def _validate_section_paths(paths: list[str], *, label: str) -> None:
+    """Detect portable duplicates and ancestry without retaining every prefix."""
+
+    ordered = sorted(paths, key=lambda path: path + "/")
+    for previous, current in zip(ordered, ordered[1:], strict=False):
+        if current == previous or current.startswith(previous + "/"):
+            raise _patch_input_error(
+                label,
+                "contains duplicate or ancestor-conflicting paths",
+            )
+
+
+def _validate_patch_headers(
+    encoded: bytes,
+    *,
+    label: str,
+    limits: PatchCompositionLimits,
+) -> None:
+    cursor = _PatchLineCursor(encoded)
+    line = cursor.take()
+    if line is None:
+        raise _patch_input_error(label, "is empty")
+    section_count = 0
+    paths: list[str] = []
+
+    while line is not None:
+        path = _parse_diff_header(line, label=label, limits=limits)
+        if section_count >= limits.max_files:
+            raise _patch_input_error(label, "contains too many file sections")
+        paths.append(path.casefold())
+        section_count += 1
+        line = cursor.take()
+        operation_header: str | None = None
+        if line == _PORTABLE_NEW_FILE_MODE:
+            operation_header = "add"
+            line = cursor.take()
+        elif line == _PORTABLE_DELETED_FILE_MODE:
+            operation_header = "delete"
+            line = cursor.take()
+        elif line is not None and line.startswith((b"new file mode ", b"deleted file mode ")):
+            _reject_patch_metadata(line, label=label)
+
+        index_header: tuple[bytes, bytes, bytes | None] | None = None
+        if line is not None and line.startswith(b"index "):
+            index_header = _parse_index_header(line, label=label)
+            line = cursor.take()
+
+        if line is None or _is_diff_header(line):
+            if operation_header not in {"add", "delete"}:
+                raise _patch_input_error(label, "has a file section without headers or hunks")
+            _validate_index_operation(
+                index_header,
+                operation=operation_header,
+                label=label,
+            )
+            continue
+
+        if not line.startswith(b"--- "):
+            _reject_patch_metadata(line, label=label)
+        old_path = _decode_file_header_path(
+            line,
+            marker=b"---",
+            expected_prefix=b"a",
+            label=label,
+            limits=limits,
+        )
+        line = cursor.take()
+        if line is None or not line.startswith(b"+++ "):
+            if line is None:
+                raise _patch_input_error(label, "has a missing new-file path header")
+            _reject_patch_metadata(line, label=label)
+        new_path = _decode_file_header_path(
+            line,
+            marker=b"+++",
+            expected_prefix=b"b",
+            label=label,
+            limits=limits,
+        )
+        if old_path is None and new_path is None:
+            raise _patch_input_error(label, "uses /dev/null on both sides")
+        if old_path is None:
+            operation = "add"
+            retained_path = new_path
+        elif new_path is None:
+            operation = "delete"
+            retained_path = old_path
+        else:
+            operation = "modify"
+            retained_path = old_path
+            if old_path != new_path:
+                raise _patch_input_error(label, "uses different logical file-header paths")
+        if retained_path != path:
+            raise _patch_input_error(label, "has file headers inconsistent with its diff path")
+        if (operation == "modify" and operation_header is not None) or (
+            operation != "modify" and operation_header != operation
+        ):
+            raise _patch_input_error(label, "has mode and /dev/null headers that disagree")
+        _validate_index_operation(index_header, operation=operation, label=label)
+
+        line = cursor.take()
+        section_hunks = 0
+        previous_old_end: int | None = None
+        previous_new_end: int | None = None
+        while line is not None and not _is_diff_header(line):
+            matched_hunk = _HUNK_HEADER_RE.fullmatch(line)
+            if matched_hunk is None:
+                if line.startswith((b" ", b"+", b"-")):
+                    raise _patch_input_error(label, "has hunk payload outside declared ranges")
+                _reject_patch_metadata(line, label=label)
+            section_hunks += 1
+            old_start = _hunk_integer(
+                matched_hunk.group("old_start"),
+                label=label,
+                limits=limits,
+            )
+            new_start = _hunk_integer(
+                matched_hunk.group("new_start"),
+                label=label,
+                limits=limits,
+            )
+            old_count = _hunk_integer(
+                matched_hunk.group("old_count") or b"1",
+                label=label,
+                limits=limits,
+            )
+            new_count = _hunk_integer(
+                matched_hunk.group("new_count") or b"1",
+                label=label,
+                limits=limits,
+            )
+            if (old_count and old_start == 0) or (new_count and new_start == 0):
+                raise _patch_input_error(label, "contains a non-canonical zero hunk start")
+            if old_start + old_count > limits.max_file_bytes + 1 or (
+                new_start + new_count > limits.max_file_bytes + 1
             ):
-                raise PatchCompositionError(
-                    f"{label} contains a Git binary patch indicator, which this "
-                    "uncontained preflight rejects",
-                    stage="patch-input-validation",
-                )
-            if line.startswith((b"copy from ", b"copy to ")):
-                raise PatchCompositionError(
-                    f"{label} contains an extended copy header, which this "
-                    "uncontained preflight rejects",
-                    stage="patch-input-validation",
-                )
-            if line.startswith((b"rename from ", b"rename to ")):
-                raise PatchCompositionError(
-                    f"{label} contains an extended rename header, which this "
-                    "uncontained preflight rejects",
-                    stage="patch-input-validation",
-                )
-            if line.startswith((b"old mode ", b"new mode ")):
-                raise PatchCompositionError(
-                    f"{label} contains a non-portable mode-change header",
-                    stage="patch-input-validation",
-                )
-            if line.startswith(b"new file mode ") and line != _PORTABLE_NEW_FILE_MODE:
-                raise PatchCompositionError(
-                    f"{label} contains a non-portable new-file mode",
-                    stage="patch-input-validation",
-                )
-            if line.startswith(b"deleted file mode ") and line != _PORTABLE_DELETED_FILE_MODE:
-                raise PatchCompositionError(
-                    f"{label} contains a non-portable deleted-file mode",
-                    stage="patch-input-validation",
-                )
+                raise _patch_input_error(label, "contains a hunk range outside its byte bound")
+            if previous_old_end is not None and (
+                old_start < previous_old_end or new_start < previous_new_end
+            ):
+                raise _patch_input_error(label, "contains overlapping or backward hunks")
+            previous_old_end = old_start + old_count
+            previous_new_end = new_start + new_count
+            if operation == "add" and (old_start != 0 or old_count != 0):
+                raise _patch_input_error(label, "contains old-file lines in an add section")
+            if operation == "delete" and (new_start != 0 or new_count != 0):
+                raise _patch_input_error(label, "contains new-file lines in a delete section")
 
-        creates_file = b"--- /dev/null" in section
-        deletes_file = b"+++ /dev/null" in section
-        has_new_mode = _PORTABLE_NEW_FILE_MODE in section
-        has_deleted_mode = _PORTABLE_DELETED_FILE_MODE in section
-        if creates_file is not has_new_mode:
-            raise PatchCompositionError(
-                f"{label} new-file headers do not declare exact mode 100644",
-                stage="patch-input-validation",
-            )
-        if deletes_file is not has_deleted_mode:
-            raise PatchCompositionError(
-                f"{label} deleted-file headers do not declare exact mode 100644",
-                stage="patch-input-validation",
-            )
+            old_seen = 0
+            new_seen = 0
+            changed_lines = 0
+            last_was_payload = False
+            line = cursor.take()
+            while old_seen < old_count or new_seen < new_count:
+                if line is None:
+                    raise _patch_input_error(label, "ends before a hunk range is complete")
+                if line == _NO_NEWLINE_MARKER:
+                    if not last_was_payload:
+                        raise _patch_input_error(label, "misplaces a no-newline marker")
+                    last_was_payload = False
+                    line = cursor.take()
+                    continue
+                if not line:
+                    raise _patch_input_error(label, "contains an unprefixed empty hunk record")
+                prefix = line[:1]
+                if prefix == b" ":
+                    if operation != "modify":
+                        raise _patch_input_error(
+                            label,
+                            "contains context in a whole-file operation",
+                        )
+                    old_seen += 1
+                    new_seen += 1
+                elif prefix == b"-":
+                    if operation == "add":
+                        raise _patch_input_error(
+                            label,
+                            "contains deletion payload in an add section",
+                        )
+                    old_seen += 1
+                    changed_lines += 1
+                elif prefix == b"+":
+                    if operation == "delete":
+                        raise _patch_input_error(
+                            label,
+                            "contains addition payload in a delete section",
+                        )
+                    new_seen += 1
+                    changed_lines += 1
+                else:
+                    raise _patch_input_error(label, "contains an invalid hunk payload prefix")
+                if old_seen > old_count or new_seen > new_count:
+                    raise _patch_input_error(label, "has hunk payload exceeding declared ranges")
+                last_was_payload = True
+                line = cursor.take()
+            if line == _NO_NEWLINE_MARKER:
+                if not last_was_payload:
+                    raise _patch_input_error(label, "misplaces a no-newline marker")
+                line = cursor.take()
+            if changed_lines == 0:
+                raise _patch_input_error(label, "contains a context-only hunk")
+        if section_hunks == 0:
+            raise _patch_input_error(label, "has a contentful section without a hunk")
+    _validate_section_paths(paths, label=label)
 
 
-def _patch_bytes(value: object, *, label: str, maximum: int) -> bytes:
+def _patch_bytes(
+    value: object,
+    *,
+    label: str,
+    limits: PatchCompositionLimits,
+) -> bytes:
     if type(value) is not str:
         raise PatchCompositionError(f"{label} must be text")
-    if len(value) > maximum:
+    if len(value) > limits.max_patch_bytes:
         raise PatchCompositionError(f"{label} exceeds its byte limit")
     try:
         encoded = value.encode("utf-8", errors="strict")
     except UnicodeError as exc:
         raise PatchCompositionError(f"{label} is not strict UTF-8") from exc
-    if len(encoded) > maximum:
+    if len(encoded) > limits.max_patch_bytes:
         raise PatchCompositionError(f"{label} exceeds its byte limit")
     if b"\0" in encoded:
         raise PatchCompositionError(f"{label} contains a NUL byte")
-    lines = encoded.splitlines()
-    for marker in (
-        b"new file mode 120000",
-        b"old mode 120000",
-        b"new mode 120000",
-        b"new file mode 160000",
-        b"old mode 160000",
-        b"new mode 160000",
-    ):
-        if marker in lines:
-            raise PatchCompositionError(
-                f"{label} requests a link or submodule mode",
-                stage="patch-input-validation",
-            )
-    _validate_patch_headers(lines, label=label)
+    _validate_patch_headers(encoded, label=label, limits=limits)
     return encoded
 
 
@@ -428,6 +848,59 @@ def _is_reparse(value: os.stat_result) -> bool:
     return bool(getattr(value, "st_file_attributes", 0) & 0x400)
 
 
+def _close_descriptors(
+    descriptors: tuple[tuple[int, str], ...],
+    *,
+    prior_error: BaseException | None = None,
+) -> None:
+    """Close every descriptor without hiding an exception already in flight."""
+
+    failures: list[tuple[str, Exception]] = []
+    for descriptor, label in descriptors:
+        try:
+            os.close(descriptor)
+        except Exception as exc:
+            failures.append((label, exc))
+    if not failures:
+        return
+    if prior_error is not None:
+        for label, failure in failures:
+            prior_error.add_note(
+                f"{label} descriptor close also failed "
+                f"({type(failure).__name__}: {failure})"
+            )
+        return
+    label, first = failures[0]
+    error = PatchCompositionError(
+        f"{label} descriptor could not be closed",
+        stage="resource-cleanup",
+    )
+    for extra_label, failure in failures[1:]:
+        error.add_note(
+            f"{extra_label} descriptor close also failed "
+            f"({type(failure).__name__}: {failure})"
+        )
+    raise error from first
+
+
+def _close_scandir(iterator: Any, *, prior_error: BaseException | None = None) -> None:
+    """Close a directory iterator without hiding an exception already in flight."""
+
+    try:
+        iterator.close()
+    except Exception as exc:
+        if prior_error is not None:
+            prior_error.add_note(
+                "workspace scan iterator cleanup also failed "
+                f"({type(exc).__name__}: {exc})"
+            )
+            return
+        raise PatchCompositionError(
+            "workspace scan iterator could not be closed",
+            stage="resource-cleanup",
+        ) from exc
+
+
 def _open_readonly_regular(path: Path, *, label: str) -> tuple[int, os.stat_result]:
     flags = os.O_RDONLY
     if hasattr(os, "O_BINARY"):
@@ -442,8 +915,8 @@ def _open_readonly_regular(path: Path, *, label: str) -> tuple[int, os.stat_resu
         before = os.fstat(descriptor)
         if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or _is_reparse(before):
             raise PatchCompositionError(f"{label} must be a single-link regular file")
-    except BaseException:
-        os.close(descriptor)
+    except BaseException as exc:
+        _close_descriptors(((descriptor, label),), prior_error=exc)
         raise
     return descriptor, before
 
@@ -534,59 +1007,97 @@ def _scan_tree(root: Path, limits: PatchCompositionLimits) -> _TreeManifest:
     states: list[_FileState] = []
     collisions: set[str] = set()
     total_bytes = 0
+    directory_count = 0
     while pending:
         directory = pending.pop()
         try:
             iterator = os.scandir(directory)
         except OSError as exc:
             raise PatchCompositionError("workspace could not be scanned") from exc
-        with iterator:
-            for child in iterator:
-                try:
-                    child_stat = child.stat(follow_symlinks=False)
-                except OSError as exc:
-                    raise PatchCompositionError("workspace entry could not be inspected") from exc
-                if child.is_symlink() or _is_reparse(child_stat):
-                    raise PatchCompositionError("workspace contains a link or reparse point")
-                child_path = Path(child.path)
-                relative = _portable_relative_path(child_path.relative_to(root).as_posix(), limits)
-                collision = relative.casefold()
-                if collision in collisions:
-                    raise PatchCompositionError("workspace paths collide portably")
-                collisions.add(collision)
-                if stat.S_ISDIR(child_stat.st_mode):
-                    pending.append(child_path)
-                    continue
-                if not stat.S_ISREG(child_stat.st_mode):
-                    raise PatchCompositionError("workspace contains a special file")
-                if len(states) >= limits.max_files:
-                    raise PatchCompositionError("workspace file count exceeds its limit")
-                descriptor, opened = _open_readonly_regular(child_path, label="workspace file")
-                try:
-                    byte_count, digest = _hash_open_file(
-                        descriptor,
-                        opened,
-                        label="workspace file",
-                        maximum=limits.max_file_bytes,
+        scan_primary_error: BaseException | None = None
+        try:
+            try:
+                for child in iterator:
+                    try:
+                        child_stat = child.stat(follow_symlinks=False)
+                    except OSError as exc:
+                        raise PatchCompositionError(
+                            "workspace entry could not be inspected"
+                        ) from exc
+                    if stat.S_ISLNK(child_stat.st_mode) or _is_reparse(child_stat):
+                        raise PatchCompositionError(
+                            "workspace contains a link or reparse point"
+                        )
+                    child_path = Path(child.path)
+                    relative = _portable_relative_path(
+                        child_path.relative_to(root).as_posix(),
+                        limits,
                     )
-                finally:
-                    os.close(descriptor)
-                total_bytes += byte_count
-                if total_bytes > limits.max_total_bytes:
-                    raise PatchCompositionError("workspace aggregate bytes exceed their limit")
-                mode = (
-                    "100755"
-                    if os.name != "nt" and stat.S_IMODE(opened.st_mode) & 0o111
-                    else "100644"
-                )
-                if os.name != "nt" and stat.S_IMODE(opened.st_mode) not in {
-                    0o600,
-                    0o644,
-                    0o700,
-                    0o755,
-                }:
-                    raise PatchCompositionError("workspace file mode is unsafe")
-                states.append(_FileState(relative, mode, byte_count, digest))
+                    collision = relative.casefold()
+                    if collision in collisions:
+                        raise PatchCompositionError("workspace paths collide portably")
+                    collisions.add(collision)
+                    if stat.S_ISDIR(child_stat.st_mode):
+                        if directory_count >= limits.max_files:
+                            raise PatchCompositionError(
+                                "workspace directory count exceeds its limit"
+                            )
+                        directory_count += 1
+                        pending.append(child_path)
+                        continue
+                    if not stat.S_ISREG(child_stat.st_mode):
+                        raise PatchCompositionError("workspace contains a special file")
+                    if len(states) >= limits.max_files:
+                        raise PatchCompositionError(
+                            "workspace file count exceeds its limit"
+                        )
+                    descriptor, opened = _open_readonly_regular(
+                        child_path,
+                        label="workspace file",
+                    )
+                    file_primary_error: BaseException | None = None
+                    try:
+                        byte_count, digest = _hash_open_file(
+                            descriptor,
+                            opened,
+                            label="workspace file",
+                            maximum=limits.max_file_bytes,
+                        )
+                    except BaseException as exc:
+                        file_primary_error = exc
+                        raise
+                    finally:
+                        _close_descriptors(
+                            ((descriptor, "workspace file"),),
+                            prior_error=file_primary_error,
+                        )
+                    total_bytes += byte_count
+                    if total_bytes > limits.max_total_bytes:
+                        raise PatchCompositionError(
+                            "workspace aggregate bytes exceed their limit"
+                        )
+                    mode = (
+                        "100755"
+                        if os.name != "nt" and stat.S_IMODE(opened.st_mode) & 0o111
+                        else "100644"
+                    )
+                    if os.name != "nt" and stat.S_IMODE(opened.st_mode) not in {
+                        0o600,
+                        0o644,
+                        0o700,
+                        0o755,
+                    }:
+                        raise PatchCompositionError("workspace file mode is unsafe")
+                    states.append(_FileState(relative, mode, byte_count, digest))
+            except OSError as exc:
+                error = PatchCompositionError("workspace could not be scanned")
+                scan_primary_error = error
+                raise error from exc
+            except BaseException as exc:
+                scan_primary_error = exc
+                raise
+        finally:
+            _close_scandir(iterator, prior_error=scan_primary_error)
     states.sort(key=lambda item: item.path.encode("utf-8", errors="strict"))
     return _TreeManifest(tuple(states), total_bytes)
 
@@ -621,21 +1132,29 @@ def _copy_verified_tree(
             raise PatchCompositionError(
                 "temporary workspace directory could not be created"
             ) from exc
-        source_path = source.joinpath(*PurePosixPath(state.path).parts)
-        source_fd, before = _open_readonly_regular(source_path, label="prepared source file")
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         if hasattr(os, "O_BINARY"):
             flags |= os.O_BINARY
+        source_path = source.joinpath(*PurePosixPath(state.path).parts)
+        source_fd, before = _open_readonly_regular(source_path, label="prepared source file")
+        destination_fd: int | None = None
+        primary_error: BaseException | None = None
         try:
-            destination_fd = os.open(target, flags, 0o600)
-        except OSError as exc:
-            os.close(source_fd)
-            raise PatchCompositionError("temporary workspace file could not be created") from exc
-        digest = hashlib.sha256()
-        observed = 0
-        try:
+            try:
+                destination_fd = os.open(target, flags, 0o600)
+            except OSError as exc:
+                raise PatchCompositionError(
+                    "temporary workspace file could not be created"
+                ) from exc
+            digest = hashlib.sha256()
+            observed = 0
             while True:
-                chunk = os.read(source_fd, _COPY_CHUNK_BYTES)
+                try:
+                    chunk = os.read(source_fd, _COPY_CHUNK_BYTES)
+                except OSError as exc:
+                    raise PatchCompositionError(
+                        "prepared source file could not be read"
+                    ) from exc
                 if not chunk:
                     break
                 observed += len(chunk)
@@ -643,7 +1162,12 @@ def _copy_verified_tree(
                     raise PatchCompositionError("prepared source file exceeds its byte limit")
                 digest.update(chunk)
                 _write_all(destination_fd, chunk, label="temporary workspace file")
-            after = os.fstat(source_fd)
+            try:
+                after = os.fstat(source_fd)
+            except OSError as exc:
+                raise PatchCompositionError(
+                    "prepared source file could not be re-inspected"
+                ) from exc
             if (
                 before.st_dev,
                 before.st_ino,
@@ -665,11 +1189,32 @@ def _copy_verified_tree(
             if observed != state.byte_count or digest.hexdigest() != state.sha256:
                 raise PatchCompositionError("prepared source file does not match its manifest")
             if os.name != "nt":
-                os.fchmod(destination_fd, 0o755 if state.mode == "100755" else 0o644)
-            os.fsync(destination_fd)
+                try:
+                    os.fchmod(
+                        destination_fd,
+                        0o755 if state.mode == "100755" else 0o644,
+                    )
+                except OSError as exc:
+                    raise PatchCompositionError(
+                        "temporary workspace file mode could not be set"
+                    ) from exc
+            try:
+                os.fsync(destination_fd)
+            except OSError as exc:
+                raise PatchCompositionError(
+                    "temporary workspace file could not be synchronized"
+                ) from exc
+        except BaseException as exc:
+            primary_error = exc
+            raise
         finally:
-            os.close(source_fd)
-            os.close(destination_fd)
+            descriptors = [(source_fd, "prepared source file")]
+            if destination_fd is not None:
+                descriptors.append((destination_fd, "temporary workspace file"))
+            _close_descriptors(
+                tuple(descriptors),
+                prior_error=primary_error,
+            )
     observed_manifest = _scan_tree(destination, limits)
     if observed_manifest != expected:
         raise PatchCompositionError("temporary workspace does not match the prepared base tree")
@@ -683,11 +1228,23 @@ def _write_patch_file(path: Path, value: bytes) -> None:
         descriptor = os.open(path, flags, 0o600)
     except OSError as exc:
         raise PatchCompositionError("temporary patch file could not be created") from exc
+    primary_error: BaseException | None = None
     try:
         _write_all(descriptor, value, label="temporary patch file")
-        os.fsync(descriptor)
+        try:
+            os.fsync(descriptor)
+        except OSError as exc:
+            raise PatchCompositionError(
+                "temporary patch file could not be synchronized"
+            ) from exc
+    except BaseException as exc:
+        primary_error = exc
+        raise
     finally:
-        os.close(descriptor)
+        _close_descriptors(
+            ((descriptor, "temporary patch file"),),
+            prior_error=primary_error,
+        )
 
 
 def _git_environment(home: Path) -> dict[str, str]:
@@ -714,6 +1271,49 @@ def _git_environment(home: Path) -> dict[str, str]:
         if value:
             environment[name] = value
     return environment
+
+
+@contextmanager
+def _owned_temporary_directory(parent: Path) -> Iterator[Path]:
+    """Own a temporary tree without allowing cleanup to hide a primary error."""
+
+    try:
+        manager = tempfile.TemporaryDirectory(
+            prefix="ctxc-swebench-patch-",
+            dir=parent,
+        )
+    except Exception as exc:
+        raise PatchCompositionError(
+            "temporary workspace could not be allocated",
+            stage="temporary-workspace-setup",
+        ) from exc
+    primary_error: BaseException | None = None
+    try:
+        try:
+            temporary = Path(manager.name).resolve(strict=True)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise PatchCompositionError(
+                "temporary workspace could not be inspected",
+                stage="temporary-workspace-setup",
+            ) from exc
+        yield temporary
+    except BaseException as exc:
+        primary_error = exc
+        raise
+    finally:
+        try:
+            manager.cleanup()
+        except Exception as exc:
+            if primary_error is not None:
+                primary_error.add_note(
+                    "temporary workspace cleanup also failed "
+                    f"({type(exc).__name__}: {exc})"
+                )
+            else:
+                raise PatchCompositionError(
+                    "temporary workspace cleanup failed",
+                    stage="temporary-workspace-cleanup",
+                ) from exc
 
 
 def _stream_document(stream: Any) -> dict[str, Any]:
@@ -750,6 +1350,13 @@ def _apply_patch(
             f"{role} patch lifecycle failed before a result was retained",
             stage=f"{role}-apply",
         ) from exc
+    except PatchCompositionError:
+        raise
+    except Exception as exc:
+        raise PatchCompositionError(
+            f"{role} patch lifecycle failed closed",
+            stage=f"{role}-apply",
+        ) from exc
     if (
         result.termination_trigger is not None
         or result.execution_error is not None
@@ -760,10 +1367,16 @@ def _apply_patch(
         or result.stderr.observed_bytes != result.stderr.captured_bytes
         or result.exit_code != 0
     ):
-        raise PatchCompositionError(
+        error = PatchCompositionError(
             f"{role} patch application failed closed",
             stage=f"{role}-apply",
         )
+        if result.cleanup_error is not None:
+            error.add_note(
+                "patch process cleanup also failed "
+                f"({result.cleanup_error}: {result.cleanup_detail})"
+            )
+        raise error
     return {
         "role": role,
         "exit_code": result.exit_code,
@@ -957,7 +1570,7 @@ def _source_inputs(
     return verified, binding, hidden_patch, canonical_source
 
 
-def build_patch_composition(
+def _build_patch_composition_impl(
     prepared: PreparedSweBenchRepository,
     source: VerifiedSweBenchSource,
     model_patch: str,
@@ -973,38 +1586,36 @@ def build_patch_composition(
     """
 
     selected_limits = _revalidate_limits(PatchCompositionLimits() if limits is None else limits)
-    verified, binding, hidden_patch, canonical_source = _source_inputs(prepared, source)
     candidate_bytes = _patch_bytes(
         model_patch,
         label="candidate model_patch",
-        maximum=selected_limits.max_patch_bytes,
+        limits=selected_limits,
     )
+    verified, binding, hidden_patch, canonical_source = _source_inputs(prepared, source)
     hidden_bytes = _patch_bytes(
         hidden_patch,
         label="hidden test_patch",
-        maximum=selected_limits.max_patch_bytes,
+        limits=selected_limits,
     )
     source_root = verified.path
     base_manifest = _scan_tree(source_root, selected_limits)
     git_document = verified.mirror.to_dict()["git"]
     git_executable = verified.mirror.git_executable
     temporary_parent = Path(tempfile.gettempdir()).resolve()
-    mirror_root = verified.mirror.path.resolve()
     try:
-        if temporary_parent.is_relative_to(source_root.resolve()) or (
-            temporary_parent.is_relative_to(mirror_root)
-        ):
-            raise PatchCompositionError(
-                "system temporary directory is inside a verified input tree"
-            )
+        source_resolved = source_root.resolve()
+        mirror_root = verified.mirror.path.resolve()
     except (OSError, RuntimeError, ValueError) as exc:
         raise PatchCompositionError("system temporary directory could not be inspected") from exc
+    if temporary_parent.is_relative_to(source_resolved) or temporary_parent.is_relative_to(
+        mirror_root
+    ):
+        raise PatchCompositionError(
+            "system temporary directory is inside a verified input tree",
+            stage="temporary-workspace-validation",
+        )
 
-    with tempfile.TemporaryDirectory(
-        prefix="ctxc-swebench-patch-",
-        dir=temporary_parent,
-    ) as raw_temp:
-        temporary = Path(raw_temp).resolve()
+    with _owned_temporary_directory(temporary_parent) as temporary:
         home = temporary / "home"
         home.mkdir(mode=0o700)
         candidate_patch_path = temporary / "candidate.patch"
@@ -1156,12 +1767,47 @@ def build_patch_composition(
             **_FALSE_EVIDENCE,
         },
     }
+    document["patch_composition_sha256"] = "0" * 64
+    _bounded_document_size(
+        document,
+        limits=selected_limits,
+        stage="preflight-build",
+    )
+    del document["patch_composition_sha256"]
     document["patch_composition_sha256"] = _canonical_sha256(document)
     encoded = _canonical_json_bytes(document)
     if len(encoded) > selected_limits.max_document_bytes:
-        raise PatchCompositionError("patch-composition document exceeds its byte limit")
+        raise PatchCompositionError(
+            "patch-composition document exceeds its byte limit",
+            stage="preflight-build",
+        )
     decoded = decode_patch_composition(document)
     return VerifiedPatchComposition(selected_limits, _freeze_json(decoded))
+
+
+def build_patch_composition(
+    prepared: PreparedSweBenchRepository,
+    source: VerifiedSweBenchSource,
+    model_patch: str,
+    *,
+    limits: PatchCompositionLimits | None = None,
+) -> VerifiedPatchComposition:
+    """Build one preflight while normalizing unexpected outer-ledger failures."""
+
+    try:
+        return _build_patch_composition_impl(
+            prepared,
+            source,
+            model_patch,
+            limits=limits,
+        )
+    except PatchCompositionError:
+        raise
+    except Exception as exc:
+        raise PatchCompositionError(
+            "patch-composition build failed closed",
+            stage="preflight-build",
+        ) from exc
 
 
 def _decode_summary(
@@ -1227,12 +1873,12 @@ def _decode_delta(
         },
         label=label,
     )
-    if not isinstance(payload["entries"], list):
+    if type(payload["entries"]) is not list:
         raise PatchCompositionError(f"{label}.entries must be an array")
     if len(payload["entries"]) > 2 * limits.max_files:
         raise PatchCompositionError(f"{label}.entries exceed the retained limit")
     if (
-        not isinstance(payload["changed_paths"], list)
+        type(payload["changed_paths"]) is not list
         or len(payload["changed_paths"]) > 2 * limits.max_files
     ):
         raise PatchCompositionError(f"{label}.changed_paths exceed the retained limit")
@@ -1381,7 +2027,7 @@ def _decode_apply(
     return payload
 
 
-def decode_patch_composition(value: Any) -> dict[str, Any]:
+def _decode_patch_composition_impl(value: Any) -> dict[str, Any]:
     """Strictly decode a self-hashed, permanently non-claim-ready document."""
 
     fields = {
@@ -1406,6 +2052,16 @@ def decode_patch_composition(value: Any) -> dict[str, Any]:
         "disjoint-composition-preflight-verified-not-a-grader",
     }:
         raise PatchCompositionError("patch composition status is invalid")
+    limits_payload = _object(payload["limits"], fields=set(_LIMIT_FIELDS), label="patch limits")
+    try:
+        limits = PatchCompositionLimits(**limits_payload)
+    except (TypeError, PatchCompositionError) as exc:
+        raise PatchCompositionError("patch composition limits are invalid") from exc
+    _bounded_document_size(
+        payload,
+        limits=limits,
+        stage="patch-composition-decode",
+    )
     claimed = _sha256(
         payload["patch_composition_sha256"],
         label="patch composition self-hash",
@@ -1414,11 +2070,6 @@ def decode_patch_composition(value: Any) -> dict[str, Any]:
     del unsigned["patch_composition_sha256"]
     if claimed != _canonical_sha256(unsigned):
         raise PatchCompositionError("patch composition self-hash mismatch")
-    limits_payload = _object(payload["limits"], fields=set(_LIMIT_FIELDS), label="patch limits")
-    try:
-        limits = PatchCompositionLimits(**limits_payload)
-    except (TypeError, PatchCompositionError) as exc:
-        raise PatchCompositionError("patch composition limits are invalid") from exc
     source_binding = _object(
         payload["source_binding"],
         fields={
@@ -1487,7 +2138,9 @@ def decode_patch_composition(value: Any) -> dict[str, Any]:
     ):
         raise PatchCompositionError("Git executable byte count is invalid")
     _sha256(contract["git_executable_sha256"], label="Git executable SHA-256")
-    if contract["argv_tail"] != list(_GIT_APPLY_TAIL):
+    if type(contract["argv_tail"]) is not list or contract["argv_tail"] != list(
+        _GIT_APPLY_TAIL
+    ):
         raise PatchCompositionError("Git apply argv contract changed")
     if (
         contract["shell"] is not False
@@ -1563,6 +2216,8 @@ def decode_patch_composition(value: Any) -> dict[str, Any]:
         fields={"disjoint", "conflicting_paths"},
         label="patch overlap",
     )
+    if type(overlap["conflicting_paths"]) is not list:
+        raise PatchCompositionError("patch overlap conflicting paths must be an array")
     expected_conflicts = _overlap(candidate_delta, hidden_delta)
     if overlap["conflicting_paths"] != expected_conflicts or overlap["disjoint"] is not (
         not expected_conflicts
@@ -1647,9 +2302,21 @@ def decode_patch_composition(value: Any) -> dict[str, Any]:
     for name in _FALSE_EVIDENCE:
         if evidence[name] is not False:
             raise PatchCompositionError(f"patch evidence {name} must be false")
-    if len(_canonical_json_bytes(payload)) > limits.max_document_bytes:
-        raise PatchCompositionError("patch-composition document exceeds its byte limit")
     return payload
+
+
+def decode_patch_composition(value: Any) -> dict[str, Any]:
+    """Strictly decode evidence and normalize unexpected public failures."""
+
+    try:
+        return _decode_patch_composition_impl(value)
+    except PatchCompositionError:
+        raise
+    except Exception as exc:
+        raise PatchCompositionError(
+            "patch-composition decode failed closed",
+            stage="patch-composition-decode",
+        ) from exc
 
 
 def _bind_patch_composition_structural(
@@ -1670,16 +2337,16 @@ def _bind_patch_composition_structural(
     decoded = decode_patch_composition(composition.to_dict())
     if decoded["limits"] != _limits_document(limits):
         raise PatchCompositionError("runtime patch limits do not match evidence")
-    verified, binding, hidden_patch, canonical_source = _source_inputs(prepared, source)
     candidate_bytes = _patch_bytes(
         model_patch,
         label="candidate model_patch",
-        maximum=limits.max_patch_bytes,
+        limits=limits,
     )
+    verified, binding, hidden_patch, canonical_source = _source_inputs(prepared, source)
     hidden_bytes = _patch_bytes(
         hidden_patch,
         label="hidden test_patch",
-        maximum=limits.max_patch_bytes,
+        limits=limits,
     )
     retained = decoded["source_binding"]
     expected_binding = {
@@ -1741,7 +2408,7 @@ def _verify_patch_composition_semantic(
     return retained, canonical_prepared, canonical_source
 
 
-def verify_patch_composition(
+def _verify_patch_composition_impl(
     composition: VerifiedPatchComposition,
     prepared: PreparedSweBenchRepository,
     source: VerifiedSweBenchSource,
@@ -1758,6 +2425,30 @@ def verify_patch_composition(
     return retained
 
 
+def verify_patch_composition(
+    composition: VerifiedPatchComposition,
+    prepared: PreparedSweBenchRepository,
+    source: VerifiedSweBenchSource,
+    model_patch: str,
+) -> VerifiedPatchComposition:
+    """Verify evidence while normalizing unexpected outer-ledger failures."""
+
+    try:
+        return _verify_patch_composition_impl(
+            composition,
+            prepared,
+            source,
+            model_patch,
+        )
+    except PatchCompositionError:
+        raise
+    except Exception as exc:
+        raise PatchCompositionError(
+            "patch-composition verification failed closed",
+            stage="preflight-verification",
+        ) from exc
+
+
 def replay_patch_composition(
     composition: VerifiedPatchComposition,
     prepared: PreparedSweBenchRepository,
@@ -1769,7 +2460,7 @@ def replay_patch_composition(
     return verify_patch_composition(composition, prepared, source, model_patch)
 
 
-def load_patch_composition(
+def _load_patch_composition_impl(
     path: str | Path,
     prepared: PreparedSweBenchRepository,
     source: VerifiedSweBenchSource,
@@ -1807,7 +2498,34 @@ def load_patch_composition(
     return verify_patch_composition(composition, prepared, source, model_patch)
 
 
-def write_patch_composition(
+def load_patch_composition(
+    path: str | Path,
+    prepared: PreparedSweBenchRepository,
+    source: VerifiedSweBenchSource,
+    model_patch: str,
+    *,
+    replay: bool = False,
+) -> VerifiedPatchComposition:
+    """Load evidence while normalizing unexpected outer-ledger failures."""
+
+    try:
+        return _load_patch_composition_impl(
+            path,
+            prepared,
+            source,
+            model_patch,
+            replay=replay,
+        )
+    except PatchCompositionError:
+        raise
+    except Exception as exc:
+        raise PatchCompositionError(
+            "patch-composition load failed closed",
+            stage="preflight-load",
+        ) from exc
+
+
+def _write_patch_composition_impl(
     path: str | Path,
     composition: VerifiedPatchComposition,
     prepared: PreparedSweBenchRepository,
@@ -1827,27 +2545,66 @@ def write_patch_composition(
     mirror_root = canonical_prepared.mirror.path
     try:
         resolved_output = output.resolve(strict=False)
-        if resolved_output.is_relative_to(prepared_root) or (
-            resolved_output.is_relative_to(mirror_root)
-        ):
-            raise PatchCompositionError(
-                "patch-composition output cannot be inside a verified input tree"
-            )
     except (OSError, RuntimeError, ValueError) as exc:
-        raise PatchCompositionError("patch-composition output path could not be inspected") from exc
-    rendered = (
-        json.dumps(
-            verified.to_dict(),
-            ensure_ascii=False,
-            sort_keys=True,
-            indent=2,
-            allow_nan=False,
+        raise PatchCompositionError(
+            "patch-composition output path could not be inspected",
+            stage="patch-composition-output",
+        ) from exc
+    if resolved_output.is_relative_to(prepared_root) or resolved_output.is_relative_to(
+        mirror_root
+    ):
+        raise PatchCompositionError(
+            "patch-composition output cannot be inside a verified input tree",
+            stage="patch-composition-output",
         )
-        + "\n"
-    )
-    if len(rendered.encode("utf-8")) > verified.limits.max_document_bytes:
-        raise PatchCompositionError("patch-composition output exceeds its byte limit")
+    try:
+        encoded = _canonical_json_bytes(verified.to_dict())
+    except PatchCompositionError as exc:
+        raise PatchCompositionError(
+            "patch-composition output is not canonical finite JSON",
+            stage="patch-composition-output",
+        ) from exc
+    if len(encoded) > verified.limits.max_document_bytes:
+        raise PatchCompositionError(
+            "patch-composition output exceeds its byte limit",
+            stage="patch-composition-output",
+        )
+    rendered = encoded.decode("utf-8", errors="strict")
     try:
         atomic_write_text(output, rendered, overwrite=False)
-    except FileExistsError as exc:
-        raise PatchCompositionError("patch-composition output already exists") from exc
+    except AtomicDestinationExistsError as exc:
+        raise PatchCompositionError(
+            "patch-composition output already exists",
+            stage="patch-composition-output",
+        ) from exc
+    except Exception as exc:
+        raise PatchCompositionError(
+            "patch-composition output publication failed",
+            stage="patch-composition-output-publication",
+        ) from exc
+
+
+def write_patch_composition(
+    path: str | Path,
+    composition: VerifiedPatchComposition,
+    prepared: PreparedSweBenchRepository,
+    source: VerifiedSweBenchSource,
+    model_patch: str,
+) -> None:
+    """Write evidence while normalizing unexpected outer-ledger failures."""
+
+    try:
+        _write_patch_composition_impl(
+            path,
+            composition,
+            prepared,
+            source,
+            model_patch,
+        )
+    except PatchCompositionError:
+        raise
+    except Exception as exc:
+        raise PatchCompositionError(
+            "patch-composition output failed closed",
+            stage="patch-composition-output",
+        ) from exc
