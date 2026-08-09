@@ -8,6 +8,7 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
+from . import models as _models_module
 from .extractors import ExtractionResult, Extractor, RuleBasedExtractor
 from .limits import (
     CompilationLimitError,
@@ -39,6 +40,7 @@ from .models import (
     MemoryItem,
     MemoryKind,
     MemoryStatus,
+    ProvenanceSpan,
     SourceRecord,
     VerificationIssue,
     VerificationReport,
@@ -138,6 +140,7 @@ class ContextCompiler:
                 untrusted_historical_roles=self.untrusted_historical_roles,
             )
         )
+        self._owned_default_extractor = self.extractor if extractor is None else None
         self.policy = policy if policy is not None else CompilationPolicy()
         self.safety_extractor = safety_extractor
         self._custom_token_counter = token_counter
@@ -794,6 +797,66 @@ class ContextCompiler:
             f"{item.kind.value}:\n{render_prompt_item(item)}\n"
         )
 
+    def _can_count_default_selection_by_length(
+        self,
+        items: list[MemoryItem],
+    ) -> bool:
+        """Return whether default prompt token counts are exactly length-derived.
+
+        The optimized selection path deliberately excludes every caller-defined
+        dispatch seam.  Besides a custom token counter or compact renderer,
+        that includes compiler subclasses, instance method overrides, policy
+        subclasses, replaced module renderers, and non-exact prompt data.  All
+        excluded configurations retain the legacy render-and-count loop.
+        """
+
+        if (
+            type(self) is not ContextCompiler
+            or self._custom_token_counter is not None
+            or self._context_window_memory_rendering_profile is not None
+            or type(self.extractor) is not RuleBasedExtractor
+            or self.extractor is not self._owned_default_extractor
+            or self.safety_extractor is not None
+            or type(self.policy) is not CompilationPolicy
+            or type(self.policy.chars_per_token) not in {int, float}
+            or render_typed_memory is not _DEFAULT_TYPED_MEMORY_RENDERER
+            or render_prompt_item is not _DEFAULT_PROMPT_ITEM_RENDERER
+            or _models_module.render_prompt_item is not _DEFAULT_PROMPT_ITEM_RENDERER
+            or type(self)._count_tokens is not _DEFAULT_COUNT_TOKENS_METHOD
+            or type(self)._item_cost is not _DEFAULT_ITEM_COST_METHOD
+            or type(self)._render_selected is not _DEFAULT_RENDER_SELECTED_METHOD
+        ):
+            return False
+        instance_state = vars(self)
+        if any(
+            name in instance_state
+            for name in ("_count_tokens", "_item_cost", "_render_selected")
+        ):
+            return False
+        for item in items:
+            if (
+                type(item) is not MemoryItem
+                or type(item.id) is not str
+                or type(item.kind) is not MemoryKind
+                or type(item.text) is not str
+                or type(item.status) is not MemoryStatus
+                or type(item.exact) is not bool
+                or type(item.metadata) is not dict
+                or type(item.metadata.get("source_role", "unknown")) is not str
+                or type(item.provenance) is not list
+            ):
+                return False
+            for span in item.provenance:
+                if (
+                    type(span) is not ProvenanceSpan
+                    or type(span.source_id) is not str
+                    or type(span.start) is not int
+                    or type(span.end) is not int
+                    or type(span.quote_sha256) is not str
+                ):
+                    return False
+        return True
+
     def _select(
         self,
         items: list[MemoryItem],
@@ -845,13 +908,51 @@ class ContextCompiler:
         effective_budget = self.policy.token_budget
         if target_budget >= protected_floor:
             effective_budget = min(effective_budget, target_budget)
+        count_by_length = ContextCompiler._can_count_default_selection_by_length(
+            self,
+            eligible,
+        )
+        if count_by_length:
+            rendered_length = len(protected_prompt)
+            selected_kinds = {item.kind for item in chosen}
         for item in optional:
             trial = [*chosen, item]
             work_budget.consume(
                 len(trial),
                 phase="selection prompt rendering",
             )
-            rendered = self._render_selected(trial, [value.id for value in trial])
-            if self._count_tokens(rendered) <= effective_budget:
+            if count_by_length:
+                item_line_length = len(_DEFAULT_PROMPT_ITEM_RENDERER(item))
+                trial_rendered_length = rendered_length + item_line_length + 1
+                if item.kind not in selected_kinds:
+                    # A newly non-empty kind adds its ``kind:`` header and one
+                    # more newline. The item's own newline is included above.
+                    trial_rendered_length += len(item.kind.value) + 2
+                trial_tokens = max(
+                    1,
+                    math.ceil(
+                        trial_rendered_length / self.policy.chars_per_token
+                    ),
+                )
+            else:
+                rendered = self._render_selected(
+                    trial,
+                    [value.id for value in trial],
+                )
+                trial_tokens = self._count_tokens(rendered)
+            if trial_tokens <= effective_budget:
                 chosen.append(item)
+                if count_by_length:
+                    rendered_length = trial_rendered_length
+                    selected_kinds.add(item.kind)
         return [item.id for item in chosen]
+
+
+# Freeze the exact implementation identities used by the internal fast-path
+# gate. Runtime replacement or subclass dispatch must fall back to the legacy
+# render-and-count behavior rather than inherit assumptions about these bodies.
+_DEFAULT_TYPED_MEMORY_RENDERER = render_typed_memory
+_DEFAULT_PROMPT_ITEM_RENDERER = render_prompt_item
+_DEFAULT_COUNT_TOKENS_METHOD = ContextCompiler._count_tokens
+_DEFAULT_ITEM_COST_METHOD = ContextCompiler._item_cost
+_DEFAULT_RENDER_SELECTED_METHOD = ContextCompiler._render_selected
