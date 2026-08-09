@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +20,13 @@ from context_compiler.extractors import ExtractionResult
 
 class EmptyExtractor:
     name = "empty-event-test-extractor"
+
+    def extract(self, _sources: list[SourceRecord]) -> ExtractionResult:
+        return ExtractionResult()
+
+
+class UnicodeExtractor:
+    name = "extractor-caf\u00e9-\U0001f9ea"
 
     def extract(self, _sources: list[SourceRecord]) -> ExtractionResult:
         return ExtractionResult()
@@ -68,6 +77,86 @@ def test_compile_event_is_opt_in_and_binds_written_artifact(
     assert event["ledger_complete"] is True
     assert event["verification"]["passed"] is True
     assert event["metrics"]["schema"] == "compilation-metrics-0.1"
+
+
+def test_compile_event_writes_exact_utf8_to_binary_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = SourceRecord.create(
+        id="unicode-event-source",
+        sequence=0,
+        role="user",
+        content="constraint: preserve the event identity",
+    )
+    result = ContextCompiler(UnicodeExtractor()).compile([source])
+    artifact = result.to_dict()
+    output = io.BytesIO()
+
+    class BinaryStderr:
+        buffer = output
+
+        def write(self, _value: str) -> int:
+            raise AssertionError("compile events must bypass the locale text stream")
+
+    monkeypatch.setattr(cli_module.sys, "stderr", BinaryStderr())
+
+    cli_module._emit_compile_event(
+        SimpleNamespace(event_format="jsonl", format="json"),
+        result,
+        artifact,
+        exit_code=0,
+    )
+
+    raw = output.getvalue()
+    assert raw.endswith(b"\n")
+    event = json.loads(raw.decode("utf-8", errors="strict"))
+    assert event["extraction"]["primary_extractor"] == UnicodeExtractor.name
+
+
+def test_compile_event_short_write_is_not_retried(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sources = tmp_path / "sources.json"
+    output = tmp_path / "artifact.json"
+    write_sources(sources, "constraint: preserve one event attempt")
+
+    class ShortBuffer:
+        writes = 0
+        flushes = 0
+
+        def write(self, payload: bytes) -> int:
+            self.writes += 1
+            return len(payload) - 1
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    buffer = ShortBuffer()
+
+    class BinaryStderr:
+        pass
+
+    stderr = BinaryStderr()
+    stderr.buffer = buffer
+    monkeypatch.setattr(cli_module.sys, "stderr", stderr)
+
+    assert (
+        main(
+            [
+                "compile",
+                str(sources),
+                "-o",
+                str(output),
+                "--event-format",
+                "jsonl",
+            ]
+        )
+        == 2
+    )
+    assert output.is_file()
+    assert buffer.writes == 1
+    assert buffer.flushes == 0
 
 
 def test_active_only_event_describes_the_actual_compact_artifact(

@@ -105,19 +105,186 @@
             "runtime"
           ]
         },
-        "code": {"type": "string", "minLength": 1},
-        "message": {"type": "string"},
+        "code": {
+          "enum": [
+            "resource_limit_exceeded",
+            "unknown_session",
+            "operation_timed_out",
+            "invalid_json",
+            "invalid_type",
+            "invalid_value",
+            "unsupported_operation",
+            "unsupported_schema",
+            "integrity_check_failed",
+            "connector_failure"
+          ]
+        },
+        "message": {
+          "enum": [
+            "connector request exceeds a resource limit",
+            "connector session is unknown",
+            "connector operation timed out",
+            "connector request is not valid JSON",
+            "connector request has an invalid type",
+            "connector request has an invalid value",
+            "connector operation is unsupported",
+            "connector request schema is unsupported",
+            "connector integrity check failed",
+            "connector operation failed"
+          ]
+        },
         "retryable": {"type": "boolean"},
         "details": {
           "type": "object",
           "required": ["exception_type"],
           "properties": {
-            "exception_type": {"type": "string", "minLength": 1}
+            "exception_type": {
+              "enum": [
+                "ConnectorResourceLimitError",
+                "ConnectorStateError",
+                "ConnectorTimeoutError",
+                "ConnectorRequestError",
+                "ConnectorIntegrityError",
+                "ConnectorRuntimeError"
+              ]
+            }
           },
           "additionalProperties": false
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "category": {"const": "resource_limit"},
+            "code": {"const": "resource_limit_exceeded"},
+            "message": {"const": "connector request exceeds a resource limit"},
+            "retryable": {"const": false},
+            "details": {
+              "properties": {
+                "exception_type": {"const": "ConnectorResourceLimitError"}
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "category": {"const": "state"},
+            "code": {"const": "unknown_session"},
+            "message": {"const": "connector session is unknown"},
+            "retryable": {"const": false},
+            "details": {
+              "properties": {
+                "exception_type": {"const": "ConnectorStateError"}
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "category": {"const": "timeout"},
+            "code": {"const": "operation_timed_out"},
+            "message": {"const": "connector operation timed out"},
+            "retryable": {"const": true},
+            "details": {
+              "properties": {
+                "exception_type": {"const": "ConnectorTimeoutError"}
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "category": {"const": "invalid_request"},
+            "code": {"const": "invalid_json"},
+            "message": {"const": "connector request is not valid JSON"},
+            "retryable": {"const": false},
+            "details": {
+              "properties": {
+                "exception_type": {"const": "ConnectorRequestError"}
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "category": {"const": "invalid_request"},
+            "code": {"const": "invalid_type"},
+            "message": {"const": "connector request has an invalid type"},
+            "retryable": {"const": false},
+            "details": {
+              "properties": {
+                "exception_type": {"const": "ConnectorRequestError"}
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "category": {"const": "invalid_request"},
+            "code": {"const": "invalid_value"},
+            "message": {"const": "connector request has an invalid value"},
+            "retryable": {"const": false},
+            "details": {
+              "properties": {
+                "exception_type": {"const": "ConnectorRequestError"}
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "category": {"const": "invalid_request"},
+            "code": {"const": "unsupported_operation"},
+            "message": {"const": "connector operation is unsupported"},
+            "retryable": {"const": false},
+            "details": {
+              "properties": {
+                "exception_type": {"const": "ConnectorRequestError"}
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "category": {"const": "invalid_request"},
+            "code": {"const": "unsupported_schema"},
+            "message": {"const": "connector request schema is unsupported"},
+            "retryable": {"const": false},
+            "details": {
+              "properties": {
+                "exception_type": {"const": "ConnectorRequestError"}
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "category": {"const": "integrity"},
+            "code": {"const": "integrity_check_failed"},
+            "message": {"const": "connector integrity check failed"},
+            "retryable": {"const": false},
+            "details": {
+              "properties": {
+                "exception_type": {"const": "ConnectorIntegrityError"}
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "category": {"const": "runtime"},
+            "code": {"const": "connector_failure"},
+            "message": {"const": "connector operation failed"},
+            "retryable": {"const": false},
+            "details": {
+              "properties": {
+                "exception_type": {"const": "ConnectorRuntimeError"}
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

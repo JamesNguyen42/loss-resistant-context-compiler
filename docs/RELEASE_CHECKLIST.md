@@ -17,7 +17,7 @@ a production PyPI upload, or a broader product/evidence claim.
 
 ## Code and platform gates
 
-- [ ] Run the complete test suite on CPython 3.11, 3.12, and 3.13.
+- [ ] Run the complete test suite on CPython 3.11, 3.12, 3.13, and 3.14.
 - [ ] Run Ruff and `compileall` across `src`, `tests`, `benchmarks`, `scripts`,
   `conformance`, and `_ctxc_build_backend.py`.
 - [ ] Run the cross-platform lock/path/package smoke coverage on Ubuntu,
@@ -45,25 +45,86 @@ a production PyPI upload, or a broader product/evidence claim.
 ## Distribution gates
 
 - [ ] Build exactly one wheel and one source distribution from the candidate.
-- [ ] Inspect the wheel for the expected package, CLI entry point, and all 25
-  installed core/connector JSON Schemas.
+- [ ] Inspect the wheel for the expected package, CLI entry point, and all 26
+  installed core, shared-connector, and provider-local JSON Schemas.
 - [ ] Inspect the source distribution separately for release documentation,
-  connector conformance assets, six natural-history schemas, seven contract
-  fixtures, and the source copies of the 25 installed schemas.
+  connector conformance assets, six natural-history schemas, seven
+  natural-history contract fixtures, the LocalAI conversion golden, and the
+  source copies of the 26 installed schemas.
 - [ ] Install the wheel and sdist into separate clean environments and run
   import, metadata, schema parsing, `ctxc --help`, compile, trust-create, and
   trust-verify smoke tests. Require lexical real distribution paths and
   regular single-link archives; retain any link or replacement rejection.
 - [ ] Confirm the installed core has no third-party runtime requirement.
-- [ ] Provide a reviewed hash-pinned offline wheelhouse and exact requirements
-  file for sdist build tools. Run `scripts/release_install_smoke.py` with both
+- [ ] If the `unified` extra is in the candidate, verify the reviewed
+  `localai-contracts==0.2.0a2` wheel SHA-256, source commit, exact 35-row
+  `RECORD`, packaged MIT license bytes, zero-dependency metadata, and
+  protocol/schema `1.0.0`.
+- [ ] Require all 35 immutable wheel `RECORD` rows exactly once: 34 hashed rows
+  with reviewed path, URL-safe SHA-256, size, and installed bytes, plus the
+  `RECORD` self-row with canonical empty hash/size fields. Require exact
+  `INSTALLER`, exact-wheel PEP 610 `direct_url.json`, and one
+  platform-canonical launcher. Permit an optional exact empty `REQUESTED`
+  marker and reject every other installer-generated row.
+- [ ] Before the adapter initiates optional-package import or exposes a
+  preloaded root, require one unambiguous distribution, an unset
+  `sys.pycache_prefix`, exact built-in module/spec/source-loader state bound to
+  the recorded package/initializer, the exact bounded link-free installed
+  source/resource tree digest and sizes, no unexpected importable entries, and
+  package-local bytecode matching fresh compilation of verified source through
+  the bounded isolated batch comparison of complete marshal records,
+  const-stripped format-2 serialized metadata, raw adaptive instruction/cache
+  images, and bounded tagged constant graphs with per-code identity topology.
+  Repeat the gate after import. Run the shadow, ambiguous-distribution, exact-size
+  source/resource mutation, extra-subpackage, external/forged-bytecode,
+  loader/module hook, wrong-origin preload, and post-import mutation
+  regressions on every supported CPython/platform lane. Independently hash the
+  wheel archive, unset `PYTHONPYCACHEPREFIX`, and use non-writable clean
+  environments.
+- [ ] Run the canonical adapter's 22-case Phase 0 gate and require exactly
+  `passed_count: 22` and `inference_status: not_run`; do not substitute model
+  execution or a synthetic response.
+- [ ] Run `scripts/validate_localai_contracts_install.py` against the candidate
+  provider wheel and exact contracts wheel. Require three distinct
+  environments: provider-only; transitive `provider[unified]` without direct
+  PEP 610 archive metadata, which must fail closed; and direct
+  provider-plus-contracts. The supported direct lane must launch
+  `[clean-environment sys.executable, "-m",
+  "context_compiler.localai_contracts_connector"]` (literal argv tail
+  `-m context_compiler.localai_contracts_connector`) for a real
+  handshake/compile NDJSON round trip and repeat the 22-case non-inference gate.
+  In the direct interpreter, require a provider-local conversion audit whose
+  self-hash, input/event/output bindings, disposition counts, exact-source
+  coverage, canonical span/provenance order, omission/overflow shape,
+  machine-readable claim boundary, and raw-source exclusion all verify;
+  require the NDJSON response shape to remain the unwrapped shared
+  ContextBundle. Treat the sidecar as sensitive diagnostic evidence, not safe
+  telemetry.
+  All lanes use `--no-index --no-compile`. Provider-only and direct lanes also
+  use `--no-deps`; the transitive lane resolves only from its local
+  `--find-links` directory. Keep argv-level `-B` out of the shared connector
+  command, set `PYTHONDONTWRITEBYTECODE=1` in its environment, and require the
+  post-round-trip provider/contracts package no-`.pyc` verifier.
+- [ ] Provide the reviewed hash-pinned offline wheelhouse path for the release
+  candidate and its exact requirements file for sdist build tools. Exact
+  implementation head `7915beb15f6a3429c24871779c7cdab280d1ee04`
+  demonstrated this automatic path with the 666-byte root
+  `requirements-build.lock`, SHA-256
+  `243f3ab977d82c04968cf4ea6474b7ef79c060d485aa3a3d67a383d1ef6fbbfe`,
+  for seven universal wheels. Run `scripts/release_install_smoke.py` with both
   `--build-wheelhouse <directory>` and
   `--build-requirements <requirements.txt>`. Require the reported
   `hash-pinned-offline-wheelhouse` bootstrap; that path enforces no index,
-  binary-only build tools, and pip hash checking. This gate is red because the
-  repository does not yet retain the reviewed cross-platform wheelhouse and
-  requirements inputs. The default `online-lower-bounds` result remains only an
-  online diagnostic.
+  binary-only build tools, and pip hash checking. Root CI push run
+  `30429423660` and pull-request run `30429426031` passed this smoke path in the
+  platform-smoke and LRCBench jobs. Their repeated-build job used the same exact
+  builder inputs for two candidates and the strict comparator, without
+  reporting an install-smoke result. The workflow acquires hash-authorized
+  wheels from the configured index before the offline phase and retains its
+  wheelhouse only as a temporary Actions artifact. A future release candidate
+  must rerun and retain this gate. The default `online-lower-bounds` result
+  remains only an online diagnostic; authenticated origin, durable retention,
+  and release authorization remain separate gates.
 - [ ] Independently verify that the clean checkout, candidate commit, and
   archive inputs match the revision supplied to the evidence tool; the tool
   binds that value but does not discover or attest source provenance.
@@ -91,9 +152,11 @@ a production PyPI upload, or a broader product/evidence claim.
   <new-reproducibility-report.json>` and retain the report even when the command
   exits 1. Require status `passed` and byte-identical wheel and sdist results.
   CI exercises this from two clean checkouts in one job with explicit
-  pip/Setuptools/wheel versions and retains the Python/tool inventory. Do not
-  infer cross-platform, cross-toolchain, offline, hash-pinned-input, or
-  independent reproducibility from that result.
+  pip/Setuptools/wheel versions and retains the Python/tool inventory. At exact
+  implementation head `7915beb`, that job uses the root hash-bound wheelhouse
+  and no-index builder. Do not infer cross-platform artifact equality,
+  cross-toolchain or independent reproducibility, authenticated origin, or
+  durable retention from that result.
 - [ ] Public artifacts additionally require the external
   signatures/attestations specified by the release policy; their absence
   remains a red gate. The checksum manifest is not an SBOM or signature.

@@ -49,6 +49,7 @@ from .qwen_phrase_eval import (
     _nonnegative_float,
     _object,
     _repository_state,
+    _validate_qwen_package_version,
     _validate_system,
     exact_qwen_system,
 )
@@ -506,10 +507,11 @@ def _validate_run(value: Any) -> dict[str, Any]:
         fields=fields,
         label="Qwen paired run",
     )
-    if run["package_version"] != __version__:
-        raise QwenPairedEvaluationError(
-            "Qwen paired package version is invalid"
-        )
+    _validate_qwen_package_version(
+        run["package_version"],
+        label="Qwen paired package version",
+        error_type=QwenPairedEvaluationError,
+    )
     repository_commit = run["repository_commit"]
     if (
         not isinstance(repository_commit, str)

@@ -1,0 +1,415 @@
+name: OpenHands integration CI
+
+on:
+  push:
+    paths:
+      - ".github/workflows/openhands-integration.yml"
+      - ".gitattributes"
+      - "_ctxc_build_backend.py"
+      - "LICENSE"
+      - "MANIFEST.in"
+      - "README.md"
+      - "benchmarks/**"
+      - "pyproject.toml"
+      - "scripts/release_reproducibility.py"
+      - "scripts/release_artifact_manifest.py"
+      - "schemas/**"
+      - "src/**"
+      - "tests/test_release_reproducibility.py"
+      - "integrations/openhands/**"
+  pull_request:
+    paths:
+      - ".github/workflows/openhands-integration.yml"
+      - ".gitattributes"
+      - "_ctxc_build_backend.py"
+      - "LICENSE"
+      - "MANIFEST.in"
+      - "README.md"
+      - "benchmarks/**"
+      - "pyproject.toml"
+      - "scripts/release_reproducibility.py"
+      - "scripts/release_artifact_manifest.py"
+      - "schemas/**"
+      - "src/**"
+      - "tests/test_release_reproducibility.py"
+      - "integrations/openhands/**"
+  workflow_dispatch:
+    inputs:
+      run_retained_offline_evidence:
+        description: "Run the 10,000/100 soak and 1,024-schedule campaign"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  offline-package:
+    name: offline package (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.12", "3.13"]
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONHASHSEED: "0"
+      SOURCE_DATE_EPOCH: "1700000000"
+    steps:
+      - name: Check out source without credentials or LFS
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          lfs: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            integrations/openhands/pyproject.toml
+            integrations/openhands/requirements-build.lock
+
+      - name: Provision the hash-bound build toolchain
+        run: |
+          New-Item -ItemType Directory -Path ci-build-wheelhouse | Out-Null
+          python -m pip --isolated download --no-deps --only-binary=:all: `
+            --require-hashes `
+            --requirement integrations/openhands/requirements-build.lock `
+            --dest ci-build-wheelhouse
+          python -m pip --isolated install --no-deps --no-index `
+            --find-links ci-build-wheelhouse `
+            --only-binary=:all: `
+            --require-hashes `
+            --force-reinstall `
+            --requirement integrations/openhands/requirements-build.lock
+          python -m pip --isolated install --no-deps `
+            "iniconfig==2.3.0" `
+            "pluggy==1.6.0" `
+            "pygments==2.20.0" `
+            "pytest==9.1.1" `
+            "ruff==0.16.0"
+          python -m venv ci-build-environment
+          $relativeBuildPython = if ($IsWindows) {
+            "Scripts/python.exe"
+          } else {
+            "bin/python"
+          }
+          $buildPython = Join-Path `
+            (Resolve-Path -LiteralPath ci-build-environment).Path `
+            $relativeBuildPython
+          if (-not (Test-Path -LiteralPath $buildPython -PathType Leaf)) {
+            throw "dedicated build Python is absent"
+          }
+          & $buildPython -m pip --isolated install --no-deps --no-index `
+            --find-links ci-build-wheelhouse `
+            --only-binary=:all: `
+            --require-hashes `
+            --force-reinstall `
+            --requirement integrations/openhands/requirements-build.lock
+          python integrations/openhands/scripts/ci_build_inputs.py `
+            --lock integrations/openhands/requirements-build.lock `
+            --wheelhouse ci-build-wheelhouse `
+            --builder-python $buildPython `
+            --revision "${{ github.sha }}" `
+            --source-date-epoch $env:SOURCE_DATE_EPOCH `
+            --json-out openhands-build-input-report.json
+          if ($LASTEXITCODE -ne 0) {
+            throw "build-input validation failed with exit code $LASTEXITCODE"
+          }
+          Add-Content -Encoding utf8NoBOM -LiteralPath $env:GITHUB_ENV `
+            -Value "CTXC_BUILD_PYTHON=$buildPython"
+          Copy-Item -LiteralPath integrations/openhands/requirements-build.lock `
+            -Destination openhands-requirements-build.lock
+          python -VV | Set-Content -Encoding utf8NoBOM openhands-ci-toolchain.txt
+          python -m pip --isolated freeze --all |
+            Add-Content -Encoding utf8NoBOM openhands-ci-toolchain.txt
+          "dedicated build environment:" |
+            Add-Content -Encoding utf8NoBOM openhands-ci-toolchain.txt
+          & $buildPython -VV |
+            Add-Content -Encoding utf8NoBOM openhands-ci-toolchain.txt
+          & $buildPython -m pip --isolated freeze --all |
+            Add-Content -Encoding utf8NoBOM openhands-ci-toolchain.txt
+
+      - name: Install core and integration without live dependencies
+        run: |
+          python -m pip --isolated install --no-build-isolation --no-deps -e .
+          python -m pip --isolated install --no-build-isolation --no-deps `
+            -e integrations/openhands
+          python -c "import importlib.metadata as m; missing=[]; names=('openhands-ai','openhands-sdk','openhands-tools','openhands-agent-server'); [missing.append(name) for name in names if not any(d.metadata['Name'].casefold()==name for d in m.distributions())]; assert sorted(missing)==sorted(names), missing"
+
+      - name: Qualify an unlinked test temp directory
+        run: |
+          $ciTemp = Join-Path $env:RUNNER_TEMP "ctxc-openhands-${{ matrix.python-version }}"
+          $env:CTXC_CI_TEMP = $ciTemp
+          python -c "import os; from pathlib import Path; from ctxc_openhands.storage import _reject_link_or_reparse_chain as reject; parent=Path(os.environ['RUNNER_TEMP']); reject(parent, label='CI temporary directory'); assert parent.is_dir(), f'CI temporary directory is not a directory: {parent}'; child=Path(os.environ['CTXC_CI_TEMP']); reject(child, label='CI test temp directory'); assert not child.exists(), f'CI test temp directory already exists: {child}'; child.mkdir(mode=0o700); reject(child, label='CI test temp directory'); assert child.is_dir()"
+          Add-Content -Encoding utf8NoBOM -LiteralPath $env:GITHUB_ENV -Value "TMPDIR=$ciTemp"
+          Add-Content -Encoding utf8NoBOM -LiteralPath $env:GITHUB_ENV -Value "TMP=$ciTemp"
+          Add-Content -Encoding utf8NoBOM -LiteralPath $env:GITHUB_ENV -Value "TEMP=$ciTemp"
+
+      - name: Verify ordinary imports remain isolated from OpenHands
+        run: |
+          python -c "import importlib.metadata as m, importlib.util, sys; from packaging.markers import default_environment; from packaging.requirements import Requirement; env=default_environment(); env['extra']=''; requirements=[Requirement(value) for value in (m.requires('loss-resistant-context-compiler') or [])]; assert not [requirement for requirement in requirements if requirement.marker is None or requirement.marker.evaluate(env)], requirements; import context_compiler; assert not any(n == 'openhands' or n.startswith('openhands.') for n in sys.modules); import ctxc_openhands; assert not any(n == 'openhands' or n.startswith('openhands.') for n in sys.modules); assert importlib.util.find_spec('openhands') is None"
+
+      - name: Prove selection and run ordinary isolated tests
+        run: |
+          $retained = & python -m pytest -o addopts= `
+            integrations/openhands/tests `
+            --collect-only -q -m "retained_evidence"
+          if ($LASTEXITCODE -ne 0) {
+            throw "retained-evidence collection failed with exit code $LASTEXITCODE"
+          }
+          $retainedNodes = @($retained | Where-Object { $_ -match "::test_" })
+          if (
+            $retainedNodes.Count -ne 1 -or
+            $retainedNodes[0] -notmatch "::test_1024_schedule_real_wal_campaign_and_abrupt_process_crashes$"
+          ) {
+            throw "unexpected retained-evidence selection: $($retainedNodes -join ', ')"
+          }
+          $ordinary = & python -m pytest -o addopts= `
+            integrations/openhands/tests `
+            --collect-only -q -m "not retained_evidence"
+          if ($LASTEXITCODE -ne 0) {
+            throw "ordinary collection failed with exit code $LASTEXITCODE"
+          }
+          $ordinaryNodes = @($ordinary | Where-Object { $_ -match "::test_" })
+          if (
+            $ordinaryNodes -match
+              "::test_1024_schedule_real_wal_campaign_and_abrupt_process_crashes$"
+          ) {
+            throw "mission-size campaign remained in the ordinary selection"
+          }
+          $requiredCrashPrimitives = @(
+            "test_schedule_generation_is_reproducible_bounded_and_self_hashed",
+            "test_append_crash_before_commit_exposes_no_partial_event",
+            "test_commit_crash_is_recoverable_without_visibility",
+            "test_campaign_rejects_simulated_reparse_database_cross_platform"
+          )
+          foreach ($name in $requiredCrashPrimitives) {
+            if (-not ($ordinaryNodes -match $name)) {
+              throw "fast crash primitive missing from ordinary selection: $name"
+            }
+          }
+          python -m pytest -o addopts= integrations/openhands/tests -q `
+            -m "not retained_evidence"
+
+      - name: Run Ruff and compileall
+        run: |
+          python -m ruff check `
+            integrations/openhands/_ctxc_openhands_build_backend.py `
+            integrations/openhands/src `
+            integrations/openhands/tests `
+            integrations/openhands/scripts
+          python -m compileall -q `
+            integrations/openhands/_ctxc_openhands_build_backend.py `
+            integrations/openhands/src `
+            integrations/openhands/tests `
+            integrations/openhands/scripts
+
+      - name: Verify source-checkout doctor and retained live blocker
+        run: |
+          $offline = & ctxc-openhands doctor
+          $offlineExit = $LASTEXITCODE
+          $offline -join "`n" |
+            Set-Content -Encoding utf8NoBOM doctor-source.json
+          if ($offlineExit -ne 0) {
+            throw "offline doctor returned $offlineExit"
+          }
+          $live = & ctxc-openhands doctor --require-live
+          $liveExit = $LASTEXITCODE
+          $live -join "`n" |
+            Set-Content -Encoding utf8NoBOM doctor-live-source.json
+          if ($liveExit -ne 2) {
+            throw "live-required doctor returned $liveExit instead of retained blocker 2"
+          }
+          python -c "import json,pathlib; offline=json.loads(pathlib.Path('doctor-source.json').read_text(encoding='utf-8')); live=json.loads(pathlib.Path('doctor-live-source.json').read_text(encoding='utf-8')); assert offline['passed'] is True and offline['offline_ready'] is True and offline['live_ready'] is False and offline['ordinary_import_loaded_openhands'] is False and offline['semantic_completeness_claimed'] is False; assert live['passed'] is False and live['require_live'] is True and live['manifest']['retained_blocker_code']=='hash-pinned-wheelhouse-absent'"
+
+      - name: Build core wheel and isolated wheel/sdist
+        run: |
+          New-Item -ItemType Directory -Path dist/core | Out-Null
+          New-Item -ItemType Directory -Path dist/openhands | Out-Null
+          & $env:CTXC_BUILD_PYTHON -m pip --isolated wheel . `
+            --no-build-isolation `
+            --no-deps `
+            --wheel-dir dist/core
+          & $env:CTXC_BUILD_PYTHON -m build `
+            --no-isolation `
+            --sdist `
+            --wheel `
+            --outdir dist/openhands `
+            integrations/openhands
+
+      - name: Clean-install and validate wheel and sdist
+        run: |
+          python integrations/openhands/scripts/ci_clean_install.py `
+            --core-dist dist/core `
+            --integration-dist dist/openhands `
+            --wheelhouse ci-build-wheelhouse `
+            --build-lock integrations/openhands/requirements-build.lock `
+            --work-dir .ci-clean-install `
+            --report openhands-clean-install-report.json
+
+      - name: Retain cross-platform release evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ctxc-openhands-${{ runner.os }}-python-${{ matrix.python-version }}
+          path: |
+            dist/core/*.whl
+            dist/openhands/*.whl
+            dist/openhands/*.tar.gz
+            doctor-source.json
+            doctor-live-source.json
+            openhands-build-input-report.json
+            openhands-clean-install-report.json
+            openhands-ci-toolchain.txt
+            openhands-requirements-build.lock
+            ci-build-wheelhouse/*.whl
+          if-no-files-found: warn
+          retention-days: 14
+
+  package-byte-reproducibility:
+    name: six-lane package byte reproducibility
+    if: ${{ always() }}
+    needs: [offline-package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONHASHSEED: "0"
+      PYTHONPATH: "src"
+    steps:
+      - name: Check out source without credentials or LFS
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          lfs: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Download the six package-lane artifacts
+        if: ${{ always() }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ctxc-openhands-*-python-*
+          path: .ci-package-matrix
+          merge-multiple: false
+
+      - name: Compare exact package bytes across all required lanes
+        if: ${{ always() }}
+        run: |
+          python -m scripts.release_reproducibility `
+            --matrix-root .ci-package-matrix `
+            --revision "${{ github.sha }}" `
+            --upstream-result "${{ needs.offline-package.result }}" `
+            --json-out package-matrix-reproducibility.json
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Retain the bounded package-matrix report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ctxc-openhands-package-byte-reproducibility
+          path: package-matrix-reproducibility.json
+          if-no-files-found: error
+          retention-days: 14
+
+  retained-offline-evidence:
+    name: retained offline evidence (Linux, Python 3.12)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_retained_offline_evidence }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONHASHSEED: "0"
+    steps:
+      - name: Check out source without credentials or LFS
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          lfs: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            integrations/openhands/pyproject.toml
+
+      - name: Install offline integration test runtime
+        run: |
+          python -m pip install --no-deps \
+            "pip==25.0.1" \
+            "setuptools==83.0.0" \
+            "wheel==0.47.0" \
+            "packaging==26.2"
+          python -m pip install --no-build-isolation --no-deps -e .
+          python -m pip install --no-build-isolation --no-deps -e integrations/openhands
+          python -VV > openhands-evidence-toolchain.txt
+          python -m pip freeze --all >> openhands-evidence-toolchain.txt
+
+      - name: Run and verify bounded offline evidence
+        env:
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          WANDB_MODE: "offline"
+        run: |
+          mkdir -p .ci-openhands-evidence
+          ctxc-openhands offline-scenario \
+            --database .ci-openhands-evidence/scenario.sqlite \
+            --output .ci-openhands-evidence/scenario.json
+          ctxc-openhands verify-evidence \
+            --report .ci-openhands-evidence/scenario.json \
+            --database .ci-openhands-evidence/scenario.sqlite \
+            > .ci-openhands-evidence/scenario-verification.json
+          ctxc-openhands soak \
+            --database .ci-openhands-evidence/soak.sqlite \
+            --events 10000 \
+            --compactions 100 \
+            --restart-every 10 \
+            --output .ci-openhands-evidence/soak.json
+          ctxc-openhands verify-evidence \
+            --report .ci-openhands-evidence/soak.json \
+            --database .ci-openhands-evidence/soak.sqlite \
+            > .ci-openhands-evidence/soak-verification.json
+          ctxc-openhands fault-campaign \
+            --database .ci-openhands-evidence/crash-campaign.sqlite \
+            --schedules 1024 \
+            --seed 0x5A17C7C0 \
+            --output .ci-openhands-evidence/crash-campaign.json
+          ctxc-openhands verify-evidence \
+            --report .ci-openhands-evidence/crash-campaign.json \
+            --database .ci-openhands-evidence/crash-campaign.sqlite \
+            > .ci-openhands-evidence/crash-campaign-verification.json
+
+      - name: Retain ordinary JSON and SQLite evidence artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ctxc-openhands-retained-offline-evidence
+          path: |
+            .ci-openhands-evidence/*.json
+            .ci-openhands-evidence/*.sqlite
+            openhands-evidence-toolchain.txt
+          if-no-files-found: warn
+          retention-days: 14

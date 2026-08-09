@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import base64
+import csv
 import gzip
+import hashlib
 import io
 import os
+import stat
+import struct
 import tarfile
+import zipfile
+import zlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,6 +26,74 @@ from _ctxc_build_backend import (
 ROOT = "loss_resistant_context_compiler-0.1.0"
 SDIST = f"{ROOT}.tar.gz"
 EPOCH = 1_700_000_000
+WHEEL = "fixture-0.1.0-py3-none-any.whl"
+DIST_INFO = "fixture-0.1.0.dist-info"
+
+_SDIST_NAMESPACE_CONFLICT_CASES = (
+    pytest.param(
+        (
+            (f"{ROOT}/a", "file"),
+            (f"{ROOT}/a-foo", "file"),
+            (f"{ROOT}/a/x.py", "file"),
+        ),
+        "file ancestor",
+        id="file-ancestor-with-interloper",
+    ),
+    pytest.param(
+        (
+            (f"{ROOT}/Case/one.py", "file"),
+            (f"{ROOT}/case/two.py", "file"),
+        ),
+        "namespace conflicts portably",
+        id="casefolded-implicit-directory",
+    ),
+    pytest.param(
+        (
+            (f"{ROOT}/caf\u00e9/one.py", "file"),
+            (f"{ROOT}/cafe\u0301/two.py", "file"),
+        ),
+        "namespace conflicts portably",
+        id="nfc-implicit-directory",
+    ),
+    pytest.param(
+        (
+            (f"{ROOT}/Stra\u00dfe/one.py", "file"),
+            (f"{ROOT}/STRASSE/two.py", "file"),
+        ),
+        "namespace conflicts portably",
+        id="casefold-expansion-implicit-directory",
+    ),
+)
+
+_WHEEL_NAMESPACE_CONFLICT_CASES = (
+    pytest.param(
+        "fixture/a",
+        (
+            ("fixture/a-foo", b"interloper\n"),
+            ("fixture/a/x.py", b"descendant\n"),
+        ),
+        "file ancestor",
+        id="file-ancestor-with-interloper",
+    ),
+    pytest.param(
+        "fixture/Case/one.py",
+        (("fixture/case/two.py", b"casefolded\n"),),
+        "namespace conflicts portably",
+        id="casefolded-implicit-directory",
+    ),
+    pytest.param(
+        "fixture/caf\u00e9/one.py",
+        (("fixture/cafe\u0301/two.py", b"normalized\n"),),
+        "namespace conflicts portably",
+        id="nfc-implicit-directory",
+    ),
+    pytest.param(
+        "fixture/Stra\u00dfe/one.py",
+        (("fixture/STRASSE/two.py", b"casefolded\n"),),
+        "namespace conflicts portably",
+        id="casefold-expansion-implicit-directory",
+    ),
+)
 
 
 def _add_directory(
@@ -26,11 +101,12 @@ def _add_directory(
     name: str,
     *,
     mtime: float,
+    mode: int = 0o755,
     pax_headers: dict[str, str] | None = None,
 ) -> None:
     member = tarfile.TarInfo(name)
     member.type = tarfile.DIRTYPE
-    member.mode = 0o755
+    member.mode = mode
     member.mtime = mtime
     member.pax_headers = dict(pax_headers or {})
     archive.addfile(member)
@@ -42,10 +118,11 @@ def _add_file(
     content: bytes,
     *,
     mtime: float,
+    mode: int = 0o644,
     pax_headers: dict[str, str] | None = None,
 ) -> None:
     member = tarfile.TarInfo(name)
-    member.mode = 0o644
+    member.mode = mode
     member.mtime = mtime
     member.size = len(content)
     member.pax_headers = dict(pax_headers or {})
@@ -65,6 +142,11 @@ def _write_raw_sdist(
     include_pyproject: bool = True,
     portable_collision: bool = False,
     tar_format: int = tarfile.PAX_FORMAT,
+    directory_mode: int = 0o755,
+    file_mode: int = 0o644,
+    metadata_newline: bytes = b"\n",
+    include_generated_metadata: bool = False,
+    extra_members: tuple[tuple[str, str], ...] = (),
 ) -> None:
     with (
         path.open("xb") as raw_output,
@@ -80,12 +162,25 @@ def _write_raw_sdist(
             format=tar_format,
         ) as archive,
     ):
-        _add_directory(archive, ROOT, mtime=member_mtime)
+        _add_directory(
+            archive,
+            ROOT,
+            mtime=member_mtime,
+            mode=directory_mode,
+        )
         _add_file(
             archive,
             f"{ROOT}/PKG-INFO",
-            b"Metadata-Version: 2.4\nName: fixture\nVersion: 0.1.0\n",
+            metadata_newline.join(
+                (
+                    b"Metadata-Version: 2.4",
+                    b"Name: fixture",
+                    b"Version: 0.1.0",
+                    b"",
+                )
+            ),
             mtime=member_mtime,
+            mode=file_mode,
         )
         if include_pyproject:
             _add_file(
@@ -93,14 +188,47 @@ def _write_raw_sdist(
                 f"{ROOT}/pyproject.toml",
                 b"[build-system]\nrequires = []\n",
                 mtime=member_mtime,
+                mode=file_mode,
             )
         _add_file(
             archive,
             f"{ROOT}/package.py",
             package_content,
             mtime=member_mtime,
+            mode=file_mode,
             pax_headers={"comment": "not-authorized"} if unexpected_pax else None,
         )
+        if include_generated_metadata:
+            generated_pkg_info = metadata_newline.join(
+                (
+                    b"Metadata-Version: 2.4",
+                    b"Name: fixture",
+                    b"Version: 0.1.0",
+                    b"",
+                )
+            )
+            _add_file(
+                archive,
+                f"{ROOT}/setup.cfg",
+                metadata_newline.join(
+                    (
+                        b"[egg_info]",
+                        b"tag_build = ",
+                        b"tag_date = 0",
+                        b"",
+                        b"",
+                    )
+                ),
+                mtime=member_mtime,
+                mode=file_mode,
+            )
+            _add_file(
+                archive,
+                f"{ROOT}/src/fixture.egg-info/PKG-INFO",
+                generated_pkg_info,
+                mtime=member_mtime,
+                mode=file_mode,
+            )
         if unsafe_name is not None:
             _add_file(
                 archive,
@@ -134,6 +262,12 @@ def _write_raw_sdist(
                 b"lower\n",
                 mtime=member_mtime,
             )
+        for name, member_type in extra_members:
+            if member_type == "directory":
+                _add_directory(archive, name, mtime=member_mtime)
+            else:
+                assert member_type == "file"
+                _add_file(archive, name, b"namespace fixture\n", mtime=member_mtime)
 
 
 def _raw_archive(
@@ -154,6 +288,199 @@ def _raw_archive(
         **kwargs,
     )
     return path
+
+
+def _wheel_info(
+    name: str,
+    *,
+    timestamp: tuple[int, int, int, int, int, int],
+    creator: int,
+    mode: int,
+    compression: int = zipfile.ZIP_DEFLATED,
+) -> zipfile.ZipInfo:
+    info = zipfile.ZipInfo(name, date_time=timestamp)
+    info.compress_type = compression
+    info.create_system = creator
+    info.external_attr = (stat.S_IFREG | mode) << 16
+    return info
+
+
+def _record_digest(payload: bytes) -> str:
+    encoded = base64.urlsafe_b64encode(hashlib.sha256(payload).digest())
+    return "sha256=" + encoded.rstrip(b"=").decode("ascii")
+
+
+def _write_raw_wheel(
+    path: Path,
+    *,
+    metadata_newline: bytes,
+    timestamp: tuple[int, int, int, int, int, int],
+    creator: int,
+    mode: int,
+    package_content: bytes = b'VALUE = "fixture"\n',
+    tamper_record_digest: bool = False,
+    package_digest_field: str | None = None,
+    package_size_field: str | None = None,
+    package_name: str = "fixture/__init__.py",
+    package_mode: int | None = None,
+    compression: int = zipfile.ZIP_DEFLATED,
+    extra_entries: tuple[tuple[str, bytes], ...] = (),
+) -> None:
+    metadata = metadata_newline.join(
+        (
+            b"Metadata-Version: 2.4",
+            b"Name: fixture",
+            b"Version: 0.1.0",
+            b"",
+        )
+    )
+    entries = [
+        (package_name, package_content),
+        *extra_entries,
+        (f"{DIST_INFO}/METADATA", metadata),
+        (
+            f"{DIST_INFO}/WHEEL",
+            b"Wheel-Version: 1.0\nGenerator: fixture\nRoot-Is-Purelib: true\n"
+            b"Tag: py3-none-any\n",
+        ),
+    ]
+    record_name = f"{DIST_INFO}/RECORD"
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, lineterminator="\n")
+    for name, payload in entries:
+        digest_field = (
+            package_digest_field
+            if name == package_name and package_digest_field is not None
+            else _record_digest(payload)
+        )
+        size_field = (
+            package_size_field
+            if name == package_name and package_size_field is not None
+            else str(len(payload))
+        )
+        writer.writerow((name, digest_field, size_field))
+    writer.writerow((record_name, "", ""))
+    record = output.getvalue().encode("utf-8")
+    if tamper_record_digest:
+        marker = record.index(b"sha256=") + len(b"sha256=")
+        replacement = b"A" if record[marker : marker + 1] != b"A" else b"B"
+        record = record[:marker] + replacement + record[marker + 1 :]
+    entries.append((record_name, record))
+    with zipfile.ZipFile(
+        path,
+        mode="x",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=9,
+    ) as archive:
+        for name, payload in entries:
+            archive.writestr(
+                _wheel_info(
+                    name,
+                    timestamp=timestamp,
+                    creator=creator,
+                    mode=package_mode if name == package_name and package_mode else mode,
+                    compression=compression,
+                ),
+                payload,
+            )
+
+
+def _insert_wheel_gap_before_central_directory(path: Path, gap: bytes) -> None:
+    payload = path.read_bytes()
+    end_record_offset = len(payload) - 22
+    assert payload[end_record_offset : end_record_offset + 4] == b"PK\x05\x06"
+    directory_offset = struct.unpack_from("<L", payload, end_record_offset + 16)[0]
+    modified = bytearray(
+        payload[:directory_offset] + gap + payload[directory_offset:]
+    )
+    struct.pack_into(
+        "<L",
+        modified,
+        end_record_offset + len(gap) + 16,
+        directory_offset + len(gap),
+    )
+    path.write_bytes(modified)
+
+
+def _append_to_final_wheel_compressed_extent(path: Path, suffix: bytes) -> None:
+    payload = path.read_bytes()
+    with zipfile.ZipFile(io.BytesIO(payload), mode="r") as archive:
+        member = archive.infolist()[-1]
+    end_record_offset = len(payload) - 22
+    directory_offset = struct.unpack_from("<L", payload, end_record_offset + 16)[0]
+    local_name_size, local_extra_size = struct.unpack_from(
+        "<2H",
+        payload,
+        member.header_offset + 26,
+    )
+    compressed_end = (
+        member.header_offset
+        + 30
+        + local_name_size
+        + local_extra_size
+        + member.compress_size
+    )
+    assert compressed_end == directory_offset
+
+    central_offset = directory_offset
+    target_central_offset: int | None = None
+    while central_offset < end_record_offset:
+        assert payload[central_offset : central_offset + 4] == b"PK\x01\x02"
+        name_size, extra_size, comment_size = struct.unpack_from(
+            "<3H",
+            payload,
+            central_offset + 28,
+        )
+        name = payload[central_offset + 46 : central_offset + 46 + name_size]
+        if name.decode("utf-8") == member.filename:
+            target_central_offset = central_offset
+        central_offset += 46 + name_size + extra_size + comment_size
+    assert central_offset == end_record_offset
+    assert target_central_offset is not None
+
+    modified = bytearray(payload[:compressed_end] + suffix + payload[compressed_end:])
+    struct.pack_into(
+        "<L",
+        modified,
+        member.header_offset + 18,
+        member.compress_size + len(suffix),
+    )
+    struct.pack_into(
+        "<L",
+        modified,
+        target_central_offset + len(suffix) + 20,
+        member.compress_size + len(suffix),
+    )
+    struct.pack_into(
+        "<L",
+        modified,
+        end_record_offset + len(suffix) + 16,
+        directory_offset + len(suffix),
+    )
+    path.write_bytes(modified)
+
+
+def _mutate_first_wheel_local_u16(path: Path, field_offset: int) -> None:
+    payload = bytearray(path.read_bytes())
+    with zipfile.ZipFile(io.BytesIO(payload), mode="r") as archive:
+        member = archive.infolist()[0]
+    absolute_offset = member.header_offset + field_offset
+    original = struct.unpack_from("<H", payload, absolute_offset)[0]
+    struct.pack_into("<H", payload, absolute_offset, original ^ 1)
+    path.write_bytes(payload)
+
+
+def _raw_wheel_member_payload(path: Path, name: str) -> bytes:
+    payload = path.read_bytes()
+    with zipfile.ZipFile(io.BytesIO(payload), mode="r") as archive:
+        member = archive.getinfo(name)
+    local_name_size, local_extra_size = struct.unpack_from(
+        "<2H",
+        payload,
+        member.header_offset + 26,
+    )
+    start = member.header_offset + 30 + local_name_size + local_extra_size
+    return payload[start : start + member.compress_size]
 
 
 def _pax_record(key: bytes, value: bytes) -> bytes:
@@ -207,6 +534,609 @@ def test_normalization_is_exact_reproducible_and_idempotent(tmp_path: Path) -> N
     assert first.read_bytes() == expected
 
 
+def test_sdist_normalization_canonicalizes_generated_text_and_modes(
+    tmp_path: Path,
+) -> None:
+    posix = _raw_archive(
+        tmp_path,
+        "posix",
+        directory_mode=0o755,
+        file_mode=0o644,
+        metadata_newline=b"\n",
+        include_generated_metadata=True,
+    )
+    windows = _raw_archive(
+        tmp_path,
+        "windows",
+        directory_mode=0o777,
+        file_mode=0o666,
+        metadata_newline=b"\r\n",
+        include_generated_metadata=True,
+    )
+
+    _normalize_sdist_archive(posix, EPOCH)
+    _normalize_sdist_archive(windows, EPOCH)
+
+    expected = posix.read_bytes()
+    assert windows.read_bytes() == expected
+    with tarfile.open(posix, mode="r:gz") as archive:
+        members = archive.getmembers()
+        generated = [
+            member
+            for member in members
+            if member.name.endswith(("PKG-INFO", "setup.cfg"))
+        ]
+        for member in generated:
+            stream = archive.extractfile(member)
+            assert stream is not None
+            assert b"\r" not in stream.read()
+    assert members
+    assert generated
+    assert all(
+        member.mode == (0o755 if member.isdir() else 0o644)
+        for member in members
+    )
+
+
+def test_wheel_normalization_canonicalizes_platform_representations(
+    tmp_path: Path,
+) -> None:
+    posix_directory = tmp_path / "posix-wheel"
+    windows_directory = tmp_path / "windows-wheel"
+    posix_directory.mkdir()
+    windows_directory.mkdir()
+    posix = posix_directory / WHEEL
+    windows = windows_directory / WHEEL
+    _write_raw_wheel(
+        posix,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 18),
+        creator=3,
+        mode=0o644,
+    )
+    _write_raw_wheel(
+        windows,
+        metadata_newline=b"\r\n",
+        timestamp=(2023, 11, 14, 22, 13, 22),
+        creator=0,
+        mode=0o666,
+    )
+
+    backend._normalize_wheel_archive(posix, EPOCH)
+    backend._normalize_wheel_archive(windows, EPOCH)
+
+    expected = posix.read_bytes()
+    assert windows.read_bytes() == expected
+    with zipfile.ZipFile(posix) as archive:
+        members = archive.infolist()
+        metadata = archive.read(f"{DIST_INFO}/METADATA")
+    assert members
+    assert b"\r" not in metadata
+    assert all(member.date_time == backend._wheel_timestamp(EPOCH) for member in members)
+    assert all(member.create_system == 3 for member in members)
+    assert all(
+        (member.external_attr >> 16) == (stat.S_IFREG | 0o644)
+        for member in members
+    )
+    backend._normalize_wheel_archive(posix, EPOCH)
+    assert posix.read_bytes() == expected
+
+
+def test_wheel_timestamp_floors_odd_seconds_and_clamps_before_1980() -> None:
+    assert backend._wheel_timestamp(EPOCH + 1) == backend._wheel_timestamp(EPOCH)
+    assert backend._wheel_timestamp(0) == (1980, 1, 1, 0, 0, 0)
+
+
+def test_wheel_normalization_uses_explicit_deflate_level_nine(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / WHEEL
+    content = b"".join(
+        bytes([index % 251]) * ((index % 97) + 1)
+        for index in range(500)
+    )
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+        package_content=content,
+    )
+
+    backend._normalize_wheel_archive(path, EPOCH)
+
+    compressor = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS)
+    expected = compressor.compress(content) + compressor.flush()
+    default_compressor = zlib.compressobj(-1, zlib.DEFLATED, -zlib.MAX_WBITS)
+    default = default_compressor.compress(content) + default_compressor.flush()
+    assert expected != default
+    assert _raw_wheel_member_payload(path, "fixture/__init__.py") == expected
+
+
+def test_wheel_normalization_rejects_record_tampering_before_rewrite(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+        tamper_record_digest=True,
+    )
+    original = path.read_bytes()
+
+    with pytest.raises(
+        DeterministicSdistError,
+        match="RECORD digest does not match",
+    ):
+        backend._normalize_wheel_archive(path, EPOCH)
+
+    assert path.read_bytes() == original
+    assert not tuple(tmp_path.glob(f".{path.name}.*.tmp"))
+
+
+@pytest.mark.parametrize(
+    "digest_field",
+    [
+        "sha256=A",
+        "sha256=" + ("A" * 43) + "=",
+        "sha256=" + ("+" * 43),
+    ],
+)
+def test_wheel_normalization_rejects_noncanonical_record_digests(
+    tmp_path: Path,
+    digest_field: str,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+        package_digest_field=digest_field,
+    )
+    original = path.read_bytes()
+
+    with pytest.raises(DeterministicSdistError, match="RECORD.*SHA-256"):
+        backend._normalize_wheel_archive(path, EPOCH)
+
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("size_field", ["٤", "04", "9999999999"])
+def test_wheel_normalization_rejects_noncanonical_record_sizes(
+    tmp_path: Path,
+    size_field: str,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+        package_content=b"DATA",
+        package_size_field=size_field,
+    )
+    original = path.read_bytes()
+
+    with pytest.raises(DeterministicSdistError, match="RECORD size"):
+        backend._normalize_wheel_archive(path, EPOCH)
+
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("package_name", "package_mode", "message"),
+    [
+        ("../escape.py", None, "unsafe member name"),
+        ("fixture/CON .txt", None, "nonportable member name"),
+        ("fixture/CONIN$.txt", None, "nonportable member name"),
+        ("fixture/COM1 .txt", None, "nonportable member name"),
+        ("fixture/COM\u00b9.txt", None, "nonportable member name"),
+        ("fixture/LPT\u00b2 .log", None, "nonportable member name"),
+        ("fixture/link.py", stat.S_IFLNK | 0o777, "link or special member"),
+    ],
+)
+def test_wheel_normalization_rejects_unsafe_or_linked_members(
+    tmp_path: Path,
+    package_name: str,
+    package_mode: int | None,
+    message: str,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+        package_name=package_name,
+        package_mode=package_mode,
+    )
+    original = path.read_bytes()
+
+    with pytest.raises(DeterministicSdistError, match=message):
+        backend._normalize_wheel_archive(path, EPOCH)
+
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("component", ["COM0.txt", "COM10.txt", "CON name.txt"])
+def test_archive_member_validators_retain_non_device_controls(
+    component: str,
+) -> None:
+    sdist_name = f"{ROOT}/{component}"
+    wheel_name = f"fixture/{component}"
+
+    assert backend._safe_member_name(sdist_name, expected_root=ROOT) == sdist_name
+    assert backend._safe_wheel_member_name(wheel_name) == wheel_name
+
+
+@pytest.mark.parametrize(
+    ("package_name", "extra_entries", "message"),
+    _WHEEL_NAMESPACE_CONFLICT_CASES,
+)
+def test_wheel_physical_preflight_rejects_namespace_conflicts_before_zipfile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    package_name: str,
+    extra_entries: tuple[tuple[str, bytes], ...],
+    message: str,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+        package_name=package_name,
+        extra_entries=extra_entries,
+    )
+    original = path.read_bytes()
+
+    def unexpected_zipfile(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("ZipFile must not run before namespace preflight")
+
+    monkeypatch.setattr(backend.zipfile, "ZipFile", unexpected_zipfile)
+
+    with pytest.raises(DeterministicSdistError, match=message):
+        backend._normalize_wheel_archive(path, EPOCH)
+
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("package_name", "extra_entries", "message"),
+    _WHEEL_NAMESPACE_CONFLICT_CASES,
+)
+def test_wheel_parser_layer_rejects_namespace_conflicts(
+    tmp_path: Path,
+    package_name: str,
+    extra_entries: tuple[tuple[str, bytes], ...],
+    message: str,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+        package_name=package_name,
+        extra_entries=extra_entries,
+    )
+
+    with (
+        zipfile.ZipFile(path) as archive,
+        pytest.raises(DeterministicSdistError, match=message),
+    ):
+        backend._validated_wheel_members(archive)
+
+
+def test_wheel_namespace_allows_shared_implicit_directories_and_boundaries(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / WHEEL
+    accepted = {
+        "fixture/__init__.py": b"package\n",
+        "fixture/helper.py": b"helper\n",
+        "plain": b"plain\n",
+        "plain-foo": b"plain-foo\n",
+        "a/b": b"b\n",
+        "a/bc/x.py": b"x\n",
+    }
+    package_name = "fixture/__init__.py"
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+        package_name=package_name,
+        package_content=accepted[package_name],
+        extra_entries=tuple(
+            (name, payload) for name, payload in accepted.items() if name != package_name
+        ),
+    )
+
+    backend._normalize_wheel_archive(path, EPOCH)
+
+    with zipfile.ZipFile(path) as archive:
+        assert all(archive.read(name) == payload for name, payload in accepted.items())
+
+
+def test_wheel_normalization_rejects_prepended_and_trailing_bytes(
+    tmp_path: Path,
+) -> None:
+    for directory, mutate in (
+        ("prepended", lambda payload: b"PREFIX" + payload),
+        ("trailing", lambda payload: payload + b"TRAILER"),
+    ):
+        root = tmp_path / directory
+        root.mkdir()
+        path = root / WHEEL
+        _write_raw_wheel(
+            path,
+            metadata_newline=b"\n",
+            timestamp=(2023, 11, 14, 22, 13, 20),
+            creator=3,
+            mode=0o644,
+        )
+        modified = mutate(path.read_bytes())
+        path.write_bytes(modified)
+
+        with pytest.raises(
+            DeterministicSdistError,
+            match="prepended|trailing|framing|valid bounded|central directory",
+        ):
+            backend._normalize_wheel_archive(path, EPOCH)
+
+        assert path.read_bytes() == modified
+
+
+def test_wheel_normalization_rejects_internal_unreferenced_bytes(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+    )
+    _insert_wheel_gap_before_central_directory(path, b"UNREFERENCED-INTERNAL-GAP")
+    modified = path.read_bytes()
+
+    with pytest.raises(
+        DeterministicSdistError,
+        match="contiguous archive|end at the central directory",
+    ):
+        backend._normalize_wheel_archive(path, EPOCH)
+
+    assert path.read_bytes() == modified
+
+
+@pytest.mark.parametrize(
+    "compression",
+    [zipfile.ZIP_DEFLATED, zipfile.ZIP_STORED],
+)
+def test_wheel_normalization_rejects_suffix_inside_compressed_extent(
+    tmp_path: Path,
+    compression: int,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+        compression=compression,
+    )
+    _append_to_final_wheel_compressed_extent(path, b"HIDDEN")
+    modified = path.read_bytes()
+
+    with pytest.raises(
+        DeterministicSdistError,
+        match="compressed|unsupported",
+    ):
+        backend._normalize_wheel_archive(path, EPOCH)
+
+    assert path.read_bytes() == modified
+
+
+@pytest.mark.parametrize("field_offset", [4, 10, 12])
+def test_wheel_normalization_rejects_local_header_metadata_mismatch(
+    tmp_path: Path,
+    field_offset: int,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+    )
+    _mutate_first_wheel_local_u16(path, field_offset)
+    modified = path.read_bytes()
+
+    with pytest.raises(
+        DeterministicSdistError,
+        match="local record conflicts",
+    ):
+        backend._normalize_wheel_archive(path, EPOCH)
+
+    assert path.read_bytes() == modified
+
+
+def test_wheel_normalization_enforces_generated_text_bound(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+    )
+    original = path.read_bytes()
+    monkeypatch.setattr(backend, "_MAX_GENERATED_TEXT_BYTES", 16)
+
+    with pytest.raises(
+        DeterministicSdistError,
+        match="wheel RECORD exceeds|wheel is not a valid bounded archive",
+    ):
+        backend._normalize_wheel_archive(path, EPOCH)
+
+    assert path.read_bytes() == original
+
+
+def test_wheel_physical_preflight_rejects_member_count_before_zipfile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+    )
+    original = path.read_bytes()
+    monkeypatch.setattr(backend, "_MAX_MEMBERS", 1)
+
+    def unexpected_zipfile(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("ZipFile must not run before the physical bound")
+
+    monkeypatch.setattr(backend.zipfile, "ZipFile", unexpected_zipfile)
+
+    with pytest.raises(DeterministicSdistError, match="central directory"):
+        backend._normalize_wheel_archive(path, EPOCH)
+
+    assert path.read_bytes() == original
+
+
+def test_generated_metadata_rejects_bare_carriage_returns(
+    tmp_path: Path,
+) -> None:
+    sdist = _raw_archive(
+        tmp_path,
+        "bare-cr-sdist",
+        metadata_newline=b"\r",
+        include_generated_metadata=True,
+    )
+    wheel_directory = tmp_path / "bare-cr-wheel"
+    wheel_directory.mkdir()
+    wheel = wheel_directory / WHEEL
+    _write_raw_wheel(
+        wheel,
+        metadata_newline=b"\r",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+    )
+    sdist_original = sdist.read_bytes()
+    wheel_original = wheel.read_bytes()
+
+    with pytest.raises(DeterministicSdistError, match="bare carriage return"):
+        _normalize_sdist_archive(sdist, EPOCH)
+    with pytest.raises(DeterministicSdistError, match="bare carriage return"):
+        backend._normalize_wheel_archive(wheel, EPOCH)
+
+    assert sdist.read_bytes() == sdist_original
+    assert wheel.read_bytes() == wheel_original
+
+
+def test_wheel_normalization_detects_source_path_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+    )
+    original_writer = backend._write_normalized_wheel
+
+    def replace_after_write(
+        source_path: Path,
+        raw_output: object,
+        *,
+        expected_source_snapshot: object,
+        source_date_epoch: int,
+    ) -> None:
+        original_writer(
+            source_path,
+            raw_output,
+            expected_source_snapshot=expected_source_snapshot,
+            source_date_epoch=source_date_epoch,
+        )
+        replacement = source_path.with_name("replacement.whl")
+        replacement.write_bytes(source_path.read_bytes())
+        os.replace(replacement, source_path)
+
+    monkeypatch.setattr(backend, "_write_normalized_wheel", replace_after_write)
+
+    with pytest.raises(DeterministicSdistError, match="wheel changed during"):
+        backend._normalize_wheel_archive(path, EPOCH)
+    retained = tuple(tmp_path.glob(f".{path.name}.*.tmp"))
+    assert len(retained) == 1
+
+
+def test_wheel_normalization_detects_temporary_path_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / WHEEL
+    _write_raw_wheel(
+        path,
+        metadata_newline=b"\n",
+        timestamp=(2023, 11, 14, 22, 13, 20),
+        creator=3,
+        mode=0o644,
+    )
+    original = path.read_bytes()
+    original_inventory = backend._wheel_inventory
+
+    def replace_after_inventory(
+        candidate: Path,
+        *,
+        source_date_epoch: int | None,
+    ) -> object:
+        result = original_inventory(
+            candidate,
+            source_date_epoch=source_date_epoch,
+        )
+        if candidate != path:
+            replacement = candidate.with_name("replacement.tmp")
+            replacement.write_bytes(b"do-not-delete-concurrent-wheel-replacement")
+            os.replace(replacement, candidate)
+        return result
+
+    monkeypatch.setattr(backend, "_wheel_inventory", replace_after_inventory)
+
+    with pytest.raises(DeterministicSdistError, match="normalized wheel changed"):
+        backend._normalize_wheel_archive(path, EPOCH)
+    assert path.read_bytes() == original
+    retained = tuple(tmp_path.glob(f".{path.name}.*.tmp"))
+    assert len(retained) == 1
+    assert retained[0].read_bytes() == b"do-not-delete-concurrent-wheel-replacement"
+
+
 def test_normalization_never_collapses_different_member_content(tmp_path: Path) -> None:
     first = _raw_archive(tmp_path, "first", package_content=b"first\n")
     second = _raw_archive(tmp_path, "second", package_content=b"second\n")
@@ -227,6 +1157,11 @@ def test_normalization_never_collapses_different_member_content(tmp_path: Path) 
         ({"include_pyproject": False}, "pyproject.toml"),
         ({"unsafe_name": f"{ROOT}/stream:ads"}, "nonportable member name"),
         ({"unsafe_name": f"{ROOT}/CON"}, "nonportable member name"),
+        ({"unsafe_name": f"{ROOT}/CON .txt"}, "nonportable member name"),
+        ({"unsafe_name": f"{ROOT}/CONOUT$.txt"}, "nonportable member name"),
+        ({"unsafe_name": f"{ROOT}/COM1 .txt"}, "nonportable member name"),
+        ({"unsafe_name": f"{ROOT}/COM\u00b9.txt"}, "nonportable member name"),
+        ({"unsafe_name": f"{ROOT}/LPT\u00b2 .log"}, "nonportable member name"),
         ({"unsafe_name": f"{ROOT}/trailing."}, "nonportable member name"),
         ({"portable_collision": True}, "collide portably"),
     ],
@@ -243,6 +1178,73 @@ def test_normalization_rejects_unsafe_or_incomplete_archives(
         _normalize_sdist_archive(path, EPOCH)
 
     assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("extra_members", "message"),
+    _SDIST_NAMESPACE_CONFLICT_CASES,
+)
+def test_sdist_physical_preflight_rejects_namespace_conflicts_before_tarfile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    extra_members: tuple[tuple[str, str], ...],
+    message: str,
+) -> None:
+    path = _raw_archive(tmp_path, "namespace-preflight", extra_members=extra_members)
+    original = path.read_bytes()
+
+    def unexpected_tarfile(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("tarfile.open must not run before namespace preflight")
+
+    monkeypatch.setattr(backend.tarfile, "open", unexpected_tarfile)
+
+    with pytest.raises(DeterministicSdistError, match=message):
+        _normalize_sdist_archive(path, EPOCH)
+
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("extra_members", "message"),
+    _SDIST_NAMESPACE_CONFLICT_CASES,
+)
+def test_sdist_parser_layer_rejects_namespace_conflicts(
+    tmp_path: Path,
+    extra_members: tuple[tuple[str, str], ...],
+    message: str,
+) -> None:
+    path = _raw_archive(tmp_path, "namespace-parser", extra_members=extra_members)
+
+    with (
+        tarfile.open(path, mode="r:gz") as archive,
+        pytest.raises(DeterministicSdistError, match=message),
+    ):
+        backend._validated_members(
+            archive,
+            expected_root=ROOT,
+            allow_mtime_pax=True,
+        )
+
+
+def test_sdist_namespace_allows_explicit_directory_ancestors(tmp_path: Path) -> None:
+    directory = f"{ROOT}/pkg"
+    path = _raw_archive(
+        tmp_path,
+        "explicit-directory",
+        extra_members=(
+            (f"{directory}/module.py", "file"),
+            (directory, "directory"),
+            (f"{directory}/other.py", "file"),
+        ),
+    )
+
+    _normalize_sdist_archive(path, EPOCH)
+
+    with tarfile.open(path, mode="r:gz") as archive:
+        members = {member.name: member for member in archive.getmembers()}
+    assert members[directory].isdir()
+    assert members[f"{directory}/module.py"].isfile()
+    assert members[f"{directory}/other.py"].isfile()
 
 
 def test_normalization_rejects_corrupt_and_hard_linked_inputs(tmp_path: Path) -> None:
@@ -495,6 +1497,44 @@ def test_post_install_substitution_is_retained_as_a_failure(
     assert path.read_bytes() == adversary_bytes
 
 
+def test_wheel_post_install_substitution_is_retained_as_a_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate_directory = tmp_path / "candidate-wheel"
+    adversary_directory = tmp_path / "adversary-wheel"
+    candidate_directory.mkdir()
+    adversary_directory.mkdir()
+    path = candidate_directory / WHEEL
+    adversary = adversary_directory / WHEEL
+    common = {
+        "metadata_newline": b"\n",
+        "timestamp": (2023, 11, 14, 22, 13, 20),
+        "creator": 3,
+        "mode": 0o644,
+    }
+    _write_raw_wheel(path, package_content=b"expected\n", **common)
+    _write_raw_wheel(adversary, package_content=b"substituted\n", **common)
+    backend._normalize_wheel_archive(adversary, EPOCH)
+    adversary_bytes = adversary.read_bytes()
+    real_replace = os.replace
+
+    def replace_then_substitute(source: Path, destination: Path) -> None:
+        real_replace(source, destination)
+        replacement = Path(destination).with_name("post-install-replacement.whl")
+        replacement.write_bytes(adversary_bytes)
+        real_replace(replacement, destination)
+
+    monkeypatch.setattr(backend.os, "replace", replace_then_substitute)
+
+    with pytest.raises(
+        DeterministicSdistError,
+        match="installed normalized wheel changed",
+    ):
+        backend._normalize_wheel_archive(path, EPOCH)
+    assert path.read_bytes() == adversary_bytes
+
+
 def test_file_snapshot_ignores_descriptor_only_change_time(tmp_path: Path) -> None:
     path = _raw_archive(tmp_path, "raw")
     observed = path.stat()
@@ -542,6 +1582,65 @@ def test_build_hook_delegates_unchanged_without_epoch(
     )
 
     assert backend.build_sdist("unused") == "delegated.tar.gz"
+
+
+def test_wheel_build_hook_delegates_unchanged_without_epoch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[tuple[str, object, object]] = []
+
+    def build_wheel(
+        directory: str,
+        *,
+        config_settings: object,
+        metadata_directory: object,
+    ) -> str:
+        observed.append((directory, config_settings, metadata_directory))
+        return "delegated.whl"
+
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)
+    monkeypatch.setattr(backend._setuptools_backend, "build_wheel", build_wheel)
+    settings = {"tag-date": "false"}
+
+    assert backend.build_wheel("unused", settings, "metadata") == "delegated.whl"
+    assert observed == [("unused", settings, "metadata")]
+
+
+def test_wheel_build_hook_normalizes_with_an_explicit_epoch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+
+    def fake_build_wheel(
+        directory: str,
+        *,
+        config_settings: dict[str, object] | None = None,
+        metadata_directory: str | None = None,
+    ) -> str:
+        assert config_settings is None
+        assert metadata_directory is None
+        _write_raw_wheel(
+            Path(directory) / WHEEL,
+            metadata_newline=b"\r\n",
+            timestamp=(2023, 11, 14, 22, 13, 18),
+            creator=0,
+            mode=0o666,
+        )
+        return WHEEL
+
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", str(EPOCH))
+    monkeypatch.setattr(backend._setuptools_backend, "build_wheel", fake_build_wheel)
+
+    assert backend.build_wheel(str(dist)) == WHEEL
+    with zipfile.ZipFile(dist / WHEEL) as archive:
+        members = archive.infolist()
+        metadata = archive.read(f"{DIST_INFO}/METADATA")
+    assert members
+    assert b"\r" not in metadata
+    assert all(member.date_time == backend._wheel_timestamp(EPOCH) for member in members)
+    assert all(member.create_system == 3 for member in members)
 
 
 def test_build_hook_normalizes_with_an_explicit_epoch(
@@ -595,6 +1694,24 @@ def test_invalid_epoch_fails_before_setuptools_is_invoked(
 
     with pytest.raises(DeterministicSdistError, match="decimal integer"):
         backend.build_sdist("unused")
+    assert not invoked
+
+
+def test_invalid_wheel_epoch_fails_before_setuptools_is_invoked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invoked = False
+
+    def fake_build_wheel(*_args: object, **_kwargs: object) -> str:
+        nonlocal invoked
+        invoked = True
+        return WHEEL
+
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "01")
+    monkeypatch.setattr(backend._setuptools_backend, "build_wheel", fake_build_wheel)
+
+    with pytest.raises(DeterministicSdistError, match="decimal integer"):
+        backend.build_wheel("unused")
     assert not invoked
 
 

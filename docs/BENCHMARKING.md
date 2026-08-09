@@ -281,6 +281,27 @@ inside a frozen protocol, but they cannot count as certificate wins without a
 validated bounded-run manifest. A failed manifest contributes its retained
 reason and hash to the per-system invalid decision and evidence digest.
 
+The source/sdist-only `benchmarks.literal_process` module now separates the
+generic literal-argv lifecycle from any candidate wire format. It validates an
+absolute executable and working directory, a bounded explicit environment,
+and finite immutable limits; launches with `shell=False`; drains stdout and
+stderr concurrently; retains only a `limit + 1` prefix per stream while
+counting all drained bytes; and creates no named spool. Its setup-inclusive
+deadline is checked before launch, before Windows resume, and before every
+completion probe. Results retain exact limits, phase durations, environment
+digest/names, stream prefixes/digests/counts, termination trigger, cleanup
+error, and platform scope.
+
+That lifecycle is an accounting and ownership primitive, not a sandbox.
+Windows uses a suspended child assigned to a Job before resume. POSIX uses an
+anchored, still-waitable session/process-group leader, but deliberate group
+escape remains possible. The module forbids `preexec_fn` and rejects POSIX
+memory-limit requests; a later external container/VM controller must establish
+POSIX memory, filesystem, mount, PID, user, and network isolation.
+`swebench_containment_claim_ready` is permanently false. The existing LRCBench
+runner below retains its candidate validation, inference-service accounting,
+Darwin pre-limiter, and manifest semantics; it has not been silently replaced.
+
 The repository also provides a standard process boundary:
 
 ```console
@@ -303,6 +324,7 @@ python -m benchmarks.external_runner \
   --network-isolation-evidence network-policy.txt \
   --inference-service-pid INFERENCE_SERVICE_PID \
   --max-inference-service-memory-mb SERVICE_MEMORY_LIMIT_MB \
+  --expected-inference-service-executable-sha256 SERVICE_EXECUTABLE_SHA256 \
   --adapter-revision REVISION \
   --environment-id sha256:DEPENDENCY_LOCK_SHA256 \
   --model-id qwen/qwen3.6-35b-a3b@q4_k_m \
@@ -334,9 +356,14 @@ The original corpus is retained as manifest evidence. On import, the loader
 reopens its absolute path, verifies its canonical self-digest and exact file
 digest, checks the recorded case count, and reconstructs every deterministic
 one-case corpus before returning the candidate for full benchmark-side
-decoding. Executed records must be the ordered parent-corpus prefix and match
-the exact self/file digests plus runner-owned temporary path layout. A complete
-run must also retain each validated one-case candidate self-digest. Replay
+decoding. Retained claim-control evidence paths use canonical POSIX or Windows
+spelling. Their Windows components reject invalid characters, trailing
+dots/spaces, alternate data streams, and reserved device aliases, including
+aliases with ASCII spaces immediately before an extension; ambiguous evidence
+paths are rejected, never normalized. Executed records must be the ordered
+parent-corpus prefix and match the exact self/file digests plus runner-owned
+temporary path layout. A complete run must also retain each validated one-case
+candidate self-digest. Replay
 rebuilds that envelope from the registered producer and matching raw merged
 case, rejecting a substituted or reordered case payload. It also rehashes the
 retained dependency lock;
@@ -344,9 +371,17 @@ claim controls require `environment_id` to equal
 `sha256:<dependency-lock-sha256>`. The retained adapter entrypoint must appear
 in the recorded command and in the bounded recursive inventory of
 `--adapter-source-root`. Loader replay rehashes every regular file in that
-link-free source tree and recomputes the portable command-contract digest;
-external
-scoring matches the entrypoint, source-tree, resolved-runtime, and portable
+link-free source tree and recomputes the portable command-contract digest. Each
+normalized POSIX-relative source member must also pass the same Windows
+component rule before capture or replay accepts it. The rule rejects members
+rather than rewriting them. The aggregate inventory also rejects stable
+ASCII-case collisions across every implicit directory prefix and full file
+path, including file/directory prefix conflicts. Only UTF-8 bytes for ASCII
+`A`--`Z` are folded; non-ASCII bytes remain exact so validity does not inherit a
+host or Python Unicode case table. This does not claim to solve non-ASCII case,
+Unicode-normalization, or path-length collisions, and it does not make a
+foreign absolute source root native-reopenable. External scoring matches the
+entrypoint, source-tree, resolved-runtime, and portable
 command-contract digests to the frozen per-system protocol fields. The
 contract uses typed tokens for runner substitutions and bound paths, so
 different clean-host absolute paths produce the same digest. Every per-case
@@ -423,6 +458,12 @@ process start succeeded, a cleanup/proof failure is retained as
 `process_group_cleanup_failed` with its controlled validation error and stream
 evidence. Per-case mode records that case and launches no later case; preflight
 and process-start failures remain runner errors.
+The adapter timeout begins before temporary launch setup and `Popen`. Each
+monitor iteration samples that monotonic deadline before probing for process
+completion. A process whose completion is first observable at or after the
+deadline is therefore retained as a timeout; late observation cannot upgrade
+it to success. This is intentionally conservative because the runner has no
+authenticated child-completion timestamp from before the deadline.
 The service PID and service-memory options separately
 capture the pre-existing inference process's creation identity and executable
 digest, then sample Windows working set or Linux/macOS RSS at the runner's
@@ -430,6 +471,19 @@ polling cadence. macOS uses `libproc` and rechecks the PID creation time around
 each executable/RSS sample. The adapter run fails if the service disappears,
 restarts, changes executable, or exceeds the ceiling; the runner does not
 terminate or contain that service, and polling can miss between-sample spikes.
+Linux brackets an intentional open and bounded hash of `/proc/<pid>/exe` with
+the process start token, then rechecks the proc link target and inode. The proc
+descriptor supplies the executable bytes; the symlink target is display
+metadata and is not reopened through the runner's mount namespace. Linux
+service accounting therefore requires mounted procfs,
+permission to inspect the process, and a PID visible in the runner's PID
+namespace. Missing procfs, protected procfs, and an invisible PID are
+classified and fail the claim-bearing preflight without a weaker fallback.
+The optional expected-executable digest rejects a visible wrong-PID collision
+only when its executable bytes differ; processes using the same executable
+remain indistinguishable. Registered scoring independently requires the same
+frozen digest.
+Omitting service accounting leaves non-claim diagnostic execution available.
 This is not a verified macOS jetsam or physical-footprint provider.
 It also cannot prove that the adapter used the designated PID or automatically
 include separate helper processes. Configured service accounting is supported
@@ -535,6 +589,309 @@ working-tree snapshot, not a permanent guarantee. Most importantly, `ISSUED`
 means only that the compiler cleared LRCBench’s local gates against bundled
 baselines. It does not mean that the compiler beat any named external system.
 
+## SWE-bench Verified source binding
+
+The repository now pins the complete 500-row SWE-bench Verified `test` source
+at immutable dataset revision
+`91aa3ed51b709be6457e12d00300a6a596d4c6a3`. The self-hashed suite descriptor
+binds exact Parquet and canonical-snapshot bytes, physical row order, the full
+result-blind selection, field partitions, and official harness source identity.
+Its allowlist produces two-field candidate payloads containing only an
+HMAC-derived opaque routing id and `problem_statement`.
+
+The source/sdist now also includes a separate raw-Git preparation boundary.
+It verifies an offline local SHA-1 bare mirror and configured origin, then
+derives one selected repository/base commit only from a revalidated source
+row. A release-digest-bound worker starts under isolated `python -B -I -S` and
+the generic literal-process owner, reads bounded raw commit/tree/blob frames
+through `git cat-file`, recomputes object identities, requires clean protocol
+EOF, rejects links, gitlinks, empty directories, special or
+cross-platform-unsafe paths, and writes only independent regular files into a
+fresh directory. It never uses checkout, archive, filters, or
+candidate-provided Git state. The parent reopens the exact mirror commit and
+independently reconciles every path, directory, mode, size, blob id, SHA-256,
+user-visible extended attribute, and NTFS stream before returning a self-hashed
+coordinator-only manifest.
+
+That implementation has passed adversarial tests against synthetic local Git
+mirrors and now retains 213 selected public outcomes across nine repositories.
+The verified through-499 reconciliation covers attempted physical ordinals
+287--499: 207 exact base commits passed live preparation replay, the same six
+Pylint commits were refused by the link-free `tree-symlink-forbidden` policy,
+and 287 rows at ordinals 0--286 remain unattempted. This does not mean every
+ordinal through 499 was prepared. No prepared tree is a candidate mount.
+
+This is mixed-generation evidence. The historical predecessor through ordinal
+380 remains bound to clean generation revision
+`d512b04156728cb9a4088f250ead395192572b34`; its 88 manifests bind 64,056
+regular files, 801,780,869 blob bytes, 7,603 tree objects, and 3,208,763 raw
+tree-object bytes. Its historical ignored 72,728-byte summary has file SHA-256
+`21ded8d8bff3038e1064abaff01d952e06fe60d165617f3e3e213d55ba99b781`
+and self-hash
+`f11f8bd4235c1469fbe8dd8865d92519af82f8c831ae5901a82b182bd221b96d`.
+The Sphinx extension and historical through-424 reconciliation are bound to
+clean revision
+`f12aa37d91bc4b2c3fa37e0ab882df6b035a902d`. All 44 Sphinx
+rows at ordinals 381--424 prepared and none was refused. Their 44 manifests
+total 18,731,287 bytes and bind 66,143 regular files, 736,223,680 blob bytes,
+18,382 tree objects, and 3,334,382 raw tree-object bytes. The 31,722-byte
+Sphinx segment summary has file SHA-256
+`fc11dfd91d75ee903359a6f9158956342422f1a4b8f6ef58cb18247af484949b`
+and self-hash
+`f62a65f0f54a23a07d4385f168a4696c7437d90a55e9e8ca80b9d24a282b5bb3`;
+its 46-event, 24,447-byte journal has SHA-256
+`6655d51f482a0039c3e1a070287456c6ef8f3936fb77b02b10590fa648f38b93`.
+
+Across those two historical through-424 segments, the 132 manifests total
+35,064,737 bytes and bind
+130,199 regular files, 1,538,004,549 blob bytes, 25,985 tree objects, and
+6,543,145 raw tree-object bytes. The ignored 45,469-byte reconciliation has
+file SHA-256
+`c6882b68d817e374ebd6be00fa32a7ee2a2ac2d265c2f8f1fc8c858138fea23e`
+and self-hash
+`7bf6599e2a258b588a92b9bab41c899ba799b0fc81ff1bd41f355b86aa92a789`.
+The Sphinx mirror-evidence file is 1,646 bytes with file SHA-256
+`159f53c82a222e9cad63d114737d6baf11136f0ee162ca13d56387dc842ae12f`
+and mirror self-hash
+`c0a2425237dbff9c8d471a82bbb3730bca316b5019c0db05c23358a3bdd67a6d`;
+the 96,201-byte Sphinx engineering inventory has file SHA-256
+`e02f07b4feb49ab7ebf378ef7614b8acd01a7367921acfe449ec0e2a5ef08840`
+and self-hash
+`5df1f68df2405b8365074cce05b7ff2391b6ac945f81dd47951956a918ddae25`.
+
+The SymPy extension is bound to clean generation revision
+`c3375577b1e555a56fa6c64ed754bc9eabd64b8f`. All 75 SymPy rows at ordinals
+425--499 prepared and none was refused. The range runs from
+`sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
+`sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`.
+Their 75 manifests total 31,999,044
+bytes and bind 128,638 regular files, 2,253,028,012 blob bytes, 15,474 tree
+objects, and 5,906,718 raw tree-object bytes. The 50,679-byte segment summary
+has file SHA-256
+`17ccdf6c9941e83493dab39c13ba34a34c500a600bb0d4b8c5836fcad485d505`
+and self-hash
+`8c1d52330a69882e7ffe86851a7e684d33060fb2b476e52681ab50688b678ca0`;
+its 77-event, 40,345-byte journal has SHA-256
+`37fe9b7fc0383e74b8c5cb7194c0d2e6becfab5d656e62ee1aca4d760b799254`.
+The 1,634-byte SymPy mirror evidence has file SHA-256
+`ca82d8be6381caf83743042d3452f49c15338f36562479212231080e740126d2`
+and non-authenticating mirror self-hash
+`0220123b7d117760950386d21ab58b4a6aa5de5dcc19b4abe62f274674d66859`;
+the 217,198-byte engineering inventory has file SHA-256
+`be81e87227e3d6f9438b71a83ec48460d92545f829e252ae9606271e00b02db0`
+and self-hash
+`ac9cb5190e77294b655b86b63a398a8bd0407475322c0ca4e58a72805ca52066`.
+
+Across all three generation segments, the 207 manifests total 67,063,781
+bytes and bind 258,837 regular files, 3,791,032,561 blob bytes, 41,459 tree
+objects, and 12,449,863 raw tree-object bytes. The 116,825-byte through-499
+reconciliation builder has SHA-256
+`13fd7d2e0a44c50a2a8cfb7003abc838d38714c6b8baacd56f796eb5c9f5ef44`.
+The ignored 67,322-byte reconciliation has file SHA-256
+`46452d7005493080b0f3bc9e09ff38ce7cf3d534a59a29b8e6499dcac48afcbe`
+and self-hash
+`d26d2a29b94363f3442ba576998725394d00d51335c9750ee466cc99032aea4e`.
+Publication resumed and completed in 7,595.734 seconds; a separate
+`--verify-only` replay completed in 4,920.234 seconds and reproduced the exact
+retained counts and hashes without rewriting the published evidence.
+The post-publication regression gate collected 187 tests in CPython 3.12.13 and
+3.14.6: 186 passed and one expected Windows case skipped in each, with zero
+failures and errors. The 26,267-byte 3.12 JUnit file has SHA-256
+`ca1aada59cf8f82aa0fb69ca1918983a578035d7a27383a37fe78bdc2b481c3c`
+and suite time 314.612 seconds; the 26,266-byte 3.14 file has SHA-256
+`127600b9d86687108daafd81016b21be08b351e63d6f686c90b62187d497d0d8`
+and suite time 301.905 seconds. Ruff and in-memory compilation passed in both.
+
+A configured origin URL is not authenticated provenance; SHA-1 is the source
+corpus's Git identity, while raw object bodies receive separate SHA-256
+evidence. Mirror, worker, preparation, inventory, reconciliation, and cohort
+self-hashes do not authenticate an author. Redistribution, candidate mount,
+mount/network isolation, execution, hidden-test application, grader review,
+score, usefulness, and claim readiness remain false.
+
+The source/sdist prediction ledger makes the full selected cohort, rather than
+an upstream predictions loader, authoritative for the denominator. It
+revalidates source/key and successful preparation evidence, reconciles
+opaque-id candidate captures exhaustively in physical source order, and
+totalizes refusals plus missing, duplicate, unexpected, invalid, and oversized
+outputs as retained nonpredictions/protocol violations. Its exact three-field
+official JSONL has one row per selected task; per-patch, per-line, and
+whole-file byte/hash bindings make canonical replay deterministic while the
+ledger retains no patch text or runtime path. Contiguous capture ordinals
+replay aggregate retained-byte limits without double-counting task/protocol
+evidence, and guarded reads bind the descriptor actually opened to the
+initial/installed artifact identity. This is prediction interchange
+evidence, not proof of candidate execution or grading. Replay requires the
+separately retained expected code/model/agent/prompt/tool/controller identity,
+but those caller-supplied digests are not authenticated producer evidence.
+Rejected raw capture content is not duplicated, so duplicate/invalid/unexpected
+protocol rows remain producer-asserted unless their bytes came through the
+controller-run evidence boundary below.
+
+The historical through-380 ledger is 490,862 bytes with file SHA-256
+`dc8d7c10b7ab4ad4cf24123296abf502f614a1740337e356ce281e7bffcdf8af`
+and self-hash
+`3fa05e48739ca1fdc1e8295724b68f45f42728f9229cf908dfeaa6fd29192e5d`.
+The historical ignored through-424 ledger reconciles 132 prepared, 6 refused,
+and 362 unattempted outcomes with no prediction. Its 493,768-byte file has
+SHA-256
+`3be02f725ec0e0041bde5af9ba02288c9b15823f3c0fcfd1ad84445d78276bb8`
+and self-hash
+`5543f9e28a11a12bdf9a0bf9f3473926b80b0357910eed1e2fb2fcdc9cd002cc`.
+The current ignored through-499 ledger reconciles 207 prepared, 6 refused, and
+287 unattempted outcomes with no prediction. Its 498,718-byte file has SHA-256
+`e57df1b4c11ae8c274e636d488151b2e2fd865026d877f7e7a345c9bc6b97b3d`
+and self-hash
+`1f962ed25a7644b03bd36bb0b0b4ea79f29da8129ac0441a0084e7fb83d5b4dc`.
+Its companion official-format JSONL is byte-for-byte unchanged from both
+predecessors: 53,734 bytes, exactly 500 LF-terminated rows in physical source
+order, 500 `null` patches, and SHA-256
+`546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`.
+The current ledger/JSONL pair is denominator/interchange evidence only;
+candidate-capture origin, system
+identity, producer authentication, execution, hidden-test application, grading,
+score, usefulness, and claim readiness remain false.
+
+The source/sdist-only controller-run ledger now supplies that bounded raw-byte
+and workspace-observation contract for runs launched through it. It requires one
+ordered workspace binding for every selected task, verifies each supplied
+mutable tree against the successful preparation, appends an exact two-field
+request path and workspace path to a fixed literal controller argv, and retains
+bounded raw stdout/stderr prefixes plus initial/final workspace summaries and a
+deterministic delta. Repository, workspace, launch, process, stream, malformed
+output, oversized patch, and captured-run dispositions remain exhaustive over
+the complete source-selected denominator. Candidate captures passed to the
+prediction ledger are reconstructed only from replayed stdout.
+
+That consistency boundary is not an execution attestation or sandbox. The
+workspace is caller-provided, not a created candidate mount. Executable, argv,
+environment, system, token, trajectory, and self-hash bindings do not
+authenticate a controller, agent, model, loaded code, output producer, token
+counter, or trajectory. The underlying Windows Job or escapable POSIX process
+group does not establish mount, filesystem, network, user, PID, or image
+isolation. Workspace traversal and executable launch are pathname-based rather
+than descriptor-pinned, process exit/trigger/timing/cleanup fields are
+unauthenticated coordinator observations, and a row with no retained final
+summary cannot replay missing workspace contents. Current tests launch only
+synthetic controllers and repositories; no public candidate, model, agent,
+grader, resolution, score, or usefulness measurement exists.
+
+### Mechanical patch composition preflight
+
+The coordinator-only, source/sdist-only `benchmarks.swebench_patch` boundary
+adds synthetic text-patch mechanics under schema
+`ctxc-swebench-patch-composition-0.1`; it is absent from the installed wheel.
+It revalidates the canonical source and source-bound preparation, scans the
+prepared base, and applies candidate and hidden patches to independent
+temporary copies without mutating that base. Candidate bytes are validated
+before source verification. A streaming closed grammar accepts regular-file
+text modifications and exact-`100644` additions/deletions, including quoted and
+canonical unquoted-space paths; hidden bytes are validated before patch
+application. Repository verification may invoke Git first but never supplies
+it patch bytes. Files and directories have separate count bounds, cleanup
+preserves primary failures, and canonical evidence is sized before whole-value
+hashing or encoding. Its overlap check treats equal, ancestor, and descendant
+effective paths as conflicts with storage linear in retained path bytes.
+
+The two statuses are `overlap-detected-not-composable`, which retains conflict
+evidence and performs no composition, and
+`disjoint-composition-preflight-verified-not-a-grader`, which replays candidate
+then hidden deltas in a third clean copy and verifies both deltas exactly.
+Strict decode checks structure and the self-hash without authenticating the
+producer. Public verify, exclusive write, load, and replay canonically snapshot
+source/preparation evidence, bind the live prepared-tree summary, and require
+exact semantic replay. `retained_disjoint` is a fail-closed structural property,
+not a safety or claim decision.
+
+Preamble/headerless/combined/binary diffs, standard or legacy copy/rename and
+similarity metadata, mode changes, unsafe modes, inconsistent headers, unknown
+metadata, and malformed hunks fail before patch application. Accepted ordinary
+text content/add/delete patches still reach an unsandboxed native Git parser
+with no native memory or filesystem quota; its tree limits are after-the-fact
+verification rather than OS enforcement. Owned temporary cleanup cannot hide a
+primary error, but recursive deletion is not itself entry-bounded.
+`PatchCompositionError` carries a machine-readable stage and fixed
+`preflight-exception-not-a-cohort-result` disposition. An outer ledger must
+retain and map every such exception across the complete source-selected
+denominator. This preflight does not itself create, replace, or narrow that
+ledger.
+
+Commit `a1b262a` retained schema `0.1` and closed the review gap. Parser-only
+replay of all 500 frozen hidden patches accepted 499 and refused only the actual
+rename in `astropy__astropy-7336`; no task ran. Focused patch tests passed 86/86
+on CPython 3.12 and 3.14. The integrated source/repository/prediction/patch gate
+collected 187 in each environment: 186 passed and one expected Windows case
+skipped. Three
+independent final reviews found no P0--P3 issue. This module supplies structured
+exceptions only; outer-ledger retention remains future coordinator work.
+
+All candidate execution, hidden-test execution, grader, result, score,
+usefulness, mount/network/filesystem isolation, native quota, parser sandbox,
+and claim-readiness flags remain false. Synthetic tests exercise the mechanism;
+the patch preflight added, removed, ran, graded, and scored no public row. The
+separately verified current preparation checkpoint contains 207 prepared, 6
+policy-refused, and 287 unattempted rows.
+
+After completing the late physical block 287--499, the next and smallest
+untouched physical repository block is Astropy ordinals 0--21: 22 selected
+tasks and 22 distinct exact commits, beginning with
+`astropy__astropy-12907@d16bfe05a744909de4b27f5875fe0d4ed41ce607`
+and ending with
+`astropy__astropy-8872@b750a0e6ee76fb6b8a099a4d16ec51977be46bf6`.
+No Astropy mirror, preparation outcome, or license inventory is claimed by the
+through-499 checkpoint. SymPy preparation and inventory evidence does not imply
+candidate execution or a grader result.
+
+The external protocol's coding-task slot therefore remains `pending`: the
+pinned dataset card declares no license, and the remaining public-cohort
+preparation, independently verified candidate mount/filesystem and network
+isolation, grader security review, exact hidden-test application,
+redistribution review, public execution, grading, resolution, and scoring all
+remain absent or false. HMAC ids do not prevent relinking from public problem
+text or establish that a model has not seen benchmark gold.
+
+The harness code's MIT license does not license the dataset rows or third-party
+repository snapshots. See [SWE-bench Verified source intake](SWEBENCH_EVALUATION.md)
+for exact identities, preparation policy, and executor/grader requirements.
+
+## tau2-bench v1.0.1 source binding
+
+The second structurally distinct public suite is now selected and source-bound,
+but not executed. Its source/sdist-only descriptor pins tau2-bench's annotated
+`v1.0.1` tag object `b711c1ead46f55111bf765cf44d5da8bacc2d28c`, peeled
+commit `fc0055dc4e0a316c3f83133267fbd6faaa770992`, exact raw-object and
+required-file identities, and the complete half-duplex text `base` cohort for
+airline, retail, and manual-policy telecom. The selected counts are 50, 114,
+and 114, respectively.
+
+Within each domain, the frozen order is the physical `tasks.json` array order
+filtered by membership in `split_tasks.json["base"]`. This reproduces the
+pinned upstream loaders and intentionally differs from the literal base-array
+order. The canonical 278-line `domain<TAB>task_id<LF>` manifest is 15,948
+bytes with SHA-256
+`61336d42294a9265ea4b70748e7be0988a98b6064e20e366dbf5d4088b0426a5`.
+The verifier reads only bounded raw local Git objects, strictly checks every
+source byte before parsing task JSON, and retains selection/evidence records
+rather than full Task documents or raw upstream task ids. The descriptor itself
+is coordinator-only and cannot enter a candidate mount.
+
+The source-task candidate field allowlist is empty. Future candidate-visible
+semantics are restricted to the normal agent prompt and policy, ordered
+serialized tool schemas, observed agent-view messages, and
+coordinator-produced tool results. Task descriptions, scenarios, initial
+state, evaluator criteria, golden actions, annotations/issues/tickets, DBs,
+simulator/grader material, results, and the upstream checkout remain outside
+candidate bytes and mounts. The upstream in-process agent-factory path is
+prohibited because it hands arbitrary factories the full Task and live
+environment-backed tools.
+
+This is source and protocol evidence only. No candidate adapter, simulator,
+grader, dependency environment, sandbox, public run, reward, score, usefulness
+result, or claim-ready evidence exists. The retail natural-language grader also
+requires a fail-closed wrapper before use because its upstream free-form JSON
+path can accept an empty result list vacuously. See the complete
+[tau2-bench evaluation contract](TAU2_EVALUATION.md).
+
 ## The exact external “50% better than most” bar
 
 No external comparison has been performed by this repository. A defensible
@@ -572,8 +929,10 @@ form a verified draft. The result-blind screen records observed revisions and
 license evidence for ACON, FoldAgent, and AMA-Agent, plus the unresolved MemIR
 artifact. Nine explicit blockers cover final candidate decisions/adapters,
 dependency locks, adapter memory, inference-service accounting, the natural
-cohort, two downstream suites, and frozen downstream samples. The draft
-therefore cannot serve as a preregistration or support a production claim yet.
+cohort, SWE-bench execution/grading controls, tau2-bench
+candidate/simulator/grader/isolation controls, and frozen downstream samples.
+The draft therefore cannot serve as a
+preregistration or support a production claim yet.
 Verify its internal state without claiming readiness:
 
 ```console
@@ -589,6 +948,39 @@ The strict-majority result must additionally show at least 50% task-failure
 reduction or 1.5x successful completions per total token or cost on matched
 downstream runs. It must also show zero observed protected and exact misses on
 the frozen claim cohorts and at least 5x real-token compression per cohort.
+
+## Materialization retention structural diagnostic
+
+The installed `ctxc evaluate-materialization` command compares three
+representations of each ordered coding history: full raw history, a bounded
+recent tail, and the existing `materialize_context()` output. Its immutable
+package-resident pack contains 30 project-authored synthetic-naturalistic cases
+in grouped splits of 4 train, 6 development, and 20 held out. Every arm uses
+`unicode-codepoint-count-v1`; these are exact Unicode code-point planning units,
+not provider-token counts.
+
+The canonical report retains exact integer correction, identifier, path,
+number, detail, current-turn, omission/refusal, and authority-boundary
+measurements. Every refusal remains in the report. The runner performs no model,
+retrieval, or provider execution, and retrieval text is neither simulated nor
+promoted into authoritative LRCC memory.
+
+The frozen pack's current deterministic all-split outcome is red: its 28
+predeclared accepted cases return `compiled_memory_not_verified`; its two
+predeclared hard-limit refusals match. A report is still emitted, with
+`integrity_passed=false`, and the CLI returns 3. This outcome was not used to
+retune the fixtures or expectations.
+
+```console
+ctxc evaluate-materialization --split heldout -o retention-report.json
+```
+
+The fixtures are visible, project-authored test material rather than blind gold
+or a collected, licensed, consented, privacy-reviewed natural cohort. Results
+therefore do not establish semantic completeness, downstream task completion,
+provider-token accounting/readiness, or comparative superiority, and they do
+not close P0-E3. The pack and report contract are described in
+[Materialization retention evaluation](MATERIALIZATION_RETENTION_EVALUATION.md).
 
 ## Natural-history evidence contracts
 

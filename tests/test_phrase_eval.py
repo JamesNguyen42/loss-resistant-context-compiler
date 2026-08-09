@@ -100,7 +100,7 @@ def test_bundled_phrase_corpus_is_frozen_balanced_and_api_free() -> None:
 
 def test_phrase_evaluation_replays_the_committed_baseline() -> None:
     corpus = load_phrase_corpus()
-    report = run_phrase_evaluation(corpus)
+    report = run_phrase_evaluation(corpus, package_version="0.1.0")
     committed = load_phrase_report(_COMMITTED_REPORT)
 
     assert report == committed
@@ -128,6 +128,7 @@ def test_phrase_evaluation_replays_the_committed_baseline() -> None:
         "negative_case_accuracy": 0.833333,
         "verification_failures": 0,
     }
+
     assert metrics["by_kind"]["goal"]["recall"] == 1.0
     assert metrics["by_kind"]["exact_reference"]["precision"] == 1.0
     assert metrics["by_kind"]["decision"]["recall"] == 0.6
@@ -147,6 +148,60 @@ def test_phrase_evaluation_replays_the_committed_baseline() -> None:
         "n-mention-05",
         "n-mention-07",
     }
+
+
+@pytest.mark.parametrize(
+    "package_version",
+    [
+        "0.1.0",
+        "0.1.1a1",
+        "0.1.1a2",
+        "0.1.1a3",
+        "0.1.1a4",
+        "0.1.1a5",
+        "0.1.1a6",
+        "0.1.1a7",
+        "0.1.1a8",
+        "0.1.1a9",
+        "0.1.1a10",
+        "0.1.1a11",
+        "0.1.1a12",
+        "0.1.1a13",
+        "0.1.1a14",
+        "0.1.1a15",
+        "0.1.1a16",
+        "0.1.1a17",
+        "0.1.1a18",
+        "0.1.1a19",
+        "0.1.1a20",
+        "0.1.1a21",
+    ],
+)
+def test_phrase_evaluation_replays_each_supported_package_identity(
+    package_version: str,
+) -> None:
+    corpus = load_phrase_corpus()
+    report = run_phrase_evaluation(
+        corpus,
+        package_version=package_version,
+    )
+
+    assert report["system"]["package_version"] == package_version
+    assert verify_phrase_report(report, corpus)["verified"] is True
+
+
+@pytest.mark.parametrize(
+    "package_version",
+    [True, 1, 0.1, None, "0.1.1", "0.1.1a1 ", type("S", (str,), {})("0.1.1a1")],
+)
+def test_phrase_evaluation_rejects_other_package_identities(
+    package_version: object,
+) -> None:
+    with pytest.raises(PhraseEvaluationError, match="package version is unsupported"):
+        run_phrase_evaluation(
+            load_phrase_corpus(),
+            package_version=package_version,  # type: ignore[arg-type]
+        )
 
 
 def test_phrase_report_verification_replays_all_case_evidence() -> None:

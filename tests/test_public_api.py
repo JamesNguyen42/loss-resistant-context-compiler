@@ -4,6 +4,10 @@ from __future__ import annotations
 import inspect
 
 import context_compiler
+import context_compiler.materialized_window as materialized_window_module
+from context_compiler.context_window import ContextWindowError as ModuleContextWindowError
+from context_compiler.context_window import compose_context_window
+from context_compiler.materialized_window import compose_materialized_context_window
 
 EXPECTED_EXPORTS = (
     "ARCHIVE_ENTRY_SCHEMA",
@@ -22,6 +26,9 @@ EXPECTED_EXPORTS = (
     "CONNECTOR_REQUEST_SCHEMA",
     "CONNECTOR_RESPONSE_SCHEMA",
     "CONTEXT_BUNDLE_SCHEMA",
+    "MATERIALIZED_CONTEXT_COMPONENTS_SCHEMA",
+    "MATERIALIZED_CONTEXT_RECEIPT_SCHEMA",
+    "MATERIALIZED_CONTEXT_RESULT_SCHEMA",
     "MAX_SOURCE_ID_CHARS",
     "MAX_SOURCE_ROLE_CHARS",
     "MAX_SOURCE_TIMESTAMP_CHARS",
@@ -34,6 +41,9 @@ EXPECTED_EXPORTS = (
     "CompositeExtractor",
     "ContextCompiler",
     "ContextBundle",
+    "ContextWindowBudget",
+    "ContextWindowDegradationPolicy",
+    "ContextWindowError",
     "DomainLabelExtractor",
     "ExtractionResult",
     "Extractor",
@@ -78,16 +88,19 @@ EXPECTED_EXPORTS = (
     "diff_artifacts",
     "load_trust_manifest",
     "load_trust_manifest_path",
+    "materialize_context",
     "render_artifact_text",
     "redact_sources",
     "summarize_artifact",
     "serve_stdio",
+    "serialize_materialized_context_result",
     "source_event_to_record",
     "trust_manifest_sha256",
     "validate_artifact_envelope",
     "validate_trust_manifest",
     "verify_redaction_report_hash",
     "verify_redaction_result",
+    "verify_materialized_context_result",
     "verify_trust_manifest",
 )
 
@@ -97,6 +110,9 @@ EXPECTED_SIGNATURES = {
     "CompilationPolicy": "(token_budget: 'int' = 4000, minimum_compression_ratio: 'float' = 5.0, fail_on_budget_overflow: 'bool' = False, include_superseded: 'bool' = False, include_discarded: 'bool' = True, verify: 'bool' = True, recover_missed_protected: 'bool' = True, chars_per_token: 'float' = 4.0, fail_on_primary_extractor_error: 'bool' = False) -> None",
     "ContextCompiler": "(extractor: 'Extractor | None' = None, *, policy: 'CompilationPolicy | None' = None, safety_extractor: 'Extractor | None' = None, token_counter: 'TokenCounter | None' = None, token_counter_id: 'str | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None, untrusted_historical_roles: 'bool' = False) -> 'None'",
     "ContextBundle": "(artifact: 'dict[str, Any]', trusted_memory: 'dict[str, Any]', bindings: 'dict[str, Any]', certificate: 'dict[str, Any]', token_accounting: 'dict[str, Any]', schema: 'str' = 'localai-context-bundle-0.1', protocol_version: 'str' = '0.1', bundle_sha256: 'str' = '') -> None",
+    "ContextWindowBudget": "(hard_limit_tokens: 'int', memory_budget_tokens: 'int', reserved_output_tokens: 'int' = 1024, safety_margin_tokens: 'int' = 256, fixed_input_tokens: 'int' = 0, minimum_recent_messages: 'int' = 0, maximum_recent_messages: 'int' = 4096, per_message_overhead_tokens: 'int' = 0) -> None",
+    "ContextWindowDegradationPolicy": "(mode: 'str' = 'lossless-compact-then-reallocate-v1') -> None",
+    "ContextWindowError": "(message: 'str', *, reason: 'str' = 'invalid_context_window', diagnostic: 'dict[str, object] | None' = None) -> 'None'",
     "ExactTokenCounterAdapter": "(identity: 'str', count_tokens: 'Callable[[str], int]') -> None",
     "IncrementalCompiler": "(compiler: 'ContextCompiler | None' = None, *, session_id: 'str | None' = None, sources: 'Iterable[SourceRecord]' = (), archive_chain_head_sha256: 'str | None' = None, archive_head_verified: 'bool' = False) -> 'None'",
     "LocalAIConnector": "(*, policy: 'CompilationPolicy | None' = None, token_counter: 'ExactTokenCounterAdapter | Callable[[str], int] | Any | None' = None, token_counter_id: 'str | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None, artifact_limits: 'ArtifactLimits | None' = None, source_archive: 'SourceArchive | None' = None) -> 'None'",
@@ -109,9 +125,12 @@ EXPECTED_SIGNATURES = {
     "decode_connector_request": "(raw: 'str', *, max_request_bytes: 'int' = 8388608, max_json_depth: 'int' = 128) -> 'dict[str, Any]'",
     "diff_artifacts": "(before: 'Any', after: 'Any', *, include_item_details: 'bool' = True, limits: 'ArtifactLimits | None' = None) -> 'dict[str, Any]'",
     "redact_sources": "(sources: 'Iterable[SourceRecord]', *, policy: 'RedactionPolicy | None' = None) -> 'RedactionResult'",
+    "materialize_context": "(sources: 'Iterable[SourceRecord | Mapping[str, Any]]', *, current_turn_id: 'str', budget: 'ContextWindowBudget', token_counter: 'ExactTokenCounterAdapter', allocation_plan_sha256: 'str', fixed_input_sha256: 'str | None' = None, policy: 'CompilationPolicy | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None, degradation_policy: 'ContextWindowDegradationPolicy | None' = None) -> 'dict[str, Any]'",
+    "serialize_materialized_context_result": "(value: 'Mapping[str, Any] | bytes', *, expected_receipt_sha256: 'str', expected_allocation_plan_sha256: 'str') -> 'bytes'",
     "serve_stdio": "(*, connector: 'LocalAIConnector | None' = None, input_stream: 'Any', output_stream: 'Any', max_request_bytes: 'int' = 8388608, max_json_depth: 'int' = 128) -> 'int'",
     "source_event_to_record": "(event: 'SourceEvent | Mapping[str, Any] | Any', *, default_sequence: 'int') -> 'SourceRecord'",
     "validate_artifact_envelope": "(artifact: 'Any', *, limits: 'ArtifactLimits | None' = None) -> 'dict[str, Any]'",
+    "verify_materialized_context_result": "(value: 'Mapping[str, Any] | bytes', *, expected_receipt_sha256: 'str', expected_allocation_plan_sha256: 'str') -> 'dict[str, Any]'",
     "verify_trust_manifest": "(manifest: 'Any', artifact: 'Any', sources: 'list[SourceRecord]', *, expected_manifest_sha256: 'str | None', archive_chain_head_sha256: 'str | None' = None, source_limits: 'SourceLimits | None' = None, artifact_limits: 'ArtifactLimits | None' = None) -> 'dict[str, Any]'",
     "ContextCompiler.compile": "(self, sources: 'Iterable[SourceRecord | dict]', *, timeout_seconds: 'float | None' = None) -> 'CompiledMemory'",
     "CompiledMemory.to_dict": "(self, *, include_all_items: 'bool' = True) -> 'dict[str, Any]'",
@@ -130,6 +149,23 @@ EXPECTED_SIGNATURES = {
     "SourceArchive.verify": "(self, *, expected_chain_head: 'str | None' = None) -> 'ArchiveReport'",
 }
 
+EXPECTED_MATERIALIZED_WINDOW_EXPORTS = (
+    "MATERIALIZED_CONTEXT_COMPONENTS_SCHEMA",
+    "MATERIALIZED_CONTEXT_RECEIPT_SCHEMA",
+    "MATERIALIZED_CONTEXT_RESULT_SCHEMA",
+    "MATERIALIZED_CONTEXT_WINDOW_SCHEMA",
+    "MaterializedContextWindow",
+    "compose_materialized_context_window",
+    "materialize_context",
+    "serialize_materialized_context_result",
+    "verify_materialized_context_result",
+)
+
+EXPECTED_MODULE_SIGNATURES = {
+    "compose_context_window": "(sources: 'Iterable[SourceRecord | Mapping[str, Any]]', *, current_turn_id: 'str', budget: 'ContextWindowBudget', token_counter: 'ExactTokenCounterAdapter', fixed_input_sha256: 'str | None' = None, policy: 'CompilationPolicy | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None, degradation_policy: 'ContextWindowDegradationPolicy | None' = None) -> 'ContextWindowPrototype'",
+    "compose_materialized_context_window": "(sources: 'Iterable[SourceRecord | Mapping[str, Any]]', *, current_turn_id: 'str', budget: 'ContextWindowBudget', token_counter: 'ExactTokenCounterAdapter', fixed_input_sha256: 'str | None' = None, allocation_plan_sha256: 'str | None' = None, policy: 'CompilationPolicy | None' = None, source_limits: 'SourceLimits | None' = None, compilation_limits: 'CompilationLimits | None' = None, degradation_policy: 'ContextWindowDegradationPolicy | None' = None) -> 'MaterializedContextWindow'",
+}
+
 
 def _resolve(path: str) -> object:
     value: object = context_compiler
@@ -142,6 +178,11 @@ def test_public_exports_are_exact_and_resolvable() -> None:
     assert tuple(context_compiler.__all__) == EXPECTED_EXPORTS
     assert len(EXPECTED_EXPORTS) == len(set(EXPECTED_EXPORTS))
     assert all(hasattr(context_compiler, name) for name in EXPECTED_EXPORTS)
+    assert tuple(materialized_window_module.__all__) == EXPECTED_MATERIALIZED_WINDOW_EXPORTS
+    assert (
+        context_compiler.serialize_materialized_context_result
+        is materialized_window_module.serialize_materialized_context_result
+    )
 
 
 def test_critical_public_signatures_are_exact() -> None:
@@ -149,9 +190,27 @@ def test_critical_public_signatures_are_exact() -> None:
     assert actual == EXPECTED_SIGNATURES
 
 
-def test_compilation_policy_preserves_legacy_positional_order() -> None:
-    policy = context_compiler.CompilationPolicy(
-        4_000, 5.0, False, False, True, True, True, 3.5
+def test_context_window_module_signatures_are_exact() -> None:
+    actual = {
+        "compose_context_window": str(inspect.signature(compose_context_window)),
+        "compose_materialized_context_window": str(
+            inspect.signature(compose_materialized_context_window)
+        ),
+    }
+    assert actual == EXPECTED_MODULE_SIGNATURES
+
+
+def test_context_window_error_is_the_stable_root_exception() -> None:
+    assert context_compiler.ContextWindowError is ModuleContextWindowError
+    error = context_compiler.ContextWindowError(
+        "bounded refusal",
+        reason="mandatory_components_do_not_fit",
     )
+    assert error.reason == "mandatory_components_do_not_fit"
+    assert error.diagnostic is None
+
+
+def test_compilation_policy_preserves_legacy_positional_order() -> None:
+    policy = context_compiler.CompilationPolicy(4_000, 5.0, False, False, True, True, True, 3.5)
     assert policy.chars_per_token == 3.5
     assert policy.fail_on_primary_extractor_error is False

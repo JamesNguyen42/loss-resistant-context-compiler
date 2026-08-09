@@ -140,9 +140,28 @@ The claim-bearing study must include all of:
 
 Natural cohort manifest: **unresolved blocker `natural-history-cohort`**
 
-Coding task suite and revision: **unresolved blocker `coding-task-suite`**
+Coding task source: **SWE-bench Verified**, dataset
+`SWE-bench/SWE-bench_Verified`, immutable revision
+`91aa3ed51b709be6457e12d00300a6a596d4c6a3`, all 500 `test` rows in
+physical order. The source-only `ctxc-swebench-suite-0.1` descriptor is
+self-hashed as
+`2f97bfbcb036553f9203db2a54bca3b553cf2ddac344b40ca5a7d4b9e2d4f34f`.
+This does **not** freeze the coding-task slot: dataset redistribution review,
+base-commit workspace isolation, retained network-isolation evidence, a
+reviewed official grader, and an execution/result contract remain unresolved
+under blocker `coding-task-suite`.
 
-Second task suite and revision: **unresolved blocker `second-task-suite`**
+Second task source: **tau2-bench v1.0.1 half-duplex text core**, annotated tag
+object `b711c1ead46f55111bf765cf44d5da8bacc2d28c`, peeled commit
+`fc0055dc4e0a316c3f83133267fbd6faaa770992`, and all 278 `base` rows across
+airline, retail, and manual-policy telecom in physical task-file order filtered
+by split membership. The source-only `ctxc-tau2-suite-0.1` descriptor binds the
+exact raw Git objects, required files, loader-order manifest, run profile,
+field partition, and exclusions. This does **not** freeze the second-task slot:
+the external candidate adapter, recursive candidate projection, dependency
+environment, simulator and grader identities/evidence, retail NL-grader
+hardening, filesystem/network/process isolation, execution, reward, and result
+contract remain unresolved under blocker `second-task-suite`.
 
 No claim-bearing run may begin while any blocker exists.
 
@@ -184,8 +203,12 @@ per-task unit. Do not switch to atom weighting after seeing results.
   and exact misses on every frozen cohort
 - at least 5x compression and 100% matched-budget compliance
 
-Sample sizes and task seeds for the two downstream suites: **unresolved
-blocker `downstream-samples`**
+The full 500-row SWE-bench and 278-row tau2-bench source selections are fixed
+without sampling. The current protocol schema conservatively requires a task
+seed before a downstream slot can become `frozen`, so a future schema revision
+must represent these explicit full-population policies instead of inventing an
+unused seed. Trial counts, simulator seeds, and paired run order remain under
+**unresolved blocker `downstream-samples`**.
 
 Changing any primary metric, quantile, seed, sample size, comparison system, or
 exclusion rule after results requires a new protocol version and complete

@@ -599,11 +599,8 @@ def test_connector_integer_boundary_is_explicit_and_stdio_error_is_sanitized() -
     assert responses[0]["error"] == {
         "category": "resource_limit",
         "code": "resource_limit_exceeded",
-        "message": (
-            "connector request exceeds the supported JSON integer length of "
-            "640 digits"
-        ),
+        "message": "connector request exceeds a resource limit",
         "retryable": False,
-        "details": {"exception_type": "ValueError"},
+        "details": {"exception_type": "ConnectorResourceLimitError"},
     }
     assert responses[1]["ok"] is True

@@ -28,7 +28,6 @@ from context_compiler import (
     ContextCompiler,
     LiteralModelExtractor,
     SourceRecord,
-    __version__,
 )
 from context_compiler.atomic import atomic_write_text
 from context_compiler.extractors import ExtractionResult
@@ -592,6 +591,7 @@ def build_qwen_literal_ablation_report(
         source_report,
         corpus,
     )
+    source_package_version = source_report["run"]["package_version"]
     if source_verification["report_sha256"] != (
         FROZEN_SOURCE_REPORT_SHA256
     ):
@@ -811,7 +811,7 @@ def build_qwen_literal_ablation_report(
         "method": {
             "analysis_type": "post-hoc-offset-ablation",
             "claim_bearing": False,
-            "package_version": __version__,
+            "package_version": source_package_version,
             "source_prompt_extractor": "model-json-v1",
             "target_validator": "model-json-literal-v1",
             "target_prompt_evaluated": False,

@@ -1015,19 +1015,19 @@ def test_isolated_compile_uses_the_resolved_default_temporary_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    original_temporary_directory = isolation.tempfile.TemporaryDirectory
+    original_mkdtemp = isolation.tempfile.mkdtemp
     observed_roots: list[Path | None] = []
 
-    def temporary_directory(*args: object, **kwargs: object) -> object:
+    def make_temporary_directory(*args: object, **kwargs: object) -> str:
         root = kwargs.get("dir")
         observed_roots.append(Path(root) if root is not None else None)
-        return original_temporary_directory(*args, **kwargs)  # type: ignore[arg-type]
+        return original_mkdtemp(*args, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(isolation.tempfile, "gettempdir", lambda: str(tmp_path))
     monkeypatch.setattr(
         isolation.tempfile,
-        "TemporaryDirectory",
-        temporary_directory,
+        "mkdtemp",
+        make_temporary_directory,
     )
 
     result = ContextCompiler().compile([make_source()], timeout_seconds=5)
@@ -1052,6 +1052,74 @@ def test_isolation_temporary_root_resolves_a_directory_alias(
     assert isolation._resolved_temporary_root() == physical_root.resolve(strict=True)
     result = ContextCompiler().compile([make_source()], timeout_seconds=5)
     assert result.verification.passed is True
+
+
+def test_compile_temp_cleanup_retries_a_windows_sharing_violation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "compile-temp"
+    directory.mkdir()
+    (directory / "job.pickle").write_bytes(b"fixture")
+    real_rmtree = isolation.shutil.rmtree
+    calls = 0
+    monotonic_values = iter((10.0, 10.0))
+
+    def fail_once(path: Path) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            error = PermissionError(13, "injected sharing violation")
+            error.winerror = 32
+            raise error
+        real_rmtree(path)
+
+    monkeypatch.setattr(isolation.os, "name", "nt")
+    monkeypatch.setattr(isolation.shutil, "rmtree", fail_once)
+    monkeypatch.setattr(
+        isolation.time,
+        "monotonic",
+        lambda: next(monotonic_values),
+    )
+    monkeypatch.setattr(isolation.time, "sleep", lambda _seconds: None)
+
+    isolation._remove_compile_directory(directory)
+
+    assert calls == 2
+    assert not directory.exists()
+
+
+def test_compile_temp_cleanup_retains_a_persistent_windows_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "compile-temp"
+    directory.mkdir()
+    (directory / "job.pickle").write_bytes(b"fixture")
+    injected = PermissionError(13, "persistent sharing violation")
+    injected.winerror = 32
+    monotonic_values = iter((10.0, 12.0))
+    sleep_calls: list[float] = []
+
+    def reject_cleanup(_path: Path) -> None:
+        raise injected
+
+    monkeypatch.setattr(isolation.os, "name", "nt")
+    monkeypatch.setattr(isolation.shutil, "rmtree", reject_cleanup)
+    monkeypatch.setattr(
+        isolation.time,
+        "monotonic",
+        lambda: next(monotonic_values),
+    )
+    monkeypatch.setattr(isolation.time, "sleep", sleep_calls.append)
+
+    with pytest.raises(PermissionError) as captured:
+        isolation._remove_compile_directory(directory)
+
+    assert captured.value is injected
+    assert sleep_calls == []
+    assert directory.is_dir()
+    assert (directory / "job.pickle").read_bytes() == b"fixture"
 
 
 def test_posix_normal_completion_cleans_group_before_reaping(

@@ -211,7 +211,23 @@ class _CompilationWorkBudget:
         self.used = updated
 
 
-def _json_string_utf8_size(value: str, add: Any) -> None:
+def _json_string_utf8_size(
+    value: str,
+    add: Any,
+    *,
+    remaining: int | None = None,
+) -> None:
+    # Source identifiers, roles, digests, and most history content are exact
+    # printable ASCII.  Account for that common case in one bounded update
+    # instead of invoking the limit callback once per character.  Subclasses
+    # retain the legacy character walk so caller-defined method dispatch cannot
+    # affect validation behavior.
+    if type(value) is str and remaining is not None and len(value) + 2 <= remaining and (
+        not value
+        or (value.isascii() and value.isprintable() and '"' not in value and "\\" not in value)
+    ):
+        add(len(value) + 2)
+        return
     add(2)
     for character in value:
         codepoint = ord(character)
@@ -229,6 +245,20 @@ def _json_string_utf8_size(value: str, add: Any) -> None:
             add(3)
         else:
             add(4)
+
+
+_SOURCE_RECORD_KEYS = frozenset(
+    {
+        "id",
+        "sequence",
+        "role",
+        "content",
+        "timestamp",
+        "metadata",
+        "content_sha256",
+        "record_sha256",
+    }
+)
 
 
 def bounded_json_utf8_size(
@@ -262,7 +292,7 @@ def bounded_json_utf8_size(
             add(5)
             return
         if isinstance(current, str):
-            _json_string_utf8_size(current, add)
+            _json_string_utf8_size(current, add, remaining=max_bytes - size)
             return
         if isinstance(current, int) and not isinstance(current, bool):
             try:
@@ -309,7 +339,14 @@ def bounded_json_utf8_size(
                 for index, (key, entry) in enumerate(current.items()):
                     if index:
                         add(1)
-                    _json_string_utf8_size(key, add)
+                    if type(key) is str and key in _SOURCE_RECORD_KEYS:
+                        add(len(key) + 2)
+                    else:
+                        _json_string_utf8_size(
+                            key,
+                            add,
+                            remaining=max_bytes - size,
+                        )
                     add(1)
                     visit(entry, depth + 1)
             finally:

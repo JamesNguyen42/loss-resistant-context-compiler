@@ -44,7 +44,7 @@ from .models import (
     MemoryStatus,
     ProvenanceSpan,
     SourceRecord,
-    render_typed_memory,
+    render_memory_for_metadata,
     source_digest,
 )
 
@@ -66,6 +66,59 @@ CONNECTOR_OPERATIONS = (
     "inspect_memory",
 )
 
+_CONNECTOR_PUBLIC_ERROR_SPECS = {
+    ("resource_limit", "resource_limit_exceeded"): (
+        "connector request exceeds a resource limit",
+        "ConnectorResourceLimitError",
+        False,
+    ),
+    ("state", "unknown_session"): (
+        "connector session is unknown",
+        "ConnectorStateError",
+        False,
+    ),
+    ("timeout", "operation_timed_out"): (
+        "connector operation timed out",
+        "ConnectorTimeoutError",
+        True,
+    ),
+    ("invalid_request", "invalid_json"): (
+        "connector request is not valid JSON",
+        "ConnectorRequestError",
+        False,
+    ),
+    ("invalid_request", "invalid_type"): (
+        "connector request has an invalid type",
+        "ConnectorRequestError",
+        False,
+    ),
+    ("invalid_request", "invalid_value"): (
+        "connector request has an invalid value",
+        "ConnectorRequestError",
+        False,
+    ),
+    ("invalid_request", "unsupported_operation"): (
+        "connector operation is unsupported",
+        "ConnectorRequestError",
+        False,
+    ),
+    ("invalid_request", "unsupported_schema"): (
+        "connector request schema is unsupported",
+        "ConnectorRequestError",
+        False,
+    ),
+    ("integrity", "integrity_check_failed"): (
+        "connector integrity check failed",
+        "ConnectorIntegrityError",
+        False,
+    ),
+    ("runtime", "connector_failure"): (
+        "connector operation failed",
+        "ConnectorRuntimeError",
+        False,
+    ),
+}
+_MAX_ERROR_CLASSIFICATION_CHARACTERS = 4096
 _SHA256 = re.compile(r"[a-f0-9]{64}")
 _MAX_JSON_INTEGER_DIGITS = 640
 _UNTRUSTED_HISTORY_ROLES = frozenset({"assistant", "tool", "function"})
@@ -1417,9 +1470,27 @@ class LocalAIConnector:
         self.source_archive = source_archive
         self._sessions: dict[str, IncrementalCompiler] = {}
         self._archive_session_id: str | None = None
+        self._context_window_degradation: tuple[str, str, int, str | None] | None = None
+
+    def _use_context_window_degradation(
+        self,
+        *,
+        mode: str,
+        rung: str,
+        requested_memory_budget_tokens: int,
+        memory_rendering_profile: str | None,
+    ) -> None:
+        """Carry an internal materialization decision into a fresh compiler."""
+
+        self._context_window_degradation = (
+            mode,
+            rung,
+            requested_memory_budget_tokens,
+            memory_rendering_profile,
+        )
 
     def _compiler(self, policy: CompilationPolicy | None = None) -> ContextCompiler:
-        return ContextCompiler(
+        compiler = ContextCompiler(
             policy=policy or self.policy,
             token_counter=self.token_counter,
             token_counter_id=self.token_counter_id,
@@ -1427,6 +1498,15 @@ class LocalAIConnector:
             compilation_limits=self.compilation_limits,
             untrusted_historical_roles=True,
         )
+        if self._context_window_degradation is not None:
+            mode, rung, requested, profile = self._context_window_degradation
+            compiler._set_context_window_degradation(  # noqa: SLF001
+                mode=mode,
+                rung=rung,
+                requested_memory_budget_tokens=requested,
+                memory_rendering_profile=profile,
+            )
+        return compiler
 
     def _prepare_connector_sources(
         self,
@@ -1963,9 +2043,10 @@ class LocalAIConnector:
             MemoryItem.from_dict(item) for item in bundle.artifact["items"]
         ]
         self._require_trusted_memory_artifact_alignment(bundle, decoded_items)
-        rendered = render_typed_memory(
+        rendered = render_memory_for_metadata(
             decoded_items,
             bundle.artifact["selected_item_ids"],
+            bundle.artifact["compiler_metadata"],
         )
         if bindings["rendered_memory_sha256"] != _sha256_text(rendered):
             raise ValueError(
@@ -2054,7 +2135,11 @@ class LocalAIConnector:
         if not isinstance(verification, dict) or verification.get("passed") is not True:
             raise ValueError("refusing to render context from unverified memory")
         items = [MemoryItem.from_dict(item) for item in artifact["items"]]
-        rendered = render_typed_memory(items, artifact["selected_item_ids"])
+        rendered = render_memory_for_metadata(
+            items,
+            artifact["selected_item_ids"],
+            artifact["compiler_metadata"],
+        )
         expected = checked.bindings.get("rendered_memory_sha256")
         if expected != _sha256_text(rendered):
             raise ValueError("rendered memory digest does not match ContextBundle binding")
@@ -2271,15 +2356,23 @@ class LocalAIConnector:
         decoded_items = [
             MemoryItem.from_dict(item) for item in checked.artifact["items"]
         ]
-        rendered = render_typed_memory(
-            decoded_items,
-            checked.artifact["selected_item_ids"],
-        )
-        if bindings.get("rendered_memory_sha256") != _sha256_text(rendered):
-            binding_issue(
-                "rendered_memory_digest_mismatch",
-                "ContextBundle rendered-memory binding is invalid.",
+        try:
+            rendered = render_memory_for_metadata(
+                decoded_items,
+                checked.artifact["selected_item_ids"],
+                checked.artifact["compiler_metadata"],
             )
+        except (TypeError, ValueError) as exc:
+            binding_issue(
+                "invalid_memory_rendering_profile",
+                f"ContextBundle memory rendering metadata is invalid: {exc}",
+            )
+        else:
+            if bindings.get("rendered_memory_sha256") != _sha256_text(rendered):
+                binding_issue(
+                    "rendered_memory_digest_mismatch",
+                    "ContextBundle rendered-memory binding is invalid.",
+                )
         raw_metrics = checked.artifact.get("compiler_metadata", {}).get(
             "metrics",
             {},
@@ -2629,6 +2722,16 @@ class LocalAIConnector:
         )
 
 
+def _error_classification_text(exc: Exception) -> str:
+    """Return bounded internal-only text for stable error classification."""
+
+    try:
+        message = str(exc)
+    except BaseException:
+        return ""
+    return message[:_MAX_ERROR_CLASSIFICATION_CHARACTERS].casefold()
+
+
 def _connector_error(exc: Exception) -> dict[str, Any]:
     if isinstance(
         exc,
@@ -2650,7 +2753,7 @@ def _connector_error(exc: Exception) -> dict[str, Any]:
         code = "invalid_type"
     elif isinstance(exc, ValueError):
         category = "invalid_request"
-        message = str(exc).casefold()
+        message = _error_classification_text(exc)
         if "connector request exceeds" in message:
             category = "resource_limit"
             code = "resource_limit_exceeded"
@@ -2677,12 +2780,18 @@ def _connector_error(exc: Exception) -> dict[str, Any]:
     else:
         category = "runtime"
         code = "connector_failure"
+    public_spec = _CONNECTOR_PUBLIC_ERROR_SPECS.get((category, code))
+    if public_spec is None:  # Defensive closure for future classifications.
+        category = "runtime"
+        code = "connector_failure"
+        public_spec = _CONNECTOR_PUBLIC_ERROR_SPECS[(category, code)]
+    public_message, public_exception_type, retryable = public_spec
     return {
         "category": category,
         "code": code,
-        "message": str(exc),
-        "retryable": isinstance(exc, TimeoutError),
-        "details": {"exception_type": type(exc).__name__},
+        "message": public_message,
+        "retryable": retryable,
+        "details": {"exception_type": public_exception_type},
     }
 
 

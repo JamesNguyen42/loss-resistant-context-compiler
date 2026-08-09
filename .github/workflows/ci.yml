@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -58,7 +58,69 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: |
+            pyproject.toml
+            requirements-build.lock
+      - name: Provision the hash-bound release builder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ci-build-wheelhouse | Out-Null
+          python -m pip --isolated download --no-deps --only-binary=:all: `
+            --require-hashes `
+            --requirement requirements-build.lock `
+            --dest ci-build-wheelhouse
+          if ($LASTEXITCODE -ne 0) {
+            throw "build-wheel acquisition failed with exit code $LASTEXITCODE"
+          }
+          python -c "import pathlib; root=pathlib.Path('ci-build-wheelhouse'); expected={'build-1.5.0-py3-none-any.whl','colorama-0.4.6-py2.py3-none-any.whl','packaging-26.2-py3-none-any.whl','pip-25.0.1-py3-none-any.whl','pyproject_hooks-1.2.0-py3-none-any.whl','setuptools-83.0.0-py3-none-any.whl','wheel-0.47.0-py3-none-any.whl'}; entries=list(root.iterdir()); assert {path.name for path in entries} == expected, (entries, expected); assert all(path.is_file() and not path.is_symlink() and path.stat().st_nlink == 1 for path in entries), entries"
+          if ($LASTEXITCODE -ne 0) {
+            throw "build-wheel inventory validation failed with exit code $LASTEXITCODE"
+          }
+          python -m venv ci-build-environment
+          if ($LASTEXITCODE -ne 0) {
+            throw "dedicated builder creation failed with exit code $LASTEXITCODE"
+          }
+          $relativeBuildPython = if ($IsWindows) {
+            "Scripts/python.exe"
+          } else {
+            "bin/python"
+          }
+          $buildPython = Join-Path `
+            (Resolve-Path -LiteralPath ci-build-environment).Path `
+            $relativeBuildPython
+          if (-not (Test-Path -LiteralPath $buildPython -PathType Leaf)) {
+            throw "dedicated build Python is absent"
+          }
+          & $buildPython -m pip --isolated install --disable-pip-version-check `
+            --no-deps `
+            --no-index `
+            --find-links ci-build-wheelhouse `
+            --only-binary=:all: `
+            --require-hashes `
+            --force-reinstall `
+            --requirement requirements-build.lock
+          if ($LASTEXITCODE -ne 0) {
+            throw "dedicated builder installation failed with exit code $LASTEXITCODE"
+          }
+          & $buildPython -m pip --isolated check
+          if ($LASTEXITCODE -ne 0) {
+            throw "dedicated builder dependency check failed with exit code $LASTEXITCODE"
+          }
+          & $buildPython -c "import importlib.metadata as m,re; expected={'build':'1.5.0','colorama':'0.4.6','packaging':'26.2','pip':'25.0.1','pyproject-hooks':'1.2.0','setuptools':'83.0.0','wheel':'0.47.0'}; distributions=list(m.distributions()); actual={re.sub(r'[-_.]+','-',item.metadata['Name']).lower():item.version for item in distributions}; assert len(distributions) == 7 and actual == expected, (actual, expected)"
+          if ($LASTEXITCODE -ne 0) {
+            throw "dedicated builder inventory validation failed with exit code $LASTEXITCODE"
+          }
+          Add-Content -Encoding utf8NoBOM -LiteralPath $env:GITHUB_ENV `
+            -Value "CTXC_BUILD_PYTHON=$buildPython"
+          python -VV | Set-Content -Encoding utf8NoBOM release-build-toolchain.txt
+          python -m pip --isolated --version |
+            Add-Content -Encoding utf8NoBOM release-build-toolchain.txt
+          "dedicated release builder:" |
+            Add-Content -Encoding utf8NoBOM release-build-toolchain.txt
+          & $buildPython -VV |
+            Add-Content -Encoding utf8NoBOM release-build-toolchain.txt
+          & $buildPython -m pip --isolated freeze --all |
+            Add-Content -Encoding utf8NoBOM release-build-toolchain.txt
       - name: Install development package
         run: python -m pip install -e ".[dev]"
       - name: Run cross-platform filesystem regressions
@@ -69,15 +131,69 @@ jobs:
           tests/test_compile_deadline.py
           tests/test_deterministic_sdist.py
           tests/test_external_runner.py
+          tests/test_literal_process.py
+          tests/test_swebench_repository.py
+          tests/test_swebench_prediction.py
+          tests/test_swebench_run.py
+          tests/test_swebench_patch.py
+          tests/test_tau2.py
           tests/test_local_qwen.py
           tests/test_parent_directory_safety.py
           tests/test_release_install_smoke.py
+          tests/test_standalone_without_localai_contracts.py
       - name: Build wheel and source distribution
+        shell: pwsh
         run: |
-          python -m pip wheel . --no-deps --wheel-dir dist
-          python -m _ctxc_build_backend --sdist-dir dist
+          & $env:CTXC_BUILD_PYTHON -m pip --isolated wheel . `
+            --no-build-isolation `
+            --no-index `
+            --no-deps `
+            --wheel-dir dist
+          if ($LASTEXITCODE -ne 0) {
+            throw "wheel build failed with exit code $LASTEXITCODE"
+          }
+          & $env:CTXC_BUILD_PYTHON -m _ctxc_build_backend --sdist-dir dist
+          if ($LASTEXITCODE -ne 0) {
+            throw "source-distribution build failed with exit code $LASTEXITCODE"
+          }
       - name: Install and smoke-test wheel and sdist separately
-        run: python scripts/release_install_smoke.py --dist-dir dist --schema-dir schemas
+        shell: pwsh
+        run: |
+          $smokeLines = @(& python scripts/release_install_smoke.py `
+            --dist-dir dist `
+            --schema-dir schemas `
+            --build-wheelhouse ci-build-wheelhouse `
+            --build-requirements requirements-build.lock 2>&1)
+          $smokeExit = $LASTEXITCODE
+          $smokeLines | Set-Content -Encoding utf8NoBOM release-install-smoke.log
+          $smokeLines | Write-Output
+          if ($smokeExit -ne 0) {
+            throw "release install smoke failed with exit code $smokeExit"
+          }
+          $reportLines = @($smokeLines | Where-Object {
+            "$_".Trim().StartsWith('{"artifacts":')
+          })
+          if ($reportLines.Count -ne 1) {
+            throw "release install smoke did not emit one final JSON report"
+          }
+          "$($reportLines[0])".Trim() |
+            Set-Content -Encoding utf8NoBOM release-install-smoke.json
+          python -c "import json,pathlib; report=json.loads(pathlib.Path('release-install-smoke.json').read_text(encoding='utf-8')); assert set(report)=={'schema','schema_count','artifacts','materialized_evaluation','materialized_context_witness'} and report['schema']=='ctxc-release-install-smoke-0.3' and type(report['schema_count']) is int and report['schema_count']>0; artifacts=report['artifacts']; assert isinstance(artifacts,list) and len(artifacts)==2; assert all(type(item) is dict and set(item)=={'artifact','kind','status','build_bootstrap'} for item in artifacts); by_kind={item['kind']:item for item in artifacts}; assert set(by_kind)=={'wheel','sdist'} and all(item['status']=='passed' for item in artifacts); assert by_kind['wheel']['build_bootstrap']=='not-applicable' and by_kind['sdist']['build_bootstrap']=='hash-pinned-offline-wheelhouse'; evaluation=report['materialized_evaluation']; assert type(evaluation) is dict and set(evaluation)=={'exit_code','inference_status','integrity_passed','report_sha256','retrieval_status','source_wheel_sdist_report_bytes_identical','status'}; assert evaluation['exit_code']==3 and evaluation['inference_status']=='not_run' and evaluation['integrity_passed'] is False and evaluation['retrieval_status']=='not_run' and evaluation['source_wheel_sdist_report_bytes_identical'] is True and evaluation['status']=='failed'; digest=evaluation['report_sha256']; assert type(digest) is str and len(digest)==64 and all(char in '0123456789abcdef' for char in digest); handoff=report['materialized_context_witness']; assert type(handoff) is dict and set(handoff)=={'canonical_line_sha256','source_wheel_sdist_witness_bytes_identical','witness'} and handoff['source_wheel_sdist_witness_bytes_identical'] is True; witness_digest=handoff['canonical_line_sha256']; assert type(witness_digest) is str and len(witness_digest)==64 and all(char in '0123456789abcdef' for char in witness_digest); assert type(handoff['witness']) is dict and handoff['witness'].get('schema')=='ctxc-materialized-context-witness-0.3'"
+      - name: Retain cross-platform release smoke evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: root-release-smoke-${{ runner.os }}-python-3.13
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            release-install-smoke.json
+            release-install-smoke.log
+            release-build-toolchain.txt
+            requirements-build.lock
+            ci-build-wheelhouse/*.whl
+          if-no-files-found: warn
+          retention-days: 14
 
   reproducibility:
     name: exact repeated release builds
@@ -100,23 +216,218 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: source-first/pyproject.toml
-      - name: Provision and record the same-job release toolchain
+          cache-dependency-path: |
+            source-first/pyproject.toml
+            source-first/requirements-build.lock
+      - name: Provision and record the hash-bound same-job release builder
+        shell: pwsh
         run: |
-          python -m pip install --disable-pip-version-check "pip==25.0.1" "setuptools==83.0.0" "wheel==0.47.0"
-          python -VV > release-python.txt
-          python -m pip freeze --all > release-build-toolchain.txt
+          $firstLockHash = (Get-FileHash -Algorithm SHA256 `
+            -LiteralPath source-first/requirements-build.lock).Hash
+          $secondLockHash = (Get-FileHash -Algorithm SHA256 `
+            -LiteralPath source-second/requirements-build.lock).Hash
+          if ($firstLockHash -ne $secondLockHash) {
+            throw "clean-checkout build locks differ"
+          }
+          Copy-Item -LiteralPath source-first/requirements-build.lock `
+            -Destination release-requirements-build.lock
+          New-Item -ItemType Directory -Path ci-build-wheelhouse | Out-Null
+          python -m pip --isolated download --no-deps --only-binary=:all: `
+            --require-hashes `
+            --requirement release-requirements-build.lock `
+            --dest ci-build-wheelhouse
+          if ($LASTEXITCODE -ne 0) {
+            throw "build-wheel acquisition failed with exit code $LASTEXITCODE"
+          }
+          python -c "import pathlib; root=pathlib.Path('ci-build-wheelhouse'); expected={'build-1.5.0-py3-none-any.whl','colorama-0.4.6-py2.py3-none-any.whl','packaging-26.2-py3-none-any.whl','pip-25.0.1-py3-none-any.whl','pyproject_hooks-1.2.0-py3-none-any.whl','setuptools-83.0.0-py3-none-any.whl','wheel-0.47.0-py3-none-any.whl'}; entries=list(root.iterdir()); assert {path.name for path in entries} == expected, (entries, expected); assert all(path.is_file() and not path.is_symlink() and path.stat().st_nlink == 1 for path in entries), entries"
+          if ($LASTEXITCODE -ne 0) {
+            throw "build-wheel inventory validation failed with exit code $LASTEXITCODE"
+          }
+          python -m venv ci-build-environment
+          if ($LASTEXITCODE -ne 0) {
+            throw "dedicated builder creation failed with exit code $LASTEXITCODE"
+          }
+          $relativeBuildPython = if ($IsWindows) {
+            "Scripts/python.exe"
+          } else {
+            "bin/python"
+          }
+          $buildPython = Join-Path `
+            (Resolve-Path -LiteralPath ci-build-environment).Path `
+            $relativeBuildPython
+          if (-not (Test-Path -LiteralPath $buildPython -PathType Leaf)) {
+            throw "dedicated build Python is absent"
+          }
+          & $buildPython -m pip --isolated install --disable-pip-version-check `
+            --no-deps `
+            --no-index `
+            --find-links ci-build-wheelhouse `
+            --only-binary=:all: `
+            --require-hashes `
+            --force-reinstall `
+            --requirement release-requirements-build.lock
+          if ($LASTEXITCODE -ne 0) {
+            throw "dedicated builder installation failed with exit code $LASTEXITCODE"
+          }
+          & $buildPython -m pip --isolated check
+          if ($LASTEXITCODE -ne 0) {
+            throw "dedicated builder dependency check failed with exit code $LASTEXITCODE"
+          }
+          & $buildPython -c "import importlib.metadata as m,re; expected={'build':'1.5.0','colorama':'0.4.6','packaging':'26.2','pip':'25.0.1','pyproject-hooks':'1.2.0','setuptools':'83.0.0','wheel':'0.47.0'}; distributions=list(m.distributions()); actual={re.sub(r'[-_.]+','-',item.metadata['Name']).lower():item.version for item in distributions}; assert len(distributions) == 7 and actual == expected, (actual, expected)"
+          if ($LASTEXITCODE -ne 0) {
+            throw "dedicated builder inventory validation failed with exit code $LASTEXITCODE"
+          }
+          Add-Content -Encoding utf8NoBOM -LiteralPath $env:GITHUB_ENV `
+            -Value "CTXC_BUILD_PYTHON=$buildPython"
+          python -VV | Set-Content -Encoding utf8NoBOM release-python.txt
+          python -m pip --isolated --version |
+            Set-Content -Encoding utf8NoBOM release-build-toolchain.txt
+          "dedicated release builder:" |
+            Add-Content -Encoding utf8NoBOM release-build-toolchain.txt
+          & $buildPython -VV |
+            Add-Content -Encoding utf8NoBOM release-build-toolchain.txt
+          & $buildPython -m pip --isolated freeze --all |
+            Add-Content -Encoding utf8NoBOM release-build-toolchain.txt
       - name: Build the first clean candidate
         working-directory: source-first
+        shell: pwsh
         run: |
-          python -m pip wheel . --no-build-isolation --no-deps --wheel-dir ../dist-first
-          python -m _ctxc_build_backend --sdist-dir ../dist-first
+          & $env:CTXC_BUILD_PYTHON -m pip --isolated wheel . `
+            --no-build-isolation `
+            --no-index `
+            --no-deps `
+            --wheel-dir ../dist-first
+          if ($LASTEXITCODE -ne 0) {
+            throw "first wheel build failed with exit code $LASTEXITCODE"
+          }
+          & $env:CTXC_BUILD_PYTHON -m _ctxc_build_backend --sdist-dir ../dist-first
+          if ($LASTEXITCODE -ne 0) {
+            throw "first source-distribution build failed with exit code $LASTEXITCODE"
+          }
       - name: Build the second clean candidate
         working-directory: source-second
+        shell: pwsh
         run: |
-          python -m pip wheel . --no-build-isolation --no-deps --wheel-dir ../dist-second
-          python -m _ctxc_build_backend --sdist-dir ../dist-second
-      - name: Require byte-identical wheel and sdist outputs
+          & $env:CTXC_BUILD_PYTHON -m pip --isolated wheel . `
+            --no-build-isolation `
+            --no-index `
+            --no-deps `
+            --wheel-dir ../dist-second
+          if ($LASTEXITCODE -ne 0) {
+            throw "second wheel build failed with exit code $LASTEXITCODE"
+          }
+          & $env:CTXC_BUILD_PYTHON -m _ctxc_build_backend --sdist-dir ../dist-second
+          if ($LASTEXITCODE -ne 0) {
+            throw "second source-distribution build failed with exit code $LASTEXITCODE"
+          }
+      - name: Prepare the extracted-sdist candidate
+        shell: pwsh
+        run: |
+          $extractScript = @'
+          from pathlib import Path
+          import os
+          import stat
+          import sys
+          import tarfile
+
+          source = Path("source-first").resolve(strict=True)
+          sys.path.insert(0, str(source))
+          sys.path.insert(0, str(source / "src"))
+          from scripts.release_reproducibility import _sdist_inventory
+
+          candidates = tuple(Path("dist-first").glob("*.tar.gz"))
+          if len(candidates) != 1:
+              raise RuntimeError(
+                  f"expected exactly one first source distribution, found {candidates!r}"
+              )
+          first_sdist = candidates[0].resolve(strict=True)
+          _sdist_inventory(first_sdist)
+          extraction_parent = Path("source-roundtrip")
+          roundtrip_dist = Path("dist-roundtrip")
+          if extraction_parent.exists() or roundtrip_dist.exists():
+              raise RuntimeError("roundtrip output paths must start absent")
+          extraction_parent.mkdir()
+          roundtrip_dist.mkdir()
+          with tarfile.open(first_sdist, mode="r:gz") as archive:
+              archive.extractall(extraction_parent, filter="data")
+          roots = tuple(extraction_parent.iterdir())
+          expected_name = first_sdist.name.removesuffix(".tar.gz")
+          if len(roots) != 1 or roots[0].name != expected_name:
+              raise RuntimeError(
+                  f"source distribution did not extract to its canonical root: {roots!r}"
+              )
+          root = roots[0]
+          root_stat = root.lstat()
+          reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+          is_junction = bool(
+              hasattr(os.path, "isjunction") and os.path.isjunction(root)
+          )
+          if (
+              not stat.S_ISDIR(root_stat.st_mode)
+              or stat.S_ISLNK(root_stat.st_mode)
+              or bool(getattr(root_stat, "st_file_attributes", 0) & reparse_flag)
+              or is_junction
+          ):
+              raise RuntimeError("extracted source root is not a real directory")
+          resolved_root = root.resolve(strict=True)
+          if resolved_root.parent != extraction_parent.resolve(strict=True):
+              raise RuntimeError("extracted source root escaped its destination")
+          for path in resolved_root.rglob("*"):
+              path_stat = path.lstat()
+              if (
+                  stat.S_ISLNK(path_stat.st_mode)
+                  or bool(
+                      getattr(path_stat, "st_file_attributes", 0) & reparse_flag
+                  )
+                  or (
+                      hasattr(os.path, "isjunction")
+                      and os.path.isjunction(path)
+                  )
+                  or not (
+                      stat.S_ISDIR(path_stat.st_mode)
+                      or stat.S_ISREG(path_stat.st_mode)
+                  )
+              ):
+                  raise RuntimeError(
+                      f"extracted source contains a link or special path: {path}"
+                  )
+              resolved = path.resolve(strict=True)
+              if resolved_root not in resolved.parents:
+                  raise RuntimeError(f"extracted path escaped its source root: {path}")
+          '@
+          $extractScript | & $env:CTXC_BUILD_PYTHON -B -
+          if ($LASTEXITCODE -ne 0) {
+            throw "source-distribution extraction failed with exit code $LASTEXITCODE"
+          }
+      - name: Build the extracted-sdist candidate
+        shell: pwsh
+        run: |
+          $roundtripRoots = @(
+            Get-ChildItem -LiteralPath source-roundtrip -Directory -Force
+          )
+          if ($roundtripRoots.Count -ne 1) {
+            throw "expected exactly one extracted source root"
+          }
+          Push-Location -LiteralPath $roundtripRoots[0].FullName
+          try {
+            & $env:CTXC_BUILD_PYTHON -m pip --isolated wheel . `
+              --no-build-isolation `
+              --no-index `
+              --no-deps `
+              --wheel-dir ../../dist-roundtrip
+            if ($LASTEXITCODE -ne 0) {
+              throw "roundtrip wheel build failed with exit code $LASTEXITCODE"
+            }
+            & $env:CTXC_BUILD_PYTHON -m _ctxc_build_backend `
+              --sdist-dir ../../dist-roundtrip
+            if ($LASTEXITCODE -ne 0) {
+              throw "roundtrip source-distribution build failed with exit code $LASTEXITCODE"
+            }
+          } finally {
+            Pop-Location
+          }
+      - name: Require byte-identical clean-checkout outputs
+        if: always()
         working-directory: source-first
         env:
           PYTHONPATH: src
@@ -125,6 +436,16 @@ jobs:
           --first-dist ../dist-first
           --second-dist ../dist-second
           --json-out ../release-reproducibility.json
+      - name: Require the extracted-sdist fixed point
+        if: always()
+        working-directory: source-first
+        env:
+          PYTHONPATH: src
+        run: >-
+          python -m scripts.release_reproducibility
+          --first-dist ../dist-first
+          --second-dist ../dist-roundtrip
+          --json-out ../release-roundtrip-reproducibility.json
       - name: Retain repeated-build evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -135,9 +456,14 @@ jobs:
             dist-first/*.tar.gz
             dist-second/*.whl
             dist-second/*.tar.gz
+            dist-roundtrip/*.whl
+            dist-roundtrip/*.tar.gz
             release-reproducibility.json
+            release-roundtrip-reproducibility.json
             release-python.txt
             release-build-toolchain.txt
+            release-requirements-build.lock
+            ci-build-wheelhouse/*.whl
           if-no-files-found: error
 
   benchmark:
@@ -156,26 +482,124 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: |
+            pyproject.toml
+            requirements-build.lock
+      - name: Provision the hash-bound release builder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ci-build-wheelhouse | Out-Null
+          python -m pip --isolated download --no-deps --only-binary=:all: `
+            --require-hashes `
+            --requirement requirements-build.lock `
+            --dest ci-build-wheelhouse
+          if ($LASTEXITCODE -ne 0) {
+            throw "build-wheel acquisition failed with exit code $LASTEXITCODE"
+          }
+          python -c "import pathlib; root=pathlib.Path('ci-build-wheelhouse'); expected={'build-1.5.0-py3-none-any.whl','colorama-0.4.6-py2.py3-none-any.whl','packaging-26.2-py3-none-any.whl','pip-25.0.1-py3-none-any.whl','pyproject_hooks-1.2.0-py3-none-any.whl','setuptools-83.0.0-py3-none-any.whl','wheel-0.47.0-py3-none-any.whl'}; entries=list(root.iterdir()); assert {path.name for path in entries} == expected, (entries, expected); assert all(path.is_file() and not path.is_symlink() and path.stat().st_nlink == 1 for path in entries), entries"
+          if ($LASTEXITCODE -ne 0) {
+            throw "build-wheel inventory validation failed with exit code $LASTEXITCODE"
+          }
+          python -m venv ci-build-environment
+          if ($LASTEXITCODE -ne 0) {
+            throw "dedicated builder creation failed with exit code $LASTEXITCODE"
+          }
+          $relativeBuildPython = if ($IsWindows) {
+            "Scripts/python.exe"
+          } else {
+            "bin/python"
+          }
+          $buildPython = Join-Path `
+            (Resolve-Path -LiteralPath ci-build-environment).Path `
+            $relativeBuildPython
+          if (-not (Test-Path -LiteralPath $buildPython -PathType Leaf)) {
+            throw "dedicated build Python is absent"
+          }
+          & $buildPython -m pip --isolated install --disable-pip-version-check `
+            --no-deps `
+            --no-index `
+            --find-links ci-build-wheelhouse `
+            --only-binary=:all: `
+            --require-hashes `
+            --force-reinstall `
+            --requirement requirements-build.lock
+          if ($LASTEXITCODE -ne 0) {
+            throw "dedicated builder installation failed with exit code $LASTEXITCODE"
+          }
+          & $buildPython -m pip --isolated check
+          if ($LASTEXITCODE -ne 0) {
+            throw "dedicated builder dependency check failed with exit code $LASTEXITCODE"
+          }
+          & $buildPython -c "import importlib.metadata as m,re; expected={'build':'1.5.0','colorama':'0.4.6','packaging':'26.2','pip':'25.0.1','pyproject-hooks':'1.2.0','setuptools':'83.0.0','wheel':'0.47.0'}; distributions=list(m.distributions()); actual={re.sub(r'[-_.]+','-',item.metadata['Name']).lower():item.version for item in distributions}; assert len(distributions) == 7 and actual == expected, (actual, expected)"
+          if ($LASTEXITCODE -ne 0) {
+            throw "dedicated builder inventory validation failed with exit code $LASTEXITCODE"
+          }
+          Add-Content -Encoding utf8NoBOM -LiteralPath $env:GITHUB_ENV `
+            -Value "CTXC_BUILD_PYTHON=$buildPython"
+          python -VV | Set-Content -Encoding utf8NoBOM release-build-toolchain.txt
+          python -m pip --isolated --version |
+            Add-Content -Encoding utf8NoBOM release-build-toolchain.txt
+          "dedicated release builder:" |
+            Add-Content -Encoding utf8NoBOM release-build-toolchain.txt
+          & $buildPython -VV |
+            Add-Content -Encoding utf8NoBOM release-build-toolchain.txt
+          & $buildPython -m pip --isolated freeze --all |
+            Add-Content -Encoding utf8NoBOM release-build-toolchain.txt
       - name: Install package
         run: python -m pip install -e ".[dev]"
       - name: Build release archives and verify packaged contents
+        shell: pwsh
         run: |
-          python -m pip wheel . --no-deps --wheel-dir dist
-          python -m _ctxc_build_backend --sdist-dir dist
-          python -c "import glob, os, pathlib, tarfile, zipfile; w=glob.glob('dist/*.whl'); s=glob.glob('dist/*.tar.gz'); assert len(w)==len(s)==1, (w,s); assert os.path.basename(w[0]).startswith('loss_resistant_context_compiler-'); expected={p.name for p in pathlib.Path('schemas').glob('*.schema.json')}; installed={pathlib.Path(n).name for n in zipfile.ZipFile(w[0]).namelist() if n.endswith('.schema.json')}; assert installed==expected, (installed,expected); sn=tarfile.open(s[0]).getnames(); required=('_ctxc_build_backend.py','CHANGELOG.md','CONTRIBUTING.md','SECURITY.md','SUPPORT.md','docs/RELEASE_POLICY.md','docs/RELEASE_CHECKLIST.md','docs/SUPPLY_CHAIN.md','benchmarks/lrcbench.py','benchmarks/natural_history.py','benchmarks/compatibility/acon-diagnostic-failed-manifest.json','conformance/run_connector_conformance.py','conformance/fixtures/golden-success.jsonl','conformance/fixtures/golden-negative.jsonl','scripts/release_install_smoke.py','scripts/release_artifact_manifest.py'); assert all(any(n.endswith('/'+r) for n in sn) for r in required), sn; assert sum('/benchmarks/schemas/natural-history/' in n and n.endswith('.schema.json') for n in sn)==6, sn; assert sum('/benchmarks/data/natural_history/' in n and n.endswith('.json') for n in sn)==7, sn"
+          & $env:CTXC_BUILD_PYTHON -m pip --isolated wheel . `
+            --no-build-isolation `
+            --no-index `
+            --no-deps `
+            --wheel-dir dist
+          if ($LASTEXITCODE -ne 0) {
+            throw "wheel build failed with exit code $LASTEXITCODE"
+          }
+          & $env:CTXC_BUILD_PYTHON -m _ctxc_build_backend --sdist-dir dist
+          if ($LASTEXITCODE -ne 0) {
+            throw "source-distribution build failed with exit code $LASTEXITCODE"
+          }
+          python -c "import glob, os, pathlib, tarfile, zipfile; w=glob.glob('dist/*.whl'); s=glob.glob('dist/*.tar.gz'); assert len(w)==len(s)==1, (w,s); assert os.path.basename(w[0]).startswith('loss_resistant_context_compiler-'); wn=zipfile.ZipFile(w[0]).namelist(); expected={p.name for p in pathlib.Path('schemas').glob('*.schema.json')}; installed={pathlib.Path(n).name for n in wn if n.endswith('.schema.json')}; assert installed==expected, (installed,expected); assert not any(n.endswith('benchmarks/tau2.py') or n.endswith('benchmarks/suites/tau2_text_v1.json') or n.endswith('benchmarks/swebench_patch.py') for n in wn), wn; sn=tarfile.open(s[0]).getnames(); required=('_ctxc_build_backend.py','requirements-build.lock','CHANGELOG.md','CONTRIBUTING.md','SECURITY.md','SUPPORT.md','docs/CONTRACT_REQUESTS.md','docs/RELEASE_POLICY.md','docs/RELEASE_CHECKLIST.md','docs/SUPPLY_CHAIN.md','docs/SWEBENCH_EVALUATION.md','docs/TAU2_EVALUATION.md','benchmarks/literal_process.py','benchmarks/lrcbench.py','benchmarks/natural_history.py','benchmarks/swebench.py','benchmarks/swebench_repository.py','benchmarks/swebench_repository_worker.py','benchmarks/swebench_prediction.py','benchmarks/swebench_run.py','benchmarks/swebench_patch.py','benchmarks/tau2.py','benchmarks/suites/swebench_verified_v1.json','benchmarks/suites/tau2_text_v1.json','benchmarks/compatibility/acon-diagnostic-failed-manifest.json','conformance/run_connector_conformance.py','conformance/fixtures/golden-success.jsonl','conformance/fixtures/golden-negative.jsonl','conformance/fixtures/golden-localai-contract-conversion-v1.json','scripts/release_install_smoke.py','scripts/release_artifact_manifest.py','tests/test_swebench_run.py','tests/test_swebench_patch.py','tests/test_tau2.py'); assert all(any(n.endswith('/'+r) for n in sn) for r in required), sn; assert sum('/benchmarks/schemas/natural-history/' in n and n.endswith('.schema.json') for n in sn)==6, sn; assert sum('/benchmarks/data/natural_history/' in n and n.endswith('.json') for n in sn)==7, sn"
       - name: Retain and verify release archive checksums
         run: |
           python -m scripts.release_artifact_manifest create --dist-dir dist --revision "${{ github.sha }}" --manifest-out dist/release-artifacts.json --checksums-out dist/SHA256SUMS
           python -m scripts.release_artifact_manifest verify --dist-dir dist --manifest dist/release-artifacts.json --checksums dist/SHA256SUMS
       - name: Install wheel and sdist in clean environments
-        run: python scripts/release_install_smoke.py --dist-dir dist --schema-dir schemas
+        shell: pwsh
+        run: |
+          $smokeLines = @(& python scripts/release_install_smoke.py `
+            --dist-dir dist `
+            --schema-dir schemas `
+            --build-wheelhouse ci-build-wheelhouse `
+            --build-requirements requirements-build.lock 2>&1)
+          $smokeExit = $LASTEXITCODE
+          $smokeLines | Set-Content -Encoding utf8NoBOM release-install-smoke.log
+          $smokeLines | Write-Output
+          if ($smokeExit -ne 0) {
+            throw "release install smoke failed with exit code $smokeExit"
+          }
+          $reportLines = @($smokeLines | Where-Object {
+            "$_".Trim().StartsWith('{"artifacts":')
+          })
+          if ($reportLines.Count -ne 1) {
+            throw "release install smoke did not emit one final JSON report"
+          }
+          "$($reportLines[0])".Trim() |
+            Set-Content -Encoding utf8NoBOM release-install-smoke.json
+          python -c "import json,pathlib; report=json.loads(pathlib.Path('release-install-smoke.json').read_text(encoding='utf-8')); assert set(report)=={'schema','schema_count','artifacts','materialized_evaluation','materialized_context_witness'} and report['schema']=='ctxc-release-install-smoke-0.3' and type(report['schema_count']) is int and report['schema_count']>0; artifacts=report['artifacts']; assert isinstance(artifacts,list) and len(artifacts)==2; assert all(type(item) is dict and set(item)=={'artifact','kind','status','build_bootstrap'} for item in artifacts); by_kind={item['kind']:item for item in artifacts}; assert set(by_kind)=={'wheel','sdist'} and all(item['status']=='passed' for item in artifacts); assert by_kind['wheel']['build_bootstrap']=='not-applicable' and by_kind['sdist']['build_bootstrap']=='hash-pinned-offline-wheelhouse'; evaluation=report['materialized_evaluation']; assert type(evaluation) is dict and set(evaluation)=={'exit_code','inference_status','integrity_passed','report_sha256','retrieval_status','source_wheel_sdist_report_bytes_identical','status'}; assert evaluation['exit_code']==3 and evaluation['inference_status']=='not_run' and evaluation['integrity_passed'] is False and evaluation['retrieval_status']=='not_run' and evaluation['source_wheel_sdist_report_bytes_identical'] is True and evaluation['status']=='failed'; digest=evaluation['report_sha256']; assert type(digest) is str and len(digest)==64 and all(char in '0123456789abcdef' for char in digest); handoff=report['materialized_context_witness']; assert type(handoff) is dict and set(handoff)=={'canonical_line_sha256','source_wheel_sdist_witness_bytes_identical','witness'} and handoff['source_wheel_sdist_witness_bytes_identical'] is True; witness_digest=handoff['canonical_line_sha256']; assert type(witness_digest) is str and len(witness_digest)==64 and all(char in '0123456789abcdef' for char in witness_digest); assert type(handoff['witness']) is dict and handoff['witness'].get('schema')=='ctxc-materialized-context-witness-0.3'"
       - name: Validate external candidate interchange
         run: python -m benchmarks --self-test
       - name: Verify external protocol readiness artifact
         run: >-
           python -m benchmarks.external_protocol
           --verify benchmarks/protocols/external-comparison-v1.json
+      - name: Verify SWE-bench source descriptor
+        run: python -m benchmarks.swebench verify-suite
+      - name: Verify tau2-bench source descriptor
+        run: python -m benchmarks.tau2 verify-suite
       - name: Validate connector schemas and transcripts
         run: python conformance/run_connector_conformance.py
       - name: Validate natural-history contract fixtures
@@ -210,4 +634,9 @@ jobs:
             dist/*.tar.gz
             dist/SHA256SUMS
             dist/release-artifacts.json
+            release-install-smoke.json
+            release-install-smoke.log
+            release-build-toolchain.txt
+            requirements-build.lock
+            ci-build-wheelhouse/*.whl
           if-no-files-found: warn

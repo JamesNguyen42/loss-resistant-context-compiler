@@ -24,6 +24,7 @@ from benchmarks.external_runner import (
     ExternalRunnerError,
     InferenceServiceAccounting,
     InferenceServiceContract,
+    InferenceServiceInspectionError,
     NetworkIsolationEvidence,
     RunnerIdentity,
     RunnerLimits,
@@ -73,6 +74,52 @@ _FUNCTIONAL_ADAPTER_MEMORY_MB = (
     1_048_576 if sys.platform == "darwin" else 256
 )
 _LAUNCHER_TEST_EXECUTABLE = str(Path(sys.executable).resolve())
+_NATIVE_INFERENCE_PROCESS_SNAPSHOT = (
+    external_runner_module._inference_process_snapshot
+)
+
+
+@pytest.fixture(autouse=True)
+def _portable_inference_service_sampling(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    """Keep general runner tests independent of optional host process inspection."""
+
+    if request.node.get_closest_marker("native_inference_service_inspection"):
+        return
+    executable_path = Path(sys.executable).resolve()
+    executable = str(executable_path)
+    executable_bytes = executable_path.stat().st_size
+    executable_sha256 = hashlib.sha256(executable_path.read_bytes()).hexdigest()
+    memory_metric = (
+        "working-set-bytes" if os.name == "nt" else "resident-set-bytes"
+    )
+
+    def snapshot(
+        process_id: int,
+        *,
+        include_executable_evidence: bool = False,
+    ):
+        return external_runner_module._InferenceProcessSnapshot(
+            process_id=process_id,
+            process_start_token="test-process-start:1",
+            executable_path=executable,
+            memory_metric=memory_metric,
+            memory_bytes=1024 * 1024,
+            executable_sha256=(
+                executable_sha256 if include_executable_evidence else None
+            ),
+            executable_bytes=(
+                executable_bytes if include_executable_evidence else None
+            ),
+        )
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "_inference_process_snapshot",
+        snapshot,
+    )
 
 
 @pytest.mark.parametrize(
@@ -210,9 +257,13 @@ def retained_adapter_source(tmp_path: Path):
 
 
 def retained_inference_service():
+    executable = Path(sys.executable).resolve()
     return capture_inference_service_contract(
         os.getpid(),
         max_memory_mb=4_096,
+        expected_executable_sha256=hashlib.sha256(
+            executable.read_bytes()
+        ).hexdigest(),
     )
 
 
@@ -565,6 +616,50 @@ def test_darwin_reserved_environment_key_counts_toward_byte_limit(
     assert "__CF_USER_TEXT_ENCODING" not in source
 
 
+def _write_linux_proc_fixture(
+    tmp_path: Path,
+    *,
+    process_id: int = 42,
+    start_token: int = 987_654,
+) -> tuple[Path, Path]:
+    proc_root = tmp_path / "proc"
+    self_directory = proc_root / "self"
+    process_directory = proc_root / str(process_id)
+    self_directory.mkdir(parents=True)
+    process_directory.mkdir()
+    (self_directory / "stat").write_text("self", encoding="utf-8")
+    fields_after_command = ["S", *("0" for _ in range(18)), str(start_token)]
+    (process_directory / "stat").write_text(
+        f"{process_id} (service) {' '.join(fields_after_command)}\n",
+        encoding="utf-8",
+    )
+    (process_directory / "statm").write_text("100 10\n", encoding="utf-8")
+    return proc_root, process_directory
+
+
+@pytest.mark.native_inference_service_inspection
+def test_native_inference_service_inspection_is_narrowly_skippable() -> None:
+    try:
+        initial_contract = capture_inference_service_contract(
+            os.getpid(),
+            max_memory_mb=4_096,
+        )
+        contract = capture_inference_service_contract(
+            os.getpid(),
+            max_memory_mb=4_096,
+            expected_executable_sha256=initial_contract.executable_sha256,
+        )
+    except InferenceServiceInspectionError as exc:
+        pytest.skip(
+            "claim-bearing inference-service inspection is unavailable: "
+            f"{exc.reason}"
+        )
+
+    assert contract.enabled
+    assert contract.executable_sha256 is not None
+    assert contract.executable_bytes is not None
+
+
 def test_inference_service_contract_captures_stable_process_identity() -> None:
     contract = retained_inference_service()
 
@@ -588,6 +683,339 @@ def test_inference_service_contract_captures_stable_process_identity() -> None:
         match="requires a positive memory ceiling",
     ):
         capture_inference_service_contract(os.getpid())
+    with pytest.raises(
+        ExternalRunnerError,
+        match="expected inference-service executable digest must be a SHA-256",
+    ):
+        capture_inference_service_contract(
+            os.getpid(),
+            max_memory_mb=4_096,
+            expected_executable_sha256="not-a-digest",
+        )
+
+
+def test_expected_digest_rejects_different_executable_pid_collision() -> None:
+    with pytest.raises(
+        ExternalRunnerError,
+        match="PID may identify a different process in this namespace",
+    ):
+        capture_inference_service_contract(
+            os.getpid(),
+            max_memory_mb=4_096,
+            expected_executable_sha256="0" * 64,
+        )
+
+
+def test_linux_snapshot_hashes_proc_executable_descriptor_not_display_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc_root, process_directory = _write_linux_proc_fixture(tmp_path)
+    displayed_executable = tmp_path / "runner-mount" / "service"
+    displayed_executable.parent.mkdir()
+    displayed_executable.write_bytes(b"wrong bytes in the runner mount namespace")
+    actual_executable = tmp_path / "service-mount" / "service"
+    actual_executable.parent.mkdir()
+    actual_executable.write_bytes(b"actual service executable bytes")
+    real_open = os.open
+    real_stat = os.stat
+
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "readlink",
+        lambda path: str(displayed_executable)
+        if Path(path) == process_directory / "exe"
+        else (_ for _ in ()).throw(AssertionError(f"unexpected readlink: {path}")),
+    )
+
+    def open_executable(path: object, flags: int, mode: int = 0o777) -> int:
+        if Path(path) == process_directory / "exe":
+            return real_open(actual_executable, flags)
+        return real_open(path, flags, mode)
+
+    def stat_executable(path: object, *args: object, **kwargs: object):
+        if Path(path) == process_directory / "exe":
+            return real_stat(actual_executable, *args, **kwargs)
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(external_runner_module.os, "open", open_executable)
+    monkeypatch.setattr(external_runner_module.os, "stat", stat_executable)
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "sysconf",
+        lambda name: 4_096
+        if name == "SC_PAGE_SIZE"
+        else (_ for _ in ()).throw(AssertionError(f"unexpected sysconf: {name}")),
+        raising=False,
+    )
+
+    snapshot = external_runner_module._linux_inference_process_snapshot(
+        42,
+        proc_root=proc_root,
+        include_executable_evidence=True,
+    )
+
+    assert snapshot.executable_path == str(displayed_executable)
+    assert snapshot.executable_sha256 == hashlib.sha256(
+        actual_executable.read_bytes()
+    ).hexdigest()
+    assert snapshot.executable_sha256 != hashlib.sha256(
+        displayed_executable.read_bytes()
+    ).hexdigest()
+    assert snapshot.executable_bytes == actual_executable.stat().st_size
+    assert snapshot.memory_bytes == 10 * 4_096
+
+
+def test_linux_snapshot_rejects_execve_while_executable_is_hashed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc_root, process_directory = _write_linux_proc_fixture(tmp_path)
+    first_executable = tmp_path / "service-v1"
+    first_executable.write_bytes(b"first executable")
+    second_executable = tmp_path / "service-v2"
+    second_executable.write_bytes(b"second executable")
+    real_open = os.open
+    real_stat = os.stat
+    readlink_calls = 0
+
+    def changed_readlink(path: object) -> str:
+        nonlocal readlink_calls
+        assert Path(path) == process_directory / "exe"
+        readlink_calls += 1
+        return str(first_executable if readlink_calls == 1 else second_executable)
+
+    def open_first(path: object, flags: int, mode: int = 0o777) -> int:
+        if Path(path) == process_directory / "exe":
+            return real_open(first_executable, flags)
+        return real_open(path, flags, mode)
+
+    def stat_second(path: object, *args: object, **kwargs: object):
+        if Path(path) == process_directory / "exe":
+            return real_stat(second_executable, *args, **kwargs)
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(external_runner_module.os, "readlink", changed_readlink)
+    monkeypatch.setattr(external_runner_module.os, "open", open_first)
+    monkeypatch.setattr(external_runner_module.os, "stat", stat_second)
+
+    with pytest.raises(InferenceServiceInspectionError) as raised:
+        external_runner_module._linux_inference_process_snapshot(
+            42,
+            proc_root=proc_root,
+            include_executable_evidence=True,
+        )
+
+    assert raised.value.reason == "identity_raced"
+    assert "executable changed while it was hashed" in str(raised.value)
+
+
+@pytest.mark.parametrize("failure_boundary", ["readlink", "open"])
+def test_linux_snapshot_classifies_protected_proc_executable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_boundary: str,
+) -> None:
+    proc_root, process_directory = _write_linux_proc_fixture(tmp_path)
+    displayed_executable = tmp_path / "service"
+    displayed_executable.write_bytes(b"service")
+
+    def protected_readlink(path: object) -> str:
+        if Path(path) != process_directory / "exe":
+            raise AssertionError(f"unexpected readlink: {path}")
+        if failure_boundary == "readlink":
+            raise PermissionError(errno.EACCES, "protected procfs", str(path))
+        return str(displayed_executable)
+
+    def protected_open(path: object, _flags: int, _mode: int = 0o777) -> int:
+        raise PermissionError(errno.EACCES, "protected procfs", str(path))
+
+    monkeypatch.setattr(external_runner_module.os, "readlink", protected_readlink)
+    if failure_boundary == "open":
+        monkeypatch.setattr(external_runner_module.os, "open", protected_open)
+
+    with pytest.raises(InferenceServiceInspectionError) as raised:
+        external_runner_module._linux_inference_process_snapshot(
+            42,
+            proc_root=proc_root,
+            include_executable_evidence=True,
+        )
+
+    assert raised.value.reason == "permission_denied"
+    assert "fail-closed executable identity verification" in str(raised.value)
+
+
+def test_linux_snapshot_classifies_protected_process_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc_root, process_directory = _write_linux_proc_fixture(tmp_path)
+    real_stat = Path.stat
+
+    def protected_stat(path: Path, *args: object, **kwargs: object):
+        if path == process_directory:
+            raise PermissionError(errno.EACCES, "protected procfs", str(path))
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", protected_stat)
+
+    with pytest.raises(InferenceServiceInspectionError) as raised:
+        external_runner_module._linux_inference_process_snapshot(
+            42,
+            proc_root=proc_root,
+        )
+
+    assert raised.value.reason == "permission_denied"
+    assert "while inspecting process 42" in str(raised.value)
+
+
+def test_linux_snapshot_classifies_missing_procfs(tmp_path: Path) -> None:
+    with pytest.raises(InferenceServiceInspectionError) as raised:
+        external_runner_module._linux_inference_process_snapshot(
+            42,
+            proc_root=tmp_path / "missing-proc",
+        )
+
+    assert raised.value.reason == "procfs_unavailable"
+    assert "not mounted" in str(raised.value)
+
+
+def test_linux_snapshot_classifies_process_outside_pid_namespace(
+    tmp_path: Path,
+) -> None:
+    proc_root = tmp_path / "proc"
+    (proc_root / "self").mkdir(parents=True)
+    (proc_root / "self" / "stat").write_text("self", encoding="utf-8")
+
+    with pytest.raises(InferenceServiceInspectionError) as raised:
+        external_runner_module._linux_inference_process_snapshot(
+            42,
+            proc_root=proc_root,
+        )
+
+    assert raised.value.reason == "process_not_visible"
+    assert "outside this container PID namespace" in str(raised.value)
+
+
+def test_linux_snapshot_rejects_process_restart_around_executable_hash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc_root, process_directory = _write_linux_proc_fixture(tmp_path)
+    executable = tmp_path / "service"
+    executable.write_bytes(b"service")
+    real_open = os.open
+    real_stat = os.stat
+
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "readlink",
+        lambda _path: str(executable),
+    )
+
+    def restart_then_open(path: object, flags: int, mode: int = 0o777) -> int:
+        fields_after_command = ["S", *("0" for _ in range(18)), "987655"]
+        (process_directory / "stat").write_text(
+            f"42 (service) {' '.join(fields_after_command)}\n",
+            encoding="utf-8",
+        )
+        opened_path = (
+            executable if Path(path) == process_directory / "exe" else path
+        )
+        return real_open(opened_path, flags, mode)
+
+    monkeypatch.setattr(external_runner_module.os, "open", restart_then_open)
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "stat",
+        lambda path, *args, **kwargs: real_stat(
+            executable if Path(path) == process_directory / "exe" else path,
+            *args,
+            **kwargs,
+        ),
+    )
+    monkeypatch.setattr(
+        external_runner_module.os,
+        "sysconf",
+        lambda _name: 4_096,
+        raising=False,
+    )
+
+    with pytest.raises(ExternalRunnerError, match="identity changed during sampling"):
+        external_runner_module._linux_inference_process_snapshot(
+            42,
+            proc_root=proc_root,
+            include_executable_evidence=True,
+        )
+
+
+@pytest.mark.native_inference_service_inspection
+def test_unsupported_inference_inspection_platform_is_classified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(external_runner_module.os, "name", "posix")
+    monkeypatch.setattr(external_runner_module.sys, "platform", "freebsd14")
+
+    with pytest.raises(InferenceServiceInspectionError) as raised:
+        _NATIVE_INFERENCE_PROCESS_SNAPSHOT(42)
+
+    assert raised.value.reason == "unsupported_platform"
+    assert "Windows, Linux, and macOS" in str(raised.value)
+
+
+def test_inference_inspection_failure_prevents_adapter_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "service"
+    executable.write_bytes(b"service")
+    contract = InferenceServiceContract(
+        process_id=42,
+        process_start_token="fixture-start-token",
+        executable_path=str(executable.resolve()),
+        executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),
+        executable_bytes=executable.stat().st_size,
+        memory_metric="resident-set-bytes",
+        max_memory_mb=128,
+    )
+    launched = tmp_path / "launched"
+
+    def unavailable(
+        _process_id: int,
+        *,
+        include_executable_evidence: bool = False,
+    ) -> None:
+        del include_executable_evidence
+        raise InferenceServiceInspectionError(
+            "permission_denied",
+            "fixture protected procfs",
+        )
+
+    monkeypatch.setattr(
+        external_runner_module,
+        "_inference_process_snapshot",
+        unavailable,
+    )
+
+    with pytest.raises(
+        ExternalRunnerError,
+        match="failed before execution: inference_service_unavailable",
+    ) as raised:
+        run_external_command(
+            [
+                sys.executable,
+                "-c",
+                "from pathlib import Path;Path(__import__('sys').argv[1]).touch()",
+                str(launched),
+            ],
+            system="inspection-failure-fixture",
+            corpus_path=tmp_path / "unread-corpus.json",
+            candidate_path=tmp_path / "candidate.json",
+            inference_service=contract,
+        )
+
+    assert not launched.exists()
+    assert "[permission_denied]" in str(raised.value)
 
 
 def test_darwin_inference_snapshot_binds_identity_path_and_rss(
@@ -702,6 +1130,7 @@ def test_darwin_inference_snapshot_rejects_identity_change(
         external_runner_module._darwin_inference_process_snapshot(42)
 
 
+@pytest.mark.native_inference_service_inspection
 def test_darwin_inference_snapshot_dispatches_without_weak_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -785,6 +1214,171 @@ def _adapter_source_evidence(
     return capture_adapter_source_evidence(source_root)
 
 
+def _adapter_source_inventory(
+    tmp_path: Path,
+    relative_paths: tuple[str, ...],
+) -> external_runner_module.AdapterSourceEvidence:
+    files = tuple(
+        sorted(
+            (
+                external_runner_module.AdapterSourceFileEvidence(
+                    relative_path=relative_path,
+                    file_sha256="0" * 64,
+                    file_bytes=0,
+                )
+                for relative_path in relative_paths
+            ),
+            key=lambda item: item.relative_path,
+        )
+    )
+    return external_runner_module.AdapterSourceEvidence(
+        source_root=str(tmp_path.resolve()),
+        tree_sha256=external_runner_module._adapter_source_tree_sha256(files),
+        file_count=len(files),
+        total_bytes=0,
+        files=files,
+    )
+
+
+@pytest.mark.parametrize(
+    "relative_paths",
+    [
+        ("pkg/Adapter.py", "pkg/adapter.py"),
+        ("Lib/a.py", "lib/b.py"),
+        ("a", "A/b.py"),
+        ("a", "a/b.py"),
+        ("foo", "foo!x", "foo/bar.py"),
+        ("Pkg/a.py", "pkg!x.py", "pkg/b.py"),
+    ],
+)
+def test_adapter_source_inventory_rejects_ascii_case_collisions(
+    tmp_path: Path,
+    relative_paths: tuple[str, ...],
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="ASCII case-insensitive materialization",
+    ):
+        _adapter_source_inventory(tmp_path, relative_paths)
+
+
+@pytest.mark.parametrize(
+    "relative_paths",
+    [
+        ("lib/a.py", "lib/b.py"),
+        ("one/Name.py", "two/name.py"),
+        ("Stra\u00dfe.py", "STRASSE.py"),
+        ("caf\u00e9.py", "cafe\u0301.py"),
+        ("\u00c9.py", "\u00e9.py"),
+        ("\u1c89.py", "\u1c8a.py"),
+    ],
+)
+def test_adapter_source_inventory_retains_non_ascii_case_controls(
+    tmp_path: Path,
+    relative_paths: tuple[str, ...],
+) -> None:
+    evidence = _adapter_source_inventory(tmp_path, relative_paths)
+
+    assert tuple(item.relative_path for item in evidence.files) == tuple(
+        sorted(relative_paths)
+    )
+
+
+def test_adapter_source_capture_rejects_ascii_case_directory_collisions(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "case-collision-source"
+    source_root.mkdir()
+    upper_directory = source_root / "Lib"
+    lower_directory = source_root / "lib"
+    upper_directory.mkdir()
+    try:
+        lower_directory.mkdir()
+    except FileExistsError:
+        pytest.skip("filesystem does not preserve ASCII case-distinct directories")
+    observed_names = {entry.name for entry in os.scandir(source_root)}
+    if not {"Lib", "lib"} <= observed_names:
+        pytest.skip("filesystem does not preserve ASCII case-distinct directories")
+    (upper_directory / "a.py").write_text("A = 1\n", encoding="utf-8")
+    (lower_directory / "b.py").write_text("B = 2\n", encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="ASCII case-insensitive materialization",
+    ):
+        capture_adapter_source_evidence(source_root)
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "CON",
+        "nested/NUL.tar.gz",
+        "AUX/adapter.py",
+        "COM1 .py",
+        "COM\u00b9.py",
+        "nested/COM\u00b9 .py",
+        "LPT\u00b2 .log",
+        "CONIN$/adapter.py",
+        "CONOUT$/adapter.py",
+        "nested/name:stream",
+        "nested/trailing.",
+        "nested/trailing ",
+        "nested/control\x1f.py",
+        "nested/control\x80.py",
+    ],
+)
+def test_adapter_source_file_rejects_windows_unsafe_components(
+    relative_path: str,
+) -> None:
+    with pytest.raises(ValueError, match="Windows-unsafe component"):
+        external_runner_module.AdapterSourceFileEvidence(
+            relative_path=relative_path,
+            file_sha256="0" * 64,
+            file_bytes=0,
+        )
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "COM0.py",
+        "nested/COM10.txt",
+        "CON name/adapter.py",
+        "CLOCK$/adapter.py",
+    ],
+)
+def test_adapter_source_file_retains_non_device_controls(
+    relative_path: str,
+) -> None:
+    evidence = external_runner_module.AdapterSourceFileEvidence(
+        relative_path=relative_path,
+        file_sha256="0" * 64,
+        file_bytes=0,
+    )
+
+    assert evidence.relative_path == relative_path
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="Windows cannot create a device-alias source component",
+)
+def test_adapter_source_capture_rejects_windows_unsafe_components(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source"
+    unsafe_directory = source_root / "AUX"
+    unsafe_directory.mkdir(parents=True)
+    (unsafe_directory / "adapter.py").write_text(
+        "print('fixture')\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Windows-unsafe component"):
+        capture_adapter_source_evidence(source_root)
+
+
 @pytest.mark.parametrize(
     ("path", "flavor"),
     [
@@ -792,6 +1386,9 @@ def _adapter_source_evidence(
         (r"C:\ctxc\evidence.bin", "windows"),
         ("C:/ctxc/evidence.bin", "windows"),
         (r"\\server\share\ctxc\evidence.bin", "windows"),
+        (r"C:\ctxc\COM0.txt", "windows"),
+        (r"C:\ctxc\COM10.txt", "windows"),
+        (r"C:\ctxc\CON name.txt", "windows"),
     ],
 )
 def test_retained_evidence_accepts_canonical_cross_platform_absolute_paths(
@@ -826,6 +1423,9 @@ def test_retained_evidence_accepts_canonical_cross_platform_absolute_paths(
         r"\\?\C:\evidence.bin",
         r"\\.\C:\evidence.bin",
         r"C:\tmp\CON.txt",
+        r"C:\tmp\CON .txt",
+        "C:/tmp/COM1 .txt",
+        r"\\server\share\NUL .txt",
         r"C:\tmp\CONIN$.txt",
         r"C:\tmp\CONOUT$.txt",
         "C:\\tmp\\COM\u00b9.txt",
@@ -834,6 +1434,9 @@ def test_retained_evidence_accepts_canonical_cross_platform_absolute_paths(
         "C:\\tmp\\LPT\u00b9.txt",
         "C:\\tmp\\LPT\u00b2.txt",
         "C:\\tmp\\LPT\u00b3.txt",
+        "C:\\tmp\\COM\u00b9 .txt",
+        "C:\\tmp\\LPT\u00b2 .log",
+        r"C:\tmp\ordinary.txt:stream",
         "C:\\tmp\\trailing.",
         "C:\\tmp\\trailing ",
         "nul\x00evidence.bin",
@@ -932,7 +1535,15 @@ def test_foreign_retained_evidence_is_never_reopened_on_this_host(
         evidence=entrypoint,
     )
     monitor = external_runner_module._InferenceServiceMonitor(service)
-    assert not monitor._executable_matches()
+    assert not monitor._executable_matches(
+        external_runner_module._InferenceProcessSnapshot(
+            process_id=int(service.process_id or 0),
+            process_start_token=str(service.process_start_token),
+            executable_path=str(service.executable_path),
+            memory_metric=str(service.memory_metric),
+            memory_bytes=1,
+        )
+    )
     assert monitor.sample(check_executable=True) == "inference_service_unavailable"
 
 def test_inference_service_memory_ceiling_fails_closed_during_run(
@@ -954,13 +1565,27 @@ def test_inference_service_memory_ceiling_fails_closed_during_run(
         (512 * 1024, 512 * 1024, 2 * 1024 * 1024)
     )
 
-    def sample(_process_id: int):
+    def sample(
+        _process_id: int,
+        *,
+        include_executable_evidence: bool = False,
+    ):
         return external_runner_module._InferenceProcessSnapshot(
             process_id=42,
             process_start_token="fixture-start-token",
             executable_path=str(executable.resolve()),
             memory_metric="working-set-bytes",
             memory_bytes=next(observed_memory, 2 * 1024 * 1024),
+            executable_sha256=(
+                contract.executable_sha256
+                if include_executable_evidence
+                else None
+            ),
+            executable_bytes=(
+                contract.executable_bytes
+                if include_executable_evidence
+                else None
+            ),
         )
 
     monkeypatch.setattr(
@@ -1012,13 +1637,27 @@ def test_inference_service_identity_and_executable_changes_fail_closed(
         )
     )
 
-    def changed_identity(_process_id: int):
+    def changed_identity(
+        _process_id: int,
+        *,
+        include_executable_evidence: bool = False,
+    ):
         return external_runner_module._InferenceProcessSnapshot(
             process_id=42,
             process_start_token=next(start_tokens, "restarted-token"),
             executable_path=executable_path,
             memory_metric="working-set-bytes",
             memory_bytes=512 * 1024,
+            executable_sha256=(
+                contract.executable_sha256
+                if include_executable_evidence
+                else None
+            ),
+            executable_bytes=(
+                contract.executable_bytes
+                if include_executable_evidence
+                else None
+            ),
         )
 
     monkeypatch.setattr(
@@ -1040,13 +1679,25 @@ def test_inference_service_identity_and_executable_changes_fail_closed(
         == "inference_service_identity_changed"
     )
 
-    def stable_identity(_process_id: int):
+    def stable_identity(
+        _process_id: int,
+        *,
+        include_executable_evidence: bool = False,
+    ):
+        observed_bytes = executable.stat().st_size
+        observed_sha256 = hashlib.sha256(executable.read_bytes()).hexdigest()
         return external_runner_module._InferenceProcessSnapshot(
             process_id=42,
             process_start_token="fixture-start-token",
             executable_path=executable_path,
             memory_metric="working-set-bytes",
             memory_bytes=512 * 1024,
+            executable_sha256=(
+                observed_sha256 if include_executable_evidence else None
+            ),
+            executable_bytes=(
+                observed_bytes if include_executable_evidence else None
+            ),
         )
 
     monkeypatch.setattr(
@@ -1424,6 +2075,72 @@ def test_adapter_source_tree_is_bounded_complete_and_immutable(
         retained_manifest.to_json(),
         encoding="utf-8",
     )
+    tampered_source = retained_manifest.to_dict()
+    tampered_source["adapter_source"]["files"][0][
+        "relative_path"
+    ] = "support/CON .py"
+    tampered_source["adapter_source"]["tree_sha256"] = _canonical_sha256(
+        {
+            "algorithm": tampered_source["adapter_source"]["tree_algorithm"],
+            "files": tampered_source["adapter_source"]["files"],
+        }
+    )
+    tampered_source.pop("manifest_sha256")
+    tampered_source["manifest_sha256"] = _canonical_sha256(
+        tampered_source
+    )
+    tampered_source_path = tmp_path / "nonportable-source-manifest.json"
+    tampered_source_path.write_text(
+        json.dumps(tampered_source),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match="adapter source evidence is invalid.*Windows-unsafe component",
+    ):
+        load_external_run_manifest(
+            tampered_source_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
+    colliding_source = retained_manifest.to_dict()
+    colliding_files = list(colliding_source["adapter_source"]["files"])
+    colliding_source["adapter_source"]["files"] = colliding_files
+    colliding_record = dict(colliding_files[0])
+    colliding_record["relative_path"] = "Support/other.py"
+    colliding_files.append(colliding_record)
+    colliding_files.sort(key=lambda item: item["relative_path"])
+    colliding_source["adapter_source"]["file_count"] = len(colliding_files)
+    colliding_source["adapter_source"]["total_bytes"] = sum(
+        item["file_bytes"] for item in colliding_files
+    )
+    colliding_source["adapter_source"]["tree_sha256"] = _canonical_sha256(
+        {
+            "algorithm": colliding_source["adapter_source"]["tree_algorithm"],
+            "files": colliding_files,
+        }
+    )
+    colliding_source.pop("manifest_sha256")
+    colliding_source["manifest_sha256"] = _canonical_sha256(
+        colliding_source
+    )
+    colliding_source_path = tmp_path / "colliding-source-manifest.json"
+    colliding_source_path.write_text(
+        json.dumps(colliding_source),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ExternalRunnerError,
+        match=(
+            "adapter source evidence is invalid.*"
+            "ASCII case-insensitive materialization"
+        ),
+    ):
+        load_external_run_manifest(
+            colliding_source_path,
+            expected_dataset_sha256=document["dataset_sha256"],
+        )
+
     helper_path.write_text("VALUE = 3\n", encoding="utf-8")
     with pytest.raises(
         ExternalRunnerError,
@@ -2088,6 +2805,8 @@ def test_cli_defaults_to_claim_eligible_per_case_mode(
             str(os.getpid()),
             "--max-inference-service-memory-mb",
             "4096",
+            "--expected-inference-service-executable-sha256",
+            hashlib.sha256(Path(sys.executable).resolve().read_bytes()).hexdigest(),
             "--adapter-revision",
             FIXTURE_ADAPTER_REVISION,
             "--environment-id",
@@ -3303,6 +4022,69 @@ def test_runner_timeout_is_a_retained_nonwin_and_releases_process(tmp_path) -> N
     assert not manifest.candidate_valid
     assert not manifest.ready_for_scoring
     assert manifest.termination_reason == "timeout"
+
+
+def test_runner_rejects_completion_first_observed_after_deadline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus_path = tmp_path / "corpus.json"
+    write_corpus(corpus_path)
+    candidate_path = tmp_path / "candidate.json"
+    clock_values = iter((0.0, 6.0))
+    completion_probes = 0
+
+    class CompletedProcess:
+        pid = 42
+        returncode: int | None = None
+
+    def monotonic() -> float:
+        return next(clock_values, 6.0)
+
+    def completed_without_reaping(_process: object) -> bool:
+        nonlocal completion_probes
+        completion_probes += 1
+        return True
+
+    def cleanup(process: CompletedProcess) -> int:
+        process.returncode = 0
+        return 0
+
+    monkeypatch.setattr(external_runner_module.time, "monotonic", monotonic)
+    monkeypatch.setattr(
+        external_runner_module,
+        "_uses_windows_process_control",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        external_runner_module.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: CompletedProcess(),
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_posix_process_exited_without_reaping",
+        completed_without_reaping,
+    )
+    monkeypatch.setattr(
+        external_runner_module,
+        "_cleanup_and_reap_posix_process",
+        cleanup,
+    )
+
+    manifest = run_external_command(
+        valid_adapter_command(tmp_path),
+        system="late-completion-fixture",
+        corpus_path=corpus_path,
+        candidate_path=candidate_path,
+        limits=RunnerLimits(timeout_seconds=5),
+    )
+
+    assert manifest.termination_reason == "timeout"
+    assert not manifest.process_succeeded
+    assert not manifest.candidate_valid
+    assert not manifest.ready_for_scoring
+    assert completion_probes == 0
 
 
 class _FakeDarwinEnvironmentFile:

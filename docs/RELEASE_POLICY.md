@@ -17,9 +17,10 @@ with the distribution; the import package and CLI identity are also unchanged.
 The seven JSON Schemas that existed before the rename retain their historical
 `https://example.invalid/lossless-context-compiler/...` `$id` values because
 those URIs are stored-format identifiers, not distribution branding or live
-network endpoints. The detached trust manifest and the seventeen connector
-wire-contract schemas use the `loss-resistant-context-compiler` namespace. All
-25 installed schema files live under the current distribution path.
+network endpoints. The detached trust manifest, the seventeen shared connector
+wire-contract schemas, and the provider-local LocalAI conversion-audit schema
+use the `loss-resistant-context-compiler` namespace. All 26 installed schema
+files live under the current distribution path.
 
 ## Semantic versions
 
@@ -70,10 +71,31 @@ commit:
 3. offline source-distribution and wheel builds;
 4. exact distribution name/version/entry-point metadata checks;
 5. separate clean-environment wheel and source-distribution installation;
-6. inclusion and parseability of all 25 installed JSON Schemas plus the
+6. inclusion and parseability of all 26 installed JSON Schemas plus the
    source-distribution conformance and natural-history contract assets;
 7. connector golden/negative transcript conformance and in-process/stdio
    semantic-equivalence checks;
+   when the canonical optional extra is included, this also requires the exact
+   contracts-wheel identity, 22-case non-inference conformance, provider-only
+   installation, provider-plus-contracts subprocess handshake/compile round
+   trip, and pre/post import validation of one exact-version distribution,
+   all 35 immutable `RECORD` rows plus the closed installer-generated set,
+   exact-wheel PEP 610 direct-archive metadata, exact built-in
+   module/spec/source-loader origin and state, an unset external bytecode-cache
+   prefix, exact bounded link-free installed source/resource tree, absence of
+   unexpected importable entries, and package-local executable bytecode against
+   verified source through the bounded isolated batch comparison of complete
+   marshal records, const-stripped format-2 serialized metadata, raw adaptive
+   instruction/cache images, and bounded tagged constant graphs with per-code
+   identity topology. The archive hash remains an
+   independent gate.
+   All clean lanes use `--no-index --no-compile`. Provider-only and direct
+   provider-plus-contracts lanes also use `--no-deps`; the provenance-negative
+   transitive lane resolves only from its local `--find-links` directory and
+   must fail closed. The shared module-form child uses the harness interpreter
+   exactly with `PYTHONDONTWRITEBYTECODE=1`, followed by a provider/contracts
+   package no-`.pyc` check. The clean environment must unset
+   `PYTHONPYCACHEPREFIX` and remain non-writable by untrusted actors;
 8. frozen benchmark, protocol, and model-diagnostic replay without new model
    calls, with failed external runs retained as failures;
 9. the fixed performance gate;

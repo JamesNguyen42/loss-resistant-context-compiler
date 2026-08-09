@@ -42,10 +42,11 @@ from .models import (
     MemoryStatus,
     SourceRecord,
     VerificationIssue,
-    render_typed_memory,
+    memory_rendering_profile,
+    render_memory_for_metadata,
     source_digest,
 )
-from .path_safety import ParentDirectoryGuard
+from .path_safety import ParentDirectoryGuard, _is_link_or_reparse
 from .verifier import verify_memory
 
 _ARTIFACT_FIELDS = frozenset(
@@ -621,6 +622,22 @@ def _validate_policy_shape(
             )
 
 
+def _validate_memory_rendering_profile_shape(
+    compiler_metadata: Any,
+    issues: list[dict[str, Any]],
+) -> None:
+    if not isinstance(compiler_metadata, dict):
+        return
+    try:
+        memory_rendering_profile(compiler_metadata)
+    except (TypeError, ValueError) as exc:
+        _shape_issue(
+            issues,
+            "invalid_memory_rendering_profile",
+            str(exc),
+        )
+
+
 def _validate_source_limits_shape(
     compiler_metadata: Any,
     issues: list[dict[str, Any]],
@@ -817,6 +834,7 @@ def _validate_artifact_shape(
     _validate_compression_shape(artifact.get("compression"), issues)
     _validate_policy_shape(artifact.get("compiler_metadata"), issues)
     compiler_metadata = artifact.get("compiler_metadata")
+    _validate_memory_rendering_profile_shape(compiler_metadata, issues)
     _validate_source_limits_shape(compiler_metadata, issues)
     compilation_limits = _validate_compilation_limits_shape(
         compiler_metadata,
@@ -1081,7 +1099,9 @@ def _open_stable_text_path(
                 if attempt + 1 < _PATH_OPEN_ATTEMPTS:
                     continue
                 raise
-            if not stat.S_ISREG(candidate_stat.st_mode):
+            if not stat.S_ISREG(candidate_stat.st_mode) or _is_link_or_reparse(
+                candidate_stat
+            ):
                 raise ValueError(
                     f"{label} path must be a regular file: {input_path}"
                 )
@@ -1111,7 +1131,9 @@ def _open_stable_text_path(
                 raise
             try:
                 opened_stat = os.fstat(descriptor)
-                if not stat.S_ISREG(opened_stat.st_mode):
+                if not stat.S_ISREG(opened_stat.st_mode) or _is_link_or_reparse(
+                    opened_stat
+                ):
                     raise ValueError(
                         f"{label} path must be a regular file: {input_path}"
                     )
@@ -1672,6 +1694,18 @@ def verify_artifact_dict(
     expected_protected_budget_overflow: int | None = None
     raw_compression = artifact.get("compression")
     compiler_metadata = artifact.get("compiler_metadata")
+    if isinstance(compiler_metadata, dict):
+        try:
+            memory_rendering_profile(compiler_metadata)
+        except (TypeError, ValueError) as exc:
+            compression_valid = False
+            issues.append(
+                {
+                    "code": "invalid_memory_rendering_profile",
+                    "item_id": None,
+                    "message": str(exc),
+                }
+            )
     compilation_metrics_present = (
         isinstance(compiler_metadata, dict)
         and "metrics" in compiler_metadata
@@ -1746,7 +1780,11 @@ def verify_artifact_dict(
         else:
             ordered_sources = sorted(sources, key=lambda source: source.sequence)
             source_text = "\n".join(source.content for source in ordered_sources)
-            active_prompt = render_typed_memory(decoded_items, raw_selected)
+            active_prompt = render_memory_for_metadata(
+                decoded_items,
+                raw_selected,
+                compiler_metadata,
+            )
 
             def estimate_tokens(text: str) -> int:
                 if replay_counter is None:
@@ -1768,9 +1806,10 @@ def verify_artifact_dict(
                 ]
                 expected_protected_prompt_tokens = (
                     estimate_tokens(
-                        render_typed_memory(
+                        render_memory_for_metadata(
                             protected_selected,
                             [item.id for item in protected_selected],
+                            compiler_metadata,
                         )
                     )
                     if protected_selected

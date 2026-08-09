@@ -1,0 +1,18 @@
+include _ctxc_openhands_build_backend.py
+include LICENSE
+include pyproject.toml
+include README.md
+include requirements-build.lock
+include requirements-live.lock
+include scripts/ci_build_inputs.py
+recursive-include compatibility *.json *.md
+include docs/EVENT_AUTHORITY_MAP.md
+include docs/RELEASE_CHECKLIST.md
+include docs/RUNBOOK.md
+include docs/UPSTREAM_RFC.md
+include demo/Dockerfile
+include demo/Dockerfile.dockerignore
+include demo/README.md
+recursive-include src/ctxc_openhands/data *.json
+exclude setup.cfg
+global-exclude __pycache__ *.py[cod]

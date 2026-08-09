@@ -3,18 +3,30 @@
 from __future__ import annotations
 
 import argparse
+import codecs
+import io
 import json
 import os
 import sys
 from collections.abc import Sequence
+from contextlib import suppress
 from pathlib import Path
 
+from . import __version__ as _PACKAGE_VERSION
 from .archive import SourceArchive
 from .artifact_diff import diff_artifacts
 from .artifact_inspection import render_artifact_text, summarize_artifact
-from .atomic import atomic_write_text
+from .atomic import AtomicDestinationExistsError, atomic_write_text
 from .compiler import ContextCompiler
+from .connector import ExactTokenCounterAdapter
+from .context_window import (
+    CONTEXT_WINDOW_DEGRADATION_MODE,
+    ContextWindowBudget,
+    ContextWindowDegradationPolicy,
+    ContextWindowError,
+)
 from .io import (
+    _open_stable_text_path,
     load_artifact_path,
     load_sources,
     load_sources_path,
@@ -32,6 +44,20 @@ from .limits import (
     SourceLimitError,
     SourceLimits,
 )
+from .materialized_degradation_evaluation import (
+    evaluate_materialization_degradation,
+    load_materialization_degradation_report,
+)
+from .materialized_evaluation import (
+    evaluate_materialization_retention,
+    load_materialization_retention_report,
+)
+from .materialized_window import (
+    _MAX_SERIALIZED_RESULT_BYTES,
+    materialize_context,
+    serialize_materialized_context_result,
+    verify_materialized_context_result,
+)
 from .models import CompilationPolicy, CompiledMemory
 from .path_safety import PathBoundaryError
 from .redaction import (
@@ -48,8 +74,35 @@ from .trust import (
 )
 
 _DIAGNOSTIC_SCHEMA = "ctxc-diagnostic-0.1"
+_DETAIL_DIAGNOSTIC_SCHEMA = "ctxc-diagnostic-0.2"
 _EVENT_SCHEMA = "ctxc-event-0.1"
+_MATERIALIZE_TOKENIZER_PROFILE = "unicode-codepoint-count-v1"
+_MATERIALIZED_RESULT_READ_CHUNK = 64 * 1024
+_DISTRIBUTION = "loss-resistant-context-compiler"
 _CLI_MASK_CHARACTERS = frozenset({"*", "#", "█", "■"})
+
+
+class _StderrEmissionError(RuntimeError):
+    """Raised after one failed binary diagnostic/event emission attempt."""
+
+
+class _Utf8BinaryTextWriter:
+    """Expose a strict text-writer surface over an unowned binary stream."""
+
+    def __init__(self, output: object) -> None:
+        self._output = output
+
+    def write(self, value: str) -> int:
+        if type(value) is not str:
+            raise TypeError("connector output must be an exact string")
+        payload = value.encode("utf-8", errors="strict")
+        written = self._output.write(payload)
+        if type(written) is not int or written != len(payload):
+            raise OSError("standard output did not accept the complete connector record")
+        return len(value)
+
+    def flush(self) -> None:
+        self._output.flush()
 
 
 def _mask_character(value: str) -> str:
@@ -101,16 +154,148 @@ def _artifact_limits(args: argparse.Namespace) -> ArtifactLimits:
 
 def _input_sources(path: str, limits: SourceLimits) -> list:
     if path == "-":
-        return load_sources(sys.stdin, limits=limits)
+        binary_input = getattr(sys.stdin, "buffer", None)
+        if binary_input is None:
+            return load_sources(sys.stdin, limits=limits)
+        try:
+            return load_sources(
+                codecs.getreader("utf-8")(binary_input, errors="strict"),
+                limits=limits,
+            )
+        except UnicodeDecodeError as exc:
+            raise UnicodeError("source input must be valid UTF-8 text") from exc
     return load_sources_path(path, limits=limits)
 
 
+def _materialized_result_bytes(path: str) -> bytes:
+    if path == "-":
+        binary_input = getattr(sys.stdin, "buffer", None)
+        if binary_input is None:
+            raise OSError("standard input does not expose a binary buffer")
+        payload = bytearray()
+        while len(payload) <= _MAX_SERIALIZED_RESULT_BYTES:
+            chunk = binary_input.read(
+                min(
+                    _MATERIALIZED_RESULT_READ_CHUNK,
+                    _MAX_SERIALIZED_RESULT_BYTES + 1 - len(payload),
+                )
+            )
+            if type(chunk) is not bytes:
+                raise TypeError("materialized context input must yield exact bytes")
+            if not chunk:
+                break
+            payload.extend(chunk)
+            if len(payload) > _MAX_SERIALIZED_RESULT_BYTES:
+                raise ContextWindowError(
+                    "serialized materialized context result exceeds the byte limit"
+                )
+        return bytes(payload)
+
+    payload = bytearray()
+    with _open_stable_text_path(
+        path,
+        max_input_bytes=_MAX_SERIALIZED_RESULT_BYTES,
+        label="materialized context result",
+        limit_error=ContextWindowError,
+        require_single_link=True,
+    ) as stream:
+        while True:
+            text = stream.read(_MATERIALIZED_RESULT_READ_CHUNK)
+            if type(text) is not str:
+                raise TypeError("materialized context input must yield exact text")
+            if not text:
+                break
+            chunk = text.encode("utf-8", errors="strict")
+            if len(payload) + len(chunk) > _MAX_SERIALIZED_RESULT_BYTES:
+                raise ContextWindowError(
+                    "serialized materialized context result exceeds the byte limit"
+                )
+            payload.extend(chunk)
+    return bytes(payload)
+
+
 def _write_output(value: str, path: str | None) -> None:
+    _write_exact_utf8_output(value, path)
+
+
+def _write_binary_stdout(rendered: str) -> None:
+    payload = rendered.encode("utf-8", errors="strict")
+    output = getattr(sys.stdout, "buffer", None)
+    if output is None:
+        raise OSError("standard output does not expose a binary buffer")
+    written = output.write(payload)
+    if type(written) is not int or written != len(payload):
+        raise OSError("standard output did not accept the complete canonical report")
+    output.flush()
+
+
+def _emit_materialized_receipt_sha256(receipt_sha256: str) -> None:
+    if (
+        type(receipt_sha256) is not str
+        or len(receipt_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in receipt_sha256)
+    ):
+        raise ValueError("materialized receipt SHA-256 is invalid")
+    try:
+        _write_binary_stdout(receipt_sha256 + "\n")
+    except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise OSError(
+            "materialized result was written, but its receipt SHA-256 was not "
+            "emitted completely; treat the result as unanchored and unusable"
+        ) from exc
+
+
+def _write_binary_stderr(rendered: str) -> None:
+    payload = rendered.encode("utf-8", errors="strict")
+    output = getattr(sys.stderr, "buffer", None)
+    if output is None:
+        raise _StderrEmissionError("standard error does not expose a binary buffer")
+    try:
+        written = output.write(payload)
+    except (OSError, TypeError, ValueError) as exc:
+        raise _StderrEmissionError("standard error write failed") from exc
+    if type(written) is not int or written != len(payload):
+        raise _StderrEmissionError("standard error did not accept the complete diagnostic")
+    try:
+        output.flush()
+    except (OSError, TypeError, ValueError) as exc:
+        raise _StderrEmissionError("standard error flush failed") from exc
+
+
+def _write_exact_utf8_output(value: str, path: str | None) -> None:
+    """Write canonical UTF-8 bytes to stdout while preserving atomic file output."""
+
     rendered = value + ("" if value.endswith("\n") else "\n")
     if path:
         atomic_write_text(Path(path), rendered)
+    elif type(sys.stdout) is io.StringIO:
+        written = sys.stdout.write(rendered)
+        if type(written) is not int or written != len(rendered):
+            raise OSError("in-memory standard output did not accept the complete report")
+        sys.stdout.flush()
     else:
-        sys.stdout.write(rendered)
+        _write_binary_stdout(rendered)
+
+
+def _write_new_output(value: str, path: str | None) -> None:
+    if path:
+        rendered = value + ("" if value.endswith("\n") else "\n")
+        try:
+            atomic_write_text(Path(path), rendered, overwrite=False)
+        except AtomicDestinationExistsError as exc:
+            raise FileExistsError("output already exists") from exc
+    else:
+        _write_exact_utf8_output(value, None)
+
+
+def _version(_args: argparse.Namespace) -> int:
+    try:
+        _write_binary_stdout(f"{_DISTRIBUTION} {_PACKAGE_VERSION}\n")
+    except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise OSError(
+            "package version was not emitted completely; treat any emitted bytes as unusable"
+        ) from exc
+    return 0
 
 
 def _command_name(args: argparse.Namespace) -> str:
@@ -184,8 +369,11 @@ def _write_error(
 ) -> None:
     if getattr(args, "error_format", "text") == "json":
         inferred_category, inferred_code = _error_identity(exc)
+        details = exc.diagnostic if type(exc) is ContextWindowError else None
         diagnostic = {
-            "schema": _DIAGNOSTIC_SCHEMA,
+            "schema": (
+                _DETAIL_DIAGNOSTIC_SCHEMA if details is not None else _DIAGNOSTIC_SCHEMA
+            ),
             "command": _command_name(args),
             "category": category or inferred_category,
             "code": code or inferred_code,
@@ -193,7 +381,9 @@ def _write_error(
             "exception_type": type(exc).__name__,
             "message": str(exc),
         }
-        sys.stderr.write(
+        if details is not None:
+            diagnostic["details"] = details
+        _write_binary_stderr(
             json.dumps(
                 diagnostic,
                 ensure_ascii=False,
@@ -203,7 +393,7 @@ def _write_error(
             + "\n"
         )
         return
-    sys.stderr.write(f"ctxc: {exc}\n")
+    _write_binary_stderr(f"ctxc: {exc}\n")
 
 
 def _compile_event(
@@ -295,7 +485,7 @@ def _emit_compile_event(
         exit_code=exit_code,
         output_format=args.format,
     )
-    sys.stderr.write(
+    _write_binary_stderr(
         json.dumps(
             event,
             ensure_ascii=False,
@@ -387,17 +577,192 @@ def _compile(args: argparse.Namespace) -> int:
                 indent=2,
                 ensure_ascii=False,
             )
-        _write_output(rendered, args.output)
+        _write_exact_utf8_output(rendered, args.output)
         _emit_compile_event(
             args,
             result,
             artifact,
             exit_code=exit_code,
         )
-    except (OSError, TypeError, ValueError) as exc:
+    except _StderrEmissionError:
+        raise
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
         _write_error(args, exc)
         return 2
     return exit_code
+
+
+def _materialize(args: argparse.Namespace) -> int:
+    try:
+        if args.emit_receipt_sha256 and (
+            type(args.output) is not str or not args.output
+        ):
+            raise ValueError("--emit-receipt-sha256 requires --output")
+        degradation_policy = (
+            None
+            if args.degradation_policy is None
+            else ContextWindowDegradationPolicy(mode=args.degradation_policy)
+        )
+        source_limits = _source_limits(args)
+        sources = _input_sources(args.input, source_limits)
+        budget = ContextWindowBudget(
+            hard_limit_tokens=args.hard_limit_tokens,
+            memory_budget_tokens=args.memory_budget_tokens,
+            reserved_output_tokens=args.reserved_output_tokens,
+            safety_margin_tokens=args.safety_margin_tokens,
+            fixed_input_tokens=args.fixed_input_tokens,
+            minimum_recent_messages=args.minimum_recent_messages,
+            maximum_recent_messages=args.maximum_recent_messages,
+            per_message_overhead_tokens=args.per_message_overhead_tokens,
+        )
+        result = materialize_context(
+            sources,
+            current_turn_id=args.current_turn_id,
+            budget=budget,
+            token_counter=ExactTokenCounterAdapter(
+                args.tokenizer_profile,
+                len,
+            ),
+            allocation_plan_sha256=args.allocation_plan_sha256,
+            fixed_input_sha256=args.fixed_input_sha256,
+            source_limits=source_limits,
+            compilation_limits=_compilation_limits(args),
+            degradation_policy=degradation_policy,
+        )
+        receipt_sha256 = result["receipt"]["receipt_sha256"]
+        rendered = serialize_materialized_context_result(
+            result,
+            expected_receipt_sha256=receipt_sha256,
+            expected_allocation_plan_sha256=args.allocation_plan_sha256,
+        ).decode("utf-8")
+        _write_exact_utf8_output(rendered, args.output)
+        if args.emit_receipt_sha256:
+            _emit_materialized_receipt_sha256(receipt_sha256)
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        TimeoutError,
+    ) as exc:
+        code = exc.reason if isinstance(exc, ContextWindowError) else None
+        _write_error(args, exc, code=code)
+        return 2
+    return 0
+
+
+def _verify_materialization(args: argparse.Namespace) -> int:
+    try:
+        if (
+            args.output is not None
+            and args.result != "-"
+            and _paths_alias(args.result, args.output)
+        ):
+            raise ValueError(
+                "materialized context verification refuses to overwrite its input"
+            )
+        payload = _materialized_result_bytes(args.result)
+        verify_materialized_context_result(
+            payload,
+            expected_receipt_sha256=args.expected_receipt_sha256,
+            expected_allocation_plan_sha256=(
+                args.expected_allocation_plan_sha256
+            ),
+        )
+        _write_exact_utf8_output(
+            payload.decode("utf-8", errors="strict"),
+            args.output,
+        )
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        TimeoutError,
+    ) as exc:
+        _write_error(args, exc)
+        return 2
+    return 0
+
+
+def _evaluate_materialization(args: argparse.Namespace) -> int:
+    try:
+        if args.verify_report is None:
+            if args.expected_report_sha256 is not None:
+                raise ValueError(
+                    "--expected-report-sha256 requires --verify-report"
+                )
+            report = evaluate_materialization_retention(
+                selected_split=args.split or "heldout",
+            )
+        else:
+            if args.split is not None:
+                raise ValueError("--split cannot be combined with --verify-report")
+            if args.expected_report_sha256 is None:
+                raise ValueError(
+                    "--verify-report requires --expected-report-sha256"
+                )
+            report = load_materialization_retention_report(
+                args.verify_report,
+                expected_report_sha256=args.expected_report_sha256,
+            )
+        rendered = json.dumps(
+            report,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        _write_new_output(rendered, args.output)
+        return 0 if report["integrity_passed"] is True else 3
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        TimeoutError,
+    ) as exc:
+        _write_error(args, exc)
+        return 2
+    return 0
+
+
+def _evaluate_materialization_degradation(args: argparse.Namespace) -> int:
+    try:
+        if args.verify_report is None:
+            if args.expected_report_sha256 is not None:
+                raise ValueError("--expected-report-sha256 requires --verify-report")
+            report = evaluate_materialization_degradation()
+        else:
+            if args.expected_report_sha256 is None:
+                raise ValueError("--verify-report requires --expected-report-sha256")
+            report = load_materialization_degradation_report(
+                args.verify_report,
+                expected_report_sha256=args.expected_report_sha256,
+            )
+        rendered = json.dumps(
+            report,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        _write_new_output(rendered, args.output)
+        return 0 if report["integrity_passed"] is True else 3
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        TimeoutError,
+    ) as exc:
+        _write_error(args, exc)
+        return 2
+    return 0
 
 
 def _archive_append(args: argparse.Namespace) -> int:
@@ -698,12 +1063,36 @@ def _connector(args: argparse.Namespace) -> int:
     # Keep connector startup out of every ordinary command path.
     from .connector import serve_stdio
 
-    return serve_stdio(
-        input_stream=sys.stdin,
-        output_stream=sys.stdout,
-        max_request_bytes=args.max_request_bytes,
-        max_json_depth=args.max_request_json_depth,
+    binary_input = getattr(sys.stdin, "buffer", None)
+    binary_output = getattr(sys.stdout, "buffer", None)
+    if binary_output is None:
+        if type(sys.stdout) is not io.StringIO:
+            raise OSError("standard output does not expose a binary buffer")
+        output_stream = sys.stdout
+    else:
+        output_stream = _Utf8BinaryTextWriter(binary_output)
+    decoder = (
+        None
+        if binary_input is None
+        else io.TextIOWrapper(
+            binary_input,
+            encoding="utf-8",
+            errors="strict",
+            newline="",
+        )
     )
+    try:
+        return serve_stdio(
+            input_stream=sys.stdin if decoder is None else decoder,
+            output_stream=output_stream,
+            max_request_bytes=args.max_request_bytes,
+            max_json_depth=args.max_request_json_depth,
+        )
+    except UnicodeDecodeError as exc:
+        raise UnicodeError("connector input must be valid UTF-8 text") from exc
+    finally:
+        if decoder is not None:
+            decoder.detach()
 
 
 def _paths_alias(first: str, second: str) -> bool:
@@ -944,6 +1333,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    version_parser = subparsers.add_parser(
+        "version",
+        help="show the installed distribution version",
+    )
+    version_parser.set_defaults(handler=_version)
+
     compile_parser = subparsers.add_parser("compile", help="compile JSON or JSONL history")
     compile_parser.add_argument("input", help="history path or - for stdin")
     compile_parser.add_argument("-o", "--output")
@@ -986,6 +1381,122 @@ def build_parser() -> argparse.ArgumentParser:
     _add_compilation_limit_arguments(compile_parser)
     _add_error_format_argument(compile_parser)
     compile_parser.set_defaults(handler=_compile)
+
+    materialize_parser = subparsers.add_parser(
+        "materialize",
+        help="emit a bounded materialized context, runtime payload, and receipt",
+    )
+    materialize_parser.add_argument("input", help="history path or - for stdin")
+    materialize_parser.add_argument("-o", "--output")
+    materialize_parser.add_argument(
+        "--emit-receipt-sha256",
+        action="store_true",
+        help=(
+            "after --output succeeds, emit the verified receipt SHA-256 to "
+            "standard output for separate retention"
+        ),
+    )
+    materialize_parser.add_argument("--current-turn-id", required=True)
+    materialize_parser.add_argument("--hard-limit-tokens", type=int, required=True)
+    materialize_parser.add_argument("--memory-budget-tokens", type=int, required=True)
+    materialize_parser.add_argument("--reserved-output-tokens", type=int, default=1_024)
+    materialize_parser.add_argument("--safety-margin-tokens", type=int, default=256)
+    materialize_parser.add_argument("--fixed-input-tokens", type=int, default=0)
+    materialize_parser.add_argument(
+        "--fixed-input-sha256",
+        help="digest of fixed host input; required exactly when its count is nonzero",
+    )
+    materialize_parser.add_argument("--minimum-recent-messages", type=int, default=0)
+    materialize_parser.add_argument("--maximum-recent-messages", type=int, default=4_096)
+    materialize_parser.add_argument("--per-message-overhead-tokens", type=int, default=0)
+    materialize_parser.add_argument("--allocation-plan-sha256", required=True)
+    materialize_parser.add_argument(
+        "--tokenizer-profile",
+        choices=(_MATERIALIZE_TOKENIZER_PROFILE,),
+        required=True,
+        help=(
+            "exact Unicode code-point planning units only; this is not a "
+            "provider tokenizer and final provider recount remains required"
+        ),
+    )
+    materialize_parser.add_argument(
+        "--degradation-policy",
+        choices=(CONTEXT_WINDOW_DEGRADATION_MODE,),
+        default=None,
+        help=(
+            "opt into the closed strict-first lossless compact and single "
+            "memory-reallocation policy"
+        ),
+    )
+    _add_source_limit_arguments(materialize_parser)
+    _add_compilation_limit_arguments(materialize_parser)
+    _add_error_format_argument(materialize_parser)
+    materialize_parser.set_defaults(handler=_materialize)
+
+    verify_materialization_parser = subparsers.add_parser(
+        "verify-materialization",
+        help="verify and re-emit one canonical materialized context result",
+    )
+    verify_materialization_parser.add_argument(
+        "result",
+        help="canonical materialized context result path or - for stdin",
+    )
+    verify_materialization_parser.add_argument(
+        "--expected-receipt-sha256",
+        required=True,
+        help="independently retained 64-character lowercase receipt SHA-256",
+    )
+    verify_materialization_parser.add_argument(
+        "--expected-allocation-plan-sha256",
+        required=True,
+        help="independently retained 64-character lowercase allocation SHA-256",
+    )
+    verify_materialization_parser.add_argument("-o", "--output")
+    _add_error_format_argument(verify_materialization_parser)
+    verify_materialization_parser.set_defaults(handler=_verify_materialization)
+
+    evaluation_parser = subparsers.add_parser(
+        "evaluate-materialization",
+        help=(
+            "run or verify the bundled offline structural-retention diagnostic"
+        ),
+    )
+    evaluation_parser.add_argument(
+        "--split",
+        choices=("heldout", "development", "train", "all"),
+        help="bundled grouped split to evaluate; defaults to heldout",
+    )
+    evaluation_parser.add_argument(
+        "--verify-report",
+        help="verify one previously emitted report instead of running the diagnostic",
+    )
+    evaluation_parser.add_argument(
+        "--expected-report-sha256",
+        help="independently retained report digest required for verification",
+    )
+    evaluation_parser.add_argument("-o", "--output")
+    _add_error_format_argument(evaluation_parser)
+    evaluation_parser.set_defaults(handler=_evaluate_materialization)
+
+    degradation_evaluation_parser = subparsers.add_parser(
+        "evaluate-materialization-degradation",
+        help=(
+            "run or verify the fixed offline strict/compact/reallocation diagnostic"
+        ),
+    )
+    degradation_evaluation_parser.add_argument(
+        "--verify-report",
+        help="verify one previously emitted report instead of running the diagnostic",
+    )
+    degradation_evaluation_parser.add_argument(
+        "--expected-report-sha256",
+        help="independently retained report digest required for verification",
+    )
+    degradation_evaluation_parser.add_argument("-o", "--output")
+    _add_error_format_argument(degradation_evaluation_parser)
+    degradation_evaluation_parser.set_defaults(
+        handler=_evaluate_materialization_degradation
+    )
 
     verify_parser = subparsers.add_parser(
         "verify", help="re-verify an artifact against immutable source history"
@@ -1263,8 +1774,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.handler(args))
+    except _StderrEmissionError:
+        return 2
     except (OSError, TypeError, ValueError, TimeoutError) as exc:
-        _write_error(args, exc)
+        with suppress(_StderrEmissionError):
+            _write_error(args, exc)
         return 2
 
 

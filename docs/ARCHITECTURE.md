@@ -69,8 +69,9 @@ The connector exposes exactly six operations:
 | `inspect_memory` | Bounded artifact summary, trusted-memory counts, bindings, accounting, and certificate |
 
 The CLI entry point is `ctxc connector --stdio`. It reads sequential JSONL and
-writes one response line for each nonblank request line. The strict request
-envelope is exactly:
+writes one strict UTF-8, LF-terminated response for each nonblank request line,
+without inheriting the host text encoding. The strict request envelope is
+exactly:
 
 ```json
 {
@@ -91,11 +92,152 @@ fields. A malformed line receives a structured error envelope with null request
 identity, after which the service continues. This gives hosts a plain,
 versioned process boundary without requiring shared Python types.
 
+The response error object is also a trust boundary. Runtime exceptions are
+translated to one of ten closed category/code variants. Messages and the
+reported exception type are fixed public values; raw exception text and
+concrete Python types do not cross the connector boundary. This prevents
+source content, paths, provider diagnostics, and credentials embedded in an
+exception from becoming protocol output.
+
 In-process callers may supply a mapping, dataclass, or an object with
 `model_dump()`, `to_dict()`, or `dict()`. This is structural compatibility
 only; the core does not import or require `localai-contracts`. If such an
 object is accepted, it is converted to detached JSON-shaped data before
 validation.
+
+### Lazy canonical-contract projection
+
+`localai_contracts_adapter.py` and `localai_contracts_connector.py` form a
+parallel optional boundary, not a reinterpretation of the private
+six-operation protocol above. It is not
+imported from `context_compiler.__init__`, and importing the module itself does
+not import its optional dependency. Constructing `LocalAIContractsAdapter`
+requires exactly `localai-contracts==0.2.0a2` and protocol `1.0.0`.
+
+Before the adapter initiates package import or exposes a preloaded root,
+construction requires one exact-version distribution, an unset
+`sys.pycache_prefix`, and exact built-in module/spec/source-loader state bound
+to the distribution's recorded package and initializer. It rejects loader
+instance overrides, non-string namespace/module-registry keys, linked/reparse
+and unexpected package-tree entries. All 35 immutable wheel `RECORD` rows must
+appear exactly once: 34 hashed rows with reviewed paths, URL-safe SHA-256
+values, sizes, and installed bytes, plus the `RECORD` self-row with canonical
+empty hash/size fields. Required generated rows are an exact pip marker,
+exact-wheel PEP 610 direct-archive document, and one platform-canonical
+launcher. An exact empty `REQUESTED` marker is optional; every other generated
+row fails closed. The adapter then checks exact sizes and a canonically framed
+SHA-256 over every reviewed source/resource file. Each bounded validation read
+of an installed file or package-local bytecode cache rejects regular-mode
+Windows reparse targets before open, on the opened descriptor, and after the
+read; the tree digest advances only after the reader's post-read
+identity/reparse checks pass. Package-local executable bytecode is parsed only
+by one empty-environment no-site batch worker. Windows
+and non-Darwin POSIX apply a 256 MiB process/address-space ceiling; macOS uses
+an exact 1 TiB virtual-address-space ceiling. A ten-second latest-acceptance
+deadline covers cache-batch construction through comparison, with separately
+bounded mandatory cleanup. The worker compiles the verified source associated
+with every cache before unmarshalling any cache, requires full payload
+consumption, and compares const-stripped format-2 serialized metadata, raw
+adaptive instruction/cache images, and a bounded tagged constant graph with
+per-code identity topology. External
+cache prefixes fail closed. After import the adapter repeats the complete
+`RECORD`, file, bytecode, and origin gate, validates all loaded
+contract-module paths and loaders, and requires the returned object to be the
+validated `sys.modules` root. This is installed-environment checking, not an
+import sandbox or FD-pinned transaction. The supported lane independently
+hashes and directly installs the reviewed wheel; transitive optional-extra
+resolution without PEP 610 archive binding is intentionally unavailable.
+PEP 610 is still a bound claim rather than independent archive
+authentication. Writable-site-packages races, code already run by
+startup/custom-finder/preload hooks, and arbitrary same-origin object forgery
+in a compromised process remain host boundaries.
+Cross-process sharing between separate nested code objects is normalized
+because valid compiler processes differ there; identity topology reachable
+within each code object is exact. CPython's private raw adaptive-code image is
+required for cache validation, so other implementations reject cacheful
+installs fail closed. The worker bounds memory, time, and process-tree effects,
+not filesystem/network access under a native marshal vulnerability.
+
+The typed `handle_request` and NDJSON surfaces use the wheel's stateful
+`ConnectorServer`, which exclusively handles `connector.handshake` and requires
+it first. The adapter advertises only executed `context.compile`. Its direct
+`handle` method is the server's already-negotiated callback seam, not a session
+API. The input is a closed one-to-eight array of actual canonical `SourceEvent`
+documents, and the return value is the canonical `ContextBundle` document
+directly. Private `capabilities`, `ingest_source_events`, `compile_memory`,
+`render_context`, `verify_memory`, and `inspect_memory` names are never
+advertised or aliased. The same wheel `ParseLimits`, public
+`bounded_canonical_bytes`, and strict parser are applied at every private
+serialization seam before in-process execution and by the NDJSON server.
+NDJSON is binary-only. A bounded oversized physical record is drained through
+its newline and receives exactly one error before processing resumes; bounded
+unterminated EOF receives one error. A record beyond the drain ceiling, a
+non-binary reader/writer, a short write, or a real reader/writer I/O failure is
+fatal and never receives a fabricated success.
+
+Canonical `trust` cannot authenticate an event. All unverified roles are
+mapped to the existing private assistant-history path with connector-owned
+`authenticated: false`; the original role, declared trust, metadata, and
+content digest remain nested inert evidence. Only a host callback returning an
+actual `AuthenticatedAuthority` after independent verification can preserve a
+role as authenticated. The callback is consulted only for events that also
+declare `trust: trusted`; `untrusted` and `derived` events cannot be promoted.
+A `trusted_for_state` decision is accepted only for an authenticated tool and
+retains the core's confirmed-fact-only scope.
+
+Compilation still produces and independently replays the rich private
+`ContextBundle`. The public projection then:
+
+1. includes every complete canonical source event as an exact untrusted span;
+2. projects only exact private provenance quotes, never derived item text;
+3. converts private character offsets to exact UTF-8 byte offsets;
+4. places a selected quote in trusted memory only when its source passed the
+   independent authority callback;
+5. projects protected omissions and protected-budget overflow explicitly;
+6. recomputes accounting over every emitted component with one method, keeping
+   estimates and exact counts distinct;
+7. hashes the exact canonical source documents and compiler policy as separate
+   identities; and
+8. derives the bundle id from the deterministic projected body, excluding
+   private session ids, wall-clock compilation fields, and private bundle
+   hashes.
+
+Complete source spans remain untrusted even for an authenticated actor because
+rehydration returns evidence, not authority. Selected and complete components
+may deliberately overlap; accounting counts both. The projection omits the
+private artifact, checkpoint, archive claim, and detector-scoped certificate
+because canonical `ContextBundle` has no lossless field for them. Therefore it
+is neither a private-bundle replacement nor a semantic-completeness,
+authenticity, or final-request-accounting certificate.
+
+The optional in-process `compile_with_conversion_audit` seam runs the same
+compilation and returns a provider-local
+`ctxc-localai-conversion-audit-0.1` sidecar beside the actual shared bundle.
+All shared SourceEvent and private ContextBundle root/immediate contract fields
+have fixed dispositions; a listed JSON Pointer classifies its complete subtree
+unless a child pointer overrides it. The assertions and inventory checks run
+on the ordinary wire path too, while construction and bounded serialization of
+the roughly 17 KiB diagnostic record occur only when the audit API is called.
+Thus a caller's shared-operation parse limit is not consumed by a discarded
+sidecar.
+
+SourceEvent conversion reconstructs the exact shared model from the private
+namespaced record and compares bounded canonical bytes. The output bundle must
+round-trip through the exact shared model, retain every full source event and
+its provenance, and satisfy the relations claimed by represented fields.
+`verify_conversion_audit` binds the self-hashed sidecar to caller-supplied
+actual SourceEvents and the actual output ContextBundle. The self-hash is
+integrity framing, not authentication; private-bundle hashes and host authority
+decisions remain provider assertions and the sidecar claims no semantic
+completeness. A strict `claim_boundary` labels caller-evidence bindings,
+provider assertions, assertion-dependent fields, and output-bundle assertions.
+Raw ids, content, metadata, and issuers are excluded, but the stable unsalted
+digests remain linkable and dictionary-testable. The sidecar is sensitive
+diagnostic evidence, not de-identified telemetry.
+
+The audit is not a shared operation or response member. The unresolved
+operation-specific schema-negotiation requirement and a minimal upstream
+proposal are recorded in [CONTRACT_REQUESTS.md](CONTRACT_REQUESTS.md).
 
 ### Source events and authority
 
@@ -241,6 +383,153 @@ Stdio dispatch is sequential and its sessions live only in process memory.
 A configured `SourceArchive` is owned by one connector session; the current
 implementation does not provide multi-session isolation inside one archive or
 connector instance.
+
+## Isolated OpenHands integration package
+
+`integrations/openhands/` builds the separate `ctxc-openhands` draft-alpha
+package; its exact current version is owned by the integration metadata.
+Neither the core distribution nor an ordinary
+`ctxc_openhands` import imports OpenHands; host imports occur only behind the
+exact compatibility gate. The only reviewed identity is OpenHands `1.8.0` at
+`bc26df351dd5d833a95131556dbe2da69af82253` plus SDK, tools, and agent server
+`1.27.0` at `904279edf2df5fa12d7caecc7576f62659b2e2dd`, on CPython 3.12 or 3.13.
+The packaged self-hashed manifest binds the reviewed source inventory and
+artifact digests. A version string alone is insufficient.
+
+This is an offline fake-runtime foundation, not a completed live integration.
+The live compatibility report retains `hash-pinned-wheelhouse-absent`, and
+there is no stable public host seam that exposes both the final immutable
+provider request and its exact tokenizer. Installing version-matching packages
+manually cannot clear either claim boundary.
+
+### Event, authority, callback, and atomic boundaries
+
+The adapter maps exactly the 18 top-level classes in
+[`SUPPORTED_EVENT_KINDS`](../integrations/openhands/docs/EVENT_AUTHORITY_MAP.md).
+Unknown top-level classes, serialized kinds, or fields fail closed. Closed
+nested message/content/tool-call shapes also reject unknown fields, while
+expressly opaque application JSON slots remain bounded and uninterpreted.
+Known transient/derived event classes are validated and then refused as durable
+source history; they are not silently dropped.
+
+The public SQLite append boundary does not trust a caller-supplied
+`SourceRecord` merely because its hashes are internally consistent. It
+independently rederives the mapper-produced record from the canonical host
+event and requires exact agreement on role, content, receipt-bound authority,
+provenance, OpenHands metadata, and record identity. A forged
+`authenticated`/`trusted_for_state` record therefore fails before insertion,
+and direct store calls cannot persist a reviewed transient event.
+
+Host `source`, message `role`, and tool-shaped payloads are serialized claims,
+not authentication. Model-facing events remain unauthenticated and
+`trusted_for_state=false` unless a separately issued receipt verifies the exact
+canonical event, session, event id/kind, claimed role, issuer, and optional tool
+name. An otherwise valid event with an unknown explicit tool name and no nested
+kind remains generic and cannot receive authority. An unknown serialized nested
+action/observation kind fails closed, and a known kind must match the explicit
+tool category.
+`ObservationEvent` is the only class eligible for trusted-state promotion, and
+only for an independently allowlisted exact tool receipt. Retrieval,
+attachments, file/search output, hooks, and delegated-agent output remain
+untrusted evidence under the same host boundary.
+
+The durable callback is installed before the host's default persistence
+callback. It catches every failure and never raises into the host, because
+raising there could prevent the host EventLog from retaining the event. The
+first refusal records a bounded diagnostic and poisons later ingestion and
+model dispatch. Poison clears only when reviewed code replays the complete
+persisted EventLog in exact order and the retained source count equals its
+length.
+
+Atomic bindings are derived again from each canonical host event; declared
+adapter metadata is comparison-only. An `ActionEvent` call completes only with
+one later `ObservationEvent`, `UserRejectObservation`, or `AgentErrorEvent`
+whose call id and tool name match, plus action id where that result shape has
+one. Assistant `MessageEvent` tool calls and tool-role message results form a
+separate family. Duplicate, reversed, incomplete, or cross-family groups block
+compaction and active-tail reads. ACP visualizer telemetry cannot complete an
+ordinary action group.
+
+### SQLite-WAL generation transaction
+
+The integration store is a local, non-symbolic SQLite database configured for
+WAL, `synchronous=FULL`, foreign keys, no dirty reads, disabled trusted schema,
+and bounded writer waits. Source events, transitions, operations, and request
+ledgers are append-only through schema triggers; generations are retained.
+Host condensation events may be recorded as untrusted input, but do not delete
+or rewrite the integration's source history.
+
+One compaction advances through these visibility states:
+
+| State | Reader visibility | Required transition evidence |
+| --- | --- | --- |
+| `prepared` | Invisible | Immutable source count/head/digest, parent generation, active epoch, policy, and tokenizer captured |
+| `verified` | Invisible | Independently replayed checkpoint and bundle with passed evidence and semantic digest |
+| `committed` | Invisible | Verified payload reloaded and made activation-eligible |
+| `active` | The one visible generation | Source-head, parent-generation, and active-epoch compare-and-swap won |
+| `superseded` | Invisible, retained | Former active generation available for explicit verified rollback |
+| `rolled_back` | Invisible, retained | Provisional candidate terminally ineligible without deleting evidence |
+
+Activation supersedes the old generation, marks the committed candidate
+active, and increments the session pointer in one SQLite transaction. A crash
+therefore exposes the old or new verified generation, never a partially
+switched candidate. Stale source heads, parent pointers, or epochs lose the
+compare-and-swap. Rollback changes only the visible verified generation; it
+does not rewind the immutable source head.
+
+The store integrity report takes one SQLite read transaction and enumerates
+every retained session, source chain, generation, transition, request ledger,
+and append operation. It reconstructs each captured source prefix, requires
+contiguous legal transition history ending in the stored state, reconciles the
+active pointer and activation count with the session epoch, replays every
+historical canonical-byte request ledger with the supported exact tokenizer,
+and binds every append result back to its retained event payload. A legitimate
+`prepared` crash remnant passes only with no verification payload; verified,
+committed, active, superseded, and verification-bearing rolled-back rows must
+reload all checkpoint, bundle, replay, and semantic bindings. These checks
+detect accidental or partial local corruption. They are self-consistency
+checks, not signatures, remote attestation, or a hostile-storage guarantee.
+
+Standalone scenario and soak verification uses one bounded transaction to read
+the session/generation/activation inventory, followed by separately bounded
+source, active-generation, integrity, and ledger reads guarded by pre/post
+database hashes and WAL/SHM rejection. It requires exactly one session plus the
+exact ordered generation inventory. Generation count, parent/epoch lineage,
+terminal states, verification flags, activation transitions, captured source
+count/head, bundle and semantic digests, active pointer, and report-specific
+generation arrays must all agree before `json-and-database` scope can pass. The
+scenario recovery operation binds the durable recovery code path; it does not
+independently attest that an operating-system process crashed. A database file
+hash and a recomputable report self-hash are insufficient without these row
+bindings.
+
+Exact span rehydration reads retained source content, verifies the requested
+half-open character span and quote digest, and returns a self-hashed record
+whose trust is always `untrusted-evidence`. Provenance fidelity does not
+promote truth, authority, or instruction priority.
+
+### Final-request ledger and live refusal
+
+The immutable fake-runtime ledger attributes every UTF-8 transport byte and
+exact fake token to prompts, verified memory, recent tail, current turn,
+retrieval, attachments, tool schemas, or provider framing. It also binds the
+model and route, source head, active generation, semantic result, exact
+tokenizer identity/vector digest, tool-schema digest, reserved output, safety
+margin, transport digest, final-request digest, and ledger self-hash. Payload
+plus reserve plus margin above the declared hard limit is refused.
+
+That exactness is deliberately narrow: the bundled byte tokenizer is exact
+only for the canonical-UTF-8-byte offline fake protocol. Core
+`character-estimate-v1` accounting remains estimated, and neither mode can be
+relabelled. The guarded host proxy always refuses real `run()` and `arun()`
+until a supported final-request/tokenizer adapter exists; it also refuses the
+unrecorded `ask_agent()` path and the event/security-bypassing `execute_tool()`
+path. The offline three-compaction crash scenario and deterministic soak test
+these contracts through code paths that make no network or paid-service call.
+Their reports honestly set network-isolation enforcement to false unless an
+operator retains separate container/runtime evidence. They do not constitute
+a live OpenHands demonstration, semantic-completeness claim, or superiority
+claim.
 
 ## Core data model
 
@@ -981,6 +1270,56 @@ enforced network-isolation, inference-service, exact Python, source-checkout,
 and local-model prerequisites were absent. Failed preflight and runner evidence
 is never upgraded into a valid result.
 
+The materialization API has one exact opt-in degradation policy. Default calls
+retain strict behavior; `ctxc materialize` enables it only through
+`--degradation-policy lossless-compact-then-reallocate-v1`. After an exact
+strict compiled-memory overflow, the policy tries a self-describing lossless
+compact renderer, compares both exact pre-verification required counts observed
+for the original partition, and makes at most one bounded memory reallocation
+using the smaller form. A boundary message can then move into the compiled
+prefix, so the `minimal_memory_reallocation_*` rung names do not claim a
+globally minimal budget over every possible repartition. Fixed inputs, the
+current turn, and the configured minimum recent tail remain mandatory.
+Compiler metadata binds the mode, rung, requested/effective budgets, and
+rendering profile before the artifact and receipt digests are calculated.
+
+`ctxc verify-materialization` is the CLI projection of the existing public
+materialized-result verifier. It boundedly reads one canonical result, requires
+independent expected receipt and allocation digests, reconstructs the nested
+materialization/runtime/component/receipt relationship, and re-emits the exact
+input bytes only after verification. It introduces no second receipt or
+provider-execution state.
+
+The installed `ctxc evaluate-materialization` command is a dependency-free
+structural diagnostic over an immutable package-resident pack of 30
+project-authored synthetic-naturalistic coding histories. Grouped splits contain
+4 train, 6 development, and 20 held-out cases. The runner compares full raw
+history, a bounded recent tail, and the existing `materialize_context()` result
+under `unicode-codepoint-count-v1`; it records exact integer planning-unit,
+correction, identifier, path, number, detail, current-turn, omission/refusal,
+and authority-boundary measurements. It never calls a model, retrieval system,
+or provider. Retrieved text is not placed in authoritative memory or simulated
+by this diagnostic. See
+[Materialization retention evaluation](MATERIALIZATION_RETENTION_EVALUATION.md).
+
+This pack is visible project-authored input, not blind gold or a collected,
+licensed, consented, privacy-reviewed natural cohort. Its structural report
+does not establish semantic completeness, task completion, provider-token
+accounting/readiness, or comparative superiority, and it does not close P0-E3.
+
+`ctxc evaluate-materialization-degradation` reuses only the fixed held-out 20
+cases and their existing oracles. Its arms are the default strict path, an
+evaluator-private compact-only stop, and the public compact-plus-one-reallocation
+policy. At the fixed code-point budget the first two arms refuse all 20 cases;
+the public ladder accepts 18 and retains the two mandatory-component refusals.
+Accepted rows bind exact retention, correction precedence, source partition,
+current turn, authority, omission, canonical execution, and a receipt digest
+from the second deterministic execution. Required/protected retention requires
+the frozen source id and exact source span; equal text from another source does
+not satisfy it.
+This is a structural regression comparison, not an additional authority or
+provider-admission layer.
+
 `benchmarks/natural_history.py` defines a separate strict evidence pipeline.
 Six schemas and seven self-hashed fixtures cover bounded corpus intake,
 license/consent/privacy state, exact source spans, two independent annotators,
@@ -993,7 +1332,10 @@ collected, private fields were removed, or annotations are correct.
 Every runtime-error path calls one formatter. The default remains
 `ctxc: <message>` on stderr. `--error-format json` instead emits one compact
 `ctxc-diagnostic-0.1` object with command, stable category/code, exit status,
-exception type, and message. Classification order is explicit so resource
+exception type, and message. A materialization budget overflow with exact
+bounded accounting instead emits `ctxc-diagnostic-0.2` with a nested
+`loss-resistant-materialization-refusal-diagnostic-v1` object; other errors do
+not fabricate those details. Classification order is explicit so resource
 limits, timeouts, missing/denied paths, malformed JSON/encoding, type/value
 errors, hash/digest failures, and budget/compression policy failures do not
 collapse into one undifferentiated string. Argparse usage failures occur before
@@ -1083,6 +1425,10 @@ beyond the same rewrite boundary.
 - Use `LocalAIConnector` for the six-operation in-process or versioned JSONL
   integration contract, and `ExactTokenCounterAdapter` when its accounting can
   be exact.
+- Install `ctxc-openhands` separately for the exact pinned OpenHands offline
+  alpha, and follow its event map, runbook, and live-blocker policy. Do not use
+  its fake-runtime exact ledger as a real-model tokenizer or bypass the guarded
+  host request paths.
 - Use `IncrementalCompiler` for deterministic append/checkpoint/resume
   semantics while treating changed-prefix compilation as a full batch
   recompile until finer invalidation is implemented.

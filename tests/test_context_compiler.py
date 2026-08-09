@@ -18,6 +18,7 @@ from context_compiler import (
     SourceArchive,
     SourceRecord,
 )
+from context_compiler.compiler import _budget_overflow_error
 from context_compiler.extractors import ExtractionResult
 from context_compiler.io import load_sources, verify_artifact_dict
 from context_compiler.models import ProvenanceSpan, source_digest
@@ -470,8 +471,62 @@ decisions:
         with self.assertRaisesRegex(
             ValueError,
             "loss-resistant context exceeds token budget",
-        ):
+        ) as caught:
             ContextCompiler(policy=strict_policy, token_counter=len).compile([source])
+        self.assertIs(type(caught.exception), ValueError)
+        self.assertEqual(
+            caught.exception.args,
+            ("loss-resistant context exceeds token budget by 212 estimated tokens",),
+        )
+
+    def test_strict_budget_exact_fit_and_one_unit_over_are_not_clamped(self) -> None:
+        source = make_source(0, "constraint: preserve this exact requirement")
+        exact = ContextCompiler(
+            policy=CompilationPolicy(
+                token_budget=11,
+                minimum_compression_ratio=1.0,
+                fail_on_budget_overflow=True,
+            ),
+            token_counter=lambda _text: 11,
+        ).compile([source])
+        self.assertEqual(exact.compression.active_tokens_estimate, 11)
+        self.assertEqual(exact.compression.budget_overflow, 0)
+
+        with self.assertRaises(ValueError) as caught:
+            ContextCompiler(
+                policy=CompilationPolicy(
+                    token_budget=10,
+                    minimum_compression_ratio=1.0,
+                    fail_on_budget_overflow=True,
+                ),
+                token_counter=lambda _text: 11,
+            ).compile([source])
+        self.assertIs(type(caught.exception), ValueError)
+        self.assertEqual(
+            caught.exception.args,
+            ("loss-resistant context exceeds token budget by 1 estimated tokens",),
+        )
+
+    def test_budget_overflow_exception_rejects_non_exact_counts(self) -> None:
+        class IntegerSubclass(int):
+            pass
+
+        invalid = (
+            {"required_tokens": True, "token_budget": 0},
+            {"required_tokens": IntegerSubclass(2), "token_budget": 1},
+            {"required_tokens": 2, "token_budget": False},
+            {"required_tokens": 2, "token_budget": IntegerSubclass(1)},
+            {"required_tokens": -1, "token_budget": 0},
+        )
+        for values in invalid:
+            with self.subTest(values=values), self.assertRaises(TypeError):
+                _budget_overflow_error(**values)
+        for values in (
+            {"required_tokens": 1, "token_budget": 1},
+            {"required_tokens": 0, "token_budget": 1},
+        ):
+            with self.subTest(values=values), self.assertRaises(ValueError):
+                _budget_overflow_error(**values)
 
 
 class HardeningRegressionTests(unittest.TestCase):

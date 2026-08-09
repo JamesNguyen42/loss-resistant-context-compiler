@@ -7,12 +7,15 @@ include SUPPORT.md
 include TODO.md
 include _ctxc_build_backend.py
 include pyproject.toml
+include requirements-build.lock
+exclude setup.cfg
 
 recursive-include benchmarks *.json *.md *.py
-recursive-include conformance *.jsonl *.py
+recursive-include conformance *.json *.jsonl *.py
 recursive-include docs *.json *.md
 recursive-include examples *.jsonl
 recursive-include schemas *.json
 recursive-include scripts *.py
 recursive-include src *.py
+include src/context_compiler/data/materialized_retention_pack_v1.json
 recursive-include tests *.py

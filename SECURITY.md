@@ -36,6 +36,42 @@ Every security, parsing, integrity, or concurrency fix must include a regression
 that fails before the fix and passes after it. A gate must not be weakened to
 make a reproduction pass.
 
+## Separate OpenHands alpha
+
+`ctxc-openhands` is an isolated draft-alpha package, not a supported live
+deployment. Ordinary core installation and import remain dependency-free. Live
+OpenHands execution is blocked by `hash-pinned-wheelhouse-absent` and by the
+absence of a supported immutable final-provider-request/exact-tokenizer hook.
+Do not report the offline fake runtime as a live security test.
+
+OpenHands source/role/tool labels do not authenticate authority. Unknown host
+events fail closed, unverified assistant/tool/retrieval/file/search/delegated
+output remains untrusted, tool calls/results stay atomic, and rehydrated exact
+spans remain `untrusted-evidence`. Reports of authority promotion, incomplete
+pair visibility, source-history mutation, generation-state bypass, callback
+poison bypass, or request-ledger mismatch are security-sensitive.
+
+The qualified SQLite boundary is a local, non-cloud-synchronized,
+non-symbolic filesystem. Schema 2 has no repair or automatic migration.
+Evidence databases, reports, and backups are exclusively created and never
+overwrite an existing path. Network/distributed/cloud-sync storage, host
+compromise, and arbitrary code execution remain outside this boundary.
+
+A scenario, soak, or crash-campaign JSON self-hash is not attestation.
+`verify-evidence` can pass only when it also reconciles the exact retained
+SQLite database; JSON-only scope is deliberately a failure. Evidence reports
+and database-file hashes are still insufficient unless applicable report
+claims agree with database rows. Scenario and soak verification binds the
+ordered session, generation lineage, activation, source-count/head, bundle,
+semantic, and report-specific claims. Reports do not self-attest process
+isolation and retain false network-isolation fields. The 2026-07-27 scenario
+and soak pairs predate the strengthened row binding and remain hash-intact
+historical evidence with incomplete verifier proof. The campaign uses a
+separate verifier and was not affected by that finding, but remains historical
+temporary evidence rather than durable current-head proof. Preserve external
+runtime controls, every failed run, and each bound JSON/SQLite pair. See the
+[OpenHands runbook](integrations/openhands/docs/RUNBOOK.md).
+
 ## Boundaries that are not vulnerabilities by themselves
 
 The package does not authenticate source roles, prove semantic completeness,

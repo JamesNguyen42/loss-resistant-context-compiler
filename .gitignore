@@ -8,4 +8,7 @@ coverage.xml
 dist/
 build/
 .venv/
+ci-build-environment/
+ci-build-wheelhouse/
 benchmark-results/
+.artifacts/

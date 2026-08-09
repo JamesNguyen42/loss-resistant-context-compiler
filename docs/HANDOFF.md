@@ -16,9 +16,23 @@ changing or interpreting the recorded comparison. Read the
 [external comparison protocol](../benchmarks/protocols/external-comparison-v1.md)
 and its [strict JSON manifest](../benchmarks/protocols/external-comparison-v1.json)
 before changing candidate selection, adapter identity, resources, datasets, or
-claim rules. Read [natural-history evidence contracts](NATURAL_HISTORY_EVIDENCE.md)
+claim rules. Read the [SWE-bench Verified source boundary](SWEBENCH_EVALUATION.md)
+before handling its source rows, task projection, repository snapshots,
+patch-composition preflight, or grader. Read the
+[tau2-bench text-core boundary](TAU2_EVALUATION.md) before
+handling its Task objects, scenarios, DBs, simulator, tools, grader, or result
+files. Read [natural-history evidence contracts](NATURAL_HISTORY_EVIDENCE.md),
+the separate
+[materialization retention evaluation](MATERIALIZATION_RETENTION_EVALUATION.md),
 and [result-blind compatibility records](../benchmarks/compatibility/README.md)
-before collecting histories or rerunning an external diagnostic.
+before collecting histories, interpreting structural retention measurements,
+or rerunning an external diagnostic.
+Read the separate [OpenHands package README](../integrations/openhands/README.md),
+[event and authority map](../integrations/openhands/docs/EVENT_AUTHORITY_MAP.md),
+[operator runbook](../integrations/openhands/docs/RUNBOOK.md), and
+[release checklist](../integrations/openhands/docs/RELEASE_CHECKLIST.md) before
+changing its pin, host mapping, authority, storage transaction, accounting, or
+live-readiness status.
 
 ## Snapshot
 
@@ -26,10 +40,11 @@ before collecting histories or rerunning an external diagnostic.
 | --- | --- |
 | Repository | [`JamesNguyen42/loss-resistant-context-compiler`](https://github.com/JamesNguyen42/loss-resistant-context-compiler) |
 | Default branch | `main` |
-| Package version | `0.1.0` |
-| Python | 3.11, 3.12, and 3.13 in CI |
+| Package version | `0.1.1a21` |
+| Python | 3.11, 3.12, 3.13, and 3.14 complete in root CI; Windows 3.14 core suite green |
 | Core runtime dependencies | None outside the Python standard library |
-| Tests at this snapshot | 1,414 collected: 1,399 passing, 15 skipped; 105 subtests passing |
+| Validation checkpoints | `94c35cda`: root warning-strict 1,598 passed, 23 skipped, plus 105 passing subtests; `da664387`: exact optional adapter 103 passed, 3 Windows symlink skips; `cded7e96`: evidence verifier 29 passed warning-strict; `2f692484`: exact-archive root 1,598 passed/23 skipped/105 subtests and OpenHands 483 passed/5 skipped/1 retained deselected; `f9ba3de`: all exact-head hosted workflows passed and three package outputs were byte-identical across six automatic lanes; `0f20b8a`: exact seven-wheel OpenHands build inputs, clean provider/a2 harness, and all automatic hosted gates passed; `7915beb`: exact seven-wheel root release inputs and post-acquisition offline build/smoke passed every automatic hosted gate; `d512b04`: predecessor preparation-through-380 evidence; `f12aa37`: 44-row Sphinx extension and historical mixed-provenance through-424 reconciliation; `a1b262a`: closed SWE-bench patch grammar, dual-environment 86 focused tests passed and integrated gates collected 187 with 186 passed and one expected Windows skip; `c337557`: 75-row SymPy extension and fresh mixed-provenance through-499 reconciliation, separately replayed and followed by the same 187-test dual-environment gate; no local inference |
+| Canonical optional boundary | `localai-contracts==0.2.0a2`, protocol/schema `1.0.0`; `context.compile` only; non-inference |
 | Recorded benchmark | 32 generated histories, 72 messages each |
 | Recorded compiler compression | 32.60x |
 | Recorded compiler critical recall | 100% |
@@ -44,7 +59,11 @@ before collecting histories or rerunning an external diagnostic.
 | External protocol | Valid self-hashed draft; 4 screened candidates, 9 explicit blockers, `claim_ready: false` |
 | External systems evaluated | No comparative candidate scored; result-blind ACON/AMA-Agent screens and one retained failed ACON diagnostic only |
 | Natural-history evidence | Strict synthetic contract fixtures; no collected cohort |
-| Installed JSON Schemas | 25 (7 historical ids, 18 current-namespace ids) |
+| SWE-bench Verified intake | Immutable 500-row source and full-selection descriptor plus gold-free projection; source/sdist-only raw-Git preparation, full-cohort prediction, synthetic controller-run, and text-patch composition evidence; 213 public rows attempted across nine repositories (207 prepared, 6 exact Pylint `tree-symlink-forbidden` refusals, 287 unattempted), with no public candidate/model/agent run, verified isolation, grader execution, resolution, score, or usefulness result |
+| tau2-bench intake | Pinned v1.0.1 annotated tag and exact 278-row half-duplex text `base` cohort in actual loader order; source-only verification and security contract, with no adapter, simulator, grader, isolation, execution, reward, score, or usefulness result |
+| Materialization retention diagnostic | 30 project-authored synthetic-naturalistic cases: 4 train, 6 development, 20 held out; structural measurements only; no model, retrieval, provider, or natural-cohort claim |
+| OpenHands integration | Separate `ctxc-openhands` draft alpha; exact current version is owned by its package metadata; offline fake-runtime foundation only; live execution and recorded live scenario blocked |
+| Installed JSON Schemas | 26 (7 historical ids, 19 current-namespace ids) |
 | External 50%-better claim | Not established |
 | Downstream task completion evidence | None yet |
 | Confirmed fail-closed blockers | Four identified in-process paths closed |
@@ -55,6 +74,15 @@ benchmark, and local-Qwen checkpoint is commit `3ed2f79` on
 `codex/harden-verified-memory-evaluation`; later runner and documentation work
 may be newer. Always use `git log -1` and `git status -sb` to establish the
 exact state.
+
+The current verified SWE-bench preparation-through-499 evidence preserves three
+generation revisions: predecessor
+`d512b04156728cb9a4088f250ead395192572b34` (`d512b04`) for ordinals
+287--380 and `f12aa37d91bc4b2c3fa37e0ab882df6b035a902d` (`f12aa37`) for
+Sphinx ordinals 381--424 and the historical through-424 reconciliation, plus
+`c3375577b1e555a56fa6c64ed754bc9eabd64b8f` (`c337557`) for SymPy ordinals
+425--499 and the fresh through-499 reconciliation. Its retained artifacts are
+ignored local evidence, not committed public results.
 
 ## Original objective
 
@@ -299,26 +327,43 @@ and measured duration.
 | `src/context_compiler/schema_compatibility.py` | Machine-readable artifact reader/writer window and no-silent-migration policy |
 | `src/context_compiler/redaction.py` | Fixed common-secret content detectors, masking policy, immutable result, audit report, and exact replay |
 | `src/context_compiler/cli.py` | `ctxc` parsing, atomic output transactions, versioned error/completion diagnostics, and exit codes |
+| `src/context_compiler/localai_contracts_adapter.py` | Lazy exact-version canonical adapter, pre/post import origin and installed-tree gate, closed authority projection, direct ContextBundle result, provider-local evidence-bound conversion audit, typed request server, and 22-case probe |
+| `src/context_compiler/localai_contracts_connector.py` | Optional bounded NDJSON module/console entry point; exits closed when the contracts wheel is absent |
+| `scripts/validate_localai_contracts_install.py` | Offline provider-only and exact-contracts clean-wheel lanes, subprocess equivalence, conversion-audit binding checks, and clean-installed Phase 0 conformance |
 | `benchmarks/lrcbench.py` | Corpus generation, baselines, metrics, interchange, bootstrap certificate |
 | `benchmarks/json_io.py` | Shared bounded regular-file hashing and strict JSON decoding for benchmark evidence |
 | `benchmarks/report_verifier.py` | Bounded strict saved-report verification and deterministic replay |
 | `benchmarks/external_protocol.py` | Strict self-hashed external-protocol validation and claim-readiness gate |
 | `benchmarks/external_runner.py` | Non-interpreting adapter launch, process limits, validation, and self-hashed run manifests |
+| `benchmarks/literal_process.py` | Wire-neutral literal-argv lifecycle, bounded concurrent stream evidence, whole-lifecycle deadline, and platform-explicit cleanup scope |
 | `benchmarks/natural_history.py` | Bounded corpus/annotation/adjudication/split/gold-free/report contract validation |
+| `benchmarks/swebench.py` | Offline pinned-source verification, exact canonical snapshot materialization, and source/key-bound gold-free task projection |
+| `benchmarks/swebench_repository.py` | Source/sdist-only coordinator for local SHA-1 bare-mirror verification, raw base-commit export, strict self-hashed mirror/preparation evidence, live mirror/output replay, and fixed-false claim flags |
+| `benchmarks/swebench_repository_worker.py` | Staged worker launched with Python isolation flags (`-B -I -S`) for bounded raw Git-object traversal/export, mirror safety checks, and portable regular-file-only output |
+| `benchmarks/swebench_prediction.py` | Source/sdist-only complete-cohort prediction reconciliation, canonical official JSONL emission, source/preparation/system binding, live replay, and fixed-false execution/grading/claim flags |
+| `benchmarks/swebench_run.py` | Source/sdist-only full-cohort controller-run ledger, exact two-field request/literal argv launch, bounded raw streams, workspace before/after replay, stdout-derived captures, exhaustive dispositions, and fixed-false isolation/authentication/grading/result claims |
+| `benchmarks/swebench_patch.py` | Coordinator-only, source/sdist-only text-patch mechanical preflight with canonical source/preparation revalidation, independent copies, bounded effective-path overlap, exact disjoint replay, and fixed-false execution/grading/result/isolation claims |
+| `benchmarks/suites/swebench_verified_v1.json` | Self-hashed 500-row SWE-bench Verified source, selection, license, projection, harness, and claim boundary |
 | `benchmarks/compatibility/` | Result-blind pinned system screens and retained ACON blocker/failure evidence |
 | `conformance/` | Dependency-free connector schema/golden/negative validation and in-process/stdio equivalence |
+| `integrations/openhands/src/ctxc_openhands/` | Separate exact-pin host guard, closed event/authority mapping, callback poison, atomic binding, SQLite-WAL generations, immutable request ledger, fake runtime, replay/recovery/rehydration, scenario, soak, and CLI |
+| `integrations/openhands/compatibility/` | Reviewed OpenHands/SDK/tools/agent-server source, artifact, license, lock, API, and live-blocker identity |
+| `integrations/openhands/docs/` | Event-authority map, operator runbook, release checklist, and draft upstream hook RFC |
+| `integrations/openhands/demo/` | Offline-only no-network container demonstration; not a live OpenHands demo |
 | `benchmarks/performance_gate.py` | Fixed-digest CI compile latency/growth/traced-memory regression gate |
 | `benchmarks/qwen_phrase_eval.py` | Sequential exact-Qwen prompt/output capture, model-only/recovery scoring, and offline replay |
 | `benchmarks/qwen_literal_ablation.py` | Model-free frozen-output offset ablation, literal replay, self-hashed report, and strict regeneration |
 | `benchmarks/qwen_paired_eval.py` | Clean-tree paired coordinate/literal capture, alternating order, comparison metrics, and offline replay |
+| `benchmarks/tau2.py` / `benchmarks/suites/tau2_text_v1.json` | Source/sdist-only tau2-bench v1.0.1 raw-Git verifier and exact 278-row text-core descriptor; absent from the wheel |
 | `benchmarks/protocols/` | Human-readable and machine-verifiable external comparison protocol; v1 is a valid non-claim-bearing draft with explicit blockers |
-| `schemas/` | Eight historical/core artifact contracts plus 17 connector request/response/source/bundle/checkpoint/operation contracts |
+| `schemas/` | Eight historical/core artifact contracts, 17 shared connector contracts, and one provider-local LocalAI conversion-audit schema |
 | `tests/` | Unit, adversarial, schema, benchmark, tokenizer, and held-out regressions |
 | `CHANGELOG.md` | Versioned release notes and the unreleased change ledger |
 | `SUPPORT.md` | Runtime, platform, format, installation, and maintenance matrix |
 | `docs/RELEASE_POLICY.md` | Stable identities, Semantic Versioning, compatibility, and release gates |
 | `MANIFEST.in` | Complete source-distribution inclusion policy |
 | `.github/workflows/ci.yml` | Cross-version tests, lint, wheel checks, interchange, benchmark |
+| `.github/workflows/openhands-integration.yml` | Isolated Python 3.12/3.13 Linux, Windows, and macOS tests, lint, compile, doctor, build, and clean-install checks without live OpenHands dependencies |
 
 ## Public interfaces
 
@@ -369,8 +414,10 @@ Important compile options:
 - `inspect --format text --show-items` exposes bounded provenance, status,
   conflict, and selection details; `--max-display-items`,
   `--max-display-links`, and `--max-text-chars` cap the terminal view;
-- every operation accepts `--error-format text|json`; JSON runtime errors use
-  the `ctxc-diagnostic-0.1` schema.
+- every operation accepts `--error-format text|json`; generic JSON runtime
+  errors use `ctxc-diagnostic-0.1`, while exact materialization overflow
+  details use `ctxc-diagnostic-0.2` with a nested
+  `loss-resistant-materialization-refusal-diagnostic-v1` object.
 
 `ctxc redact` requires distinct output/report paths, refuses input aliases,
 accepts stdin, and exposes a repeatable `--detector` subset plus mask,
@@ -459,6 +506,62 @@ Primary exported objects:
 - `verify_trust_manifest`;
 - `VerificationReport`.
 
+
+The canonical adapter is intentionally submodule-only:
+`context_compiler.__init__` and the exported list above are unchanged.
+Importing `context_compiler.localai_contracts_adapter` does not import the
+optional dependency; constructing `LocalAIContractsAdapter` requires the exact
+reviewed version and protocol. Before initiating optional-package import or
+exposing a preloaded root, the adapter requires one unambiguous distribution,
+an unset `sys.pycache_prefix`, exact built-in module/spec/source-loader state
+bound to the recorded package/initializer, an exact bounded link-free installed
+file set, and the reviewed source/resource tree digest. All 35 immutable wheel
+`RECORD` rows must appear exactly once: 34 hashed rows with exact URL-safe
+hashes, sizes, and installed bytes, plus the `RECORD` self-row with canonical
+empty hash/size fields. Required installer rows are the exact pip marker,
+exact-wheel PEP 610 archive metadata, and one platform-canonical launcher. An
+exact empty `REQUESTED` marker is optional; every other generated row fails
+closed. Loader instance overrides and
+non-string registry/namespace keys fail closed without invoking their hooks.
+Package-local executable bytecode is parsed only by one empty-environment
+no-site batch worker. Windows and non-Darwin POSIX apply a 256 MiB
+process/address-space ceiling; macOS applies an exact 1 TiB virtual-address-
+space ceiling. A ten-second latest-acceptance deadline covers cache-batch
+construction through comparison, and owned process-tree cleanup has separately
+bounded grace. The worker compiles the cache-associated verified source for
+every record before unmarshalling any cache, then requires complete records and
+agreement for const-stripped format-2 serialized metadata, raw adaptive
+instruction/cache images, and a bounded tagged constant graph with per-code
+identity topology. External cache prefixes are refused. The
+complete `RECORD`, file, and origin gate repeats after import and binds the returned module object and every loaded
+contract-module path. Its fixed path-free failure does not imply independent
+wheel-archive authentication, an atomic import transaction, or containment of
+writable site-packages, code already run by startup/custom-finder/preload
+hooks, or arbitrary same-origin module forgery in a compromised process. The
+root API and ordinary `ctxc` behavior remain standalone.
+Sharing between separate nested code objects is normalized because it differs
+across valid compiler processes; within-code identity topology is bound.
+Cacheful validation requires CPython's private raw adaptive-code image, and
+worker containment does not provide a filesystem/network sandbox against a
+native marshal vulnerability.
+
+The submodule-only `compile_with_conversion_audit` API returns the actual
+shared ContextBundle and a separate provider-local
+`ctxc-localai-conversion-audit-0.1` record. Fixed dispositions cover complete
+JSON subtrees, SourceEvents reconstruct exactly through the private mapping,
+and the evidence-bound verifier requires the typed shared inputs and output.
+The sidecar omits raw ids/content/metadata/issuers and claims no semantic
+completeness. Its self-hash is not authentication; private bundle digests and
+authority decisions remain provider assertions. Its strict `claim_boundary`
+machine-labels that distinction, including output omissions, overflow, policy
+identity, and trust partitions. Stable unsalted digests make the sidecar
+linkable and dictionary-testable, so it is sensitive diagnostic evidence and
+must not be treated as de-identified telemetry. Ordinary `context.compile`
+runs the inventory and relation checks but neither serializes nor emits the
+sidecar. The shared operation/manifest remain unchanged, and
+[`docs/CONTRACT_REQUESTS.md`](CONTRACT_REQUESTS.md) records the exact upstream
+operation-schema negotiation gap.
+
 Custom token accounting requires both a callback and a stable
 `token_counter_id`. Artifact verification must receive the identical callback
 and id or fail with `unverifiable_token_counter`.
@@ -474,22 +577,178 @@ owned process-group signaling finishes, then reaps it without retrying a
 reusable numeric group ID; Windows uses a Job Object. See
 [Local Qwen integration](LOCAL_QWEN.md).
 
+### Separate `ctxc-openhands` package
+
+The draft-alpha OpenHands integration is its own distribution under
+`integrations/openhands/`, with import package `ctxc_openhands` and CLI
+`ctxc-openhands`. It requires the core but does not add OpenHands to the core's
+dependency graph. Ordinary import of either package loads no OpenHands module;
+the host import gate first requires the exact reviewed versions and 23 source
+file digests.
+
+Primary integration interfaces include `OpenHandsSession`,
+`SQLiteGenerationStore`, the closed event mapper and atomic-pair validator,
+the immutable final-request ledger, deterministic semantic projection, and the
+offline exact byte tokenizer. The host-specific guard module validates exact
+class identity, installs the non-throwing durable callback, refuses unrecorded
+or security-bypassing host APIs, and refuses real `run()`/`arun()` because the
+final immutable provider request cannot yet be captured, counted, and replayed
+exactly.
+
+The CLI surface is:
+
+```console
+ctxc-openhands doctor [--require-live]
+ctxc-openhands explain --database DATABASE --session-id SESSION
+ctxc-openhands replay --ledger LEDGER
+ctxc-openhands replay --database DATABASE --session-id SESSION --request-id REQUEST
+ctxc-openhands recover --database DATABASE --session-id SESSION [--apply]
+ctxc-openhands rehydrate --database DATABASE --session-id SESSION --source-id ID --start START --end END --quote-sha256 SHA256
+ctxc-openhands offline-scenario --database NEW_DATABASE --output NEW_REPORT
+ctxc-openhands soak --database NEW_DATABASE --events 10000 --compactions 100 --restart-every 10 --output NEW_REPORT
+ctxc-openhands fault-campaign --database NEW_DATABASE --schedules 1024 --seed 0x5A17C7C0 --output NEW_REPORT
+ctxc-openhands verify-evidence --report REPORT [--database DATABASE]
+```
+
+`doctor` exit 0 means offline readiness only. In the recorded environment,
+`doctor --require-live` must remain exit 2 with
+`hash-pinned-wheelhouse-absent`. The complete reviewed transitive dependency
+closure is not present in a local hash-pinned wheelhouse, and no stable public
+OpenHands hook exposes both the final immutable request and an exact tokenizer.
+Manually installing matching version labels does not clear that blocker.
+
+The exact host map contains 18 top-level event classes. Unknown classes,
+kinds, and fields fail closed. Host source and role claims do not authenticate
+themselves. An unknown explicit tool with no serialized nested kind stays
+generic and cannot receive authority; an unknown serialized nested
+action/observation kind fails closed, and a known kind must match the explicit
+tool category. Only independently verified event-bound receipts can enable
+narrow allowlisted authority paths. Tool calls/results remain atomic. The
+callback never blocks host persistence when
+it refuses an event, but poisons later ingestion/dispatch until complete exact
+EventLog reconciliation.
+
+The local SQLite-WAL store retains immutable source events and advances
+invisible candidates through `prepared`, `verified`, and `committed` before one
+verified `active` pointer becomes visible. Source-head, parent, and epoch
+compare-and-swap checks make activation old-or-new across a crash; rollback
+changes visibility without deleting source. Rehydrated exact spans are always
+`untrusted-evidence`.
+
+The qualified SQLite boundary is a local, non-cloud-synchronized,
+non-symbolic filesystem; network/distributed/cloud-sync semantics are not
+qualified. Store schema 2 has no repair or automatic migration. Evidence
+producers use exclusive `require_new=True` paths; `explain`, replay, recovery,
+rehydration, and evidence verification use `require_existing=True`, so a path
+typo cannot initialize a database. Report outputs and backups are likewise
+non-overwriting.
+
+The bundled tokenizer and final-request ledger are exact only for the offline
+canonical-UTF-8-byte fake protocol. The offline scenario records three forced
+compactions, one activation crash/restart, and exact retention of PostgreSQL and
+authentication constraints, but its status is
+`passed-offline-fake-runtime`; its nested `live_openhands.status` is
+`blocked-not-run`. It is not
+a live demonstration and does not establish semantic completeness or
+superiority. Use the package [runbook](../integrations/openhands/docs/RUNBOOK.md)
+and [release checklist](../integrations/openhands/docs/RELEASE_CHECKLIST.md) for
+operations and validation.
+
+Scenario, soak, and crash-campaign reports are bounded, canonical,
+self-hashed, and bound to a checkpointed SQLite SHA-256 and byte length.
+`verify-evidence` can exit 0 only with the exact database and
+`json-and-database` scope; omitting `--database` intentionally reports
+`passed: false`, scope `json-only`, and exits 2. Producers require absent
+WAL/SHM sidecars after the truncating checkpoint, and verification reconciles
+retained source/generation/integrity state and request ledgers before rehashing
+the original database. Scenario and soak verification additionally requires
+the exact one-session inventory, ordered generation lineage and activation
+transitions, and report-specific counts and digests. Preserve the JSON and
+SQLite file together.
+
+The report records only the producing subcommand argument vector (or an honest
+empty vector for a library call) and its parameters; it does not attest the
+shell, executable, environment, container, or operator. Scenario/soak retain
+`isolation.network_isolation_enforced: false`, and the campaign retains the
+equivalent top-level false field. The producers make no network request and use
+no paid service, but the Python process retains ordinary network capability
+unless externally isolated. External enforcement such as
+`docker run --network=none` must be retained separately. Never edit a report
+to claim isolation.
+
+One post-freeze local candidate set completed at exclusive paths on 2026-07-27.
+Every producer and its then-current database-backed verifier exited 0, stderr
+was empty, no WAL/SHM sidecar remained, and every report retained both
+`network_isolation_enforced: false` and
+`semantic_completeness_claimed: false`:
+
+- scenario: report self-hash
+  `accea44b269d364e76549095907351bcf17a29b1d44a917e26fc26ba7c5e0ea0`,
+  report-file SHA-256
+  `5d6a11f520b835b557ec009e48f2e6234496050383766b2f0ccebf0f51f046dc`,
+  SQLite SHA-256
+  `81183fa9d47caf656ff44ccb5231148a700182823e4de9ff30c90abbcae67fd2`
+  over 159,744 bytes, and verifier self-hash
+  `9aeaca00114089ddd66e46584009392934f3d8a00dcfd7bffa244b9e853f0315`;
+- 10,000-event/100-compaction soak: report self-hash
+  `e080e1a9926c4b844b0edb3324491cfb24533e7589d8a3e46b9ffe72291ac348`,
+  report-file SHA-256
+  `e48d4754990c2f654508788515c31c9a29d7bfa60fcc04e6da8b4cbc895decbc`,
+  SQLite SHA-256
+  `ac7344e3ca04d64a7f7cdbf599f398463ef070f04f965cf818caf4cd34700067`
+  over 927,645,696 bytes, and verifier self-hash
+  `b693b97a29f298c1ebc49ca342c6f50db7ddc482aa8a22dac9eecd61e6d9b0bb`;
+- 1,024-schedule campaign: 1,024 injected faults, 1,024 passes, zero
+  failures, and six passing abrupt-process cases; report self-hash
+  `24c1ad5929b686785aba949c3aa378493e75793c09d8158dd705f658cd4e220a`,
+  report-file SHA-256
+  `fc612202590c509b3ae037ff2f380d2a6bd05b522e9b63c89185c90afdb0ab0b`,
+  SQLite SHA-256
+  `083fa6a34beb828b69576e0a745fa2cb94df2ca36589211f9a7a500881ed61ca`
+  over 7,163,904 bytes, and verifier self-hash
+  `485f555fefe9d53f133bea23695c1ccce2a60ddacfbe25169722d49ee67b60bd`.
+
+Independent review subsequently proved that the historical scenario/soak
+verifier did not bind those report claims to the ordered generation rows in
+SQLite. Those two listed pairs remain hash-intact historical evidence, but
+they have not been rerun, rewritten, or reverified under the strengthened
+verifier; their current proof is incomplete. The campaign remains a separately
+verified historical pair and was not affected by the ordered-generation
+finding, but it was not rerun in this review cycle and is not durably hosted.
+New non-overwriting scenario/soak evidence under the strengthened verifier,
+campaign evidence under its applicable verifier, and durable hosted retention
+remain red gates. Three earlier failed campaign roots and the first failed
+clean-install root remain preserved under ignored
+`.artifacts` paths and were not deleted, overwritten, or relabeled. Also
+consult the
+[offline container demo](../integrations/openhands/demo/README.md),
+[compatibility policy](../integrations/openhands/compatibility/README.md), and
+[draft upstream hook RFC](../integrations/openhands/docs/UPSTREAM_RFC.md) for
+operations, validation, and unresolved host requirements.
+
 ## Naming and version map
 
 | Identity | Current value |
 | --- | --- |
 | Project and repository name | Loss-resistant Context Compiler |
 | GitHub repository slug | `loss-resistant-context-compiler` |
+| Optional canonical connector | `ctxc-localai-contracts` / `python -m context_compiler.localai_contracts_connector` |
+| Optional contracts identity | `localai-contracts==0.2.0a2`; protocol/schema `1.0.0`; reviewed wheel SHA-256 `36a02dbc4267402949dddda1da180d800590cc579e0c1ecb022fc96f6a7c29ae` |
 | Python distribution | `loss-resistant-context-compiler` |
 | Import package | `context_compiler` |
 | CLI command | `ctxc` |
-| Package version | `0.1.0` |
+| Package version | `0.1.1a21` |
+| OpenHands distribution | `ctxc-openhands` (separate package) |
+| OpenHands import / CLI | `ctxc_openhands` / `ctxc-openhands` |
+| OpenHands integration version | Exact current version is owned by `integrations/openhands/pyproject.toml`; draft alpha |
+| Reviewed OpenHands host | `1.8.0` at `bc26df351dd5d833a95131556dbe2da69af82253` |
+| Reviewed OpenHands SDK/tools/agent-server | `1.27.0` at `904279edf2df5fa12d7caecc7576f62659b2e2dd` |
 | Compiled artifact schema | `1.0` |
 | Artifact schema compatibility registry | `ctxc-artifact-schema-compatibility-0.1` |
 | Artifact diff schema | `ctxc-artifact-diff-0.1` |
 | Artifact inspection schema | `ctxc-artifact-inspection-0.1` |
 | Compile completion event schema | `ctxc-event-0.1` |
-| CLI diagnostic schema | `ctxc-diagnostic-0.1` |
+| CLI diagnostic schemas | `ctxc-diagnostic-0.1` for generic errors; `ctxc-diagnostic-0.2` with nested `loss-resistant-materialization-refusal-diagnostic-v1` for exact materialization overflow details |
 | Redaction report schema | `ctxc-redaction-report-0.1` |
 | Redaction verification schema | `ctxc-redaction-verification-0.1` |
 | Detached trust manifest schema | `ctxc-trust-manifest-0.1` |
@@ -505,6 +764,17 @@ reusable numeric group ID; Windows uses a Job Object. See
 | Connector request/response | `ctxc-connector-request-0.1` / `ctxc-connector-response-0.1` |
 | Connector source/bundle/checkpoint | `localai-source-event-0.1` / `localai-context-bundle-0.1` / `ctxc-incremental-checkpoint-0.1` |
 | Natural-history evidence family | `ctxc-natural-history-*-0.1` contracts; synthetic fixtures only |
+| SWE-bench source suite | `ctxc-swebench-suite-0.1` |
+| SWE-bench task projection | `ctxc-swebench-task-input-0.1` |
+| SWE-bench verification summary | `ctxc-swebench-verification-0.1` |
+| SWE-bench bare-mirror evidence | `ctxc-swebench-bare-mirror-0.1` |
+| SWE-bench repository preparation evidence | `ctxc-swebench-repository-preparation-0.1` |
+| SWE-bench prediction ledger | `ctxc-swebench-prediction-ledger-0.1` |
+| SWE-bench controller result | `ctxc-swebench-controller-result-0.1` |
+| SWE-bench controller-run ledger | `ctxc-swebench-run-ledger-0.1` |
+| SWE-bench patch composition | `ctxc-swebench-patch-composition-0.1` |
+| tau2-bench source suite | `ctxc-tau2-suite-0.1` |
+| tau2-bench source verification | `ctxc-tau2-source-verification-0.1` |
 | Adapter process-environment evidence | `lrcbench-process-environment-0.1` |
 | Installed schema directory | `share/loss-resistant-context-compiler/schemas` |
 
@@ -571,25 +841,207 @@ audited. Any selected superseded item independently fails verification as
 
 ### Regression and packaging
 
-- 1,414 tests are collected: 1,399 pass and 15 platform/optional checks are
-  skipped on the current Windows validation host; 105 subtests also pass.
+- At pipe-cleanup checkpoint `94c35cda`, the complete ordinary root suite passed
+  under `-W error`: 1,598 passed, 23 platform/optional checks skipped on
+  Windows, and 105 subtests passed. Root `testpaths` is `tests`, so this run did
+  not select the manual `retained_evidence` OpenHands campaign.
+- At ledger-I/O checkpoint `cded7e96`, all 29 warning-strict evidence tests
+  passed. Injected `sqlite3.OperationalError` and `OSError` failures during
+  final-request ledger replay return one structured red verification instead
+  of escaping.
+- At adapter checkpoint `da664387`, the separate immutable-a2 adapter lane
+  collected 106 tests: 103 passed and three local Windows symlink-privilege
+  regressions skipped. It covers exact installed `RECORD`, origin/tree binding,
+  shadow/preload/substitution rejection, exact bytecode validation, canonical
+  roles, bounded serialization, authority separation, direct ContextBundle
+  shape, deterministic projection, binary I/O failures, oversize drain/fatal
+  behavior, and in-process/NDJSON equivalence. Eleven distinct
+  provider-only/packaging tests also passed.
+- `assert_phase0_conformant` reported `passed_count: 22`, `failed_count: 0`,
+  `inference_status: not_run`, and
+  `observation_scope: connector_transport_conformance`.
+- The immutable `localai-contracts==0.2.0a2` wheel is 114,553 bytes with
+  SHA-256
+  `36a02dbc4267402949dddda1da180d800590cc579e0c1ecb022fc96f6a7c29ae`.
+  Its handoff records source commit
+  `3858190e8b458847da94e9ed24be83f4928b7d1a`, 35 `RECORD` rows with
+  raw SHA-256
+  `a20ae81b7cc5dd9e80fc2757d5fea6331f2c232818049026caecf63d48d14076`,
+  29 package members equal to Git blobs, and Phase-0 fixture SHA-256
+  `458bdd75449c70277d212761f84e6e04a79ddc010b314a2d0a4799801ef1706d`.
+  The independently derived installed package-tree digest is
+  `296f49a2d7b48158d2d3a33e36b77d5b5c495362cbe3aceaaf8975fb256e538c`.
+- The prior a1 wheel
+  `3f1cbc1c1079a552304541caa6b7bfbaae926494b67956e3107767ffc980ee41`
+  passed its then-current conformance gate but is revoked as final evidence
+  after central transport framing and I/O defects. No current acceptance claim
+  relies on it.
+- The canonical LF `git archive` provider wheel for adapter checkpoint
+  `da664387` is 222,661 bytes with SHA-256
+  `4366b4da11f85643be8f1a639dce1df495165a0c6af70f297579345e0465572d`.
+  The Windows checkout-materialized counterpart is 222,718 bytes with SHA-256
+  `f356ab0280f07ab3ac60a472cc80614bf273754b7fb8092b71a3298514431d9b`.
+  The latter is not exact-commit/source-archive-byte evidence; neither artifact
+  is tracked or published.
+- Exact provider reconciliation at implementation head
+  `0f20b8a1c131fe3c0908f7d6738790529f42338c`, tree
+  `f04dcf9a0dbe58d91d87856b3a9d4fd6de0293ca`, used two independent
+  Git-archive materializations. Their 222,688-byte provider wheels matched at
+  SHA-256
+  `bda1b1c50fea351eaf1241e62e8a1dde56de5dc4963d8d04a91e21e5eb7fa993`;
+  raw `RECORD` SHA-256 is
+  `485f77359cfc7f8def4c1b47f73e130784ca7beb17baff2ae270792a8726dfc1`.
+  Provider code/schema members did not drift from the reviewed optional
+  connector. The direct a2 clean install passed Phase 0 22/22 with
+  `inference_status: not_run`, and the same clean interpreter ran the component
+  harness with direct `ContextBundle` output. Component-manifest and canonical
+  payload digests are
+  `d88ba3e2b98ca0f077b02ffb6696f3728ee24ad77972bedd16a229309052b42c`
+  and
+  `f83cc1d120e174189332f9f6131b3ac4878d95a740d938976cc20846142bdd45`.
+  The path-neutral fixed provider witness v2 is ignored/local only: 1,058 bytes,
+  SHA-256
+  `555495a9621798c962129beab1159aa4d573c31a173554738a8253c0b0ceca68`.
+  It is not tracked, published, durably retained, or release evidence. Its
+  commit-epoch wheel differs from the hosted fixed-epoch root wheel below. The
+  first Windows build from the long synchronized workspace path failed while
+  creating a nested schema destination and produced no wheel; the short-root
+  success does not replace or relabel it.
+- An earlier pre-RECORD-gate local checkpoint produced an 885,292-byte sdist
+  with SHA-256
+  `08140acb63e31083efdc41eb1b4274e423c12d8e9c1ea55ebe737d478d636ab4`.
+  An offline `--no-index --no-deps --no-build-isolation` wheel build from that
+  sdist reproduced the direct wheel byte-for-byte at
+  `ee36885fa45c6ba763732fdc222634b38bad4352257ab4d66040344766d1a62b`;
+  that historical identical wheel passed its then-current clean-install lane.
+  It is not current a2 RECORD-gate evidence. The build used the already
+  reviewed local environment and is not a hash-pinned clean build-tool closure.
+  The later root `7915beb` automatic lane closes its separate seven-wheel
+  builder and post-acquisition offline smoke path, but does not retroactively
+  qualify this historical artifact or close OpenHands live dependencies.
+- Historical f590 provider provenance remains distinct: a Windows
+  checkout-materialized wheel was 209,860 bytes with SHA-256
+  `0d46899e8cf4c8eddf051137a9cae0a6036aa73da24b228d5ee52cc67a42e80b`,
+  while two independent fresh `git archive` builds of
+  `f59082d82053eb5a25fdfdd6303aa6b527bf70e5` matched at 209,806 bytes
+  with SHA-256
+  `9965d16b888f17fd1624da7606db975fb7d74b82fe0f730bee1a18837b154db7`.
+  Neither historical hash is presented as current a2 provider evidence.
+- The final offline a2 validator produced the required outcomes in three
+  `--no-compile` lanes: provider-only passed; a transitive provider-extra-only
+  install lacked exact-wheel `direct_url.json` provenance and failed closed;
+  and direct provider-plus-exact-contracts passed. The supported direct lane
+  launched
+  `[clean-environment sys.executable, "-m",
+  "context_compiler.localai_contracts_connector"]`; literal argv tail:
+  `-m context_compiler.localai_contracts_connector`. It used
+  `PYTHONDONTWRITEBYTECODE=1`, produced no provider/contracts package `.pyc`,
+  matched the in-process bundle digest, and passed the clean-installed
+  22-case gate.
+- Earlier clean-install failures remain failures: the original provider-only
+  stderr check assumed LF on Windows; the strengthened report check observed
+  CRLF; a hand-applied fix omitted the child report-write line; and the first
+  a2 inspection install generated path-dependent bytecode that failed exact
+  source/bytecode validation. The accepted a2 recipe uses no-compile rather
+  than weakening bytecode verification.
+- The first current full-suite run failed with one Windows sharing violation
+  while removing a reaped worker's `job.pickle` (1,492 passed, 21 skipped).
+  The same node failed in isolation. Commit `258066c` added a two-second retry
+  only for Windows sharing errors while retaining persistent failures; three
+  focused tests and the complete deadline module then passed 65 with three
+  platform skips.
+- A second full run remains failed because strict executable hashing observed
+  the active `.venv` launcher change (1,494 passed, 21 skipped). Its exact node
+  passed in isolation. A bundled-runtime run from the synchronized workspace
+  remains failed with one failure and 12 dependent errors because corpus ctime
+  changed during strict reads. The exact tracked-file copy outside that
+  metadata-changing boundary produced the complete green result above.
+- No local model, inference endpoint, or user-owned runtime was loaded, called,
+  reconfigured, stopped, or otherwise touched. The global inference lease was
+  not granted.
+- The current parent-archive bounded ordinary integration selector selected 480
+  ordinary node IDs: 475 passed and five Windows symlink-privilege checks
+  skipped. The one manual retained-evidence node for the real 1,024-schedule
+  campaign was explicitly deselected, not reported as a pass.
 - Ruff and `compileall` pass across `src`, `tests`, `benchmarks`, `scripts`,
   `conformance`, and `_ctxc_build_backend.py`.
-- Complete Ubuntu CI covers Python 3.11, 3.12, and 3.13; Windows and macOS run
-  Python 3.13 filesystem, external-runner/process-deadline/exact-Qwen transport
-  regressions, and clean wheel/sdist release smoke.
+- Complete Ubuntu CI covers Python 3.11, 3.12, 3.13, and 3.14. A clean local
+  Windows CPython 3.14.6 core-suite run is also green. Windows and macOS run
+  Python 3.13 filesystem,
+  external-runner/process-deadline/exact-Qwen transport regressions, and clean
+  wheel/sdist release smoke.
 - Distribution metadata, `ctxc`, package version, and the installed schema path
-  are regression-tested. CI verifies all 25 wheel schemas, source-distribution
+  are regression-tested. CI verifies all 26 wheel schemas, source-distribution
   conformance/natural/compatibility assets, and separate clean installs with
   `ctxc --help`, compile, trust-create, and trust-verify round trips.
+- Root and OpenHands sdist/wheel validators and the pinned build-wheel inspector
+  reject the complete supported Windows device-alias set, including
+  `CONIN$`/`CONOUT$`, COM/LPT superscript forms, and ASCII spaces before an
+  extension. Ambiguous members are rejected rather than rewritten; `COM0`,
+  `COM10`, and `CON name` remain valid controls.
+- Archive namespace-prefix hardening is complete in the byte-identical root and
+  OpenHands packaging backends and in the OpenHands build-input inspector. Both
+  physical pre-parser and parsed tar/wheel inventories reject a file reused as
+  an ancestor and implicit-directory NFC/casefold collisions. NFC normalization
+  and case folding are comparison-only; accepted member-name spellings are not
+  normalized, merged, or rewritten. Existing deterministic container and
+  generated-metadata normalization is unchanged. Exact-duplicate diagnostics
+  retain their early precedence;
+  bounded count, name, member, and expanded-byte diagnostics remain distinct,
+  and namespace checking runs only after those applicable bounds. The CI
+  inspector validates the bounded ZIP namespace before
+  decompression and validates `RECORD` paths independently before archive
+  membership, size, and digest checks.
+- The CPU-only combined root/OpenHands archive and build-input validation set
+  passed 176 tests with one expected Windows symlink-privilege skip on both
+  CPython 3.12.13 and 3.14.6. Focused Ruff passed. No build, model, GPU, or
+  inference runtime was involved.
 - CI runs connector golden/negative conformance, natural-history contract
   validation, external-candidate interchange, and external protocol checks.
-- CI builds wheel and deterministic sdist outputs from two clean checkouts with
-  a fixed timestamp/hash seed and explicit pip/Setuptools/wheel versions,
-  retains the Python/tool inventory, then requires the separate exact comparator
-  to accept both archives byte-for-byte. This is same-job-toolchain
-  repeatability, not offline, hash-pinned-input, cross-toolchain, or independent
-  reproduction evidence.
+- At root implementation head `7915beb`, Core CI acquires the seven exact
+  universal wheels authorized by the root `requirements-build.lock`, validates
+  their inventory, and installs a dedicated no-index builder. It builds wheel
+  and deterministic sdist outputs from two clean checkouts with a fixed
+  timestamp/hash seed, retains the exact inputs and Python/tool inventory, and
+  requires the separate comparator to accept both archives byte-for-byte. This
+  is post-acquisition offline, hash-bound, same-job-toolchain repeatability, not
+  cross-toolchain or independent reproduction, index-origin authentication, or
+  durable retention.
+- The historical direct-Setuptools `ctxc-openhands` candidate wheels were
+  byte-identical at
+  `8df8d4a0890daf149461205293d308329212a5c107c25ee4d1f0d068a2d88db1`,
+  but its repeated sdists differed because Setuptools varied gzip/member
+  timestamps across 17 generated members. Integration-sdist reproducibility
+  remained failed at that checkpoint; the comparison is still retained as a
+  failure.
+- Initial wrapper head `cf8b8d3911ef776ca015856f8df19ac47dae0628`
+  passed its two-source-copy comparison and all automatic hosted jobs, but
+  independent review found the missing extracted-sdist fixed point. The local
+  first build was 231,581 bytes at
+  `b6f4ed61459b5ad9ffb1eb49428ca69be139ce865f7a01f9278ef7df4bffc004`;
+  its rebuild was 231,588 bytes at
+  `873c1e5959f924a71fbaafb8d7a1a8133bc7c64f90210e9bc1675045eb37196e`.
+  Only `src/ctxc_openhands.egg-info/SOURCES.txt` differed because generated
+  `setup.cfg` became a rebuild input. The hosted success and recursive local
+  failure are both retained, and `cf8b8d3` is not final evidence. Its six
+  automatic package jobs passed in push run `30340051113` and pull-request run
+  `30340054635`.
+- Packaging implementation head
+  `2f692484272aa36bf267703cad2bb4d6926676ff` uses the integration-local
+  backend, byte-parity guarded against the root backend, only when an explicit
+  epoch is present. Under `SOURCE_DATE_EPOCH=1785225894`, CPython 3.12.13,
+  pip 25.0.1, build 1.5.0, Setuptools 83.0.0, and wheel 0.47.0, two fresh
+  exact Git archives and an extracted-sdist rebuild produced the same
+  232,006-byte sdist at
+  `9a8f5035d8cbe904dc03142b3be54e3e15fae699153fb7630b4948b7415ac6be`.
+  The package-local backend is included in the sdist and excluded from the
+  wheel; clean installation from the recursive sdist passed. This closes only
+  the recorded same-platform, same-toolchain, same-epoch fixed point.
+  Exact head `2f692484` passed all six automatic Linux, Windows, and macOS
+  Python 3.12/3.13 package jobs in push run `30341548763` and all six in
+  pull-request run `30341552866`; the retained jobs were skipped/default-off.
+  Root push CI `30341549065` and pull-request CI `30341552713` each passed
+  7/7 jobs; CodeQL `30341552714` and dependency review `30341553236` passed.
 - CI enforces `ci-compile-v1` through a self-hashed
   `ctxc-performance-gate-0.1` report: three-trial medians at 128/256 events,
   doubling growth, and a separate exclusive `tracemalloc` peak.
@@ -683,12 +1135,14 @@ audited. Any selected superseded item independently fails verification as
   Resource violations abort rather than truncate protected state and are
   covered by direct, artifact-shape, verifier, and CLI regressions.
 - Serialized source/artifact path loaders additionally require a stable
-  regular file, reject symlinks/directories/FIFOs, compare pre-open/open and
-  post-read identity/content metadata, request nonblocking/no-follow opens,
-  retry bounded atomic replacement races, and reject gzip bytes without
-  invoking a decompressor. The shared parent guard rejects linked/reparse
-  ancestors, snapshots the complete lexical chain, and pins the exact parent
-  descriptor on POSIX; adversarial swaps fail before a result is accepted.
+  regular file, reject symlinks/directories/FIFOs and regular-mode Windows
+  reparse targets before and after open, compare pre-open/open and post-read
+  identity/content metadata, request nonblocking/no-follow opens, retry bounded
+  atomic replacement races, and reject gzip bytes without invoking a
+  decompressor. The benchmark evidence reader applies the same target-reparse
+  rule. The shared parent guard rejects linked/reparse ancestors, snapshots the
+  complete lexical chain, and pins the exact parent descriptor on POSIX;
+  adversarial swaps fail before a result is accepted.
 - Artifact loaders, direct replay, `ctxc verify`, and `ctxc inspect` share
   strict raw/canonical byte, line, depth, item/selection, provenance, and issue
   limits. Tests cover BOM/multibyte boundaries, duplicate keys, non-finite
@@ -809,10 +1263,19 @@ audited. Any selected superseded item independently fails verification as
   or runner-limit mismatch before scoring. Current runner schema
   `lrcbench-external-run-manifest-0.13` freezes immutable adapter/environment
   identity, revalidated dependency-lock, adapter-entrypoint, and bounded
-  adapter-source-tree bytes, the resolved runtime executable, the bounded
-  name-audited process-environment digest, and the portable per-case-validated
-  command contract, exact 8192-context Qwen, one slot, zero retries/service
-  cost, retained network-isolation evidence, sampled service
+  adapter-source-tree bytes. Every normalized POSIX-relative source member is
+  rejected rather than rewritten when any component is Windows-unsafe, across
+  capture, manifest replay, and compatibility-audit decoding. The complete
+  inventory also rejects stable ASCII-case collisions across implicit directory
+  prefixes and file paths, including file/directory conflicts. Only ASCII
+  `A`--`Z` bytes are folded; non-ASCII bytes remain exact. These are
+  accepted-domain rules, not claims that foreign roots are native-reopenable or
+  that non-ASCII case, Unicode-normalization, and path-length collisions are
+  solved. The schema and tree-digest algorithm are unchanged. The manifest also
+  freezes the resolved runtime executable, the bounded name-audited
+  process-environment digest, and the portable per-case-validated command
+  contract, exact 8192-context Qwen, one slot, zero retries/service cost,
+  retained network-isolation evidence, sampled service
   process/executable/peak-memory accounting, and bounded runner controls
   including enforcement polling cadence. It also reconstructs every one-case
   corpus on reload and verifies ordered-prefix, exact-digest, and
@@ -824,6 +1287,349 @@ audited. Any selected superseded item independently fails verification as
 - The performance profile is a broad shared-runner tripwire, not an SLO: it
   excludes source construction, `tracemalloc` is not RSS, and the separate
   10,000-to-1,000,000-event characterization remains open.
+
+### SWE-bench source, preparation, prediction, run, and patch evidence
+
+The source-only suite descriptor pins all 500 official Verified `test` rows at
+dataset revision `91aa3ed51b709be6457e12d00300a6a596d4c6a3`, exact Parquet and
+canonical-snapshot bytes, physical order, an exhaustive coordinator/evaluator
+field partition, and a two-field candidate allowlist. The external protocol
+now exposes typed bindings for every dataset kind and binds its still-pending
+coding slot to this suite self-hash.
+
+The source/sdist-only repository coordinator adds a local preparation boundary,
+not a public-task result. It independently verifies an absolute local SHA-1 bare
+mirror and its exact configured origin URL; that URL comparison is not origin
+authentication. It stages a worker under `python -B -I -S`, walks the requested
+base commit through bounded raw `git cat-file` operations, and exports only the
+raw bytes and executable bit of `100644` and `100755` files into a fresh tree.
+It does not clone, fetch, download, invoke checkout or filters, or place `.git`,
+history, remotes, untracked content, or an evidence manifest in the output tree.
+Mirror reinspection, strict self-hashes, output-tree replay, portable-path rules,
+and rejection of links, gitlinks, special files, and unsafe mirror state are
+enforced by the preparation contract. The exporter is not a candidate sandbox.
+
+`tests/test_swebench_repository.py` contains 26 synthetic and adversarial tests.
+The latest focused local Windows run passed 25 in 88.3 seconds; the POSIX-only
+directory-mode regression skipped. Its fixtures use temporary local SHA-1
+mirrors and remain contract/mechanism evidence. Separate ignored public
+artifacts now cover 94 selected rows, but they are preparation evidence rather
+than candidate execution or public SWE-bench result evidence.
+
+The source/sdist-only prediction coordinator closes the complete selected
+cohort in physical source order and emits the exact official three-field JSONL
+interchange. Every row is retained as repository not attempted, preparation
+refused, prepared without a prediction, or prediction recorded. Missing,
+duplicate, unexpected, malformed, oversized, and unprepared-task captures are
+bounded nonpredictions or protocol violations; they cannot silently shrink the
+denominator. Accepted strict UTF-8 patch text is preserved exactly only in the
+JSONL, while the ledger retains byte counts and SHA-256 bindings. The ledger
+replays the source/key projection and every successful repository preparation,
+requires a separately supplied expected code/model/agent/prompt/tool/controller
+identity, and prevents its outputs from being written inside a prepared tree or
+bare mirror. Those expected digests and caller-supplied candidate observations
+remain unauthenticated coordinator assertions.
+
+`tests/test_swebench_prediction.py` contains 47 synthetic and adversarial
+tests. The final local Windows run passed all 47 as part of a 67-pass focused
+prediction/strict-JSON/atomic/path-safety matrix with three expected platform
+skips. This is contract and mechanism evidence, not a captured public-suite
+prediction.
+
+The source/sdist-only controller-run coordinator closes the same selected
+denominator over repository, workspace, launch, process, stream, output, and
+capture dispositions. For a prepared row it verifies a caller-provided mutable
+workspace against the prepared tree, writes only the exact two-field candidate
+request, appends request/workspace paths to fixed literal argv, and retains
+bounded raw stdout/stderr prefixes. Patch captures are reconstructed only from
+replayed complete stdout. Retained initial and final workspace summaries plus a
+deterministic delta are separately replayed; when the final scan failed, only
+the structural failure code exists and the missing contents cannot be replayed.
+The run artifact root, workspaces, preparation trees, and bare mirrors may not
+overlap.
+
+`tests/test_swebench_run.py` currently records 42 passes and one skip in
+158.55 seconds on Windows. It covers the complete synthetic denominator,
+literal request/argv/environment evidence, success and every process/output
+failure family, bounded oversize witnesses, workspace mismatch and final-scan
+failures, source/preparation/system replay, unsafe paths and artifact
+substitution, fixed-false claims, resigned forgery, and prediction-ledger
+interoperability. The skipped directory-symlink-root regression could not
+create its fixture because this Windows token lacks directory-symlink
+privilege. All fixtures use synthetic repositories, workspaces, and controller
+processes; no public candidate, model, agent, or grader ran.
+
+The coordinator-only, source/sdist-only `benchmarks.swebench_patch` module adds
+the strict self-hashed `ctxc-swebench-patch-composition-0.1` mechanical
+preflight. At `a1b262a`, candidate bytes are validated before source
+verification and a streaming closed grammar accepts only regular-file text
+modification plus exact-`100644` addition/deletion. Hidden bytes are validated
+before patch application; repository-verification Git calls may precede that
+step but never receive patch bytes. It copies the prepared base into independent
+candidate and hidden trees, applies both text patches with bounded literal Git
+launches, and records bounded tree summaries plus complete changed-path states
+and deltas. File and directory counts are bounded separately; cleanup preserves
+primary failures; canonical documents are sized before whole-value hashing or
+encoding. Equal and ancestor/descendant effective paths conflict with storage
+linear in retained path bytes.
+
+Its statuses are `overlap-detected-not-composable`, which retains conflicts and
+no composition, and
+`disjoint-composition-preflight-verified-not-a-grader`, which uses a third clean
+copy and requires exact replay of both deltas. Decode is a structural/self-hash
+check only. Public verify, exclusive write, load, and replay canonically
+snapshot source/preparation evidence, bind the live prepared-tree summary, and
+require exact semantic patch replay. The structural `retained_disjoint`
+property fails closed on malformed evidence and is not a safety decision.
+Preamble/headerless/combined/binary diffs, standard or legacy copy/rename and
+similarity metadata, mode changes, unsafe modes, inconsistent headers, unknown
+metadata, and malformed hunks fail before patch application.
+
+Accepted text patches still reach an unsandboxed native Git parser with no
+native memory or filesystem quota. Owned temporary cleanup cannot replace a
+primary failure, but recursive deletion is not itself entry-bounded.
+`PatchCompositionError` supplies a
+machine-readable stage and fixed
+`preflight-exception-not-a-cohort-result` disposition; an outer
+complete-denominator ledger must retain and map the exception. No current caller
+performs that integration. Candidate and
+hidden-test execution, official grading, official results, external scores,
+usefulness, mount/network/filesystem isolation, native quotas, parser
+sandboxing, and claim readiness remain false. Parser-only replay of the 500
+frozen hidden patches accepted 499 and refused only the real Astropy rename; it
+did not execute a task. The finalized focused suite passed 86/86 on CPython
+3.12 and 3.14, and the integrated source/repository/prediction/patch gate
+collected 187 in each environment: 186 passed and one expected Windows case
+skipped. Three independent
+final reviews found no P0--P3 issue. It changed no public cohort count and
+produced no public result.
+
+The final literal-process/repository/prediction/run integration matrix passed
+126 cases and skipped the expected POSIX-directory-mode and unavailable
+directory-symlink cases in 352.05 seconds. Two deterministic sdist builds were
+byte-identical. The exact run module and test are in that sdist; both remain
+absent from the wheel, whose installed schema inventory remains the expected
+26. Exact local archive digests are not embedded into an archive member because
+that would make the sdist digest self-referential.
+
+At clean tau2 checkpoint `43e8489`, the full repository run passed 2,337 tests,
+skipped 27, and passed 112 subtests in 681.1 seconds on Windows. Clean packaging
+contained the tau2 source-only artifacts in the sdist and excluded them from
+the wheel. The integrated patch-composition checkpoint then passed 2,359 tests,
+skipped 27, and passed 112 subtests in 675.54 seconds. Its 22 focused cases,
+independent re-audit, Ruff, format, compile, and deterministic Python quality
+checks were clean. Package inspection placed the patch module, test, and
+evaluation contract in the sdist, excluded the patch source artifacts from the
+wheel, and retained the 26-schema installed inventory.
+
+This checkpoint remains source-only. The dataset card declares no license; raw
+source rows remain local, and dataset/repository license and redistribution
+reviews remain incomplete. As historical evidence, the earlier Xarray
+expansion prepared all 22 selected exact base commits and added 6,160 regular
+files / 138,899,190 blob bytes, bringing the then-current public-preparation
+cohort to 56 prepared rows, six Pylint refusals, and 438 unattempted rows,
+without a candidate run.
+
+At the predecessor preparation-through-380 checkpoint against `d512b04`, the
+retained ignored evidence covers ordinals 287--380: 94 attempted, 88 prepared,
+the same six exact Pylint refusals at ordinals 324--329 with failure code
+`tree-symlink-forbidden` (`pylint-dev__pylint-6386`,
+`pylint-dev__pylint-6528`, `pylint-dev__pylint-6903`,
+`pylint-dev__pylint-7080`, `pylint-dev__pylint-7277`, and
+`pylint-dev__pylint-8898`), and 406 unattempted. All 32 scikit-learn rows at
+ordinals 349--380 prepared and received a separate base-commit license
+inventory; this remains preparation and license-inventory evidence only. The
+complete-denominator rebuild and an independent replay agreed on zero
+predictions and zero protocol violations. Exact substitution-detection values
+are:
+
+- complete-denominator ledger raw-file SHA-256
+  `dc8d7c10b7ab4ad4cf24123296abf502f614a1740337e356ce281e7bffcdf8af`
+  and embedded ledger self-hash
+  `3fa05e48739ca1fdc1e8295724b68f45f42728f9229cf908dfeaa6fd29192e5d`;
+- preparation summary raw-file SHA-256
+  `21ded8d8bff3038e1064abaff01d952e06fe60d165617f3e3e213d55ba99b781`
+  and embedded `summary_sha256`
+  `f11f8bd4235c1469fbe8dd8865d92519af82f8c831ae5901a82b182bd221b96d`;
+- preparation journal raw-file SHA-256
+  `1010659aeb04df9d9463aae21097266f1b51da4ea5b37bfd9b0b818b6c24050c`;
+- official JSONL of 500 `model_patch: null` rows, raw-file SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`;
+- scikit-learn license inventory raw-file SHA-256
+  `4130d4f1f7dc65ee0d0ef5babe2fa1fe278f834c84994ebf11001774a5623887`
+  and embedded inventory self-hash
+  `5adcfab541bbd7769812d529e725cd745dbc6ea57c73b5a55538b814984b71fd`.
+
+These raw digests and self-hashes detect substitution but do not authenticate
+an author or turn ignored local artifacts into public result evidence. The run
+ledger accepts caller-provided workspaces and does not create a candidate
+mount. Mount/filesystem/network/user/PID/image isolation,
+candidate execution authentication, controller/system/model producer
+authentication, token and trajectory authentication, official-grader review,
+hardening and execution, exact hidden-test-patch application, resolution,
+scores, and usefulness measurement remain absent or false. Neither the raw
+exporter, run ledger, patch preflight, nor literal lifecycle establishes a
+candidate sandbox, grader, or network-isolation guarantee. Opaque HMAC ids do
+not prevent public-corpus relinking or establish unseen model data.
+Workspace traversal and executable launch remain pathname-based rather than
+descriptor-pinned, so concurrent nested-directory or executable substitution
+is a coordinator-host trust boundary. Process exit, trigger, timing, and cleanup
+fields are unauthenticated observations that an internally consistent,
+self-hash-resigned ledger can relabel.
+
+The historical mixed-provenance preparation-through-424 checkpoint adds all 44
+Sphinx rows at ordinals 381--424 under `f12aa37`; every Sphinx row prepared and
+none refused. Together with the predecessor segment, the complete denominator
+at that point was 138 attempted, 132 prepared, the same six exact Pylint
+`tree-symlink-forbidden` refusals, and 362 unattempted. The 132 manifests total
+35,064,737 bytes and bind 130,199 regular files, 1,538,004,549 blob bytes,
+25,985 tree objects, and 6,543,145 raw tree bytes. The Sphinx segment alone has
+44 manifests / 18,731,287 manifest bytes / 66,143 files / 736,223,680 blob
+bytes / 18,382 tree objects / 3,334,382 tree bytes.
+
+Exact historical through-424 substitution-detection values are:
+
+- final 95,350-byte reconciliation builder SHA-256
+  `ec330aacb769cb545f5400505fa138efe49ea6e528579ec17eb6a73cc4982c6e`;
+- 45,469-byte reconciliation raw SHA-256
+  `c6882b68d817e374ebd6be00fa32a7ee2a2ac2d265c2f8f1fc8c858138fea23e`
+  and self-hash
+  `7bf6599e2a258b588a92b9bab41c899ba799b0fc81ff1bd41f355b86aa92a789`;
+- 493,768-byte ledger raw SHA-256
+  `3be02f725ec0e0041bde5af9ba02288c9b15823f3c0fcfd1ad84445d78276bb8`
+  and self-hash
+  `5543f9e28a11a12bdf9a0bf9f3473926b80b0357910eed1e2fb2fcdc9cd002cc`;
+- byte-identical predecessor/current official JSONL: 53,734 bytes, exact 500
+  source-ordered `model_patch: null` rows, SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`;
+- 31,722-byte Sphinx summary raw SHA-256
+  `fc11dfd91d75ee903359a6f9158956342422f1a4b8f6ef58cb18247af484949b`
+  and self-hash
+  `f62a65f0f54a23a07d4385f168a4696c7437d90a55e9e8ca80b9d24a282b5bb3`;
+- 24,447-byte, 46-event Sphinx journal SHA-256
+  `6655d51f482a0039c3e1a070287456c6ef8f3936fb77b02b10590fa648f38b93`;
+- 1,646-byte Sphinx mirror evidence raw SHA-256
+  `159f53c82a222e9cad63d114737d6baf11136f0ee162ca13d56387dc842ae12f`
+  and self-hash
+  `c0a2425237dbff9c8d471a82bbb3730bca316b5019c0db05c23358a3bdd67a6d`;
+- 96,201-byte Sphinx engineering inventory raw SHA-256
+  `e02f07b4feb49ab7ebf378ef7614b8acd01a7367921acfe449ec0e2a5ef08840`
+  and self-hash
+  `5df1f68df2405b8365074cce05b7ff2391b6ac945f81dd47951956a918ddae25`.
+
+The Sphinx inventory retains 44 records, 129 occurrences, and 32 exact
+candidate variants: five `LICENSE`, three `pyproject.toml`, eight `setup.cfg`,
+and sixteen `setup.py` variants, all mode `100644`. It is engineering discovery
+only, not a legal, applicability, redistribution, or origin-authentication
+decision. No public candidate, model, agent, hidden test, grader, GPU, or
+inference ran at that checkpoint. Candidate mount, filesystem/network isolation,
+execution, grading, score, usefulness, and claim readiness remained absent or
+false.
+
+The current mixed-provenance preparation-through-499 checkpoint adds all 75
+SymPy rows at ordinals 425--499 under `c337557`; every SymPy row prepared and
+none refused. The range runs from
+`sympy__sympy-11618@360290c4c401e386db60723ddb0109ed499c9f6e` through
+`sympy__sympy-24661@a36caf5c74fe654cedc488e8a8a05fad388f8406`.
+Across all three segments, the complete denominator is 213
+attempted, 207 prepared, the same six exact Pylint
+`tree-symlink-forbidden` refusals, and 287 unattempted. The 207 manifests total
+67,063,781 bytes and bind 258,837 regular files, 3,791,032,561 blob bytes,
+41,459 tree objects, and 12,449,863 raw tree bytes. The SymPy segment alone has
+75 manifests / 31,999,044 manifest bytes / 128,638 files / 2,253,028,012 blob
+bytes / 15,474 tree objects / 5,906,718 raw tree bytes.
+
+Exact current through-499 substitution-detection values are:
+
+- final 116,825-byte reconciliation builder SHA-256
+  `13fd7d2e0a44c50a2a8cfb7003abc838d38714c6b8baacd56f796eb5c9f5ef44`;
+- 67,322-byte reconciliation raw SHA-256
+  `46452d7005493080b0f3bc9e09ff38ce7cf3d534a59a29b8e6499dcac48afcbe`
+  and self-hash
+  `d26d2a29b94363f3442ba576998725394d00d51335c9750ee466cc99032aea4e`;
+- 498,718-byte ledger raw SHA-256
+  `e57df1b4c11ae8c274e636d488151b2e2fd865026d877f7e7a345c9bc6b97b3d`
+  and self-hash
+  `1f962ed25a7644b03bd36bb0b0b4ea79f29da8129ac0441a0084e7fb83d5b4dc`;
+- predecessor-identical official JSONL: 53,734 bytes, exactly 500 LF-terminated
+  source-ordered `model_patch: null` rows, SHA-256
+  `546a3e42b9cf5bfcf7165eb244b5da909ff069971519e0ac7f083b413f950e60`;
+- 50,679-byte SymPy summary raw SHA-256
+  `17ccdf6c9941e83493dab39c13ba34a34c500a600bb0d4b8c5836fcad485d505`
+  and self-hash
+  `8c1d52330a69882e7ffe86851a7e684d33060fb2b476e52681ab50688b678ca0`;
+- 40,345-byte, 77-event SymPy journal SHA-256
+  `37fe9b7fc0383e74b8c5cb7194c0d2e6becfab5d656e62ee1aca4d760b799254`;
+- 1,634-byte SymPy mirror evidence raw SHA-256
+  `ca82d8be6381caf83743042d3452f49c15338f36562479212231080e740126d2`
+  and non-authenticating self-hash
+  `0220123b7d117760950386d21ab58b4a6aa5de5dcc19b4abe62f274674d66859`;
+- 217,198-byte SymPy engineering inventory raw SHA-256
+  `be81e87227e3d6f9438b71a83ec48460d92545f829e252ae9606271e00b02db0`
+  and self-hash
+  `ac9cb5190e77294b655b86b63a398a8bd0407475322c0ca4e58a72805ca52066`.
+
+The SymPy inventory retains 75 records, 320 occurrences, and 59 exact variants.
+Path occurrence/variant counts are root `LICENSE` 75/12,
+`data/TeXmacs/LICENSE` 75/1, `setup.cfg` 37/11, `setup.py` 75/34, and
+`sympy/parsing/latex/LICENSE.txt` 58/1. All `setup.py` occurrences are mode
+`100755`; all other retained paths are `100644`. It is engineering discovery
+only, not a legal, applicability, redistribution, or origin-authentication
+decision.
+
+Publication resumed and completed in 7,595.734 seconds. A separate
+`--verify-only` replay completed in 4,920.234 seconds and reproduced the exact
+retained counts and hashes without rewriting the published evidence. The
+post-publication source/repository/prediction/patch gate collected 187 tests in
+both CPython 3.12.13 and 3.14.6: 186 passed and one expected Windows case
+skipped in each, with zero failures and errors. The 26,267-byte 3.12 JUnit file
+has SHA-256
+`ca1aada59cf8f82aa0fb69ca1918983a578035d7a27383a37fe78bdc2b481c3c`
+and suite time 314.612 seconds; the 26,266-byte 3.14 file has SHA-256
+`127600b9d86687108daafd81016b21be08b351e63d6f686c90b62187d497d0d8`
+and suite time 301.905 seconds. Ruff and in-memory compilation passed in both.
+
+No public candidate, model, agent, hidden test, grader, GPU, or inference ran at
+the current checkpoint. Candidate mount, filesystem/network isolation,
+execution, grading, score, usefulness, legal determination, redistribution
+approval, origin authentication, and claim readiness remain absent or false.
+
+### tau2-bench v1.0.1 source and secrecy contract
+
+The second public long-horizon suite is structurally selected and source-bound,
+not evaluated. The source/sdist-only descriptor fixes the annotated `v1.0.1`
+tag, peeled commit, exact required Git objects and blobs, half-duplex text
+profile, and the complete `base` cohort across airline, retail, and
+manual-policy telecom. The exact 50 + 114 + 114 selection is reconstructed in
+physical task-file order filtered by base membership, not in the different
+literal split-array order. Its 278-line canonical manifest is 15,948 bytes with
+SHA-256
+`61336d42294a9265ea4b70748e7be0988a98b6064e20e366dbf5d4088b0426a5`.
+
+The verifier accepts only an absolute local bare mirror and Git executable,
+reuses the strict mirror boundary, reads bounded raw Git objects with literal
+argv, recomputes Git/SHA-256 identities, and strictly validates task and split
+shapes after exact byte checks. It retains only selection/evidence records, not
+full Task documents or raw upstream task ids, and does not import tau2-bench or
+inspect committed result payloads. The descriptor is coordinator-only and must
+not enter a candidate mount.
+
+The source-task candidate field allowlist is empty. The future external adapter
+may receive only the normal prompt/policy, serialized tool schemas, agent-view
+messages, and coordinator-created tool results. Full Task objects, scenarios,
+initial state, evaluator criteria, golden actions, annotations, DBs,
+simulator/grader state, results, mirrors, and source checkouts remain trusted
+coordinator-side. Never register candidate code through tau2-bench's in-process
+factory: the pinned upstream builder passes arbitrary factories live tools and
+the full hidden Task.
+
+No tau2-bench candidate adapter, dependency environment, filesystem/network or
+process isolation, user-simulator evidence, hardened grader evidence, public
+execution, reward, score, usefulness result, or claim-ready evidence exists.
+The retail NL grader requires structural reconciliation before use because its
+current free-form response path can treat an empty result list as a pass. See
+[`docs/TAU2_EVALUATION.md`](TAU2_EVALUATION.md) for the complete field
+partition, failure dispositions, and negative-test requirements.
 
 ### Recorded local benchmark
 
@@ -996,8 +1802,192 @@ lower quantile before results are observed.
   semantics. The `.append.lock` marker intentionally persists and must not be
   interpreted as evidence that a writer is active.
 
+### OpenHands draft alpha
+
+- The first hosted package-matrix copies for the push and pull-request events
+  remain failed results. Every platform exposed a stale symlink-error
+  expectation; macOS also exposed its `/var` temporary-root alias when the
+  ordinary matrix mistakenly selected the mission-size campaign. The focused
+  follow-up marks that exact test `retained_evidence`, proves it is excluded
+  from ordinary lanes, qualifies an unlinked `RUNNER_TEMP` descendant, and
+  leaves the fail-closed path guard unchanged. Frozen checkpoint
+  `4213410efb5c4e857819de3e831260ed2cd9f59a` then passed all 12 ordinary
+  Linux, Windows, and macOS Python 3.12/3.13 package jobs in push run
+  `30323957135` and pull-request run `30323958753`.
+- Exact implementation head `1f684d975005a7e552f62f36dfb7309a58b11799`, including
+  the later RECORD, report-to-database, pipe, ledger-I/O, and documentation
+  review commits, passed all six automatic Linux, Windows, and macOS Python
+  3.12/3.13 package jobs in push run `30331509718` and all six in pull-request
+  run `30331512148`.
+- Exact packaging head `2f692484272aa36bf267703cad2bb4d6926676ff`
+  passed all six automatic package jobs in push run `30341548763` and all six
+  in pull-request run `30341552866`. These lanes include two fresh source
+  builds, one extracted-sdist rebuild, clean wheel/sdist installation, Ruff,
+  compileall, and ordinary test selection on Linux, Windows, and macOS
+  Python 3.12/3.13.
+- Exact package-gate implementation head
+  `f9ba3de6f0ab2ac7e861bd7da907e6949df1339e` added an automatic aggregate over
+  the uploaded package files from those six package lanes. OpenHands push run
+  `30355357305` and pull-request run `30355359105` each passed six package jobs
+  plus the aggregate; retained evidence was skipped/default-off. Root push CI
+  `30355357152` and pull-request CI `30355359094` each passed 7/7 jobs; CodeQL
+  `30355359110` and dependency review `30355359096` passed. The 16,681-byte
+  push report has raw SHA-256
+  `e9203177989fab536e70febcf5316ba6ea21d2a39ea2d3f8dc2c46b146a6f743`
+  and self-hash
+  `9931d25167831dea6698e0794a93e1cc46a1fc23ed29126c94708aefe7efb35c`.
+  It binds the exact implementation revision and reports byte-identical root
+  wheels
+  (`ffc60ecf166cc28563c2a5bc6597e1c4cb0a4c2be6c965d31bafbe3877d1c17c`),
+  integration wheels
+  (`ed846517d05b9a734754a9d893de84f23d807f9236c626f1791f9f6d215fa3a9`),
+  and integration sdists
+  (`b8ee2f1f13c06cfe7de1343f9d765eb25aaf6bc1f7d03da7c6443b46eec0594a`)
+  across all six lanes. The pull-request report is bound to synthetic merge
+  revision `a585ddbea770e49ff23f49b091536a86fa9db295`, whose tree
+  `812b43400e7028a4b89ab6ad7aa30eb73aafb536` equals the implementation tree;
+  its raw SHA-256/self-hash are
+  `9c8ef8530ffa37c6596d94070f75aaed95ab532af3fbf9737870bfa53b08c942`
+  and `8ccf05ab81647db1d5030f79ee5e9f367318e923b539b9376cf3e015b04ff2c5`.
+  Both report artifacts are temporary and expire on 2026-08-11.
+- Exact package-input implementation head
+  `0f20b8a1c131fe3c0908f7d6738790529f42338c` tracks a 666-byte
+  `requirements-build.lock`, SHA-256
+  `243f3ab977d82c04968cf4ea6474b7ef79c060d485aa3a3d67a383d1ef6fbbfe`,
+  for seven exact universal build wheels. Every lane acquires only those bytes
+  with `--require-hashes`, validates and retains the wheel inventory, and uses
+  it without an index for a dedicated builder and both clean-install modes.
+  OpenHands push run `30366252700` and pull-request run `30366258656` each
+  passed six Linux, Windows, and macOS Python 3.12/3.13 package jobs plus the
+  aggregate; retained evidence stayed skipped/default-off. Root CI push
+  `30366251022` and pull-request CI `30366255412` each passed 7/7 jobs; CodeQL
+  `30366255532` and dependency review `30366255341` passed.
+- The six hosted lanes at `0f20b8a` agreed on the 222,688-byte root wheel
+  (`ec46f710169a95c21c54a28b941d2f5205104113c3e594fe6945ef68f633642f`),
+  136,967-byte integration wheel
+  (`16976fa84cebb2b35f1cc15db89a41f016a3a8385498fd2335adbc28c85aacf0`),
+  255,770-byte integration sdist
+  (`bf51799df63019c3138368a2d6f9e8bc3ddd398163838669340764be36130957`),
+  the tracked lock, and all seven input wheels. The 44,203-byte push report raw
+  SHA-256/self-hash are
+  `46e47ee4b6f3d1b7ce0fdcc5e41e5f812f2ee0d17005d0c77acd986198213acd`
+  and `62cd0a5a4ee351dc9fc2c3bd892a79db5394058e96a611c2a47946e0e42ec876`.
+  The same-size pull-request report is bound to synthetic merge revision
+  `37f7796a1fa74d2637a5ad85e70a9c988ffc5836`, whose tree equals the
+  implementation tree; its raw SHA-256/self-hash are
+  `4fd96cb025bd557644e670a79c2ae6eeabb244099886d649ab755f7ffb6e8bda`
+  and `aba29437bf2ee4ba7d5876eea978bc1bf74cba321ebe047e5ff92acf80e69626`.
+  This closes exact build-input byte identity for those automatic temporary
+  lanes, not signed origin, durable retention, or a release authorization.
+- Exact root release-input implementation head
+  `7915beb15f6a3429c24871779c7cdab280d1ee04`, tree
+  `5fb61a9f0e9e00016acfd00d04e85e8ef04638f8`, adds the independent root
+  666-byte `requirements-build.lock` with the same SHA-256
+  `243f3ab977d82c04968cf4ea6474b7ef79c060d485aa3a3d67a383d1ef6fbbfe`.
+  The root platform-smoke, repeated-build, and LRCBench jobs acquire the seven
+  authorized universal wheels with `--require-hashes`, validate the exact
+  distribution/version inventory, create a dedicated no-index builder, and
+  use it for their release builds. Platform-smoke and LRCBench pass the
+  wheelhouse and lock through wheel/sdist clean-install smoke; the sdist result
+  must report `hash-pinned-offline-wheelhouse` and the wheel result reports
+  `not-applicable`. Repeated-build instead builds two exact-input candidates
+  and requires the strict byte comparator to accept both archives.
+- For exact implementation head `7915beb`, root CI push run `30429423660` and
+  pull-request run `30429426031` each passed all seven jobs, including Python
+  3.11/3.12/3.13, Windows and macOS release smoke, repeated release builds,
+  LRCBench, package installs, and the bounded performance gate. OpenHands push
+  run `30429423659` and pull-request run `30429426030` also passed; their
+  retained-evidence jobs remained manual/default-off. CodeQL `30429426038` and
+  dependency review `30429426044` passed. This is exact-head automatic hosted
+  evidence only; it does not authenticate the configured index or publishers,
+  make temporary Actions retention durable, authorize a release, or establish
+  live execution or inference.
+- The hosted retained-evidence job is manual/default-off and has not run for
+  this candidate; both automatic runs skipped it. Local validation does not
+  replace that durable retained-evidence gate.
+- The post-freeze scenario and soak are hash-intact historical local artifacts,
+  but their earlier verifier did not bind report claims to ordered database
+  generations. They are not reverified under the strengthened verifier. The
+  campaign remains a separately verified historical pair and was not affected
+  by that finding. None of the three is durably retained or current-head
+  release evidence.
+- The reviewed OpenHands distributions are not available as a complete local
+  hash-pinned offline dependency closure. Real offline import and live
+  execution remain blocked.
+- The historical raw Setuptools sdist failures remain retained. The later
+  package-local backend at `2f692484` produced byte-identical final sdists
+  across two exact source archives and an extracted-sdist rebuild under one
+  recorded Windows toolchain and epoch. At that checkpoint, build tools were
+  acquired online without a reviewed hash-pinned input closure. That
+  `2f692484` result by itself did not establish cross-platform artifact
+  equality; the later `f9ba3de` aggregate closed only equality for its six
+  recorded hosted package lanes. The later `0f20b8a` gate closes the exact
+  seven-wheel OpenHands build-input bytes for its six recorded lanes. The root
+  `7915beb` gate closes the same exact seven-wheel set for its automatic root
+  build and smoke paths. Index-origin attestation and durable retention remain
+  separate work.
+- No candidate SBOM, artifact signature, or provenance attestation exists.
+  Checksums and self-hashes are substitution-detection groundwork, not
+  authentication or release provenance.
+- The pinned host exposes no stable public hook for the final immutable
+  provider request plus exact tokenizer. Integrated `run()` and `arun()` always
+  refuse; private seams are not treated as wire-exact.
+- The crash scenario implementation and deterministic soak use only the offline fake
+  runtime. They cannot satisfy the required recorded live scenario.
+- The exact tokenizer and final-request digest apply only to the fake canonical
+  UTF-8 transport, not a real OpenHands model or provider wire request.
+- The closed 18-class event map is valid only for the pinned revisions. An
+  unreviewed event or field fails availability closed until a result-blind
+  compatibility review updates the pin, map, tests, and documentation.
+- Callback recovery depends on the host retaining and supplying the complete
+  persisted EventLog in exact order. No filtered or partial reconciliation is
+  accepted.
+- The SQLite-WAL store assumes a correct local non-symbolic filesystem. It is
+  not encrypted, distributed, tamper-proof, or a substitute for host access,
+  backup, privacy, and retention controls.
+
 ### Evaluation
 
+- Python callers may opt into `ContextWindowDegradationPolicy()`. Default
+  materialization remains strict; `ctxc materialize` exposes only the exact
+  `--degradation-policy lossless-compact-then-reallocate-v1` opt-in. The bounded
+  ladder compares strict and self-describing compact memory requirements, then
+  performs at most one exact minimum reallocation while preserving fixed input,
+  the current turn, and the minimum raw recent tail. Digest-bound compiler
+  metadata records the mode, rung, and requested/effective budgets. This does
+  not alter the frozen evaluation pack or its retained strict red outcome.
+- CLI-only consumers can run `ctxc verify-materialization` with independently
+  retained receipt and allocation digests. The command uses the existing
+  bounded v1 verifier and re-emits identical canonical result bytes only after
+  nested digest verification; it adds no schema, capability, retrieval, or
+  provider-readiness claim.
+- The installed `ctxc evaluate-materialization` command runs a deterministic,
+  dependency-free structural diagnostic over 30 project-authored
+  synthetic-naturalistic coding histories grouped into 4 train, 6 development,
+  and 20 held-out cases. It compares full raw history, a bounded recent tail,
+  and `materialize_context()` under `unicode-codepoint-count-v1`. Its canonical
+  report uses exact integers for planning units, correction, identifier, path,
+  number, detail, current-turn, omission/refusal, and authority-boundary
+  measurements. It performs no model, retrieval, or provider execution. The
+  pack is visible rather than blind gold and is not a collected, licensed,
+  consented, privacy-reviewed natural cohort; it does not establish semantic
+  completeness, task completion, provider tokens/readiness, or comparative
+  superiority. See
+  [the evaluation protocol](MATERIALIZATION_RETENTION_EVALUATION.md).
+- The frozen pack's current deterministic all-split outcome is a red gate. All
+  28 predeclared accepted cases refuse with `compiled_memory_not_verified`;
+  the two intentional hard-limit refusals match. The complete report is emitted
+  with `integrity_passed=false` and the command returns 3. Do not change the
+  pack or its expectations to remove this result.
+- `ctxc evaluate-materialization-degradation` separately compares strict,
+  compact-only, and compact-plus-one-reallocation over the unchanged 20-case
+  held-out split. The first two refuse all 20; the public ladder accepts 18 and
+  preserves both mandatory refusals. Every accepted row passes exact
+  required/protected retention, correction precedence, authority, partition,
+  current-turn, deterministic-byte, omission, and second-execution receipt
+  checks. Exact retention includes the frozen source id and character span.
+  The report marks prior full-ladder and compact-only preflight observation and
+  does not call this newly unseen or claim-bearing natural evidence.
 - The recorded histories are generated templates, not natural production
   prevalence. The separate natural-history records are linked synthetic contract
   fixtures, not collected trajectories or performance evidence.
@@ -1110,27 +2100,57 @@ context is removed. A safe integration should perform this transaction:
 
 Recent-tail composition, atomic multi-artifact installation, rollback,
 retention, redaction-policy selection, unsupported sensitive-data handling,
-and trust-anchor storage are host responsibilities. The package does not
-currently implement this transaction manager.
+and trust-anchor storage are host responsibilities. The core package does not
+implement this transaction manager. The separate OpenHands alpha implements a
+local SQLite-WAL source/generation transaction with verified old-or-new active
+visibility and explicit rollback, but it does not supply host authentication,
+redaction policy, provider-request capture, or production storage controls.
 
 ## Exact next step
 
 The known in-process safety paths, internal benchmark estimands, frozen model
-diagnostic, and narrow LM Studio stdout framing are complete. The highest-value
-next work is the external and natural-history evidence path:
+diagnostic, narrow LM Studio stdout framing, and separately packaged OpenHands
+offline foundation are complete.
 
-1. preserve every frozen report and the paired report's four verification
+OpenHands live execution still has two hard prerequisites: a complete reviewed
+hash-pinned offline dependency closure and a stable public hook for the final
+immutable request plus exact tokenizer. Until both exist, keep `run()`/`arun()`
+and the recorded live scenario blocked; do not substitute the fake scenario or
+private host seams. While that gate remains red, the highest-value broader
+project work is the external and natural-history evidence path:
+
+1. inspect and prepare the 22 unique Astropy tasks and commits at ordinals
+   0--21, from
+   `astropy__astropy-12907@d16bfe05a744909de4b27f5875fe0d4ed41ce607`
+   through
+   `astropy__astropy-8872@b750a0e6ee76fb6b8a099a4d16ec51977be46bf6`;
+   this is the smallest untouched physical repository block after the completed
+   late block 287--499, not evidence that all ordinals 0--499 are prepared;
+   retain every success or refusal and both mirror/preparation evidence;
+   provision a separately verified
+   container/VM boundary for candidate mount/filesystem and network isolation
+   before passing any public candidate through the synthetic-tested
+   controller-run ledger; use the complete-cohort prediction ledger for
+   official JSONL and the text-patch preflight for mechanical overlap/disjoint
+   evidence; retain every preflight exception in the outer denominator plus
+   separate authenticated model/token/trajectory, hidden-test application,
+   grader, resolution, and result/score evidence; do not reuse the LRCBench
+   rendered-memory runner for patches or treat the lifecycle, raw exporter, run
+   ledger, patch preflight, or prediction ledger as a sandbox;
+2. preserve every frozen report and the paired report's four verification
    failures without post-result tuning or rescoring;
-2. resolve the nine explicit blockers in the machine-readable external
+3. resolve the nine explicit blockers in the machine-readable external
    protocol without looking at comparative results;
-3. complete result-blind inclusion decisions and freeze the initial comparison
+4. complete result-blind inclusion decisions and freeze the initial comparison
    set, dependency locks, adapter revisions, source/runtime/command evidence,
    and externally enforced network controls;
-4. provide an exact Python 3.11 ACON checkout and lock plus single-slot local
+5. provide an exact Python 3.11 ACON checkout and lock plus single-slot local
    Qwen/inference-service evidence, then rerun the retained diagnostic without
    hiding a failure;
-5. add clean adapters only for included systems and retain every failed run;
-6. collect licensed/consented natural histories under the implemented privacy,
+6. add clean adapters only for included systems and retain every failed run;
+7. build the separately launched candidate adapter, simulator/grader evidence,
+   and isolation boundary for the source-bound tau2-bench text core;
+8. collect licensed/consented natural histories under the implemented privacy,
    independent-annotation, adjudication, grouped-split, and no-leakage contracts.
 
 The detailed ordered backlog is in [TODO.md](../TODO.md).
@@ -1146,11 +2166,22 @@ python -m pip install -e ".[dev]"
 python -m pytest -q
 python -m ruff check src tests benchmarks scripts conformance _ctxc_build_backend.py
 python -m compileall -q src benchmarks tests scripts conformance _ctxc_build_backend.py
+python -m pip install -e integrations/openhands --no-deps
+python -m pytest -q integrations/openhands/tests
+python -m ruff check integrations/openhands/src integrations/openhands/tests integrations/openhands/scripts
+python -m compileall -q integrations/openhands/src integrations/openhands/tests integrations/openhands/scripts
+python -m ctxc_openhands.cli doctor
 python conformance/run_connector_conformance.py
 python -m benchmarks.natural_history
+ctxc evaluate-materialization --split heldout -o retention-report.json
 python -m pytest -q tests/test_external_compatibility.py
 python -m benchmarks --self-test
 python -m benchmarks.external_protocol --verify benchmarks/protocols/external-comparison-v1.json
+python -m benchmarks.swebench verify-suite
+python -m pytest -q tests/test_swebench_repository.py
+python -m pytest -q tests/test_swebench_prediction.py
+python -m pytest -q tests/test_swebench_run.py
+python -m pytest -q tests/test_swebench_patch.py
 python -m benchmarks --verify-report docs/results/lrcbench-local.json
 python -m benchmarks.performance_gate --check --json-out ctxc-performance.json
 python -m benchmarks.phrase_eval --verify-report docs/results/novel-english-phrases-v1.json
@@ -1170,9 +2201,15 @@ with tempfile.TemporaryDirectory() as directory:
     assert len(wheels) == 1, wheels
     assert wheels[0].name.startswith('loss_resistant_context_compiler-')
     names = zipfile.ZipFile(wheels[0]).namelist()
-    assert sum(name.endswith('.schema.json') for name in names) == 25
+    assert sum(name.endswith('.schema.json') for name in names) == 26
 "
 ```
+
+Run `python -m ctxc_openhands.cli doctor --require-live` separately and retain
+its expected exit 2 and `hash-pinned-wheelhouse-absent` report. Do not make the
+restart checklist green by omitting that red live gate, and do not overwrite a
+failed scenario, replay, recovery, or doctor report with a later run under the
+same evidence path.
 
 To regenerate the reviewed local snapshot intentionally:
 
@@ -1210,9 +2247,14 @@ Then:
 ```text
 Continue the loss-resistant context compiler from this repository.
 First read README.md, TODO.md, docs/HANDOFF.md, docs/ARCHITECTURE.md,
-docs/BENCHMARKING.md, docs/THREAT_MODEL.md, docs/REDACTION.md, and
-docs/LITERAL_MODEL_EXTRACTION.md. Inspect the current branch, diff, tests, and
-recorded evidence before changing anything.
+docs/BENCHMARKING.md, docs/THREAT_MODEL.md, docs/REDACTION.md,
+docs/LITERAL_MODEL_EXTRACTION.md, integrations/openhands/README.md,
+integrations/openhands/docs/EVENT_AUTHORITY_MAP.md, and
+integrations/openhands/docs/RUNBOOK.md. Inspect the current branch, diff, tests,
+and recorded evidence before changing anything. Keep live OpenHands execution
+blocked until the complete hash-pinned offline dependency closure and supported
+exact final-request/tokenizer hook both exist; do not call the fake scenario a
+live demonstration.
 Preserve the fail-closed provenance, authority, protected-retention, privacy-
 scope, and claim-boundary rules. Start with the highest-priority incomplete P0
 evidence work in TODO.md, validate it empirically, and do not claim external
@@ -1254,3 +2296,16 @@ and commits solely under JamesNguyen42.
 - Use LRCBench certificates as scoped evidence, never universal product claims.
 - Require real downstream task completion and external comparisons for the
   original 50%-better target.
+- Keep OpenHands integration code and dependencies in the separate
+  `ctxc-openhands` package; ordinary core installation and import stay
+  dependency-free.
+- Pin exact reviewed host bytes and fail closed on unknown top-level events or
+  fields; never derive authority from host source/role claims.
+- Preserve tool calls/results atomically and poison dispatch after a callback
+  refusal until the complete persisted EventLog reconciles exactly.
+- Retain source history and make only independently verified SQLite-WAL
+  generations active through source-head, parent, and epoch compare-and-swap.
+- Label rehydrated exact source as untrusted evidence.
+- Claim exact final-request accounting only for the offline fake protocol;
+  refuse live OpenHands request execution until the complete pinned dependency
+  closure and a stable exact final-request/tokenizer hook both exist.

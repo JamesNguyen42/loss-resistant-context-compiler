@@ -15,6 +15,10 @@ from .path_safety import (
 )
 
 
+class AtomicDestinationExistsError(FileExistsError):
+    """An exclusive atomic install lost the destination creation race."""
+
+
 def fsync_directory(path: str | Path) -> None:
     """Persist a directory entry update when the host exposes that primitive."""
 
@@ -36,8 +40,8 @@ def atomic_write_text(
     value: str,
     *,
     overwrite: bool = True,
-) -> None:
-    """Install complete UTF-8 text atomically in the destination directory."""
+) -> tuple[int, int]:
+    """Install UTF-8 text atomically and return its device/inode identity."""
 
     if not isinstance(value, str):
         raise TypeError("atomic text output must be a string")
@@ -156,13 +160,18 @@ def atomic_write_text(
                     )
                     temporary_present = False
                 else:
-                    os.link(
-                        temporary_name,
-                        output_path.name,
-                        src_dir_fd=parent_descriptor,
-                        dst_dir_fd=parent_descriptor,
-                        follow_symlinks=False,
-                    )
+                    try:
+                        os.link(
+                            temporary_name,
+                            output_path.name,
+                            src_dir_fd=parent_descriptor,
+                            dst_dir_fd=parent_descriptor,
+                            follow_symlinks=False,
+                        )
+                    except FileExistsError as exc:
+                        raise AtomicDestinationExistsError(
+                            "atomic output destination already exists"
+                        ) from exc
                     os.unlink(
                         temporary_name,
                         dir_fd=parent_descriptor,
@@ -174,7 +183,12 @@ def atomic_write_text(
                     os.replace(temporary_path, output_path)
                     temporary_present = False
                 else:
-                    os.link(temporary_path, output_path)
+                    try:
+                        os.link(temporary_path, output_path)
+                    except FileExistsError as exc:
+                        raise AtomicDestinationExistsError(
+                            "atomic output destination already exists"
+                        ) from exc
                     temporary_path.unlink()
                     temporary_present = False
                 fsync_directory(output_path.parent)
@@ -214,3 +228,6 @@ def atomic_write_text(
                         )
                         if final_identity == temporary_identity:
                             temporary_path.unlink()
+    if temporary_identity is None:  # pragma: no cover - successful writes set it
+        raise RuntimeError("atomic output identity was not captured")
+    return temporary_identity
