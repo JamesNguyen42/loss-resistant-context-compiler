@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from collections.abc import Iterable
+from dataclasses import dataclass
+from types import MappingProxyType
 
 from .limits import (
     CompilationLimitError,
@@ -558,6 +560,233 @@ def _numeric_conflict(
     return bool(left_subject and left_subject == right_subject)
 
 
+@dataclass(frozen=True, slots=True)
+class _ConflictFacts:
+    """Immutable text facts reused by the exact internal conflict loop."""
+
+    tokens: frozenset[str]
+    words: frozenset[str]
+    negated: bool
+    numbers: frozenset[str]
+    scope: str | None
+    database: str | None
+    numeric_subject: frozenset[str]
+    nonexclusive: bool
+    exclusive: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _ConflictDependencies:
+    token_pattern: re.Pattern[str]
+    stopwords: frozenset[str]
+    scope_values: MappingProxyType[str, str]
+    negation_pattern: re.Pattern[str]
+    database_pattern: re.Pattern[str]
+    reverse_database_pattern: re.Pattern[str]
+    nonexclusive_pattern: re.Pattern[str]
+    exclusive_pattern: re.Pattern[str]
+    generic_value_words: frozenset[str]
+    antonym_pairs: tuple[tuple[str, str], ...]
+
+
+def _conflict_facts(
+    item: MemoryItem,
+    dependencies: _ConflictDependencies,
+    *,
+    _facts_type: type[_ConflictFacts] = _ConflictFacts,
+) -> _ConflictFacts:
+    tokens: set[str] = set()
+    for raw_token in dependencies.token_pattern.findall(item.text):
+        token = raw_token.casefold().strip("._-")
+        if token and token not in dependencies.stopwords and len(token) > 1:
+            tokens.add(token)
+    frozen_tokens = frozenset(tokens)
+    numbers = frozenset(
+        token
+        for token in frozen_tokens
+        if any(character.isdigit() for character in token)
+    )
+    scope_values = {
+        dependencies.scope_values[token]
+        for token in frozen_tokens
+        if token in dependencies.scope_values
+    }
+    text = item.text.casefold()
+    database_match = dependencies.database_pattern.search(
+        text
+    ) or dependencies.reverse_database_pattern.search(text)
+    database = (
+        database_match.group("value").casefold().strip(".,;:")
+        if database_match
+        else None
+    )
+    return _facts_type(
+        tokens=frozen_tokens,
+        words=frozenset(
+            token for token in frozen_tokens if token not in numbers
+        ),
+        negated=bool(dependencies.negation_pattern.search(item.text)),
+        numbers=numbers,
+        scope=next(iter(scope_values)) if len(scope_values) == 1 else None,
+        database=database,
+        numeric_subject=frozenset(
+            set(frozen_tokens)
+            - set(numbers)
+            - dependencies.generic_value_words
+        ),
+        nonexclusive=bool(dependencies.nonexclusive_pattern.search(item.text)),
+        exclusive=bool(dependencies.exclusive_pattern.search(item.text)),
+    )
+
+
+def _facts_have_different_scopes(
+    left: _ConflictFacts,
+    right: _ConflictFacts,
+) -> bool:
+    return bool(left.scope and right.scope and left.scope != right.scope)
+
+
+def _facts_have_numeric_conflict(
+    left: _ConflictFacts,
+    right: _ConflictFacts,
+) -> bool:
+    if (
+        not left.numbers
+        or not right.numbers
+        or not left.numbers.isdisjoint(right.numbers)
+    ):
+        return False
+    if left.nonexclusive or right.nonexclusive:
+        return False
+    if not left.exclusive or not right.exclusive:
+        return False
+    return bool(
+        left.numeric_subject
+        and left.numeric_subject == right.numeric_subject
+    )
+
+
+def _facts_have_structured_conflict(
+    left: _ConflictFacts,
+    right: _ConflictFacts,
+    *,
+    dependencies: _ConflictDependencies,
+) -> bool:
+    if bool(left.scope and right.scope and left.scope != right.scope):
+        return False
+    for first, second in dependencies.antonym_pairs:
+        opposed = (first in left.tokens and second in right.tokens) or (
+            second in left.tokens and first in right.tokens
+        )
+        left_base = left.tokens - {first, second}
+        right_base = right.tokens - {first, second}
+        if opposed and left_base and left_base == right_base:
+            return True
+    left_subject = left.tokens - {
+        left.database or "",
+        "database",
+        "db",
+        "engine",
+        "backend",
+    }
+    right_subject = right.tokens - {
+        right.database or "",
+        "database",
+        "db",
+        "engine",
+        "backend",
+    }
+    return bool(
+        left.database
+        and right.database
+        and left.database != right.database
+        and left_subject == right_subject
+    )
+
+
+_DEFAULT_PROPOSITION_SHAPE = _proposition_shape
+_DEFAULT_DIFFERENT_SCOPES = _different_scopes
+_DEFAULT_NUMERIC_CONFLICT = _numeric_conflict
+_DEFAULT_STRUCTURED_CONFLICT = _structured_conflict
+_DEFAULT_SIGNIFICANT_TOKENS = significant_tokens
+_DEFAULT_DATABASE_VALUE = _database_value
+_DEFAULT_CONFLICT_FACTS_TYPE = _ConflictFacts
+_DEFAULT_CONFLICT_DEPENDENCIES_TYPE = _ConflictDependencies
+_DEFAULT_CONFLICT_FACTS = _conflict_facts
+_DEFAULT_FACTS_DIFFERENT_SCOPES = _facts_have_different_scopes
+_DEFAULT_FACTS_NUMERIC_CONFLICT = _facts_have_numeric_conflict
+_DEFAULT_FACTS_STRUCTURED_CONFLICT = _facts_have_structured_conflict
+_DEFAULT_WORK_BUDGET_CONSUME = _CompilationWorkBudget.consume
+_DEFAULT_CONFLICT_DEPENDENCIES = _ConflictDependencies(
+    token_pattern=_TOKEN,
+    stopwords=frozenset(_STOPWORDS),
+    scope_values=MappingProxyType(dict(_SCOPE_VALUES)),
+    negation_pattern=_NEGATION,
+    database_pattern=_DATABASE_VALUE,
+    reverse_database_pattern=_REVERSE_DATABASE_VALUE,
+    nonexclusive_pattern=_NONEXCLUSIVE_VALUE,
+    exclusive_pattern=_EXCLUSIVE_VALUE,
+    generic_value_words=frozenset(_GENERIC_VALUE_WORDS),
+    antonym_pairs=tuple(_ANTONYM_PAIRS),
+)
+
+
+def _can_reuse_conflict_facts(
+    items: list[MemoryItem],
+    *,
+    limits: CompilationLimits,
+    work_budget: _CompilationWorkBudget,
+) -> bool:
+    """Exclude caller-defined dispatch and non-exact text from the fast path."""
+
+    dependencies = _DEFAULT_CONFLICT_DEPENDENCIES
+    if (
+        type(items) is not list
+        or type(limits) is not CompilationLimits
+        or type(work_budget) is not _CompilationWorkBudget
+        or _CompilationWorkBudget.consume is not _DEFAULT_WORK_BUDGET_CONSUME
+        or _ConflictFacts is not _DEFAULT_CONFLICT_FACTS_TYPE
+        or _ConflictDependencies is not _DEFAULT_CONFLICT_DEPENDENCIES_TYPE
+        or _proposition_shape is not _DEFAULT_PROPOSITION_SHAPE
+        or _different_scopes is not _DEFAULT_DIFFERENT_SCOPES
+        or _numeric_conflict is not _DEFAULT_NUMERIC_CONFLICT
+        or _structured_conflict is not _DEFAULT_STRUCTURED_CONFLICT
+        or significant_tokens is not _DEFAULT_SIGNIFICANT_TOKENS
+        or _database_value is not _DEFAULT_DATABASE_VALUE
+        or _conflict_facts is not _DEFAULT_CONFLICT_FACTS
+        or _facts_have_different_scopes is not _DEFAULT_FACTS_DIFFERENT_SCOPES
+        or _facts_have_numeric_conflict is not _DEFAULT_FACTS_NUMERIC_CONFLICT
+        or _facts_have_structured_conflict
+        is not _DEFAULT_FACTS_STRUCTURED_CONFLICT
+        or _TOKEN is not dependencies.token_pattern
+        or _NEGATION is not dependencies.negation_pattern
+        or _DATABASE_VALUE is not dependencies.database_pattern
+        or _REVERSE_DATABASE_VALUE is not dependencies.reverse_database_pattern
+        or _NONEXCLUSIVE_VALUE is not dependencies.nonexclusive_pattern
+        or _EXCLUSIVE_VALUE is not dependencies.exclusive_pattern
+        or type(_STOPWORDS) is not set
+        or frozenset(_STOPWORDS) != dependencies.stopwords
+        or type(_SCOPE_VALUES) is not dict
+        or dependencies.scope_values != _SCOPE_VALUES
+        or type(_GENERIC_VALUE_WORDS) is not set
+        or frozenset(_GENERIC_VALUE_WORDS)
+        != dependencies.generic_value_words
+        or type(_ANTONYM_PAIRS) is not tuple
+        or dependencies.antonym_pairs != _ANTONYM_PAIRS
+    ):
+        return False
+    if len({id(item) for item in items}) != len(items):
+        return False
+    return all(
+        type(item) is MemoryItem
+        and type(item.text) is str
+        and type(item.id) is str
+        and type(item.kind) is MemoryKind
+        and type(item.status) is MemoryStatus
+        for item in items
+    )
+
+
 def mark_conflicts(
     items: list[MemoryItem],
     *,
@@ -576,29 +805,97 @@ def mark_conflicts(
         }:
             by_kind[item.kind].append(item)
 
+    conflict_facts_type = _DEFAULT_CONFLICT_FACTS_TYPE
+    reuse_facts = _can_reuse_conflict_facts(
+        items,
+        limits=limits,
+        work_budget=work_budget,
+    )
+    fact_builder = _DEFAULT_CONFLICT_FACTS
+    scope_checker = _DEFAULT_FACTS_DIFFERENT_SCOPES
+    numeric_checker = _DEFAULT_FACTS_NUMERIC_CONFLICT
+    structured_checker = _DEFAULT_FACTS_STRUCTURED_CONFLICT
+    work_consumer = _DEFAULT_WORK_BUDGET_CONSUME
+    conflict_dependencies = _DEFAULT_CONFLICT_DEPENDENCIES
+    facts_by_identity: dict[int, _ConflictFacts] = {}
     seen_pairs: set[tuple[str, str]] = set()
     provenance_spans = sum(len(item.provenance) for item in items)
     for kind_items in by_kind.values():
         for index, left in enumerate(kind_items):
-            left_words, left_negated, left_numbers = _proposition_shape(left)
+            if reuse_facts:
+                left_facts = facts_by_identity.get(id(left))
+                left_words = frozenset()
+                left_negated = False
+                left_numbers = ()
+            else:
+                left_facts = None
+                left_words, left_negated, left_numbers = _proposition_shape(left)
             for right in kind_items[index + 1 :]:
-                work_budget.consume(1, phase="conflict detection")
-                if _different_scopes(left, right):
-                    continue
-                right_words, right_negated, right_numbers = _proposition_shape(right)
+                if reuse_facts:
+                    work_consumer(work_budget, 1, phase="conflict detection")
+                else:
+                    work_budget.consume(1, phase="conflict detection")
+                if reuse_facts:
+                    if left_facts is None:
+                        left_facts = fact_builder(
+                            left,
+                            conflict_dependencies,
+                            _facts_type=conflict_facts_type,
+                        )
+                        facts_by_identity[id(left)] = left_facts
+                    left_words = left_facts.words
+                    left_negated = left_facts.negated
+                    left_numbers = left_facts.numbers
+                    right_facts = facts_by_identity.get(id(right))
+                    if right_facts is None:
+                        right_facts = fact_builder(
+                            right,
+                            conflict_dependencies,
+                            _facts_type=conflict_facts_type,
+                        )
+                        facts_by_identity[id(right)] = right_facts
+                    assert left_facts is not None
+                    if scope_checker(left_facts, right_facts):
+                        continue
+                    right_words = right_facts.words
+                    right_negated = right_facts.negated
+                    right_numbers = right_facts.numbers
+                else:
+                    right_facts = None
+                    if _different_scopes(left, right):
+                        continue
+                    right_words, right_negated, right_numbers = _proposition_shape(
+                        right
+                    )
                 overlap = left_words & right_words
                 min_words = max(1, min(len(left_words), len(right_words)))
                 related = len(overlap) / min_words >= 0.65 and len(overlap) >= 1
                 polarity_conflict = left_negated != right_negated
-                value_conflict = _numeric_conflict(
-                    left,
-                    right,
-                    left_numbers,
-                    right_numbers,
-                )
+                if reuse_facts:
+                    assert left_facts is not None and right_facts is not None
+                    value_conflict = numeric_checker(
+                        left_facts,
+                        right_facts,
+                    )
+                else:
+                    value_conflict = _numeric_conflict(
+                        left,
+                        right,
+                        left_numbers,
+                        right_numbers,
+                    )
                 lexical_conflict = related and (polarity_conflict or value_conflict)
-                if not lexical_conflict and not _structured_conflict(left, right):
-                    continue
+                if not lexical_conflict:
+                    if reuse_facts:
+                        assert left_facts is not None and right_facts is not None
+                        if not structured_checker(
+                            left_facts,
+                            right_facts,
+                            dependencies=conflict_dependencies,
+                        ):
+                            continue
+                    elif not _structured_conflict(left, right):
+                        continue
                 pair = tuple(sorted((left.id, right.id)))
                 if pair in seen_pairs:
                     continue
