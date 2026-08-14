@@ -2121,6 +2121,7 @@ the commands above for the current revision and environment.
 - [Release candidate checklist](docs/RELEASE_CHECKLIST.md)
 - [Supply-chain groundwork](docs/SUPPLY_CHAIN.md)
 - [Next-chat handoff and current project state](docs/HANDOFF.md)
+- [Performance-branch project handoff](docs/PROJECT_HANDOFF.md)
 - [Architecture and invariants](docs/ARCHITECTURE.md)
 - [Extending extraction with domain packs](docs/EXTENDING_EXTRACTION.md)
 - [Benchmark design and the exact 50% bar](docs/BENCHMARKING.md)
