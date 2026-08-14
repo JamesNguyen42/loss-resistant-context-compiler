@@ -11,6 +11,7 @@ from .models import (
     MemoryItem,
     MemoryKind,
     MemoryStatus,
+    ProvenanceSpan,
     SourceRecord,
     VerificationIssue,
     VerificationReport,
@@ -131,6 +132,218 @@ def _candidate_retained(
         if memory_item_covers_candidate(candidate, item):
             return True
     return False
+
+
+_DEFAULT_CANDIDATE_RETAINED = _candidate_retained
+_DEFAULT_MEMORY_ITEM_COVERS_CANDIDATE = memory_item_covers_candidate
+_EXACT_MEMORY_ITEM_DESCRIPTORS = tuple(
+    (name, MemoryItem.__dict__[name])
+    for name in ("kind", "text", "provenance", "status", "exact")
+)
+_EXACT_PROVENANCE_DESCRIPTORS = tuple(
+    (name, ProvenanceSpan.__dict__[name])
+    for name in ("source_id", "start", "end")
+)
+_DEFAULT_MEMORY_ITEM_GETATTRIBUTE = MemoryItem.__getattribute__
+_DEFAULT_PROVENANCE_GETATTRIBUTE = ProvenanceSpan.__getattribute__
+_DEFAULT_MEMORY_KIND_HASH = MemoryKind.__hash__
+_DEFAULT_MEMORY_KIND_EQ = MemoryKind.__eq__
+_DEFAULT_MEMORY_KIND_NE = MemoryKind.__ne__
+_DEFAULT_MEMORY_STATUS_EQ = MemoryStatus.__eq__
+
+
+def _exact_protected_retention(
+    protected_candidates: list[MemoryItem],
+    retained: list[MemoryItem],
+) -> list[bool] | None:
+    """Index intrinsically exact public verification without changing work.
+
+    The compiler supplies a work budget and deliberately retains its legacy
+    scan/callback order.  The independent public verifier normally does not;
+    for exact built-in atoms, the wrapper relation is impossible and coverage
+    reduces to kind/text equality plus provenance-span containment.
+    """
+
+    if (
+        type(protected_candidates) is not list
+        or type(retained) is not list
+        or _candidate_retained is not _DEFAULT_CANDIDATE_RETAINED
+        or memory_item_covers_candidate
+        is not _DEFAULT_MEMORY_ITEM_COVERS_CANDIDATE
+        or any(
+            MemoryItem.__dict__.get(name) is not descriptor
+            for name, descriptor in _EXACT_MEMORY_ITEM_DESCRIPTORS
+        )
+        or MemoryItem.__getattribute__
+        is not _DEFAULT_MEMORY_ITEM_GETATTRIBUTE
+        or ProvenanceSpan.__getattribute__
+        is not _DEFAULT_PROVENANCE_GETATTRIBUTE
+        or MemoryKind.__hash__ is not _DEFAULT_MEMORY_KIND_HASH
+        or MemoryKind.__eq__ is not _DEFAULT_MEMORY_KIND_EQ
+        or MemoryKind.__ne__ is not _DEFAULT_MEMORY_KIND_NE
+        or MemoryStatus.__eq__ is not _DEFAULT_MEMORY_STATUS_EQ
+        or any(
+            ProvenanceSpan.__dict__.get(name) is not descriptor
+            for name, descriptor in _EXACT_PROVENANCE_DESCRIPTORS
+        )
+    ):
+        return None
+
+    candidates_by_key: dict[
+        tuple[MemoryKind, str],
+        list[tuple[int, frozenset[tuple[str, int, int]]]],
+    ] = {}
+    candidate_snapshots: list[
+        tuple[
+            MemoryItem,
+            MemoryKind,
+            str,
+            bool,
+            tuple[tuple[str, int, int], ...],
+        ]
+    ] = []
+    for index, candidate in enumerate(protected_candidates):
+        if (
+            type(candidate) is not MemoryItem
+            or candidate.exact is not True
+            or type(candidate.kind) is not MemoryKind
+            or type(candidate.text) is not str
+            or type(candidate.provenance) is not list
+            or any(
+                type(span) is not ProvenanceSpan
+                or type(span.source_id) is not str
+                or type(span.start) is not int
+                or type(span.end) is not int
+                for span in candidate.provenance
+            )
+        ):
+            return None
+        spans = frozenset(
+            (span.source_id, span.start, span.end)
+            for span in candidate.provenance
+        )
+        candidate_snapshots.append(
+            (
+                candidate,
+                candidate.kind,
+                candidate.text,
+                candidate.exact,
+                tuple(
+                    (span.source_id, span.start, span.end)
+                    for span in candidate.provenance
+                ),
+            )
+        )
+        candidates_by_key.setdefault(
+            (candidate.kind, candidate.text.strip()), []
+        ).append((index, spans))
+
+    found = [False] * len(protected_candidates)
+    remaining = len(found)
+    retained_snapshots: list[
+        tuple[
+            MemoryItem,
+            MemoryKind,
+            str,
+            MemoryStatus,
+            tuple[tuple[str, int, int], ...],
+        ]
+    ] = []
+    for item in retained:
+        if (
+            type(item) is not MemoryItem
+            or type(item.kind) is not MemoryKind
+            or type(item.text) is not str
+            or type(item.provenance) is not list
+            or type(item.status) is not MemoryStatus
+            or any(
+                type(span) is not ProvenanceSpan
+                or type(span.source_id) is not str
+                or type(span.start) is not int
+                or type(span.end) is not int
+                for span in item.provenance
+            )
+        ):
+            return None
+        retained_snapshots.append(
+            (
+                item,
+                item.kind,
+                item.text,
+                item.status,
+                tuple(
+                    (span.source_id, span.start, span.end)
+                    for span in item.provenance
+                ),
+            )
+        )
+        if item.status == MemoryStatus.DISCARDED:
+            continue
+        candidates = candidates_by_key.get((item.kind, item.text.strip()))
+        if not candidates:
+            continue
+        item_spans = {
+            (span.source_id, span.start, span.end)
+            for span in item.provenance
+        }
+        for candidate_index, candidate_spans in candidates:
+            if not found[candidate_index] and candidate_spans <= item_spans:
+                found[candidate_index] = True
+                remaining -= 1
+        if remaining == 0:
+            break
+
+    if any(
+        candidate.kind is not kind
+        or candidate.text != text
+        or candidate.exact is not exact
+        or type(candidate.provenance) is not list
+        or tuple(
+            (span.source_id, span.start, span.end)
+            for span in candidate.provenance
+        )
+        != spans
+        for candidate, kind, text, exact, spans in candidate_snapshots
+    ) or any(
+        item.kind is not kind
+        or item.text != text
+        or item.status is not status
+        or type(item.provenance) is not list
+        or tuple(
+            (span.source_id, span.start, span.end)
+            for span in item.provenance
+        )
+        != spans
+        for item, kind, text, status, spans in retained_snapshots
+    ):
+        return None
+
+    if (
+        _candidate_retained is not _DEFAULT_CANDIDATE_RETAINED
+        or memory_item_covers_candidate
+        is not _DEFAULT_MEMORY_ITEM_COVERS_CANDIDATE
+        or any(
+            MemoryItem.__dict__.get(name) is not descriptor
+            for name, descriptor in _EXACT_MEMORY_ITEM_DESCRIPTORS
+        )
+        or any(
+            ProvenanceSpan.__dict__.get(name) is not descriptor
+            for name, descriptor in _EXACT_PROVENANCE_DESCRIPTORS
+        )
+        or MemoryItem.__getattribute__
+        is not _DEFAULT_MEMORY_ITEM_GETATTRIBUTE
+        or ProvenanceSpan.__getattribute__
+        is not _DEFAULT_PROVENANCE_GETATTRIBUTE
+        or MemoryKind.__hash__ is not _DEFAULT_MEMORY_KIND_HASH
+        or MemoryKind.__eq__ is not _DEFAULT_MEMORY_KIND_EQ
+        or MemoryKind.__ne__ is not _DEFAULT_MEMORY_KIND_NE
+        or MemoryStatus.__eq__ is not _DEFAULT_MEMORY_STATUS_EQ
+    ):
+        return None
+    return found
+
+
+_DEFAULT_EXACT_PROTECTED_RETENTION = _exact_protected_retention
 
 
 def _unsupported_claim_terms(item: MemoryItem) -> set[str]:
@@ -809,13 +1022,27 @@ def verify_memory(
                 )
             )
 
+    exact_retention = (
+        _DEFAULT_EXACT_PROTECTED_RETENTION(protected_candidates, retained)
+        if (
+            work_budget is None
+            and _exact_protected_retention
+            is _DEFAULT_EXACT_PROTECTED_RETENTION
+        )
+        else None
+    )
     protected_retained = 0
-    for candidate in protected_candidates:
-        if _candidate_retained(
-            candidate,
-            retained,
-            work_budget=work_budget,
-        ):
+    for candidate_index, candidate in enumerate(protected_candidates):
+        candidate_is_retained = (
+            exact_retention[candidate_index]
+            if exact_retention is not None
+            else _candidate_retained(
+                candidate,
+                retained,
+                work_budget=work_budget,
+            )
+        )
+        if candidate_is_retained:
             protected_retained += 1
         else:
             issues.append(

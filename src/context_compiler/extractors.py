@@ -910,10 +910,53 @@ class RuleBasedExtractor:
         ):
             matches.extend(pattern.finditer(text))
         unique: dict[tuple[int, int], re.Match[str]] = {}
-        for match in sorted(matches, key=lambda m: (m.start(), -(m.end() - m.start()))):
+        use_linear_deduplication: bool | None = None
+        previous_start: int | None = None
+        furthest_containing_end: int | None = None
+        for match in sorted(
+            matches,
+            key=lambda value: (
+                value.start(),
+                -(value.end() - value.start()),
+            ),
+        ):
             span = (match.start("ref"), match.end("ref"))
-            if any(existing[0] <= span[0] and existing[1] >= span[1] for existing in unique):
-                continue
+            current_any = any
+            if use_linear_deduplication is not False:
+                exact_type = "".__class__.__class__
+                integer_type = (0).__class__
+                builtin_function_type = [].append.__class__
+                start, end = span
+                if (
+                    exact_type(current_any) is not builtin_function_type
+                    or current_any.__module__ != "builtins"
+                    or current_any.__name__ != "any"
+                    or exact_type(start) is not integer_type
+                    or exact_type(end) is not integer_type
+                    or start < 0
+                    or end < start
+                    or (
+                        previous_start is not None
+                        and start < previous_start
+                    )
+                ):
+                    use_linear_deduplication = False
+                else:
+                    use_linear_deduplication = True
+                    previous_start = start
+                    if (
+                        furthest_containing_end is not None
+                        and end <= furthest_containing_end
+                    ):
+                        continue
+                    furthest_containing_end = end
+            if not use_linear_deduplication:
+                if current_any(
+                    existing[0] <= span[0]
+                    and existing[1] >= span[1]
+                    for existing in unique
+                ):
+                    continue
             unique[span] = match
         return list(unique.values())
 
